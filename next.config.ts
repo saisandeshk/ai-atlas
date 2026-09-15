@@ -21,6 +21,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  basePath: '/ai-atlas',
   output: 'export',
   trailingSlash: true,
   async headers() {

@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: 'ML/AI Field Guide',
   description:
     'A finite learning route through the detailed ML and AI roadmap.',
+  icons: {
+    icon: '/ai-atlas/favicon.svg',
+  },
 };
 
 export default function RootLayout({
