@@ -37,6 +37,27 @@ function unique(values, label) {
     );
 }
 
+async function validateSourceReference(source, label) {
+  requireValue(source, label);
+  if (!source) return;
+
+  try {
+    const url = new URL(source);
+    if (url.protocol !== 'https:') {
+      errors.push(`${label} must use HTTPS`);
+    }
+    return;
+  } catch {
+    // Non-URL sources must resolve within the authoring workspace.
+  }
+
+  try {
+    await access(path.resolve(projectRoot, source));
+  } catch {
+    errors.push(`${label} does not resolve: ${source}`);
+  }
+}
+
 requireValue(curriculum.product?.name, 'product.name');
 requireValue(curriculum.product?.description, 'product.description');
 if (
@@ -138,14 +159,7 @@ if (coreMapIds.join('\n') !== authoredCoreIds.join('\n')) {
 
 for (const sourceField of ['sourceRoadmap', 'sourceSurvey']) {
   const sourcePath = curriculum.product?.[sourceField];
-  requireValue(sourcePath, `product.${sourceField}`);
-  if (sourcePath) {
-    try {
-      await access(path.resolve(projectRoot, sourcePath));
-    } catch {
-      errors.push(`product.${sourceField} does not resolve: ${sourcePath}`);
-    }
-  }
+  await validateSourceReference(sourcePath, `product.${sourceField}`);
 }
 
 function rejectLongDashes(value, label) {
@@ -182,13 +196,10 @@ async function validateRoute(stage, routeKind, requireCoreMap) {
     errors.push(`${stageLabel} is absent from coreMap`);
   }
 
-  try {
-    await access(path.resolve(projectRoot, stage.roadmapSource));
-  } catch {
-    errors.push(
-      `${stageLabel}.roadmapSource does not resolve: ${stage.roadmapSource}`,
-    );
-  }
+  await validateSourceReference(
+    stage.roadmapSource,
+    `${stageLabel}.roadmapSource`,
+  );
 
   if (!Array.isArray(stage.sections) || stage.sections.length === 0) {
     errors.push(`${stageLabel} has no sections`);
