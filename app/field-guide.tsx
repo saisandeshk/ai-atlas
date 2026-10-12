@@ -1242,6 +1242,13 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     </div>
                   </div>
 
+                  <p className="unit-legend">
+                    Tick <strong>Learn</strong> when you finish the study list,{' '}
+                    <strong>Practice</strong> when the named practice passes,
+                    and <strong>Pass</strong> when you meet Stop when without
+                    notes.
+                  </p>
+
                   <ol className="unit-list">
                     {visibleUnits.map((unit) => {
                       const key = unitKey(
