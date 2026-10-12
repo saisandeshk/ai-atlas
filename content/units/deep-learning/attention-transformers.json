@@ -67,12 +67,12 @@
       "focus": [
         "Queries, keys and values are three learned linear maps of the same input. D2L builds them bias-free by default while UDL equations 12.4 and 12.6 carry bias vectors, so the two parameter counts differ by construction.",
         "Under independent zero-mean unit-variance components, q^T k has variance d. The 1/sqrt(d) factor restores unit variance before the softmax; without it large d saturates the softmax and gradients vanish.",
-        "Stable softmax subtracts the row max first. Naive fp32 softmax on logits such as UDL Problem 12.4 overflows to NaN, while the shifted form returns the correct weights.",
+        "Stable softmax subtracts the row max first. Naive fp32 softmax on the UDL Problem 12.4 logits overflows at exp(100): that entry becomes inf/inf, which is NaN, and the rest become 0. The shifted form returns the correct weights.",
         "UDL lays inputs out as D by N columns with softmax per column; D2L uses batch by queries by keys with softmax on the last axis. In both, exactly one axis sums to 1: check which one before reading any heatmap."
       ],
       "reproduce": "Closed-book, derive the 1/sqrt(d) scale from the variance argument. Then hand-compute the Deep-ML 490 first test: scores [[0.7071, 0], [0, 0.7071]], weights [[0.6698, 0.3302], [0.3302, 0.6698]], output [[1.6605, 2.6605], [2.3395, 3.3395]].",
       "traps": [
-        "Computing softmax as exp(z)/sum(exp(z)) in fp32. exp(100) overflows to inf and the row becomes NaN; always subtract the row max, and recheck any code that skips it.",
+        "Computing softmax as exp(z)/sum(exp(z)) in fp32. exp(100) overflows to inf, so the sum is inf, the large entry becomes NaN and every other entry 0. Always subtract the row max, and recheck any code that skips it.",
         "Softmaxing the wrong axis after a transpose. UDL and D2L sum over different axes by layout; a heatmap that sums to 1 along queries instead of keys inverts the routing story.",
         "Quoting D2L parameter counts for UDL equations or vice versa. The bias terms add 3D parameters; carry them only when the equations you implement include them."
       ],
@@ -83,7 +83,7 @@
         },
         {
           "q": "Naive fp32 softmax meets UDL Problem 12.4 logits [-3, 1, 100, 5, -1]. What comes out, what does the max-subtracted form give, and what do the 25 derivatives say?",
-          "a": "Naive exp overflows at exp(100), giving inf and a NaN row. Max-subtracted softmax gives y3 near 1 and the rest near 0. All 25 derivatives are near 0 (largest magnitude about 5.5e-42): a saturated softmax with vanishing gradients."
+          "a": "Naive exp overflows at exp(100), so the denominator is inf and the output is [0, 0, NaN, 0, 0]. Max-subtracted softmax gives y3 near 1 and the rest near 0. All 25 derivatives are near 0 (largest magnitude about 5.5e-42): a saturated softmax with vanishing gradients."
         },
         {
           "q": "A self-attention block takes N = 5 inputs of width D = 8, with queries, keys and values also width 8. How many QKV weights and biases, how many attention weights, and how many weights and biases in a fully connected DN to DN map?",
@@ -279,8 +279,8 @@
       ],
       "reproduce": "Closed-book, walk shapes for batch 2, 4 queries, width 100, 5 heads: projections stay (2, 4, 100), folded per-head tensors are (10, 4, 20), concatenation restores (2, 4, 100). State BERT per-head width 64 from 1024 over 16 heads.",
       "traps": [
-        "Reshaping before transposing in the head split. Splitting num_hiddens into heads and head width must precede the sequence-axis move, or head and position entries interleave.",
-        "Forgetting the valid_lens repeat after folding. The folded batch has batch times heads rows; unrepeated lengths mask the wrong rows.",
+        "Folding heads with one reshape. Going straight from (batch, steps, hidden) to (batch times heads, steps, hidden/heads) runs without error but gives each head a mix of positions. Split hidden into (heads, head width), move the head axis next to batch, then merge, as transpose_qkv does.",
+        "Repeating valid_lens in the wrong order. D2L folds batch-major, so lengths need repeat_interleave ([l0, l0, l1, l1]). Tiling with repeat ([l0, l1, l0, l1]) has the right length and silently masks heads with another example's length. Dropping the repeat fails loudly in masked_softmax.",
         "Assuming cross-attention needs a new formula. Only the sources change; calling self-attention with (Y, encoder outputs, encoder outputs) is the whole difference."
       ],
       "selfTest": [
@@ -298,7 +298,7 @@
         },
         {
           "q": "The valid_lens repeat per head is deleted. What breaks?",
-          "a": "The folded batch has batch times heads rows but only batch lengths. Rows past the batch index read out of range or reuse row zero lengths, so heads mask the wrong key slots."
+          "a": "The folded batch has batch times heads rows but only batch lengths, so D2L masked_softmax fails with a mask shape error. The silent form of the bug is tiling with repeat instead of repeat_interleave: the count matches, but heads use another example's length."
         }
       ],
       "practice": [
@@ -370,15 +370,15 @@
       ],
       "focus": [
         "Without positions the block is permutation-equivariant: Sa[XP] equals Sa[X]P. UDL Problem 12.3 asks for this proof; it is the reason order must be injected as input.",
-        "Absolute encodings add a unique column per position. D2L scales embeddings by sqrt(width) first because raw encodings live in [-1, 1].",
+        "Absolute encodings add a unique column per position. The D2L TransformerEncoder scales embeddings by sqrt(width) before the add because the encodings stay in [-1, 1].",
         "Sinusoid pairs rotate with offset: position i plus delta is a fixed 2x2 rotation of position i, depending on delta and frequency only. Shifting text shifts encodings linearly.",
         "Relative schemes index by the offset between key and query positions, not by absolute index. They survive absolute shifts that absolute tables must relearn."
       ],
       "reproduce": "Closed-book, write p(i, 2j) and p(i, 2j+1), sketch the Sa[XP] equals Sa[X]P proof, and verify the 2x2 rotation numerically for one (i, delta, j) triple.",
       "traps": [
-        "Adding positions to queries and keys but not values, or the reverse, without noticing. UDL flags both placements; each changes what downstream layers can read about order.",
+        "Not stating where positions enter. UDL lists three placements: once at the input, at every layer, or only in the query and key computation. The last leaves values free of position, which changes what later layers can read; write down which one your block uses.",
         "Exceeding D2L max_len 1000. The stored table is fixed width, so longer inputs fail on the add; rebuild the table instead of truncating silently.",
-        "Treating dropout placement as free. D2L drops out after adding encodings, so train and eval runs see different position noise; compare runs in eval mode."
+        "Comparing encodings or outputs in train mode. D2L applies dropout to the sum of embeddings and encodings, so train-mode runs drop entries at random; compare in eval mode or with dropout 0, as the D2L plot does."
       ],
       "selfTest": [
         {
@@ -503,7 +503,7 @@
       ],
       "practice": [],
       "practiceNote": "The section mini-project covers this: a pre-normalized residual attention-plus-gated-MLP block with explicit positions, shape-invariance checks and serialization.",
-      "stopWhen": "Your block holds shapes across depths, runs identically twice in eval mode, and you can convert post-norm to pre-norm on demand.",
+      "stopWhen": "Your block holds shapes across depths, gives the same output on two eval-mode runs, and you can convert post-norm to pre-norm on demand.",
       "fit": {
         "verdict": "kept",
         "note": "UDL layer and model-pattern theory plus D2L post-norm and pre-norm blocks cover all three topics at explain and implement depth, with block practice assigned to the section mini-project."
@@ -563,7 +563,7 @@
       "focus": [
         "Count with multiply-add as 2 FLOP: QKVO projections 8 n d^2, scores plus weighting 4 n^2 d, width-4d MLP 16 n d^2. At n 512 and d 1024 that is about 5.37 GFLOP for attention and 8.59 GFLOP for the MLP.",
         "Score memory is heads times n^2 entries in the working dtype: 16 heads at n 512 in fp32 is exactly 16 MiB, 1 MiB per head. At n 4096 the same block needs 1 GiB.",
-        "Decoder causal masking keeps about half the pairs, so its score FLOPs roughly halve; memory still materializes per implementation unless a fused kernel avoids it.",
+        "Causal masking keeps n(n+1)/2 pairs, so the necessary score FLOPs roughly halve, as UDL notes. A dense matmul followed by a mask still computes all n^2 scores; only a kernel that skips masked tiles saves the work, and only a fused kernel avoids materializing the scores.",
         "The math backend upcasts half and bf16 intermediates to fp32, so measured bytes can exceed a naive dtype-times-entries count. Fused backends can change numerics without changing the asymptotic count."
       ],
       "reproduce": "Closed-book, fill the table for n 512, d 1024, h 16, fp32: attention parameters 4.19M, MLP parameters 8.39M, score memory 16 MiB, attention forward about 5.37 GFLOP. Then scale scores to n 4096 and show 1 GiB.",
@@ -578,16 +578,16 @@
           "a": "8 times 1024^2 entries times 4 bytes equals 33,554,432 bytes, which is 32 MiB."
         },
         {
-          "q": "Why does decoder attention cost about half the encoder score FLOPs?",
-          "a": "Causality keeps the lower triangle: n(n+1)/2 pairs instead of n^2, roughly half for long sequences."
+          "q": "Why does decoder attention need only about half the encoder score FLOPs, and when is the saving real?",
+          "a": "Causality keeps the lower triangle: n(n+1)/2 pairs instead of n^2, roughly half for long sequences. A dense matmul plus mask still spends all n^2; the saving is real only in a kernel that skips masked blocks."
         },
         {
           "q": "How many bias-free attention parameters does one BERT-width layer hold?",
           "a": "4 times 1024^2 equals 4,194,304, about 4.19M. Biases would add 4 times 1024 on top."
         },
         {
-          "q": "Sequence length grows 512 to 4096 at fixed width. What scales by 64, and what binds first?",
-          "a": "Score entries, bytes and score FLOPs all scale by 8^2 equals 64. Materialized score memory binds first: 16 MiB becomes 1 GiB while weights stay fixed."
+          "q": "Sequence length grows from 512 to 4096 at fixed width. What scales by 64, and what becomes the main cost?",
+          "a": "Score entries, bytes and score FLOPs all scale by 8^2 equals 64, while projection FLOPs scale by 8 and weights stay fixed. The score tensor grows from 16 MiB to 1 GiB per layer and example, so it is usually the first memory limit. Since n is now above 2d, score FLOPs also exceed the projection FLOPs."
         }
       ],
       "practice": [
@@ -601,10 +601,10 @@
           "name": "TensorTonic: Transformer Training FLOP Estimator",
           "url": "https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator",
           "locator": "The estimator problem in the PyTorch and einops group of the free language-modeling-from-scratch plan",
-          "note": "Reconcile each of its terms with your hand derivation for the 512-case block and document every included and excluded term."
+          "note": "It estimates one training step from forward matrix multiplications plus a supplied forward attention cost. Match its forward matmul terms to your 8nd^2 and 16nd^2 counts, then document how it counts the backward pass and every term it includes or leaves out."
         }
       ],
-      "stopWhen": "Your hand table matches measured score bytes and a profiler FLOP count within stated conventions, and you can name the dominant term on either side of n equals 2d.",
+      "stopWhen": "Your hand table matches measured score bytes and a profiler FLOP count within stated conventions, and you can name the dominant attention term on either side of n equals 2d (6d once the MLP is included).",
       "fit": {
         "verdict": "kept",
         "note": "D2L complexity analysis plus UDL quadratic and size material plus SDPA backend notes cover all three topics at derive and measure depth, with the D2L exercise and FLOP estimator as practice."
@@ -665,12 +665,12 @@
       "focus": [
         "Choose by mechanism, not fashion: CNNs share local filters with translation structure, RNNs carry fixed state through O(n) sequential steps, attention pays O(n^2 d) for content-based O(1) paths. The D2L table makes the trade exact.",
         "The axis checklist is short: which axis the softmax sums to 1, whether head splitting precedes the transpose, whether valid_lens repeats per head, and whether transposed tensors are contiguous before any view.",
-        "Interventions beat inspections: perturb future tokens, swap padding with content, permute batch and sequence, and require matching output behavior. The UDL cheating discussion is why causal claims need this proof.",
+        "Interventions beat inspections: perturb future tokens, change padded content, permute the batch (and the sequence, for an unmasked block without positions), and require matching outputs. UDL Section 12.7.2 explains how a decoder that sees the future can cheat; only the intervention proves yours cannot.",
         "Some claims need a run: fused-backend numerics, half-precision intermediates, and the length where materialization binds. Derive the model, then measure the regime."
       ],
-      "reproduce": "On your own block, run the three-test battery: future-token outputs unchanged, padding-for-content swap leaves valid outputs unchanged, batch and sequence permutations permute outputs identically. Then differential-test forward and backward against the SDPA math backend within tolerance, excluding fully masked rows.",
+      "reproduce": "On your own block, run the three-test battery: changing future tokens leaves earlier outputs unchanged; changing padded content leaves valid outputs unchanged; permuting the batch permutes the outputs the same way. Also show that permuting the sequence permutes outputs for an unmasked block without positions, and fails once the causal mask is on. Then differential-test forward and backward against the SDPA math backend within tolerance, excluding fully masked rows.",
       "traps": [
-        "Asserting bitwise equality across backends. CUDA fused kernels may be nondeterministic and numerics differ by backend per the docs; tolerance plus a pinned backend is the valid test.",
+        "Asserting bitwise equality across backends. The docs say outputs may differ by backend and that cuDNN may pick a nondeterministic algorithm; tolerance plus a pinned backend is the valid test.",
         "Using view on a freshly transposed tensor. Head-fold transposes are noncontiguous; view fails where reshape, or contiguous plus view, succeeds.",
         "Reading causality off one layer weights. Dropout, residuals and later layers remix paths; the intervention on the composed block is the proof."
       ],
@@ -681,11 +681,11 @@
         },
         {
           "q": "Which D2L line protects multi-head masking, and what is the failure without it?",
-          "a": "torch.repeat_interleave(valid_lens, num_heads, dim 0). Without it the folded batch times heads rows reuse batch lengths, and heads mask the wrong key slots."
+          "a": "torch.repeat_interleave(valid_lens, num_heads, dim=0). Without it D2L masked_softmax fails with a mask shape error. Tiling with repeat instead runs but gives heads another example's length, because the fold is batch-major."
         },
         {
           "q": "Why must the SDPA differential test exclude fully masked rows?",
-          "a": "Conventions disagree there: D2L -1e6 gives uniform weights, all -inf through plain softmax gives NaN, and SDPA on CPU returned zeros. Assert that convention in a separate test."
+          "a": "Conventions disagree there: D2L -1e6 gives uniform weights, all -inf through plain softmax gives NaN, and SDPA on CPU returned zeros in PyTorch 2.14. Assert your convention in a separate test."
         },
         {
           "q": "transpose_qkv ends with reshape after permute. Why not view?",
