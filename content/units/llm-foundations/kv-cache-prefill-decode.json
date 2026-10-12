@@ -295,47 +295,89 @@
         "cache-capacity-sensitivity-across-dtypes"
       ],
       "outcomes": [
-        "TODO"
+        "Derive KV bytes per token, sequence, layer and batch from layers, KV heads, head dim, dtype and batch.",
+        "Predict cache capacity across dtypes including INT8 and INT4 and state GB versus GiB units.",
+        "Explain the quantized-cache trade-off: a smaller cache for a small quality risk."
       ],
-      "why": "TODO",
+      "why": "The cache can outweigh the weights at long context, so every serving decision starts with its size. One formula with head count and dtype predicts whether a workload fits before anything runs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/kv-cache-prefill-decode/prefill-vs-decode",
+          "note": "Use the sizes to predict compute versus bandwidth limits."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/measure-ttft-itl",
+          "note": "Check the arithmetic against measured memory and latency."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modern-llm-cache-inference",
+          "title": "Modern LLM Notebook 21 Section 3 and Exercise 1: KV sizes",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb",
+          "locator": "Section 3 (kv_cache_size as 2 x layers x heads x head_dim x seq_len x bytes, LLaMA-2 7B, 13B and 70B from 2K to 128K, FP16/INT8/INT4 plot) and Exercise 1 (32 layers, 32 heads, 128 dim, 4096 tokens FP16 with the 2048 MB assert)"
+        },
+        {
+          "resource": "raschka-kv-gqa",
+          "title": "Raschka GQA estimator and README numbers",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/04_gqa/memory_estimator_gqa.py",
+          "locator": "calc_kv_bytes_total (per_layer as batch x context x head_dim x n_kv_heads x 2 x bytes, times layers; DTYPE_BYTES with fp32 4, bf16 and fp16 2, fp8 and int8 1) and the README example (4096 emb, 32 heads, 32 layers, 32768 context, 4 groups, bf16: MHA 17.18 GB versus GQA 4.29 GB at 4.00x and 75 percent)"
+        },
+        {
+          "resource": "modern-llm-cache-inference",
+          "title": "Modern LLM Notebook 11 Sections 1 and 2: back-of-envelope and head schemes",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/11-mla-kv-cache.ipynb",
+          "locator": "Section 1 (Llama-7B 32K FP16 back-of-envelope with the cache above the 13 GB weights) and Section 2 (MHA, GQA-8, GQA-4 and MQA table at 32768 tokens with the kv_cache_elements function)"
         }
       ],
       "focus": [
-        "TODO"
+        "Bytes equal batch x seq_len x layers x n_kv_heads x head_dim x 2 for K and V x bytes per element. Every term is load-bearing.",
+        "MHA sets n_kv_heads to n_heads. GQA divides it by the group count and MQA sets it to 1, so savings equal the head ratio.",
+        "Dtype scales the total directly: FP16 2 bytes, INT8 1 byte, INT4 half a byte. Quantized cache is lossy while head sharing is structural.",
+        "The estimator divides by 1000 cubed (GB) and the notebooks by 1024 cubed (GiB). Same bytes, different labels."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive per-token, per-layer and total KV bytes for Llama-7B at 32K FP16 in both GB and GiB, plus the 4-group GQA and INT8 savings, from the head formula.",
       "traps": [
-        "TODO"
+        "Forgetting one factor of 2. K and V each store a full vector, so dropping either 2 halves or doubles the answer.",
+        "Counting query heads instead of KV heads under GQA. Only KV heads occupy cache; 32 Q heads with 8 KV heads store 8, not 32.",
+        "Comparing GB and GiB numbers as if they disagree. 17179869184 bytes is both 17.18 GB and 16.0 GiB."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "With 32 heads and head dim 128 in FP16, what are the K plus V elements and bytes per token per layer?",
+          "a": "8192 elements (32 x 128 x 2) and 16384 bytes (x 2 bytes), which is 16 KB."
+        },
+        {
+          "q": "Same model with 32 layers at 16384 tokens FP16. What is the total cache?",
+          "a": "4294967296 elements x 2 bytes = 8589934592 bytes, which is 8.0 GiB in 1024-cubed units."
+        },
+        {
+          "q": "The estimator says 17.18 GB and notebook math says 16.0 for Llama-7B at 32K. Which is right?",
+          "a": "Both. The bytes are 17179869184 either way; the estimator divides by 1000 cubed (GB) and the notebook by 1024 cubed (GiB). State the units."
+        },
+        {
+          "q": "GQA with 4 groups on 32 heads at bf16, then INT8 cache. What are the savings?",
+          "a": "Head sharing gives 32/8 = 4x (MHA 17.18 GB to GQA 4.29 GB decimal, as run). INT8 halves it again to about 2.15 GB, for 8x versus FP16 MHA at a small quality risk."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Modern LLM Notebook 21 Exercise 1: KV cache memory",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb",
+          "locator": "Exercise 1: compute kv_bytes for 32 layers, 32 heads, 128 dim and 4096 tokens FP16; the cell asserts 2048 MB",
+          "note": "Solve by hand from the head formula first, then confirm with the cell."
+        },
+        {
+          "name": "Modern LLM Notebook 11 Exercise 1: KV footprint at 16K",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/11-mla-kv-cache.ipynb",
+          "locator": "Exercise 1: fill elements_per_token_per_layer, total_elements and total_gb for 4096 hidden, 32 layers, 32 heads and 16384 tokens FP16; the cell asserts 8.00 GB",
+          "note": "Report the answer in both GB and GiB and name which divisor each uses."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the 2048 MB and 8.00 GB answers by hand and both exercise asserts pass with units stated.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Modern 21 Section 3 with Exercise 1, Modern 11 Sections 1 and 2 with Exercise 1, and the Raschka estimator cover per-token to batch arithmetic plus dtype sensitivity with checked practice."
       }
     },
     {
@@ -352,47 +394,84 @@
         "compute-memory-bandwidth-launch-and-capacity-limits"
       ],
       "outcomes": [
-        "TODO"
+        "Explain prefill parallelism versus decode serialization and why one is compute-bound and the other bandwidth-bound.",
+        "Derive MLP and attention intensities and predict the limiting regime for short prefill, long prefill, single decode and batched decode.",
+        "Explain batch effects and phase interference between concurrent prefills and decodes."
       ],
-      "why": "TODO",
+      "why": "Latency and throughput numbers are meaningless without the regime behind them. Prefill scales with prompt length in parallel while decode pays per token in serial, so each needs its own bottleneck story.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/kv-cache-prefill-decode/measure-ttft-itl",
+          "note": "Measure the two regimes you just analyzed."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/beyond-one-cache",
+          "note": "See how paging and speculation change the picture."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-inference-lecture",
+          "title": "CS336 Lecture 10: arithmetic intensity of inference",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_10",
+          "locator": "arithmetic_intensity_of_inference (naive O(T cubed) without cache, MLP intensity B times T with prefill large-T versus generation T=1, attention intensity S times T over S plus T with prefill S/2 versus generation below 1, batching helps MLP but not attention)"
+        },
+        {
+          "resource": "jax-scaling-inference-depth",
+          "title": "JAX scaling book inference: linear ops, attention and the step-time formula",
+          "url": "https://jax-ml.github.io/scaling-book/inference/#theoretical-estimates-for-llm-latency-and-throughput",
+          "locator": "Linear operations (critical batch 240 on TPU v5e, about 280 on H100), What about attention (prefill T/2 compute-bound, generation about 1 and always bandwidth-bound) and Theoretical estimates (step time as batch x KV plus params over bandwidth, with the batch 4 versus 256 Pop Quiz)",
+          "depth": "Read the three named subsections only. Skip sharding, the serving engine and worked problems; they belong to the later tracks."
+        },
+        {
+          "resource": "modern-llm-cache-inference",
+          "title": "Modern LLM Notebook 21 Section 9: prefill versus decode",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb",
+          "locator": "Section 9 table (prefill parallel and compute-bound with FlashAttention versus decode serial and bandwidth-bound with KV cache plus PagedAttention) with the 50-token prefill versus 20-step decode timing cell"
         }
       ],
       "focus": [
-        "TODO"
+        "Prefill processes the whole prompt at once like training, so long prompts saturate compute. Decode handles one token per request, so it streams weights and KV from memory.",
+        "MLP intensity is B times T: batching requests helps decode. Attention intensity is about 1 at decode because each sequence owns its KV, so batching cannot fix it.",
+        "Short prefills and single-token decodes can be launch-bound: tiny kernels cost more to start than to run. Long contexts and big batches turn capacity-bound when the KV no longer fits.",
+        "A prefill running beside decodes steals the compute the decodes share. That interference is why serving separates or interleaves the phases."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive MLP intensity B times T and attention intensity S times T over S plus T, then classify short prefill, long prefill, single decode and batched decode as launch, compute, memory or capacity limited.",
       "traps": [
-        "TODO"
+        "Expecting bigger batches to fix decode attention. Batching helps MLP reuse of weights, but per-sequence KV keeps attention bandwidth-bound.",
+        "Calling decode compute-bound because FLOPs look small. Small FLOPs with large streaming reads is the definition of bandwidth-bound.",
+        "Ignoring launch overhead at small sizes. A 32-token prefill with B times T of 32 sits far below the 240 top critical batch, so launches dominate."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "MLP intensity is B times T. Compare B=8, T=1 decode with B=1, T=1024 prefill against a critical batch near 240.",
+          "a": "8 versus 1024. The decode step is memory-bound and the prefill is compute-bound in bf16."
+        },
+        {
+          "q": "Attention intensity is S times T over S plus T. Compare prefill with S=2048 to decode with S=2048 and T=1.",
+          "a": "Prefill gives S/2 = 1024 (compute-bound) while decode gives about 1 (always bandwidth-bound). Batching does not raise the decode value because each sequence has its own KV."
+        },
+        {
+          "q": "The JAX Pop Quiz bounds a 30B step at 2.5 ms for batch 4 and 21 ms for batch 256. Why does latency rise while throughput improves?",
+          "a": "Batch 4 is memory-bound (batch x KV plus params over bandwidth). Batch 256 pushes the MLP into the compute-bound term, so each step costs more but carries 64x the tokens."
+        },
+        {
+          "q": "A 32-token single-stream decode feels slow despite tiny FLOPs. Name two likely limiters besides FLOPs.",
+          "a": "Kernel-launch overhead on tiny ops and memory bandwidth from streaming weights plus KV each step. Capacity is not the issue at this size."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "JAX scaling book inference Pop Quiz: step-time bounds at batch 4 and 256",
+          "url": "https://jax-ml.github.io/scaling-book/inference/#theoretical-estimates-for-llm-latency-and-throughput",
+          "locator": "Pop Quiz under Theoretical estimates (30B dense, TPU v5e 4x4 slice, int8 params with bf16 FLOPs, 8192 context, 100 kB per token KV; batch 4 bounds 2.5 ms memory-bound, batch 256 bounds 21 ms compute-bound)",
+          "note": "Derive both bounds from the step-time formula by hand first, then check against the given answer."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive both Pop Quiz bounds within rounding and classify all four regimes with the intensity formulas.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 intensity derivations, the JAX roofline subsections and Modern 21 Section 9 cover phase parallelism and limits at explain and derive depth, with the JAX Pop Quiz as checked practice."
       }
     },
     {
