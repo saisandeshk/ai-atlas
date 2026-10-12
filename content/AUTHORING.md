@@ -1,6 +1,6 @@
 # Curriculum authoring contract
 
-This contract keeps the Field Guide finite as it grows. It applies to every core stage and specialization track.
+This contract keeps AI Atlas finite as it grows. It applies to every core stage and specialization track.
 
 ## Stage and section boundary
 
