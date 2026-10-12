@@ -285,6 +285,263 @@
         "verdict": "kept",
         "note": "CUDA memory docs, the snapshot guide and the profiler recipe cover counters and categories, and the TensorTonic problem gives checked accounting practice."
       }
+    },
+    {
+      "id": "mixed-precision-autocast",
+      "title": "Precision formats, autocast and gradient scaling",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "fp32-tf32-style-settings-fp16-and-bf16",
+        "autocast-gradient-scaling-and-unscale-before-clip-order"
+      ],
+      "outcomes": [
+        "Explain what TF32, fp16 and bf16 change about range, precision and accumulation, and state the current defaults.",
+        "Implement an autocast forward with a gradient scaler, including save and resume of scaler state.",
+        "Apply unscale before clipping with an unchanged threshold and diagnose skipped steps from the scale."
+      ],
+      "why": "Mixed precision is the cheapest memory and speed win in training, but it moves range failures into the gradient stream where a wrong threshold or a stale flag silently changes the update.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/numerical-failure-instrumentation",
+          "note": "Trace the overflow and underflow that scaling is designed to prevent."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/profiling-phases-verification",
+          "note": "Measure whether narrower math actually moved the bottleneck."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-reliability",
+          "title": "Automatic Mixed Precision recipe",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html",
+          "locator": "Adding torch.autocast with the fp16 linear output and fp32 loss asserts; Adding GradScaler with scale, backward, step and update; Inspecting/modifying gradients with unscale_ before clip_grad_norm_ at max_norm 0.1; Saving/Resuming with scaler state_dict"
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "TF32 precision controls",
+          "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html",
+          "locator": "TensorFloat-32 on Ampere and later devices: the new fp32_precision settings per backend and operator, matmul versus cuDNN defaults, and the rule against mixing old and new APIs"
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Reduced-precision accumulation",
+          "url": "https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html",
+          "locator": "Reduced Precision Reduction for FP16 and BF16 GEMMs with the off switches; Reduced Precision Reduction for FP16 and BF16 in SDPA with the fp32 upcast default"
+        }
+      ],
+      "focus": [
+        "Autocast chooses per operation: matmul-like ops go narrow, reductions stay wide. A fp16 linear output with a fp32 loss is the contract working, not a bug.",
+        "The scaler exists because small fp16 gradients flush to zero. It scales the loss, unscales before the optimizer sees grads, and skips the step on inf or NaN.",
+        "Current defaults are full precision for CUDA matmul and TF32 allowed for cuDNN convolutions. Set them with fp32_precision, never by mixing allow_tf32 with the new API.",
+        "The recipe assumes a CUDA GPU. The CPU fallback is autocast with bf16 and no scaler, with its own dtype asserts."
+      ],
+      "reproduce": "On a CUDA GPU, run a fp16 autocast forward over one linear layer and assert the output is fp16 while an mse loss over it is fp32. Construct torch.amp.GradScaler('cuda'), confirm the initial scale reads 65536.0, then run scale, backward, unscale_, clip_grad_norm_ and step plus update without error.",
+      "traps": [
+        "Reading allow_tf32 after setting fp32_precision, or the reverse. Current PyTorch raises a mixing error, so pick one API and stay on it.",
+        "Clipping .grad between backward and scaler.step without unscale_ first. The threshold then applies to scaled values and silently clips the wrong updates.",
+        "Running backward inside the autocast context. The recipe puts backward outside; the forward dtypes already determine the backward dtypes.",
+        "Copying CUDA fp16 settings to CPU. The recipe requires a CUDA GPU; on CPU use bf16 autocast and do not expect the fp16 asserts to transfer."
+      ],
+      "selfTest": [
+        {
+          "q": "What are the current defaults for TF32 on CUDA matmul and cuDNN convolutions?",
+          "a": "Matmul uses full precision and cuDNN convolutions allow TF32. Both are set per backend or operator with fp32_precision."
+        },
+        {
+          "q": "What raises when old allow_tf32 and new fp32_precision settings are mixed for one backend?",
+          "a": "A RuntimeError refusing the mix. The two APIs must not be combined."
+        },
+        {
+          "q": "Scaled gradients sit in .grad. Where does clipping go, and does max_norm change?",
+          "a": "Call scaler.unscale_(optimizer) first, then clip with the same max_norm used in unscaled training."
+        },
+        {
+          "q": "Why does fp16 training need a gradient scaler while bf16 training usually does not?",
+          "a": "Small fp16 gradients underflow to zero, so the scaler keeps them representable. bf16 keeps near-fp32 range, so plain updates survive."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 10: mixed-precision timing rerun",
+          "url": "https://www.learnpytorch.io/10_pytorch_profiling",
+          "locator": "Try mixed precision with larger model: uncomment the with and without mixed-precision epoch cells and rerun them",
+          "note": "Report your own per-iteration gap and explain it with the profiler's Tensor Core share, as the chapter does with its 9 to 12 percent reading."
+        }
+      ],
+      "stopWhen": "Your autocast plus scaler loop asserts the right dtypes, clips at an unchanged threshold, and you can explain any skipped step from the scale history.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The AMP recipe plus the TF32 and reduced-precision notes cover formats, scaler order and defaults, with the notebook rerun giving practice."
+      }
+    },
+    {
+      "id": "numerical-failure-instrumentation",
+      "title": "Overflow, underflow and finding the first invalid value",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "nonassociativity-overflow-and-underflow",
+        "first-invalid-value-instrumentation"
+      ],
+      "outcomes": [
+        "Explain why mathematically identical floating-point computations may differ bitwise across batches, slices and backends.",
+        "Enable anomaly detection to name the first backward function that produces NaN, with its forward traceback.",
+        "Place isfinite checks so an invalid value is caught at creation, not ten steps later."
+      ],
+      "why": "A NaN loss names no culprit. The only cheap evidence is the first invalid value and the operation that made it, and both need instrumentation in place before the failure.",
+      "next": [
+        {
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs",
+          "note": "Promote first-invalid evidence into full divergence diagnosis."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/profiling-phases-verification",
+          "note": "Record invalid events alongside phase timings in profiles."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Nonassociativity, batches, slices and extremal values",
+          "url": "https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html",
+          "locator": "Opening paragraphs on limited accuracy and nonassociativity; Batched computations or slice computations with the bmm and sum examples; Extremal values with the norm overflow example and the isfinite advice"
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Anomaly detection reference",
+          "url": "https://docs.pytorch.org/docs/stable/autograd.html#torch.autograd.set_detect_anomaly",
+          "locator": "detect_anomaly and set_detect_anomaly: forward traceback of the failing operation plus the check_nan error on NaN generated in backward; debug-only slowdown warning"
+        },
+        {
+          "resource": "pytorch-reliability",
+          "title": "Debugging APIs stay off in timed runs",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html",
+          "locator": "General optimizations, Disable debugging APIs: anomaly detection, profiler hooks and gradcheck off for regular training"
+        }
+      ],
+      "focus": [
+        "Floating point addition and multiplication are not associative. Batching, slicing and backend choice change reduction order, so bitwise identity is never promised.",
+        "Overflow can strike intermediates while the final value is representable. The fp32 norm of [1e20, 1e20] is inf while the fp64 norm is finite.",
+        "Anomaly detection answers which backward made NaN, not which forward looked odd. check_nan fires on NaN generated inside backward.",
+        "Detection and profiling both slow execution. Neither belongs in a timed run or a production loop."
+      ],
+      "reproduce": "On CPU, show torch.tensor([1e20, 1e20]).norm() gives inf while the double version is finite. Then run (x / x).backward() at x = 0 under autograd.detect_anomaly() and record the exact error naming DivBackward0 and its NaN output.",
+      "traps": [
+        "Asserting bitwise equality across batch sizes, slices or devices. The docs promise nothing here; compare with a tolerance.",
+        "Expecting anomaly detection to flag NaN flowing from forward. Log of a negative is NaN forward with a finite grad of -1, and check_nan stays silent because backward generated nothing invalid.",
+        "Leaving anomaly detection or the profiler on while timing. Both add overhead, so a slow profiled run proves nothing about the clean run."
+      ],
+      "selfTest": [
+        {
+          "q": "Under detect_anomaly, (x / x).backward() at x = 0 names DivBackward0. What does that name identify?",
+          "a": "The backward function whose output went NaN, hence the forward division. The mode also prints the traceback of that forward call."
+        },
+        {
+          "q": "torch.log of -1.0 gives NaN forward and grad -1.0 with no anomaly error. Why silent?",
+          "a": "check_nan fires on NaN generated by backward computation. Here backward computed the finite value 1/x, so there is nothing to report."
+        },
+        {
+          "q": "(A@B)[0] equaled A[0]@B[0] bitwise on your machine. May a test assert == across batchings?",
+          "a": "No. Bitwise identity across batched and unbatched paths is not guaranteed, so assert allclose with an explicit tolerance."
+        },
+        {
+          "q": "Times look bad with anomaly detection and the profiler enabled. What is the first correction?",
+          "a": "Disable both for timed runs. Both are debug-only overhead, so their timings do not describe the clean run."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: first-invalid capture and seeded NaN diagnosis with fixed-batch replay.",
+      "stopWhen": "You can produce the named DivBackward0 error on demand, and every equality in your checks carries an explicit tolerance.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The numerical accuracy note and the anomaly reference cover nonassociativity, overflow and first-invalid tooling, with the mini-project supplying practice."
+      }
+    },
+    {
+      "id": "activation-checkpointing",
+      "title": "Activation checkpointing and recomputation",
+      "hours": 3,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "activation-checkpointing-and-recomputation"
+      ],
+      "outcomes": [
+        "Wrap a segment with torch.utils.checkpoint and state exactly what stays alive and what is recomputed.",
+        "Choose use_reentrant False with reasons, and pass it explicitly.",
+        "Measure the memory saving against the recompute cost and the RNG effects."
+      ],
+      "why": "Checkpointing converts the activation term of the memory model into extra compute. Done blindly it slows training for no reason; done deliberately it is what lets larger batches fit.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/profiling-phases-verification",
+          "note": "Attribute the recompute cost to the backward phase in a profile."
+        },
+        {
+          "route": "distributed-training",
+          "note": "Recomputation policy scales with sharded and pipeline-parallel training later."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "torch.utils.checkpoint API",
+          "url": "https://docs.pytorch.org/docs/stable/checkpoint.html",
+          "locator": "checkpoint signature and semantics: only args stay alive, region outputs are recomputed in backward; use_reentrant False versus True differences; preserve_rng_state with the multi-device caveat; determinism_check and debug"
+        },
+        {
+          "resource": "pytorch-reliability",
+          "title": "Which layers to checkpoint",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html",
+          "locator": "General optimizations, Checkpoint intermediate buffers: large layer outputs with small recompute cost as targets"
+        }
+      ],
+      "focus": [
+        "Only the checkpoint inputs stay alive; everything the region computes is rerun in backward. Memory saved equals the dropped forward tensors minus the inputs.",
+        "Non-reentrant is the recommended path: it supports grad, keyword args and nested structures, and it stops recomputation early once the needed activations exist.",
+        "RNG state is stashed and restored by default so dropout masks match. Turning that off changes gradients, not forward outputs.",
+        "Recompute reruns the region code. Globals read inside the region, device moves, and multi-device RNG all break the equivalence silently or loudly."
+      ],
+      "reproduce": "On CPU, checkpoint a dropout block with use_reentrant=False and show its gradients are bitwise equal to the plain block at the same seed. Rerun with preserve_rng_state=False and show the gradients differ while the forward outputs still match.",
+      "traps": [
+        "Omitting use_reentrant and assuming a default. Current PyTorch warns that it must be passed explicitly; pass False deliberately.",
+        "Wrapping tiny cheap regions. Recompute then costs more than the memory it saves; target large outputs with small recompute cost.",
+        "Changing code or globals between forward and backward. The recompute must see the identical function, or gradients are silently wrong."
+      ],
+      "selfTest": [
+        {
+          "q": "What stays alive across a checkpointed region, and what is recomputed?",
+          "a": "Only the input args stay alive. The region reruns in backward to rebuild every forward tensor it needs."
+        },
+        {
+          "q": "With preserve_rng_state False, forward outputs still match but gradients differ. Why?",
+          "a": "Forward runs once either way. The flag only controls the RNG state used by the backward recompute, so only dropout-dependent gradients change."
+        },
+        {
+          "q": "What happens when use_reentrant is omitted, and which value is recommended?",
+          "a": "PyTorch warns that it must be passed explicitly. False is recommended: it supports grad, kwargs and nested structures with early stop."
+        },
+        {
+          "q": "Why does the reentrant variant refuse detached tensors and inputs without requires_grad?",
+          "a": "It runs forward under no_grad with no recorded graph, so there is nothing to differentiate and gradients come back None."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: activation-checkpointing memory savings with equivalence checks.",
+      "stopWhen": "Your checkpointed block matches plain gradients bitwise at fixed seed, and you can price any block in memory saved versus recompute added.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The checkpoint reference covers semantics, variant differences and RNG behavior, with the mini-project supplying practice."
+      }
     }
   ]
 }
