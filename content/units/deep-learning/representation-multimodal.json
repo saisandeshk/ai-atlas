@@ -1,0 +1,696 @@
+{
+  "section": "representation-multimodal",
+  "addedResources": [
+    {
+      "id": "simclr-paper",
+      "role": "paper",
+      "priority": "required",
+      "name": "SimCLR - A Simple Framework for Contrastive Learning of Visual Representations",
+      "provider": "Chen, Kornblith, Norouzi and Hinton (ICML 2020)",
+      "access": "Free",
+      "use": "Use Section 2.1 Eq. (1) and Algorithm 1 for NT-Xent, 2.3 for the linear-evaluation protocol, 3.1 with Figures 5-6 for augmentation composition and shortcuts, 4.2 for the projection head, and 5.1-5.2 with Table 5 and Figure 9 for temperature and batch-size effects.",
+      "url": "https://arxiv.org/abs/2002.05709"
+    },
+    {
+      "id": "clip-paper",
+      "role": "paper",
+      "priority": "required",
+      "name": "CLIP - Learning Transferable Visual Models From Natural Language Supervision",
+      "provider": "Radford et al. (OpenAI, ICML 2021)",
+      "access": "Free",
+      "use": "Use Section 2.3 for the symmetric image-text objective and learned temperature, 2.5 for batch size and temperature limits, and 3.1.2 with 3.1.4 for zero-shot transfer and prompt ensembling.",
+      "url": "https://arxiv.org/abs/2103.00020"
+    },
+    {
+      "id": "simsiam-paper",
+      "role": "paper",
+      "priority": "support",
+      "name": "SimSiam - Exploring Simple Siamese Representation Learning",
+      "provider": "Chen and He (CVPR 2021)",
+      "access": "Free",
+      "use": "Use Figure 2 and Table 1 for collapse under removed stop-gradient or predictor, including the per-channel spread diagnostic.",
+      "url": "https://arxiv.org/abs/2011.10566"
+    }
+  ],
+  "units": [
+    {
+      "id": "embedding-geometry-contrastive",
+      "title": "Embedding geometry and contrastive logits",
+      "hours": 3,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "embeddings-dot-products-cosine-geometry-and-normalization",
+        "metric-learning-and-contrastive-logits"
+      ],
+      "outcomes": [
+        "Explain why cosine similarity keeps angles and discards norms, and when that helps retrieval.",
+        "Derive NT-Xent as softmax cross-entropy over the 2N-1 other views, with 1/tau logit scaling.",
+        "Predict the loss for degenerate batches, including the log(2N-1) uniform case."
+      ],
+      "why": "Contrastive objectives compare directions, not positions. If norms leak into the logits, the loss rewards loud embeddings instead of aligned ones.",
+      "next": [
+        {
+          "unit": "deep-learning/representation-multimodal/temperature-negatives-positives",
+          "note": "Scale the logits you derived here with temperature and test batch-size effects."
+        },
+        {
+          "unit": "deep-learning/neural-autodiff/stable-softmax-losses",
+          "note": "Implement the log-sum-exp and reduction the denominator needs."
+        }
+      ],
+      "study": [
+        {
+          "resource": "simclr-paper",
+          "title": "NT-Xent and cosine similarity",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 2.1, Eq. (1): sim(u,v) as the L2-normalized dot product and l_{i,j} with the sum over k != i; Algorithm 1 for the full loop"
+        },
+        {
+          "resource": "simclr-paper",
+          "title": "Why normalization matters",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 5.1, Table 5: L2 Yes versus No rows, with the sentence that normalization plus temperature weights examples by hardness",
+          "depth": "Skip the temperature-value comparison; the next unit owns tau."
+        }
+      ],
+      "focus": [
+        "Cosine similarity is a dot product after L2 normalization. Positive scaling of either vector changes nothing.",
+        "NT-Xent treats the 2N-1 other views as classes. The positive stays in the denominator, so the loss is a valid cross-entropy.",
+        "With identical embeddings every row is uniform at any tau, so the loss equals log(2N-1): log 3 = 1.0986 for 2N = 4.",
+        "Without normalization, one large-norm embedding dominates every softmax row it appears in."
+      ],
+      "reproduce": "Closed-book, derive l_{i,j} from softmax cross-entropy over pairwise similarities. Then compute the tau = 1 loss by hand for embeddings [1,0], [1,0], [0,1], [0,1] and get 0.5514.",
+      "traps": [
+        "Calling cosine similarity translation-invariant. It is invariant to positive scaling, not to shifts; centering the batch changes all angles.",
+        "Dropping the positive from the denominator. SimCLR sums over k != i, which includes the positive; without it the loss can go negative.",
+        "Reading NT-Xent as fixed-class classification. The classes are the current batch views, so the same pair gets a different loss in different batches."
+      ],
+      "selfTest": [
+        {
+          "q": "Embeddings [1,0], [1,0], [0,1], [0,1] at tau = 1 give loss 0.5514. Show the per-row terms.",
+          "a": "For row 0 the positive scores 1 and the two negatives score 0, so l = -1 + log(e + 2) = 0.5514. Rows 1, 2 and 3 match by symmetry, and the mean over all four rows is 0.5514."
+        },
+        {
+          "q": "All four embeddings are identical. What is the loss at tau = 1?",
+          "a": "log 3 = 1.0986. Every row is uniform over its three candidates, so each row contributes log 3."
+        },
+        {
+          "q": "Why does SimCLR Table 5 favor L2 normalization?",
+          "a": "Raw dot products mix angle with norm, so loud vectors dominate the softmax. With normalization plus temperature the loss weights examples by relative hardness, and Top-1 rises from 57.2 to 64.4 at the best setting. Without normalization the contrastive accuracy is higher (91.7 versus 87.8) yet the representation is worse, so the pretext score does not measure representation quality."
+        },
+        {
+          "q": "Is the positive pair part of its own denominator?",
+          "a": "Yes. The sum runs over all k != i including the positive index j, which keeps the loss a proper cross-entropy bounded below by 0."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Deep-ML 384: Contrastive Loss (InfoNCE / SimCLR-style)",
+          "url": "https://www.deep-ml.com/problems/384",
+          "locator": "Implement contrastive_loss(embeddings, temperature). The visible tests check two identical pairs at tau = 1.0 for 0.5514 and four identical embeddings for 1.0986.",
+          "note": "Then add local tests for temperature extremes, a missing positive, duplicate pairs, and normalized versus unnormalized inputs."
+        }
+      ],
+      "stopWhen": "You derive NT-Xent without notes, reproduce 0.5514 by hand, and your implementation passes the Deep-ML tests plus the four local edge tests.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed: no pool resource derives a contrastive loss or defines cosine-similarity logits. SimCLR Section 2.1 with Algorithm 1 fills that gap beside the Deep-ML implementation."
+      }
+    },
+    {
+      "id": "temperature-negatives-positives",
+      "title": "Temperature, negatives and positive construction",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "temperature-and-batch-negative-effects",
+        "positive-and-negative-construction"
+      ],
+      "outcomes": [
+        "Derive the 1/tau sharpening of logits and gradients, and predict saturation at small tau.",
+        "Explain how batch size sets the negative count and when longer training closes the gap.",
+        "Build positives by augmentation composition and state the invariance each transform declares."
+      ],
+      "why": "Temperature and batch size set the difficulty of the discrimination game. The positive construction declares which variation the representation must ignore.",
+      "next": [
+        {
+          "unit": "deep-learning/representation-multimodal/shortcuts-collapse",
+          "note": "Test which augmentations create shortcuts and how collapse shows in the embeddings."
+        },
+        {
+          "unit": "deep-learning/representation-multimodal/paired-modality-alignment",
+          "note": "Replace augmentation pairs with image-text pairs in the same symmetric loss."
+        }
+      ],
+      "study": [
+        {
+          "resource": "simclr-paper",
+          "title": "Temperature and normalization",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 5.1, Table 5: tau 0.05, 0.1, 0.5 and 1.0 with L2 normalization; best Top-1 64.4 at tau = 0.1; the hard-negative weighting sentence"
+        },
+        {
+          "resource": "simclr-paper",
+          "title": "Batch size and training length",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Sections 2.2 and 5.2 with Figure 9: batch sizes 256 to 8192 with 16,382 negatives per positive at 8192; larger batches help early and the gap shrinks with longer training"
+        },
+        {
+          "resource": "simclr-paper",
+          "title": "Augmentation composition",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 3.1 with Figures 5 and 6: single transforms fail while crop plus color distortion wins; color histograms alone suffice as a shortcut"
+        }
+      ],
+      "focus": [
+        "Dividing by tau multiplies every logit gap. Small tau sharpens toward argmax; large tau flattens toward uniform.",
+        "The positive-logit gradient is -(1 - p_pos)/tau. Easy pairs saturate near zero gradient at small tau, so hard negatives drive learning.",
+        "Negatives per positive equal 2(N-1): 510 at batch 256 and 16,382 at batch 8192. Longer training closes much of the batch gap.",
+        "Random crop plus color distortion wins because it blocks the color-histogram shortcut, not because either transform is strong alone."
+      ],
+      "reproduce": "Closed-book, write the NT-Xent gradient for the positive similarity. For similarities [2, 1, 0], compute the tau = 1 softmax [0.665, 0.245, 0.090] with gradient -0.335, and the tau = 0.1 gradient of about -0.0005.",
+      "traps": [
+        "Pushing tau ever lower. Below 0.1 easy pairs saturate and a few hard negatives dominate; Table 5 drops from 64.4 at 0.1 to 59.7 at 0.05.",
+        "Assuming bigger batches always win. Figure 9 shows large gains at 100 epochs that mostly disappear with longer training on randomly resampled batches.",
+        "Letting labels choose positives and still calling the method self-supervised. SimCLR positives are two views of one image; once class labels pick positives, it is supervised contrastive learning and must be compared as such."
+      ],
+      "selfTest": [
+        {
+          "q": "Similarities [2, 1, 0] at tau = 1: what is the positive probability?",
+          "a": "e^2/(e^2 + e + 1) = 0.665. The remaining mass splits 0.245 and 0.090."
+        },
+        {
+          "q": "What happens to easy-pair gradients as tau goes to 0?",
+          "a": "The softmax saturates to one-hot, so (1 - p)/tau goes to 0 for decided pairs and learning concentrates on the remaining hard pairs; too small stalls training."
+        },
+        {
+          "q": "Batch 8192 gives how many negatives per positive, and why?",
+          "a": "16,382. The batch holds 2N = 16,384 views; excluding the anchor and its positive leaves 2N - 2 negatives."
+        },
+        {
+          "q": "Positive-identification accuracy is near perfect but linear evaluation is poor. What went wrong?",
+          "a": "The task is solvable by shortcut, such as color histograms under crop-only augmentation. Composition makes pairing harder and representations better."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Implement Symmetric CLIP Contrastive Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-symmetric-clip-loss",
+          "locator": "Named problem on the free language-modeling-from-scratch plan: implement the two-directional loss over an image-text similarity batch.",
+          "note": "Transfer your NT-Xent derivation: CLIP swaps augmentation pairs for image-text pairs and averages both softmax directions."
+        }
+      ],
+      "stopWhen": "You predict tau-sharpening and batch-size effects from the formulas, and your two-directional implementation passes the page tests.",
+      "fit": {
+        "verdict": "added",
+        "note": "Depth failed: the pool has no temperature, batch-size or positive-construction analysis. SimCLR Sections 3.1, 5.1 and 5.2 supply verified ablations beside the CLIP-loss implementation."
+      }
+    },
+    {
+      "id": "shortcuts-collapse",
+      "title": "Augmentation shortcuts, false negatives and collapse",
+      "hours": 5,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "augmentation-assumptions-false-negatives-and-shortcuts",
+        "representation-collapse-and-norm-diagnostics"
+      ],
+      "outcomes": [
+        "Explain how augmentation shortcuts and false negatives arise, using the color-histogram case.",
+        "Detect collapse with per-dimension spread, norm and rank checks.",
+        "Explain why stop-gradient and predictor asymmetry prevent collapse in positive-only methods."
+      ],
+      "why": "Without negatives the objective accepts a constant answer; with lazy positives it accepts a cheating one. Both failure modes look like falling loss.",
+      "next": [
+        {
+          "unit": "deep-learning/representation-multimodal/probes-transfer-leakage",
+          "note": "Check whether shortcut-laden representations survive a frozen probe and clean splits."
+        },
+        {
+          "unit": "deep-learning/representation-multimodal/paired-modality-alignment",
+          "note": "See how paired text supervision changes the shortcut landscape."
+        }
+      ],
+      "study": [
+        {
+          "resource": "udl-representation",
+          "title": "Self-supervision and augmentation",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Sections 9.3.7-9.3.8 (pp. 152-153): contrastive pairs of transformed images; augmentation as label-preserving expansion; Figure 9.12"
+        },
+        {
+          "resource": "simclr-paper",
+          "title": "Negative rule and augmentation shortcuts",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 2.1: all other 2(N-1) views count as negatives, including same-class views; Section 3.1 with Figure 6: color histograms alone suffice to distinguish images"
+        },
+        {
+          "resource": "simsiam-paper",
+          "title": "Collapse without stop-gradient",
+          "url": "https://ar5iv.labs.arxiv.org/html/2011.10566",
+          "locator": "Figure 2: 67.7 percent with stop-gradient versus 0.1 percent without, plus the per-channel spread plot; Table 1 row (a): no predictor also gives 0.1 percent"
+        }
+      ],
+      "focus": [
+        "An augmentation declares an invariance. Crop-only declares color histograms fair game, and the encoder takes that shortcut.",
+        "Every batch negative is repelled, including same-class images. At batch 8192 with 1000 balanced classes, each anchor repels about 16 same-class views.",
+        "Full collapse keeps per-dimension spread at zero and rank at one while the loss sits at log(2N-1). Partial collapse needs the same checks, since its loss still falls.",
+        "SimSiam avoids collapse on positives alone with stop-gradient and a predictor. The constant solution still minimizes its loss; the paper shows that removing either piece collapses to 0.1 percent and offers an EM-style hypothesis, not a proof."
+      ],
+      "reproduce": "From a blank file, write the three-line collapse check (mean per-dimension std of the L2-normalized embeddings, mean norm, numerical rank with a stated tolerance) and run it on constant versus Gaussian 128-d embeddings: expect spread 0.0 versus about 0.088, which is 1/sqrt(128), and rank 1 versus 128.",
+      "traps": [
+        "Trusting falling loss as proof of learning. Partial collapse keeps the loss falling while dimensions die; only spread and rank checks catch it.",
+        "Dismissing false negatives as rare. About 16 per anchor at SimCLR scale is a steady repulsive pressure on same-class views.",
+        "Crediting the predictor alone for SimSiam. Figure 2 shows stop-gradient removal by itself collapses to 0.1 percent."
+      ],
+      "selfTest": [
+        {
+          "q": "What does the middle plot of SimSiam Figure 2 show without stop-gradient?",
+          "a": "Per-channel std of the normalized output falls toward zero: the embeddings go constant and validation accuracy drops to 0.1 percent."
+        },
+        {
+          "q": "Estimate same-class negatives per anchor at batch 8192 with 1000 balanced classes.",
+          "a": "About 16: 16,382 negatives divided by 1000 classes."
+        },
+        {
+          "q": "Your embeddings have numerical rank 3 in a 128-d space, but the loss keeps falling. Is that collapse?",
+          "a": "Dimensional collapse: the loss can still fall inside the live subspace while most dimensions carry nothing. Report spread and the singular-value spectrum, and check the probe; a falling loss does not rule it out."
+        },
+        {
+          "q": "Why does adding color distortion to cropping improve representations while making pairing harder?",
+          "a": "It removes the color-histogram shortcut, so the encoder must use shape and content that transfer."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS231n Assignment 3, Q2: augmentation ablation from scratch",
+          "url": "https://cs231n.github.io/assignments2025/assignment3/",
+          "locator": "Self_Supervised_Learning.ipynb: Data Augmentation (compute_train_transform, checked with rel_error), Train the SimCLR model, and the Finetune a Linear Layer comparison on the 10 percent split",
+          "note": "The training cell loads pretrained weights and runs one epoch, so the ablation needs its own runs: skip the load_state_dict line, train a few epochs with and without color jitter at the notebook tau of 0.5, then probe both. Small runs may show only a small gap; report what you measure, and run your collapse check on both embedding sets."
+        }
+      ],
+      "stopWhen": "Your collapse check reports spread and numerical rank for constant, Gaussian and learned embeddings, and your ablation reports probe accuracy for both runs against the frozen random-encoder baseline.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for collapse mechanism and diagnostics in the pool. SimSiam Figure 2 with Table 1 plus UDL Sections 9.3.7-9.3.8 fill it; SimCLR Section 3.1 supplies the shortcut evidence."
+      }
+    },
+    {
+      "id": "probes-transfer-leakage",
+      "title": "Linear probes, transfer evaluation and pair leakage",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "frozen-encoders-linear-probes-and-fine-tuning",
+        "held-out-retrieval-and-transfer-evaluation",
+        "pair-identity-and-near-duplicate-leakage"
+      ],
+      "outcomes": [
+        "Implement a frozen-encoder linear probe with matched baseline budgets.",
+        "Evaluate transfer with held-out retrieval or classification and state slice limits.",
+        "Build pair-identity and near-duplicate checks that catch train/test leakage."
+      ],
+      "why": "A probe is the representation's external exam. A leaked pair turns the exam into a memory test, so the split discipline matters as much as the accuracy.",
+      "next": [
+        {
+          "unit": "deep-learning/representation-multimodal/paired-modality-alignment",
+          "note": "Evaluate paired representations with retrieval and zero-shot probes."
+        },
+        {
+          "unit": "deep-learning/training-dynamics/objective-checks-controls",
+          "note": "Reuse tiny-set overfit and shuffled-label controls to test your probe pipeline."
+        }
+      ],
+      "study": [
+        {
+          "resource": "simclr-paper",
+          "title": "Linear evaluation protocol",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 2.3: linear classifier on the frozen base network with test accuracy as the representation-quality proxy"
+        },
+        {
+          "resource": "udl-representation",
+          "title": "Transfer learning and fine-tuning",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 9.3.6 (pp. 151-152) with Figure 9.12a (p. 153): pretrain on a secondary task, replace the last layers, then train only the new layers or fine-tune all"
+        },
+        {
+          "resource": "simclr-paper",
+          "title": "Probe the encoder, not the projector",
+          "url": "https://ar5iv.labs.arxiv.org/html/2002.05709",
+          "locator": "Section 4.2 with Table 3: h beats z by over 10 points; rotation prediction 67.6 percent from h versus 25.6 percent from g(h)"
+        },
+        {
+          "resource": "cs231n-representation",
+          "title": "Frozen linear probe on CIFAR",
+          "url": "https://cs231n.github.io/assignments2025/assignment3/",
+          "locator": "Self_Supervised_Learning.ipynb: Classifier with frozen Model().f, Finetune a Linear Layer for Classification, Baseline Without Self-Supervised Learning versus With Self-Supervised Learning, Plot your Comparison"
+        }
+      ],
+      "focus": [
+        "Freeze the encoder (requires_grad False) and train only the head. Anything else measures supervised relearning.",
+        "Probe h, the pre-projection features. In SimCLR Table 3, where rotation was added to the augmentations, the projector output z lost the rotation information that h kept.",
+        "Match budgets exactly: same data fraction, epochs and head settings for baseline and pretrained runs.",
+        "Split by source identity before augmenting. Two views of one image on opposite sides of the split leak the answer."
+      ],
+      "reproduce": "Closed-book, write the frozen-probe loop: load the encoder, freeze all of f, attach one linear layer, and train the head on the fixed 10 percent split. Then state what turns it into fine-tuning: unfreeze f and give its parameters to the optimizer, usually at a lower learning rate.",
+      "traps": [
+        "Probing z instead of h. In SimCLR Table 3 an MLP on h predicts rotation at 67.6 percent and one on z at 25.6, near the 25 percent chance level, because rotation was one of the augmentations.",
+        "Celebrating a probe win with mismatched budgets. A longer-trained or larger-split baseline can erase the gap.",
+        "Splitting augmented views independently. Near-duplicates across the split inflate retrieval and probe scores without teaching anything."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the notebook set requires_grad False on model.f?",
+          "a": "To freeze the encoder so test accuracy measures representation quality, following the SimCLR Section 2.3 protocol."
+        },
+        {
+          "q": "Rotation prediction: h scores 67.6 percent, g(h) 25.6 percent. What does that tell you about probing?",
+          "a": "Probe h. In that run rotation was one of the augmentations, so the contrastive loss trained z to ignore it; probing z understates what the encoder keeps."
+        },
+        {
+          "q": "Your retrieval score rises after adding test pairs mined from the training distribution. Leak or gain?",
+          "a": "Suspect near-duplicate leakage first. Re-split by pair identity, re-run, and only then claim a gain."
+        },
+        {
+          "q": "Your probe reaches a reference accuracy quoted in a notebook comment, but your baseline trained for fewer epochs. What can you claim?",
+          "a": "Nothing about the representation yet. Only a comparison with matched data fraction, epochs and head settings isolates the effect of pretraining."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS231n Assignment 3, Q2: SimCLR plus linear probe",
+          "url": "https://cs231n.github.io/assignments2025/assignment3/",
+          "locator": "Self_Supervised_Learning.ipynb: simclr_loss_naive and simclr_loss_vectorized in cs231n/simclr/contrastive_loss.py, Train the SimCLR model, then Finetune a Linear Layer for Classification with the frozen encoder.",
+          "note": "Match the naive and vectorized losses first; the probe comparison is only meaningful on a correct objective. The section mini-project adds seeded pair-leak detection and a held-out retrieval defense."
+        }
+      ],
+      "stopWhen": "Your frozen probe beats the matched no-pretrain baseline, your naive and vectorized losses agree, and your split audit shows no shared source identities across train and test.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for the probe protocol in the pool; SimCLR Section 2.3 plus Q2's frozen Classifier supply protocol and implementation. Pair-leak detection rides the section mini-project."
+      }
+    },
+    {
+      "id": "patch-embeddings-positions",
+      "title": "Patch embeddings and positional information",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "image-layout-patches-and-patch-embeddings",
+        "positional-information-for-patch-encoders"
+      ],
+      "outcomes": [
+        "Implement patch extraction as stride-equals-size convolution and verify count, order and flat dimension.",
+        "Explain where positional information enters a ViT and why attention needs it.",
+        "Predict token counts and attention-cost scaling when patch size or resolution changes."
+      ],
+      "why": "Patches turn an image into a token sequence. The grid position that convolution got for free must be added back before attention can use it.",
+      "next": [
+        {
+          "unit": "deep-learning/representation-multimodal/paired-modality-alignment",
+          "note": "Feed patch-encoded images into the paired image-text objective."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/positional-information",
+          "note": "Compare learned patch positions with sequence position schemes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "d2l-vit",
+          "title": "Patch embedding as strided convolution",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html",
+          "locator": "Model plus Patch Embedding sections: m = hw/p^2 patches flattened to cp^2; single convolution with kernel size and stride set to patch size; worked example img_size 96 with patch 16 gives 36 patches of shape (4, 36, 512)"
+        },
+        {
+          "resource": "d2l-vit",
+          "title": "Class token, positions and pre-norm blocks",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html",
+          "locator": "Putting It All Together and Vision Transformer Encoder: cls_token plus learnable pos_embedding over num_patches + 1 positions; ViTBlock pre-normalization; head reads X[:, 0]"
+        },
+        {
+          "resource": "udl-representation",
+          "title": "Vision transformers and scale",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Sections 12.10.2-12.10.3 (pp. 229-232): 16x16 patches with learned linear map and learned 1D positional encodings; Figure 12.17; SWin multi-scale windows in Figure 12.18"
+        }
+      ],
+      "focus": [
+        "Patchify is a disjoint row-major grid: (H/p) by (W/p) patches, each flattened to C*p^2 values (768 for 3-channel 16px patches).",
+        "One convolution with kernel equal to stride equal to patch size does extraction plus projection; D2L output keeps one vector per patch.",
+        "Self-attention is permutation-equivariant, so order must be injected. D2L learns pos_embedding from random init; the UDL ViT learns 1D encodings too.",
+        "Halving patch size quadruples tokens, multiplies attention-score work by 16, and multiplies per-token projection and MLP work by 4."
+      ],
+      "reproduce": "From a blank file, patchify a 2x2 single-channel image with patch size 1 and show row-major order [0, 1, 2, 3]. Then derive the (4, 36, 512) output shape from img_size 96 and patch 16.",
+      "traps": [
+        "Using overlapping patches by default. ViT and D2L use stride equal to patch size, so patches are disjoint.",
+        "Equating the cls representation with patch averaging. The cls token is learned aggregation; D2L Exercise 2 asks you to implement averaging as an experiment, not an identity.",
+        "Assuming sinusoidal positions. Both D2L and the UDL ViT learn positional embeddings, so 2D layout must be learned from data."
+      ],
+      "selfTest": [
+        {
+          "q": "224x224 image, patch 16: patches and tokens?",
+          "a": "196 patches, 197 tokens with cls."
+        },
+        {
+          "q": "Why does a ViT need positional embeddings when a CNN needs none?",
+          "a": "Attention is permutation-equivariant (UDL Problem 12.3), so it cannot see order; convolution bakes locality and translation structure into the operation."
+        },
+        {
+          "q": "Patch size 16 to 8 at fixed resolution: how does attention work scale?",
+          "a": "Tokens quadruple, so the attention matrix grows 16-fold."
+        },
+        {
+          "q": "What does LazyConv2d with kernel 16 and stride 16 compute on the worked example?",
+          "a": "Patch extraction plus learned projection to 512-d, giving (4, 36, 512) for batch 4."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Patchify a Batch of Images",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-vision-transformer-patchify",
+          "locator": "Named problem on the free language-modeling-from-scratch plan: split image batches into a row-major grid of non-overlapping flattened patches.",
+          "note": "Match D2L patch count and ordering before adding any learned projection."
+        },
+        {
+          "name": "D2L Vision Transformer exercises",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html",
+          "locator": "Exercises: img_size versus training time, averaged-patch head instead of cls, and hyperparameter tuning for accuracy."
+        }
+      ],
+      "stopWhen": "Your patchify matches the D2L shape assertions with row-major order, and you predict tokens and attention scaling for a new patch size without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "D2L vision-transformer plus UDL Sections 12.10.2-12.10.3 cover extraction, embeddings, positions and cost at implement depth, with TensorTonic and D2L exercises as checked practice."
+      }
+    },
+    {
+      "id": "paired-modality-alignment",
+      "title": "Paired modalities: projector heads, alignment and zero-shot retrieval",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "projector-heads-and-paired-modality-alignment",
+        "modality-imbalance-and-zero-shot-retrieval-vocabulary"
+      ],
+      "outcomes": [
+        "Explain the symmetric image-text objective over the N x N similarity matrix.",
+        "Implement the two-directional loss with learned temperature and batched negatives.",
+        "Run zero-shot retrieval and state the slice limits of the alignment."
+      ],
+      "why": "Paired data aligns two geometries into one shared space. That space supports retrieval and zero-shot transfer, but alignment alone provides no reasoning or grounding.",
+      "next": [
+        {
+          "unit": "deep-learning/representation-multimodal/probes-transfer-leakage",
+          "note": "Judge alignment with frozen probes and leak-checked retrieval splits."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/transformer-block-anatomy",
+          "note": "Open the image and text encoder blocks that feed the shared space."
+        }
+      ],
+      "study": [
+        {
+          "resource": "clip-paper",
+          "title": "Symmetric contrastive objective",
+          "url": "https://ar5iv.labs.arxiv.org/html/2103.00020",
+          "locator": "Section 2.3: N x N possible pairings with maximization of the N real-pair similarities; symmetric cross-entropy; temperature tau as a learned log-parameterized scalar"
+        },
+        {
+          "resource": "clip-paper",
+          "title": "Scale and temperature limits",
+          "url": "https://ar5iv.labs.arxiv.org/html/2103.00020",
+          "locator": "Section 2.5: minibatch 32,768; tau initialized to 0.07 and clipped to scale logits by at most 100"
+        },
+        {
+          "resource": "clip-paper",
+          "title": "Zero-shot transfer and prompts",
+          "url": "https://ar5iv.labs.arxiv.org/html/2103.00020",
+          "locator": "Sections 3.1.2 and 3.1.4: zero-shot as text-generated classifier weights; A photo of a {label} gains 1.3 percent, 80-prompt ensembling adds 3.5 percent"
+        },
+        {
+          "resource": "cs231n-representation",
+          "title": "Projector heads and CLIP practice",
+          "url": "https://cs231n.github.io/assignments2025/assignment3/",
+          "locator": "cs231n/simclr/model.py class Model: ResNet-50 backbone f giving the 2048-d feature h, MLP head g giving z, both returned L2-normalized; CLIP_DINO.ipynb: get_similarity_no_loop, clip_zero_shot_classifier, CLIPImageRetriever.retrieve"
+        }
+      ],
+      "focus": [
+        "The loss makes 2N decisions per batch: each image picks its text and each text picks its image from N options.",
+        "Temperature is learned, not tuned: log-parameterized, started at 0.07, capped at 100x for stability.",
+        "Each pair trains against 32,767 in-batch negatives, so every step is a 32,768-way proxy classification.",
+        "Zero-shot builds the classifier from text at test time. Prompts are model inputs: the default template gains 1.3 percent and 80-prompt ensembling adds 3.5 percent on ImageNet."
+      ],
+      "reproduce": "Closed-book, compute the symmetric tau = 1 loss for similarity matrix [[3, 1], [1, 2]]: row losses 0.1269 and 0.3133 with mean 0.2201 in both directions.",
+      "traps": [
+        "Assuming aligned embeddings understand new words. The text encoder embeds prompts; unseen vocabulary and slices degrade, so alignment quality stays slice-dependent.",
+        "Training one direction only. CLIP optimizes both image-to-text and text-to-image jointly over the same matrix.",
+        "Mixing up the two evaluation spaces. Zero-shot retrieval must use the shared projected space, because that is where images and texts are compared. For a linear probe, also test the features before the projection; SimCLR Section 4.2 found them better in its setup."
+      ],
+      "selfTest": [
+        {
+          "q": "Batch of N pairs: how many scores and how many decisions?",
+          "a": "N^2 scores; 2N decisions, N per direction."
+        },
+        {
+          "q": "Why does CLIP learn tau, and with what guardrails?",
+          "a": "It sets the logit range for the softmax; learning avoids tuning it. Init 0.07, clipped at 100x scaling to prevent instability."
+        },
+        {
+          "q": "What is a zero-shot classifier in CLIP terms?",
+          "a": "Cosine softmax with L2-normalized inputs, text-generated weights, no bias and temperature scaling; the text encoder generates the classifier."
+        },
+        {
+          "q": "Prompt template plus ensembling: what gains on ImageNet?",
+          "a": "1.3 percent from A photo of a {label}, another 3.5 percent from 80-prompt ensembling."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS231n Assignment 3, Q4: CLIP zero-shot and retrieval",
+          "url": "https://cs231n.github.io/assignments2025/assignment3/",
+          "locator": "CLIP_DINO.ipynb: get_similarity_no_loop for the NxM cosine matrix, clip_zero_shot_classifier for prompt-based labels, CLIPImageRetriever.retrieve with top-k.",
+          "note": "Precompute image features once in __init__ instead of per query, as the starter-code comment directs."
+        }
+      ],
+      "stopWhen": "You reproduce 0.2201 by hand, your Q4 functions label and retrieve COCO images, and you can state one slice where you would not trust the alignment.",
+      "fit": {
+        "verdict": "added",
+        "note": "The pool has the CLIP-loss implementation and Q4 exercises but no alignment or zero-shot mechanism. CLIP Sections 2.3, 2.5 and 3.1 fill that gap."
+      }
+    },
+    {
+      "id": "graph-message-passing",
+      "title": "Graph message passing and oversmoothing",
+      "hours": 2,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "graph-message-passing-permutation-behavior-and-oversmoothing-recognition"
+      ],
+      "outcomes": [
+        "Explain one message-passing step as neighborhood aggregation plus update.",
+        "State permutation equivariance for layers and invariance for readouts, and test it.",
+        "Recognize oversmoothing and name the random-walk averaging behind it."
+      ],
+      "why": "Graphs make neighborhoods explicit. Each layer trades local identity for wider context, and past a point the averaging erases what made nodes distinct.",
+      "next": [
+        {
+          "unit": "deep-learning/conv-recurrent-architectures/cnn-equivariance-residual-blocks",
+          "note": "Compare graph permutation equivariance with translation equivariance, and residual paths that allow depth."
+        },
+        {
+          "unit": "deep-learning/training-dynamics/unit-health-residual-paths",
+          "note": "Track embedding health across layers the way you track activations across depth."
+        }
+      ],
+      "study": [
+        {
+          "resource": "udl-representation",
+          "title": "Graphs and adjacency powers",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Sections 13.1-13.2 (pp. 241-244): node and edge matrices; entry (m, n) of A^L counts length-L walks; Figures 13.3-13.4"
+        },
+        {
+          "resource": "udl-representation",
+          "title": "Tasks and equivariant layers",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Sections 13.3-13.4.1 (pp. 245-250): graph and node tasks; layers must be permutation-equivariant; Figure 13.7 aggregate-then-update"
+        },
+        {
+          "resource": "udl-representation",
+          "title": "Why deep GNNs stall",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Notes to Chapter 13, Oversmoothing and suspended animation (pp. 265-266): two-layer norm, random-walk stationary washout, over-squashing, residuals for depth"
+        },
+        {
+          "resource": "udl-representation",
+          "title": "Graph encoding notebook",
+          "url": "https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap13/13_1_Graph_Representation.ipynb",
+          "locator": "Notebook 13.1, Graph Representation: adjacency and embedding encodings",
+          "depth": "Open only if the A^L walk counting in Section 13.2 is unclear."
+        }
+      ],
+      "focus": [
+        "A^L counts walks, not paths: revisits allowed. The diagonal of A^2 holds node degrees.",
+        "Correct layers are permutation-equivariant: permuting node order permutes embeddings identically. Readouts for graph labels must be invariant.",
+        "Repeated averaging converges toward the random-walk stationary distribution, so deep stacks wash out local signal.",
+        "Two layers are the empirical norm: the original GCN and GraphSAGE both use two. Depth needs residual connections or similar fixes, not more of the same layer."
+      ],
+      "reproduce": "Closed-book, write one aggregate-then-update step for a single node. Then square the 3-node path adjacency and read off one length-2 walk from node 1 to node 3 and two from node 2 to itself.",
+      "traps": [
+        "Counting paths with A^L. Walks may revisit nodes; the book states this explicitly.",
+        "Expecting depth to help by default. Mean aggregation converges across nodes, so a 10-layer stack can underperform a 2-layer one.",
+        "Indexing nodes as an ordered input. If shuffling IDs changes predictions beyond permutation, the layer is wrong, not the data."
+      ],
+      "selfTest": [
+        {
+          "q": "Path 1-2-3: length-2 walks from 1 to 3, and from 2 to 2?",
+          "a": "One (1-2-3) and two (2-1-2, 2-3-2), matching the A^2 entries 1 and 2."
+        },
+        {
+          "q": "What must a permutation of node order do to layer outputs?",
+          "a": "Permute them identically (equivariance); a graph-level readout must stay unchanged (invariance)."
+        },
+        {
+          "q": "All node embeddings look identical after six layers. Diagnose and name the mechanism.",
+          "a": "Oversmoothing from repeated neighborhood averaging toward the stationary distribution. Confirm per-layer cross-node spread, then cut depth or add residuals."
+        },
+        {
+          "q": "Why do the original GCN and GraphSAGE use two layers?",
+          "a": "Two hops already mix neighborhoods; deeper stacks wash out local information faster than they add useful context, per the Notes."
+        }
+      ],
+      "practice": [
+        {
+          "name": "UDL Chapter 13 problems: graphs, walks and equivariance",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Problems 13.1, 13.3, 13.5 and 13.7 (pp. 266-267): adjacency matrices, walk counts, the responsible permutation matrix, and the equivariance proof for the simple layer."
+        }
+      ],
+      "stopWhen": "You solve Problems 13.1, 13.3, 13.5 and 13.7 without notes, and on a small graph you can show cross-node spread shrinking with depth under repeated mean aggregation.",
+      "fit": {
+        "verdict": "kept",
+        "note": "UDL Sections 13.1-13.4 with the Notes oversmoothing section and Problems 13.1-13.7 cover message passing, equivariance and oversmoothing recognition; Notebook 13.1 backs the encoding."
+      }
+    }
+  ]
+}

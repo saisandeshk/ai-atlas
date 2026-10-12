@@ -1,0 +1,771 @@
+{
+  "section": "pytorch-foundations",
+  "addedResources": [
+    {
+      "id": "pytorch-amp-saving-resuming",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch Automatic Mixed Precision recipe - Saving/Resuming",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read the Saving/Resuming section: save scaler.state_dict() with the model and optimizer state, at the start of an iteration or after scaler.update(), and how to resume with or without AMP.",
+      "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html#saving-resuming"
+    }
+  ],
+  "units": [
+    {
+      "id": "pytorch-tensors-storage",
+      "title": "PyTorch tensors: creation, indexing, storage and strides",
+      "hours": 3,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "tensor-creation-indexing-devices-and-dtypes",
+        "storage-stride-offset-contiguity-and-layout"
+      ],
+      "outcomes": [
+        "Create tensors with explicit dtype and device, and predict shape, dtype and device after indexing, concatenation and device moves.",
+        "Compute a storage offset from shape, stride and index, and classify a tensor as contiguous, transposed or sliced from its stride.",
+        "Predict when a torch tensor and a NumPy array share memory, and when an op copies instead."
+      ],
+      "why": "Every later failure in this stage, from silent dtype promotion to aliasing bugs, starts as a wrong picture of what a tensor owns. Storage, stride and device are that picture.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-foundations/autograd-state-in-place",
+          "note": "Views share the storage described here; test aliasing against data_ptr."
+        },
+        {
+          "unit": "deep-learning/neural-autodiff/tensor-layout-views",
+          "note": "Rebuild stride and layout reasoning inside your own autodiff engine."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-basics",
+          "title": "Tensors: initialization, attributes, indexing and NumPy sharing",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/tensorqs_tutorial.html",
+          "locator": "Initializing a Tensor; Attributes of a Tensor; Operations on Tensors through Single-element tensors; Bridge with NumPy"
+        },
+        {
+          "resource": "dl-with-pytorch-foundations",
+          "title": "Tensor storage, strides and transpose sharing (notebook)",
+          "url": "https://github.com/deep-learning-with-pytorch/dlwpt-code-2e/blob/main/p1ch3/1_tensors.ipynb",
+          "locator": "Cells using points.storage(), storage_offset(), stride(), the transpose storage-identity check, is_contiguous() and contiguous()",
+          "depth": "Use only the storage, stride, transpose and contiguity cells. Skip the named-tensor notebook; named dimensions are out of scope here."
+        }
+      ],
+      "focus": [
+        "dtype is inferred at creation and the device is CPU unless you choose one. Tensor.to() returns a tensor (the same one when nothing changes), so assign the result. Module.to() is the exception: it converts the module in place.",
+        "Element offset is storage_offset plus the sum over dims of index times stride. Transpose and slicing change stride and offset, not storage.",
+        "Basic indexing gives views. .numpy() and torch.from_numpy() share one CPU allocation, so in-place edits leak across the boundary.",
+        "contiguous() returns the same tensor when already contiguous and copies otherwise. Never branch on reshape returning a view."
+      ],
+      "reproduce": "Closed-book, take x = torch.zeros(3, 4). Write the shape, stride, storage_offset and is_contiguous of x, xt = x.t() and y = x[::2]. Show that xt[2][1] and x[1][2] name the same element, and assert the shared storage with data_ptr.",
+      "traps": [
+        "Reading transpose or permute as a copy. They return views, so writing through them changes the base.",
+        "Trusting reshape to return a view. It may copy; check data_ptr instead of assuming.",
+        "Calling x.to(device) on a tensor and then using x. The call returns the moved tensor; x stays where it was. (model.to(device) does move the module in place, which is why the habit forms.)"
+      ],
+      "selfTest": [
+        {
+          "q": "x = torch.zeros(3, 4). What are the strides of x and of x.t(), and is either contiguous?",
+          "a": "x has stride (4, 1) and is contiguous. x.t() has shape (4, 3) and stride (1, 4); it shares storage and is not contiguous."
+        },
+        {
+          "q": "Which element does xt[2][1] alias, and at what storage offset?",
+          "a": "x[1][2], at offset 2*1 + 1*4 = 6 from a zero storage_offset."
+        },
+        {
+          "q": "t = torch.ones(5); n = t.numpy(); t.add_(1). What is n now, and why?",
+          "a": "All twos. The tensor and the array share one CPU allocation, so the in-place add is visible through both."
+        },
+        {
+          "q": "When does c = t.contiguous() copy, and when does it return t itself?",
+          "a": "It copies only when t is non-contiguous. On a contiguous t it returns the same tensor."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 00: tensor creation, matmul, seeds and squeeze (tasks 2 to 10)",
+          "url": "https://www.learnpytorch.io/00_pytorch_fundamentals",
+          "locator": "Exercises, tasks 2 to 10: (7, 7) and (2, 3) creation, matmul with transpose, manual_seed replays, GPU seed lookup, argmax and argmin, squeeze of (1, 1, 1, 10)",
+          "note": "Write the tasks in your own script, not in the solutions notebook. Task 1 is background reading; tasks 2 to 10 are the checked work. Run the GPU tasks on whatever device you have and say which one you used."
+        }
+      ],
+      "stopWhen": "Your written shape, stride and offset table for x, x.t() and x[::2] matches data_ptr and is_contiguous checks, and tasks 2 to 10 run without the solutions notebook.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Basics Tensors page plus the dlwpt storage cells cover creation, indexing, devices, dtypes and layout at explain and implement depth, with named practice."
+      }
+    },
+    {
+      "id": "autograd-state-in-place",
+      "title": "Autograd state: views, in-place ops, leaves and accumulation",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "views-copies-clone-detach-and-safe-in-place-operations",
+        "requires-grad-leaves-nonleaves-and-gradient-accumulation"
+      ],
+      "outcomes": [
+        "Classify an op as view, copy or ambiguous, including basic versus advanced indexing, and predict aliasing with data_ptr.",
+        "Explain leaf versus non-leaf gradient storage, accumulation into .grad, and when zero_grad, detach or retain_grad is required.",
+        "Trigger, read and repair an in-place version-counter failure without guessing."
+      ],
+      "why": "In-place edits and hidden views are the most common source of corrupt gradients that still run. This unit makes the failure loud and the fix routine.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-foundations/modules-parameters-init",
+          "note": "Parameters are the leaves you must stop detaching by accident."
+        },
+        {
+          "unit": "deep-learning/pytorch-foundations/backward-gradcheck-eval-mode",
+          "note": "Turn accumulation and zeroing into a correct loop."
+        },
+        {
+          "unit": "deep-learning/neural-autodiff/aliasing-mutation-ownership",
+          "note": "Rebuild aliasing contracts inside your own engine."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Tensor Views: view ops, indexing and reshape ambiguity",
+          "url": "https://docs.pytorch.org/docs/2.14/tensor_view.html",
+          "locator": "View definition and data_ptr example; transpose contiguity example; full view-ops list with detach; basic versus advanced indexing note; reshape and contiguous special behavior"
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Autograd mechanics: saved tensors, requires_grad, grad modes, in-place checks",
+          "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html",
+          "locator": "Saved tensors; Setting requires_grad; Grad Modes table with no-grad versus inference reuse; In-place operations with autograd and In-place correctness checks",
+          "depth": "Skip Multithreaded Autograd, Autograd for Complex Numbers and the division-by-zero section."
+        },
+        {
+          "resource": "pytorch-basics",
+          "title": "Autograd: no_grad, detach and the accumulation demo",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html",
+          "locator": "Disabling Gradient Tracking (no_grad block and detach); Optional Reading: Tensor Gradients and Jacobian Products (accumulation across calls, zeroing)"
+        },
+        {
+          "resource": "dl-with-pytorch-foundations",
+          "title": "Autograd loop mechanics: zero_grad and no_grad updates",
+          "url": "https://github.com/deep-learning-with-pytorch/dlwpt-code-2e/blob/main/p1ch5/2_autograd.ipynb",
+          "locator": "Cells with params.grad.zero_(), loss.backward() and the torch.no_grad() parameter update"
+        }
+      ],
+      "focus": [
+        "detach() is a view that shares storage but cuts grad history. clone() is absent from the view-ops list, so it copies the data. Test both claims with data_ptr and requires_grad.",
+        "Only leaves with requires_grad=True accumulate into .grad, and every backward() adds. Non-leaves need retain_grad before the backward that consumes them.",
+        "Inference-mode tensors cannot re-enter grad-mode computation; no-grad tensors can. Use inference mode only for pure evaluation paths.",
+        "An in-place bump of a saved tensor raises a version-counter error at backward. Clone before the saving op or move the mutation earlier; do not catch and ignore."
+      ],
+      "reproduce": "Closed-book, write x = torch.randn(4, requires_grad=True) and y = (x ** 2).sum(). Show that x.add_(1) fails at once because x is a leaf that requires grad. Then do the same update under torch.no_grad() and read the version-counter error that y.backward() raises, because pow saved x. Repair it by computing y from z = x.clone(), and check that x.grad equals 2 times the value x had during the forward.",
+      "traps": [
+        "Treating detach() as a copy. It shares storage, so an in-place edit through either side is visible to both.",
+        "Reading .grad on a non-leaf. It stays None unless retain_grad() was called; only leaves accumulate.",
+        "Updating a leaf that requires grad in place outside torch.no_grad(). PyTorch refuses at once (\"a leaf Variable that requires grad is being used in an in-place operation\"); manual parameter updates belong under no_grad."
+      ],
+      "selfTest": [
+        {
+          "q": "b = t.view(2, 8); b[0][0] = 3.14. What is t[0][0]?",
+          "a": "3.14. The view shares storage, so the write is visible through the base."
+        },
+        {
+          "q": "Is t.reshape(2, 8) guaranteed to behave the same way?",
+          "a": "No. reshape may return a view or a copy, so never rely on aliasing through it."
+        },
+        {
+          "q": "You call out.backward(torch.ones_like(out), retain_graph=True) twice without zeroing. How does inp.grad after the second call relate to the first?",
+          "a": "It is twice the first. backward() adds into .grad; the autogradqs Jacobian-product section shows this doubling, and zeroing inp.grad resets it."
+        },
+        {
+          "q": "What is the practical difference between no-grad and inference mode for tensors you keep?",
+          "a": "Both skip graph recording, but inference-mode tensors cannot be used in later grad-mode computation while no-grad tensors can."
+        }
+      ],
+      "practice": [],
+      "stopWhen": "You classify ten ops as view, copy or ambiguous without the list, and your version-counter script fails before the fix and passes after.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Tensor Views plus Autograd mechanics plus the autogradqs accumulation demo cover views, leaves, accumulation and in-place errors; the section checkpoint supplies the failure-repair practice."
+      },
+      "practiceNote": "The section mini-project covers this: reduce one view or in-place autograd failure to a minimal script, repair it, and keep it as a regression test."
+    },
+    {
+      "id": "modules-parameters-init",
+      "title": "Modules, parameters, buffers and initialization",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "nn-module-parameter-buffers-and-nested-registration",
+        "functional-versus-module-apis",
+        "explicit-initialization-and-state-dict-semantics"
+      ],
+      "outcomes": [
+        "Assemble nested modules and read ownership from dotted names in named_parameters.",
+        "Separate Parameters, persistent buffers and non-persistent buffers, and predict exactly which names appear in state_dict.",
+        "Replace default initialization explicitly, and reload saved state into a fresh instance."
+      ],
+      "why": "Parameters, buffers and init are the state you own for the rest of the stage. Confusing them turns every later resume, transfer and device bug into a mystery.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-foundations/backward-gradcheck-eval-mode",
+          "note": "Drive the parameters you can now take apart."
+        },
+        {
+          "unit": "deep-learning/pytorch-foundations/explicit-train-eval-loops",
+          "note": "Train the module you can now inspect."
+        },
+        {
+          "unit": "deep-learning/training-dynamics/init-signal-scale",
+          "note": "Go deeper on why init scales matter."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-basics",
+          "title": "Build the Neural Network: class, layers, parameters",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/buildmodel_tutorial.html",
+          "locator": "Define the Class (nn.Module subclass, forward, never call model.forward() directly); Model Layers (Flatten, Linear, ReLU, Sequential, Softmax); Model Parameters (named_parameters with dotted names)"
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Modules note: nesting, state, buffers, initialization",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/modules.html",
+          "locator": "A Simple Custom Module; Modules as Building Blocks (children, recursion, ModuleList and ModuleDict, to(), apply() with xavier init); Module State (parameters, persistent and non-persistent buffers, StatefulModule key list); Module Initialization (skip_init with orthogonal_)",
+          "depth": "Skip Module Hooks and Advanced Features; they belong to later profiling and distributed work."
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Extending torch.nn: the module recommendation and the Linear example",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/extending.html",
+          "locator": "Extending torch.nn intro (modules for stateful layers, functional form for parameter-less ops); Adding a Module (nn.Parameter, register_parameter, register_buffer, nn.init.uniform_ comments)",
+          "depth": "Read only the Adding a Module part here; the autograd Function part belongs to the custom-autograd unit."
+        }
+      ],
+      "focus": [
+        "Assigning nn.Parameter registers; assigning a plain Tensor does not. Registration is what parameters(), .to() and optimizers see.",
+        "Persistent buffers ship in state_dict, non-persistent ones do not, but .to() moves both.",
+        "state_dict maps dotted names to tensors only. Reloading needs a matching live instance first; mismatched names fail unless explicitly allowed.",
+        "Default init runs at construction. To study init, skip it with skip_init and apply one nn.init function yourself, as the Modules note does with orthogonal_."
+      ],
+      "reproduce": "Closed-book, write a two-layer Net with a Linear submodule, a persistent running-mean buffer and a ParameterList. Predict the state_dict keys, save, reload into a fresh instance, and assert the buffer matches.",
+      "traps": [
+        "Expecting a plain-Tensor attribute to train. Only Parameters and their submodules appear in parameters().",
+        "Saving the model object instead of its state_dict. Pickle then binds the file to the class definition; state_dict plus code reloads cleanly.",
+        "Copying the Extending example uniform(-0.1, 0.1) init into real work. It ignores fan-in; use a fan-aware nn.init function or skip_init plus your own."
+      ],
+      "selfTest": [
+        {
+          "q": "Which names appear in StatefulModule state_dict, and which entries are absent?",
+          "a": "param1, param2, buffer1, the param_list and param_dict entries, linear.weight and linear.bias appear. The non-persistent buffer2 and the reserved None entries param3 and buffer3 are absent."
+        },
+        {
+          "q": "Why does load_state_dict need a constructed model first?",
+          "a": "The dict holds tensors under names, not the module graph. The instance supplies the structure the names attach to."
+        },
+        {
+          "q": "A BatchNorm layer updates statistics in train mode and freezes them in eval mode. Where do those statistics live?",
+          "a": "In persistent buffers. They are saved in state_dict and moved by .to(), but never given to the optimizer."
+        },
+        {
+          "q": "What does module.apply(init_weights) give you that a loop over named_parameters does not?",
+          "a": "apply calls the function on every submodule and then on the module itself, so one function with an isinstance check can initialize each layer type its own way. A named_parameters loop sees only names and tensors, not the layer each one belongs to."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 01: nn.Module with Parameters, then save and reload (tasks 2 and 5)",
+          "url": "https://www.learnpytorch.io/01_pytorch_workflow",
+          "locator": "Exercises, task 2 (nn.Module subclass with nn.Parameter weight and bias, state_dict check) and task 5 (save state_dict, reload into a new instance, verify predictions match)",
+          "note": "Implement in your own script. The prediction check must compare outputs, not just file existence."
+        }
+      ],
+      "stopWhen": "Your predicted key list matches the printed state_dict before you print it, and the reloaded instance reproduces predictions exactly.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Build Model plus the Modules note plus the Extending module example cover registration, functional-versus-module, init and state_dict with named practice."
+      }
+    },
+    {
+      "id": "backward-gradcheck-eval-mode",
+      "title": "Backward, zero_grad, gradcheck and evaluation modes",
+      "hours": 3,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "backward-autograd-grad-zero-grad-and-gradcheck",
+        "no-grad-inference-mode-and-evaluation-state"
+      ],
+      "outcomes": [
+        "Run backward, autograd.grad and zero_grad correctly, including the grad argument for non-scalar outputs and retain_graph for repeated backward.",
+        "Check a handmade op with torch.autograd.gradcheck in float64, and read a tolerance failure as a wrong formula, not noise.",
+        "Switch train and eval modes plus no_grad and inference mode correctly, and state what each one changes."
+      ],
+      "why": "Gradients accumulate silently, grad modes look alike, and eval state hides inside layers. This unit separates the three mechanisms before they combine in the training loop.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-foundations/custom-autograd-functions",
+          "note": "Gradcheck the backward you write yourself."
+        },
+        {
+          "unit": "deep-learning/pytorch-foundations/explicit-train-eval-loops",
+          "note": "Put zeroing, backward and eval switching into a real loop."
+        },
+        {
+          "unit": "deep-learning/neural-autodiff/finite-difference-checks",
+          "note": "Rebuild finite-difference checks in your own engine."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-basics",
+          "title": "Autograd: computing gradients, retain_graph, accumulation",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html",
+          "locator": "Computing Gradients (loss.backward, leaf-only grad, retain_graph); Optional Reading: Tensor Gradients and Jacobian Products (ones seed, accumulation doubling, zeroing)"
+        },
+        {
+          "resource": "pytorch-basics",
+          "title": "Zeroing out gradients recipe",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/zeroing_out_gradients.html",
+          "locator": "Introduction (accumulation into .grad); Steps 4 and 5 (optimizer, zero_grad before forward, backward, step); model.zero_grad() equivalence condition"
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Gradcheck mechanics: central differences and Jacobian rebuild",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/gradcheck.html",
+          "locator": "Default backward mode gradcheck behavior: Real-to-real functions (central-difference formula, column-by-column numerical rebuild, row-by-row analytical rebuild)",
+          "depth": "Skip complex inputs, fast mode and gradgradcheck; the real-to-real section is the whole assignment."
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Autograd mechanics: requires_grad, grad modes, evaluation mode",
+          "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html",
+          "locator": "Setting requires_grad (leaf freezing); Grad Modes table with Default, No-grad and Inference rows; Evaluation Mode (nn.Module.eval, orthogonal to grad modes, Dropout and BatchNorm)"
+        }
+      ],
+      "focus": [
+        "backward() on a scalar means a ones seed. Non-scalar outputs need an explicit grad argument of matching shape.",
+        "The graph is freed after backward unless retain_graph is set. Repeated backward without it errors; with it, .grad keeps accumulating.",
+        "gradcheck rebuilds full Jacobians: central differences numerically, one-hot seeds analytically. Run it in float64, as the Extending example does with dtype=torch.double, eps=1e-6, atol=1e-4.",
+        "model.eval() changes layer behavior, not grad tracking. Pair it with no_grad for evaluation; inference mode additionally forbids later grad-mode reuse."
+      ],
+      "reproduce": "Closed-book, predict the three printed gradients in the autogradqs Jacobian-product snippet (first call, second call, after zeroing) from the eye(4, 5) input, then explain why the second call doubles and the third resets.",
+      "traps": [
+        "Calling backward twice on one graph. The second call fails unless retain_graph was set, and then it adds to .grad instead of replacing.",
+        "Reading model.eval() as gradient control. It is orthogonal to no_grad and inference mode; eval changes Dropout and BatchNorm behavior only.",
+        "Assuming model.zero_grad() always equals optimizer.zero_grad(). They match only when every model parameter sits in that optimizer."
+      ],
+      "selfTest": [
+        {
+          "q": "out = (inp + 1).pow(2).t() with inp = eye(4, 5) requiring grad, seeded with ones. What is inp.grad[0][0] and inp.grad[0][1] after one backward?",
+          "a": "4 and 2. Each entry gets 2*(inp+1) at its own position: 2*2 on the diagonal ones, 2*1 elsewhere."
+        },
+        {
+          "q": "The same backward runs again with retain_graph and no zeroing. What changes?",
+          "a": "Every entry doubles. The new gradients add to the existing .grad instead of replacing it."
+        },
+        {
+          "q": "Why does the Extending gradcheck example use dtype=torch.double?",
+          "a": "Central differences with eps=1e-6 need precision far above float32 rounding. In float32 the numerical Jacobian is usually too noisy for the tolerances."
+        },
+        {
+          "q": "Two evaluation passes over the same test set with the same weights give different accuracies. Which call is missing, and which layers cause the difference?",
+          "a": "model.eval(). In training mode Dropout drops random units on every pass, and BatchNorm normalizes with the current batch statistics and keeps updating its running buffers."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 02 task 6: pure-PyTorch tanh, then gradcheck it",
+          "url": "https://www.learnpytorch.io/02_pytorch_classification",
+          "locator": "Exercises, task 6 (replicate tanh in pure PyTorch); check the result with torch.autograd.gradcheck in float64 per the gradcheck note",
+          "note": "Write tanh from primitives first, match it against torch.tanh, then gradcheck your version. A tolerance failure is a bug in your formula."
+        },
+        {
+          "name": "NeetCode ML: PyTorch closing drills cold",
+          "url": "https://neetcode.io/practice/machine-learning",
+          "locator": "PyTorch category (4 problems): Pytorch Basics, Layer Normalization, Batch Normalization, RMS Normalization",
+          "note": "Solve cold after the module gate. Explain shapes, state and train-versus-eval behavior aloud; these do not replace the reload and resume checks."
+        }
+      ],
+      "stopWhen": "You predict all three Jacobian-product printouts before running, and your handmade tanh passes gradcheck in float64.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The autogradqs page plus the zeroing recipe plus the gradcheck and grad-modes notes cover backward, zeroing, checking and eval state with named practice."
+      }
+    },
+    {
+      "id": "custom-autograd-functions",
+      "title": "Custom autograd functions",
+      "hours": 3,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "custom-autograd-function-forward-and-backward"
+      ],
+      "outcomes": [
+        "Write forward, setup_context and backward for a Function subclass, with save_for_backward and None grads for non-tensor args.",
+        "Validate the backward with gradcheck in float64, and state whether double backward is supported.",
+        "Explain why saved state must go through save_for_backward rather than raw ctx attributes."
+      ],
+      "why": "Custom Functions are where the VJP becomes your code. One correct handwritten backward removes the mystery from every built-in one.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/eager-dispatch-saved-tensors",
+          "note": "See what saved tensors cost at runtime."
+        },
+        {
+          "unit": "deep-learning/neural-autodiff/branches-broadcast-backward",
+          "note": "Rebuild the same VJP logic in your own engine."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Extending torch.autograd: custom Function contract and examples",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/extending.html",
+          "locator": "When to use and When not to use; How to use steps 1 to 4 (forward, setup_context, backward, ctx rules, once_differentiable, gradcheck); Example (LinearFunction, MulConstant, gradcheck with dtype=torch.double, eps=1e-6, atol=1e-4); Combined or separate forward() and setup_context()",
+          "depth": "Skip the __torch_function__ protocol, C++ extensions, forward-mode jvp and torch.func transforms. Stop at Combined or separate forward() and setup_context()."
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Autograd mechanics: how saved tensors work",
+          "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html",
+          "locator": "Saved tensors (what pow and exp save, packing versus unpacking, saved-tensor hooks)",
+          "depth": "Read only the Saved tensors section here; the grad-mode and in-place sections belong to earlier units."
+        }
+      ],
+      "focus": [
+        "forward() runs with grad recording off, so nothing inside it is tracked. setup_context() owns the ctx writes. backward() receives one grad per output and returns one grad per forward input.",
+        "Save tensors with save_for_backward. The Extending note gives the reasons: the engine frees them when this backward finishes, it avoids reference cycles when you save an output, and saved-tensor hooks (activation checkpointing, offloading) can see them. Saved tensors are also version-checked, so a later in-place edit raises an error instead of corrupting the gradient.",
+        "Non-tensor forward args get None grads, and backward must never modify its grad inputs in place. Gate optional work with needs_input_grad.",
+        "Derive the linear backward shapes on paper first: grad_input = grad_output mm weight, grad_weight = grad_output.t() mm input, grad_bias = grad_output.sum(0)."
+      ],
+      "reproduce": "From a blank file, reimplement LinearFunction and MulConstant with separate setup_context, and gradcheck both in float64. Then break the bias grad (return zeros) and quote the gradcheck mismatch before fixing it.",
+      "traps": [
+        "Stashing tensors as plain ctx attributes. They stay alive for the whole graph, can form a reference cycle with the output, escape the in-place version check, and are invisible to saved-tensor hooks. Keep ctx attributes for non-tensors.",
+        "Writing into grad_output inside backward. Grad inputs are read-only; in-place edits corrupt every other consumer of that graph.",
+        "Returning a tensor grad for a non-tensor arg like constant. Those positions must be None, as MulConstant shows."
+      ],
+      "selfTest": [
+        {
+          "q": "Linear forward is input.mm(weight.t()) with input (5, 4) and weight (3, 4). What are the shapes of grad_input and grad_weight for grad_output (5, 3)?",
+          "a": "grad_input is (5, 4) from grad_output mm weight; grad_weight is (3, 4) from grad_output.t() mm input."
+        },
+        {
+          "q": "Why does MulConstant backward return two values with the second None?",
+          "a": "backward returns one grad per forward input. constant is not a Tensor, so its position must be None."
+        },
+        {
+          "q": "With separate forward and setup_context, you want to save an intermediate computed in forward that is neither an input nor an output. What do you do?",
+          "a": "setup_context only receives the inputs and the output, so the intermediate is out of reach. Return it as an extra output and save it in setup_context, as the Extending note does with dx, or use the combined forward(ctx, ...) style."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Extending PyTorch worked examples: LinearFunction and MulConstant, each gradchecked",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/extending.html",
+          "locator": "Example: reimplement LinearFunction and both MulConstant variants from a blank file, then run the gradcheck snippet (double inputs, eps=1e-6, atol=1e-4) on each",
+          "note": "Do not copy the page. Write from the contract (forward, setup_context, backward), pass gradcheck, then deliberately break one grad and read the failure."
+        }
+      ],
+      "stopWhen": "Both reimplementations pass gradcheck from memory, and you can state for each saved value why it is saved and when it is freed.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Extending note plus Saved tensors cover the full Function contract at derive and implement depth, with the worked examples as checked practice."
+      }
+    },
+    {
+      "id": "datasets-loaders-samplers",
+      "title": "Datasets, data loaders and samplers",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "dataset-dataloader-collate-functions-and-transforms",
+        "sampler-shuffle-worker-and-device-transfer-behavior"
+      ],
+      "outcomes": [
+        "Implement a Dataset with init, len and getitem plus a collate and transform pipeline, and read batch shapes off the loader.",
+        "Control sampler, shuffle, worker count and seeding, and move batches to device with explicit transfer.",
+        "State what a loader does not guarantee: ragged batching, worker-shared state and exact resume need extra code."
+      ],
+      "why": "The loader decides order, batching, dtype and device of every tensor the loop ever sees. Bugs here look like model bugs downstream.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-foundations/explicit-train-eval-loops",
+          "note": "Feed the loop from a loader you trust."
+        },
+        {
+          "unit": "deep-learning/pytorch-foundations/checkpoints-config-reproducibility",
+          "note": "Carry loader position and RNG state into checkpoints."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-basics",
+          "title": "Datasets and DataLoaders: FashionMNIST, custom Dataset, batching",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/data_tutorial.html",
+          "locator": "Loading a Dataset (root, train, download, transform); Iterating and Visualizing; Creating a Custom Dataset (__init__, __len__, __getitem__ with decode_image); Preparing your data with DataLoaders (batch_size, shuffle); Iterate through the DataLoader (batch shapes [64, 1, 28, 28], Samplers link)"
+        },
+        {
+          "resource": "pytorch-basics",
+          "title": "Transforms: v2 pipeline and Lambda label encoding",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/transforms_tutorial.html",
+          "locator": "ToImage() and ToDtype() with scale=True; Lambda Transforms with one_hot labels"
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Reproducibility: DataLoader worker seeding",
+          "url": "https://docs.pytorch.org/docs/stable/notes/randomness.html",
+          "locator": "DataLoader section (per-worker reseeding, worker_init_fn with torch.initial_seed, generator seeding)",
+          "depth": "Read only the DataLoader section here; the nondeterminism catalog belongs to the checkpoint unit."
+        }
+      ],
+      "focus": [
+        "Dataset answers one sample; DataLoader answers one batch. Custom datasets implement exactly init, len and getitem.",
+        "Default collate stacks equal-shape samples. Ragged samples need a custom collate_fn; no loader pads for you.",
+        "shuffle reorders per epoch through the sampler. Workers are subprocesses: each gets a derived seed, and main-process state is not shared with them.",
+        "Device transfer is the loop's job. Batches arrive on CPU; .to(device) returns the moved copy."
+      ],
+      "reproduce": "From a blank file, write a CSVDataset over (path, label) rows with a transform arg, wrap it in a DataLoader with batch 8, shuffle and 2 workers, and print one batch's shapes. Then add a worker_init_fn that prints each worker seed and show the seeds differ.",
+      "traps": [
+        "Mutating the dataset object in the main process after iteration starts and expecting workers to see it. Workers hold their own copies; non-persistent workers pick up the change only when the next epoch recreates them.",
+        "Creating an RNG object such as np.random.default_rng(0) in the Dataset __init__. Every worker gets an identical copy, so all workers draw the same augmentation stream. The global random, torch and NumPy generators are already reseeded per worker; a private generator must be reseeded in worker_init_fn from torch.initial_seed().",
+        "Leaving device transfer implicit. The tutorial batch is CPU [64, 1, 28, 28]; the model page moves inputs explicitly, and .to() must be assigned."
+      ],
+      "selfTest": [
+        {
+          "q": "What three methods must a custom Dataset implement, and what does each promise?",
+          "a": "init (runs once, stores paths, labels, transforms), len (sample count), getitem (loads and returns sample idx as a tensor tuple)."
+        },
+        {
+          "q": "A DataLoader with two workers is created after torch.manual_seed(0). Do the workers draw identical augmentations, and does the next run repeat this one?",
+          "a": "The workers differ: each seeds torch and random with base_seed + worker_id and NumPy with a state derived from both. The run repeats: base_seed comes from the main process RNG, or from the generator you pass, which the seed fixes."
+        },
+        {
+          "q": "A batch of variable-length sequences hits the default collate. What happens?",
+          "a": "It fails. Default collate stacks equal shapes; ragged input needs a custom collate_fn with explicit padding."
+        },
+        {
+          "q": "The loader yields CPU batches and the model sits on CUDA. What is missing?",
+          "a": "An explicit transfer: inputs = inputs.to(device), using the return value, before the forward call."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 03: MNIST loading, visualization and DataLoaders (tasks 5 to 13)",
+          "url": "https://www.learnpytorch.io/03_pytorch_computer_vision",
+          "locator": "Exercises, tasks 5 to 13: load torchvision MNIST train and test, visualize samples, DataLoader with batch_size=32, TinyVGG adaptation, CPU versus GPU timing, predictions, confusion matrix, Conv2d kernel-size probe, FashionMNIST error plots",
+          "note": "Skip tasks 1 to 4 (industry prose and overfitting definitions). Tasks 5 to 7 are the loader core; tasks 8 to 13 rehearse the loop of the next unit and can wait for it."
+        }
+      ],
+      "stopWhen": "Your CSVDataset loader prints correct batch shapes with 2 workers, worker seeds differ on purpose, and a ragged input fails loudly until your collate_fn handles it.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The data and transforms tutorials plus the DataLoader seeding note cover datasets, batching, samplers and workers with named practice."
+      }
+    },
+    {
+      "id": "explicit-train-eval-loops",
+      "title": "Explicit training and evaluation loops with correct metrics",
+      "hours": 4,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "explicit-train-one-epoch-and-evaluate-loops",
+        "metric-aggregation-and-reduction-correctness"
+      ],
+      "outcomes": [
+        "Write train and test loops with train and eval modes, no_grad evaluation, zeroing, backward and step in the right order.",
+        "Aggregate loss and accuracy with stated reduction and sample weighting, and catch batch-mean versus sample-mean drift.",
+        "Drive a loop to a stated gate (moons accuracy, workflow regression) and read its loss and accuracy printouts."
+      ],
+      "why": "The loop is where grad state, eval state and metrics meet. A wrong reduction here fakes every comparison the rest of the stage makes.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-foundations/checkpoints-config-reproducibility",
+          "note": "Persist the loop state you can now run."
+        },
+        {
+          "unit": "deep-learning/training-dynamics/objective-checks-controls",
+          "note": "Add overfit and shuffled-label controls to the loop."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-basics",
+          "title": "Optimizing Model Parameters: train_loop and test_loop",
+          "url": "https://docs.pytorch.org/tutorials/beginner/basics/optimization_tutorial.html",
+          "locator": "Hyperparameters (epochs, batch size, learning rate); Loss Function (CrossEntropyLoss over logits); Optimizer (zero_grad, backward, step); Full Implementation (train_loop with model.train, test_loop with model.eval and no_grad, accuracy accumulation)"
+        }
+      ],
+      "focus": [
+        "train_loop sets model.train() and test_loop sets model.eval() with no_grad. The comments call both best practice even where the tiny net needs neither.",
+        "Zero before backward each iteration (or right after step, every iteration). step() applies whatever sits in .grad, including stale values.",
+        "The tutorial test_loss divides by batch count, which weights batches equally. With an uneven tail batch that differs from the sample mean; correct over size is exact.",
+        "CrossEntropyLoss takes raw logits and reduces by mean over the batch. Changing batch size changes the noise of that mean, not its expectation."
+      ],
+      "reproduce": "From memory, write train and test loops with sample-weighted loss and accuracy, train the Learn PyTorch 01 workflow model, and reach its task gates. Then show the tutorial test_loop loss and your sample-weighted loss differ on an uneven tail batch.",
+      "traps": [
+        "Averaging per-batch losses with equal weights and calling it the epoch loss. Short tail batches then count as much as full ones.",
+        "Evaluating without model.eval(). Dropout keeps dropping units, so evaluation becomes random, and BatchNorm normalizes with test-batch statistics while updating its running buffers on test data.",
+        "Logging loss.item() but stepping on a different loss. The printed number and the backward graph must come from the same tensor."
+      ],
+      "selfTest": [
+        {
+          "q": "Test set 10000, batch 64. The tutorial reports test_loss /= num_batches. What does that number weight equally?",
+          "a": "Batches: 156 full plus one tail batch of 16. The tail batch counts as much as any full batch, so the figure is a batch mean, not the sample mean."
+        },
+        {
+          "q": "Where must zero_grad sit relative to backward and step, and what breaks if it is missing?",
+          "a": "Every iteration, before backward (or right after step). Without it, .grad accumulates across batches and step() applies stale plus fresh gradients together."
+        },
+        {
+          "q": "test_loop wraps evaluation in no_grad but the tutorial also sets model.eval(). What does each contribute?",
+          "a": "eval() switches Dropout and BatchNorm to evaluation behavior. no_grad() skips graph recording, saving memory and compute."
+        },
+        {
+          "q": "Your evaluation loop uses CrossEntropyLoss with reduction=\"mean\" per batch. How do you report the exact per-sample mean loss over the test set?",
+          "a": "Accumulate loss.item() times the batch size (or use reduction=\"sum\") and divide the total by the number of samples, not by the number of batches."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 01: SGD training loop and test plots (tasks 1 to 4)",
+          "url": "https://www.learnpytorch.io/01_pytorch_workflow",
+          "locator": "Exercises, tasks 1 to 4: straight-line dataset, L1Loss with SGD for 300 epochs testing every 20, test predictions with plots",
+          "note": "Keep the loop explicit: no high-level trainer. Record the exact reduction of every logged number."
+        },
+        {
+          "name": "Learn PyTorch 02: moons classifier loop above 96 percent (tasks 1 to 4)",
+          "url": "https://www.learnpytorch.io/02_pytorch_classification",
+          "locator": "Exercises, tasks 1 to 4: make_moons split, nonlinear nn.Module, binary loss and optimizer, train and test loop past 96 percent accuracy with prints every 10 epochs",
+          "note": "Stop at task 4 for this unit. Task 6 (pure-PyTorch tanh) belongs to the backward unit; tasks 5 to 7 are the stretch goals."
+        }
+      ],
+      "stopWhen": "Both loops run from memory, every logged number states its reduction, and the moons run passes 96 percent with a sample-weighted loss you can defend.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The optimization tutorial plus the 01 and 02 loop exercises cover explicit loops and metric aggregation at implement and measure depth."
+      }
+    },
+    {
+      "id": "checkpoints-config-reproducibility",
+      "title": "Checkpoints, configuration and reproducibility",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "checkpointing-model-optimizer-scheduler-and-scaler-state",
+        "configuration-data-position-and-random-generator-state",
+        "reproducibility-claims-across-cpu-gpu-and-data-workers"
+      ],
+      "outcomes": [
+        "Save and restore model, optimizer, scheduler, epoch and RNG state, and state the resume tolerance you actually tested.",
+        "Record hyperparameters, data position and generator state so a resumed run continues the same stream, not a similar one.",
+        "Draw the reproducibility boundary: what matches bitwise, what matches statistically, and what never matches across CPU, GPU and workers."
+      ],
+      "why": "An experiment you cannot resume is an anecdote. Checkpoints plus config plus seeds turn a run into evidence you can re-enter.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/complete-resume-state",
+          "note": "Harden resume with atomic writes and full state audits."
+        },
+        {
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs",
+          "note": "Use resume equivalence as a debugging control."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Saving and Loading Models: state_dict, checkpoints, devices",
+          "url": "https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html",
+          "locator": "What is a state_dict (model and optimizer dicts); Saving and Loading Model for Inference (Save and Load state_dict, model.eval); Saving and Loading a General Checkpoint for Inference and/or Resuming Training (epoch, model and optimizer state, loss); Saving and Loading Model Across Devices (map_location, DataParallel module prefix)",
+          "depth": "Skip Saving an Exported Program, Saving Multiple Models in One File and Warmstarting. The deprecated general-checkpoint recipe redirects to this page."
+        },
+        {
+          "resource": "pytorch-amp-saving-resuming",
+          "title": "Automatic Mixed Precision recipe: saving and resuming the GradScaler",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html#saving-resuming",
+          "locator": "Saving/Resuming: the scaler state_dict saved beside model and optimizer, when to save it, and resuming across runs with and without AMP"
+        },
+        {
+          "resource": "pytorch-autograd-semantics",
+          "title": "Reproducibility: randomness control and nondeterminism limits",
+          "url": "https://docs.pytorch.org/docs/stable/notes/randomness.html",
+          "locator": "Reproducibility intro (no cross-release, cross-platform or CPU-versus-GPU guarantee); Controlling sources of randomness (manual_seed, Python and NumPy seeds, cudnn benchmark); Avoiding nondeterministic algorithms (use_deterministic_algorithms, uninitialized memory); DataLoader (worker_init_fn, generator)",
+          "depth": "Read the section intros and the DataLoader part fully. Skim the per-op catalog (convolution, SDPA backends, RNN); the boundary table is the assignment, not every kernel."
+        }
+      ],
+      "focus": [
+        "A resume checkpoint holds model, optimizer and scheduler state, the GradScaler state when you train with AMP, the epoch and step, and the RNG states. Model weights alone restart the model but not the training.",
+        "Config means every number that changes the stream: hyperparameters, data order and position, transform versions, worker count and seeds. Log them with the checkpoint.",
+        "Identical seeds do not promise identical results across releases, platforms, or CPU versus GPU. Promise bitwise match only inside one tested configuration.",
+        "Deterministic flags trade speed for repeatability and can throw on ops without a deterministic path. cudnn benchmark selection is itself a randomness source."
+      ],
+      "reproduce": "Interrupt a small training run mid-schedule, restart the process, reload the full checkpoint, and show the next-epoch loss matches an uninterrupted run within your stated tolerance. Then list what your checkpoint deliberately excludes.",
+      "traps": [
+        "Saving model.state_dict() and calling it a training checkpoint. Without optimizer, scheduler, epoch and RNG state, resume restarts the optimization, not the run.",
+        "Pickling the whole model and loading it with the default weights_only=True. Since PyTorch 2.6 that default refuses arbitrary pickled objects, and weights_only=False runs pickle, which can execute code. Save state_dicts, and load untrusted files only with weights_only=True.",
+        "Claiming GPU determinism from a CPU test. Nondeterministic kernels, benchmark selection and worker seeding each break the claim independently."
+      ],
+      "selfTest": [
+        {
+          "q": "The resumed weights give the same validation loss as the uninterrupted run at the checkpoint, yet the training curves split within a few updates. Name three state items that could be missing.",
+          "a": "Optimizer state such as momentum or Adam moments, scheduler state (so the learning rate is wrong), and the RNG and data-order state (different shuffles and dropout masks). None of them changes the loss of the saved weights."
+        },
+        {
+          "q": "Same seed, same code, CPU run matches but GPU run differs in the last decimals. Is anything wrong?",
+          "a": "Not necessarily. The note disclaims CPU-versus-GPU bitwise match; different kernels accumulate floating point in different orders."
+        },
+        {
+          "q": "use_deterministic_algorithms(True) throws on your model. What does that tell you, and what is the cost of obeying it?",
+          "a": "One op has no deterministic implementation. Obeying it means replacing the op or staying nondeterministic; deterministic paths are also usually slower."
+        },
+        {
+          "q": "A DataParallel checkpoint loads with missing-key errors on a single-GPU model. What happened?",
+          "a": "The keys carry the module. prefix from DataParallel. Save model.module.state_dict() for device flexibility, or strip the prefix on load."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Learn PyTorch 01 task 5: save, reload and verify predictions",
+          "url": "https://www.learnpytorch.io/01_pytorch_workflow",
+          "locator": "Exercises, task 5: save state_dict, reload into a new instance, verify predictions match",
+          "note": "Extend it: add optimizer state, epoch and torch, Python and NumPy RNG states, then run the interrupted-versus-uninterrupted resume comparison from Reproduce."
+        },
+        {
+          "name": "Learn PyTorch 05: scripted training with argparse config (tasks 1 to 3)",
+          "url": "https://www.learnpytorch.io/05_pytorch_going_modular",
+          "locator": "Exercises, tasks 1 to 3: get_data.py with existing-data check, train.py with argparse for data dirs, lr, batch size, epochs and hidden units, predict.py that loads the saved model",
+          "note": "Treat the argparse flags plus seeds as the config record. A run whose flags are not logged does not count as reproduced."
+        }
+      ],
+      "stopWhen": "An interrupted and an uninterrupted run agree within your written tolerance, and your config log plus boundary statement say exactly what would break that agreement.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for scaler state in the checkpoint topic; the official AMP recipe section on saving and resuming fills it. The saving and loading page and the reproducibility note cover the rest."
+      }
+    }
+  ]
+}
