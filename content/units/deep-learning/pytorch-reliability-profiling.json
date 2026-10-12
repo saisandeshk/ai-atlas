@@ -67,7 +67,7 @@
         "Object identity of a saved tensor is an implementation detail. The pow case returns the same object and the exp case returns a different object, but both share storage and compare equal.",
         "The first backward frees saved tensors. A second backward without retain_graph fails because the saved values are gone, not because the graph forgot the formula."
       ],
-      "reproduce": "Closed-book on CPU: build y = (x @ W + b).relu().sum() with small requires-grad tensors, walk y.grad_fn through next_functions, and write down SumBackward0, ReluBackward0, AddBackward0, MmBackward0 and AccumulateGrad in order. Then show (x ** 2).grad_fn._saved_self is x gives True while its storage is shared.",
+      "reproduce": "Closed-book on CPU: build y = (x @ W + b).relu().sum() with a 2 by 3 x, a 3 by 4 W and a bias of 4, all requiring grad. Walk y.grad_fn through next_functions and write down SumBackward0, ReluBackward0, AddBackward0, MmBackward0 and AccumulateGrad in order. Then show (x ** 2).grad_fn._saved_self is x gives True while its storage is shared.",
       "traps": [
         "Reading _saved_self is as identity proof. Packing may return a new object sharing storage, so test storage and equality, never identity.",
         "Editing a leaf with requires_grad errors at the edit, but editing a saved non-leaf passes and fails at backward with a version error. The two messages describe different checks.",
@@ -88,7 +88,7 @@
         },
         {
           "q": "Backward fails with expected version 0 but found version 1 on a saved tensor. What do the two numbers mean?",
-          "a": "The tensor was saved at version 0 and edited in place once since. Any current version above the saved version means gradients computed from it would be wrong."
+          "a": "The tensor was saved at version 0 and edited in place once since. Gradients computed from the edited value could be wrong, so autograd refuses instead of guessing."
         }
       ],
       "practice": [],
@@ -154,15 +154,15 @@
         "non_blocking=True is a request, not a command. From pageable host memory the copy still syncs; pin the source first.",
         "Backward follows forward stream placement. Grads produced under a side-stream backward must be consumed in the same stream context or after an explicit wait."
       ],
-      "reproduce": "On a CUDA GPU, time a 2048 by 2048 fp32 matmul both ways: CUDA events around the op with a synchronize before reading, versus a bare perf_counter around the launch. The event time lands in the tens of milliseconds while the bare clock shows a fraction of a millisecond, because it measures enqueue only. Exact numbers depend on hardware; the direction of the gap is the assertion.",
+      "reproduce": "On a CUDA GPU, warm up, then time a 2048 by 2048 fp32 matmul both ways: CUDA events around the op with a synchronize before reading, versus a bare perf_counter around the launch. The matmul is 2 times 2048^3, about 17.2 GFLOP, so the event time is a few milliseconds at most (4.1 ms on a laptop RTX 3050), while the bare clock reads microseconds (0.007 ms there) because it measures enqueue only. Exact numbers depend on hardware; the size of the gap is the assertion.",
       "traps": [
         "Timing with time.perf_counter and no sync, then reporting the result as kernel time. You timed the launch, not the work.",
         "Calling .item(), printing a CUDA tensor, or branching on one inside the timed region. Each forces a sync and the stall gets billed to the wrong line.",
-        "Assuming default-stream safety extends to side streams. The docs sum example is wrong without wait_stream and record_stream even though nothing reads stale data."
+        "Assuming default-stream safety extends to side streams. In the docs example, sum on a side stream may start before normal_ finishes on the default stream. The side stream must wait_stream on the default stream, and record_stream protects the tensor if it is freed while the side stream still uses it."
       ],
       "selfTest": [
         {
-          "q": "An Event-timed matmul reports 35 ms while a bare wall clock reports 0.2 ms. Which is the kernel time and why?",
+          "q": "An Event-timed matmul reports 4.1 ms while a bare wall clock reports 0.007 ms. Which is the kernel time and why?",
           "a": "The Event time. Launches are asynchronous, so the bare clock measures enqueue only. Events plus a synchronize measure the queued work."
         },
         {
@@ -248,10 +248,10 @@
         "Peak counters are sticky. Reset them immediately before the measured region or the peak belongs to an earlier phase.",
         "empty_cache returns unused segments to the driver. It never frees live tensors and never defragments them, so it cannot make a too-large tensor fit."
       ],
-      "reproduce": "Derive fp32 Adam memory for a 10M-parameter model as 160 MB before activations, then on a CUDA GPU allocate one 1024 by 1024 fp32 tensor and read memory_allocated as 4.00 MiB with memory_reserved strictly above it. State both numbers and which one nvidia-smi tracks.",
+      "reproduce": "Derive fp32 Adam memory for a 10M-parameter model as 160 MB (152.6 MiB) before activations. Then, in a fresh process on a CUDA GPU, allocate one 1024 by 1024 fp32 tensor and read memory_allocated as 4.00 MiB and memory_reserved as 20.00 MiB. Run one matmul and read allocated again: it stays higher by the cuBLAS workspace (about 8 MiB on an RTX 3050 with PyTorch 2.14). State which number nvidia-smi tracks.",
       "traps": [
-        "Reading nvidia-smi as live usage. It sees driver-side reserve, including cached segments and non-PyTorch allocations such as NCCL.",
-        "Calling empty_cache to fix an OOM and concluding memory is fine when it passes. The live set did not shrink; the next larger batch still fails.",
+        "Reading nvidia-smi as live usage. It sees everything the driver gave the process: the CUDA context, cached segments and non-PyTorch allocations such as NCCL.",
+        "Counting the cuBLAS workspace as model memory. The CUDA notes say each handle and stream keeps its workspace until explicitly cleared, so take the baseline after a warm-up matmul, not before.",
         "Comparing a derived model against current allocated only. Peak across forward, backward and optimizer phases is the number that must fit, and it needs a reset counter."
       ],
       "selfTest": [
@@ -261,7 +261,7 @@
         },
         {
           "q": "After allocating one 1024 by 1024 fp32 tensor, allocated reads 4.00 MiB and reserved reads 20.00 MiB. What is the extra 16 MiB?",
-          "a": "Cached allocator segments held for reuse, not live tensors. nvidia-smi tracks closer to reserved than to allocated."
+          "a": "The unused rest of the 20 MiB segment the allocator reserved for this request, held for reuse, not live tensors. nvidia-smi tracks closer to reserved than to allocated."
         },
         {
           "q": "Peak grows every loop iteration while current stays flat. What was forgotten?",
@@ -269,7 +269,7 @@
         },
         {
           "q": "Will empty_cache let a run allocate one bigger tensor than the OOM size?",
-          "a": "No. It releases unused segments to the driver but keeps every live tensor, so a tensor that genuinely does not fit still fails."
+          "a": "No. It returns unused cached segments to the driver for other processes, but it frees no live tensors, so the docs say it cannot increase the memory available to PyTorch."
         }
       ],
       "practice": [
@@ -342,7 +342,7 @@
       ],
       "reproduce": "On a CUDA GPU, run a fp16 autocast forward over one linear layer and assert the output is fp16 while an mse loss over it is fp32. Construct torch.amp.GradScaler('cuda'), confirm the initial scale reads 65536.0, then run scale, backward, unscale_, clip_grad_norm_ and step plus update without error.",
       "traps": [
-        "Reading allow_tf32 after setting fp32_precision, or the reverse. Current PyTorch raises a mixing error, so pick one API and stay on it.",
+        "Mixing allow_tf32 and fp32_precision. In PyTorch 2.14, reading allow_tf32 after setting fp32_precision raises a RuntimeError, while the reverse just reports the mapped value. The docs do not support mixing, so pick one API and stay on it.",
         "Clipping .grad between backward and scaler.step without unscale_ first. The threshold then applies to scaled values and silently clips the wrong updates.",
         "Copying CUDA fp16 settings to CPU. The recipe requires a CUDA GPU; on CPU use bf16 autocast and do not expect the fp16 asserts to transfer."
       ],
@@ -352,8 +352,8 @@
           "a": "Matmul uses full precision and cuDNN convolutions allow TF32. Both are set per backend or operator with fp32_precision."
         },
         {
-          "q": "What raises when old allow_tf32 and new fp32_precision settings are mixed for one backend?",
-          "a": "A RuntimeError refusing the mix. The two APIs must not be combined."
+          "q": "Code sets torch.backends.cuda.matmul.fp32_precision to tf32, and a library later reads allow_tf32. What happens?",
+          "a": "In PyTorch 2.14 the read raises a RuntimeError about mixing the legacy and new APIs. Set and read TF32 through one API only."
         },
         {
           "q": "Scaled gradients sit in .grad. Where does clipping go, and does max_norm change?",
@@ -366,16 +366,16 @@
       ],
       "practice": [
         {
-          "name": "Learn PyTorch 10: mixed-precision timing rerun",
-          "url": "https://www.learnpytorch.io/10_pytorch_profiling",
-          "locator": "Try mixed precision with larger model: uncomment the with and without mixed-precision epoch cells and rerun them",
-          "note": "Report your own per-iteration gap and explain it with the profiler's Tensor Core share, as the chapter does with its 9 to 12 percent reading."
+          "name": "PyTorch AMP recipe: vary participating sizes",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html",
+          "locator": "The Exercise above the batch_size cell: rerun Default Precision and All together with batch sizes such as 128, 256 and 513, using the recipe's synchronized timers",
+          "note": "Report the speedup per size on your GPU. Compare the 513 run with the Troubleshooting advice that matmul sizes be multiples of 8, and say whether your GPU and library versions still show that effect. Then add the unscale_ plus clip and scaler save and resume sections to the same loop."
         }
       ],
       "stopWhen": "Your autocast plus scaler loop asserts the right dtypes, clips at an unchanged threshold, and you can explain any skipped step from the scale history.",
       "fit": {
         "verdict": "kept",
-        "note": "The AMP recipe plus the TF32 and reduced-precision notes cover formats, scaler order and defaults, with the notebook rerun giving practice."
+        "note": "The AMP recipe plus the TF32 and reduced-precision notes cover formats, scaler order and defaults, and the recipe's own sizes exercise gives timed practice."
       }
     },
     {
@@ -505,12 +505,12 @@
         }
       ],
       "focus": [
-        "Only the checkpoint inputs stay alive; everything the region computes is rerun in backward. Memory saved equals the dropped forward tensors minus the inputs.",
+        "Only the checkpoint inputs stay alive; everything the region computes is rerun in backward. Memory saved is the activations the region would have kept, and the price is one extra forward of the region during backward.",
         "Non-reentrant is the recommended path: it supports grad, keyword args and nested structures, and it stops recomputation early once the needed activations exist.",
         "RNG state is stashed and restored by default so dropout masks match. Turning that off changes gradients, not forward outputs.",
         "Recompute reruns the region code. Globals read inside the region, device moves, and multi-device RNG all break the equivalence silently or loudly."
       ],
-      "reproduce": "On CPU, checkpoint a dropout block with use_reentrant=False and show its gradients are bitwise equal to the plain block at the same seed. Rerun with preserve_rng_state=False and show the gradients differ while the forward outputs still match.",
+      "reproduce": "On CPU, checkpoint a dropout block with use_reentrant=False and show its gradients equal the plain block at the same seed (torch.equal held on CPU with PyTorch 2.14). Rerun with preserve_rng_state=False and show the gradients differ while the forward outputs still match.",
       "traps": [
         "Omitting use_reentrant and assuming a default. Current PyTorch warns that it must be passed explicitly; pass False deliberately.",
         "Wrapping tiny cheap regions. Recompute then costs more than the memory it saves; target large outputs with small recompute cost.",
@@ -530,13 +530,13 @@
           "a": "PyTorch warns that it must be passed explicitly. False is recommended: it supports grad, kwargs and nested structures with early stop."
         },
         {
-          "q": "Why does the reentrant variant refuse detached tensors and inputs without requires_grad?",
-          "a": "It runs forward under no_grad with no recorded graph, so there is nothing to differentiate and gradients come back None."
+          "q": "With use_reentrant=True and no input requiring grad, the region's parameters get no gradients. Why, and which variant avoids it?",
+          "a": "The reentrant variant runs the region under no_grad inside an autograd Function whose output requires grad only if an input does. With none, backward never enters the region and PyTorch warns that gradients will be None. The non-reentrant variant has no such requirement."
         }
       ],
       "practice": [],
       "practiceNote": "The section mini-project covers this: activation-checkpointing memory savings with equivalence checks.",
-      "stopWhen": "Your checkpointed block matches plain gradients bitwise at fixed seed, and you can price any block in memory saved versus recompute added.",
+      "stopWhen": "Your checkpointed block matches plain gradients at a fixed seed within a stated tolerance, and you can price any block in memory saved versus recompute added.",
       "fit": {
         "verdict": "kept",
         "note": "The checkpoint reference covers semantics, variant differences and RNG behavior, with the mini-project supplying practice."
@@ -594,9 +594,9 @@
         "A resume checkpoint is a dict of state, not a model file: epoch, model, optimizer, scheduler, scaler, RNG states and the sampler position all belong in it.",
         "state_dict returns references to live tensors. Training on after building the dict mutates the saved copy too; serialize to disk or deepcopy at save time.",
         "Per-worker RNG needs explicit construction. A Generator built in Dataset init is fork-copied identically into every worker and repeats its stream.",
-        "Bitwise resume holds on one machine, one build, one device kind. Across releases, platforms, or CPU versus GPU, only statistical equivalence is promised."
+        "Exact resume is realistic only on one machine, build and device kind, with deterministic algorithms. The reproducibility notes promise nothing across releases, platforms, or CPU versus GPU, so declare a tolerance there."
       ],
-      "reproduce": "On CPU, train 3 steps, save the full dict to disk, train 2 more, then load the disk file into fresh model and optimizer objects, restore the RNG state, run 2 steps, and show bitwise equal weights. Rerun the resume without restoring RNG and show it diverges.",
+      "reproduce": "On CPU, train a small model with dropout for 3 steps, save model, optimizer and torch RNG state to disk, and train 2 more steps. Load the file into fresh model and optimizer objects, restore the RNG state, run the same 2 steps, and show the weights equal the continuous run (torch.equal held on CPU here). Rerun without restoring the RNG and show the weights differ.",
       "traps": [
         "Reloading from the in-memory dict after further training. The dict aliases live optimizer buffers, so the resume silently starts from the later state.",
         "Seeding only torch.manual_seed with several DataLoader workers. Global RNGs get per-worker seeds, but a copied Generator object repeats exactly; build it per worker from torch.initial_seed.",
@@ -604,8 +604,8 @@
       ],
       "selfTest": [
         {
-          "q": "Name the minimum checkpoint contents for exact CPU resume of SGD with momentum, a StepLR scheduler, AMP and a shuffled loader.",
-          "a": "Model, optimizer, scheduler, scaler, epoch, torch and CUDA RNG states, and the sampler position or loader generator state."
+          "q": "Name the checkpoint contents for exact resume on one GPU of SGD with momentum, a StepLR scheduler, fp16 AMP with a GradScaler and a shuffled loader.",
+          "a": "Model, optimizer with its momentum buffers, scheduler, scaler, epoch and step, CPU and CUDA RNG states, and the sampler position or loader generator state."
         },
         {
           "q": "A saved dict is kept in memory, training continues, then a fresh optimizer loads that dict. Why are its buffers wrong?",
@@ -613,7 +613,7 @@
         },
         {
           "q": "Two DataLoader workers emit identical augmentation streams. State the bug and the fix.",
-          "a": "A Generator built in Dataset init was fork-copied identically into both workers. Build it per worker from torch.initial_seed in worker_init_fn, or pass a generator."
+          "a": "A Generator built in Dataset init was fork-copied identically into both workers. Reseed it per worker in worker_init_fn from torch.initial_seed(), or create it lazily inside the worker."
         },
         {
           "q": "The job dies mid-write and the checkpoint is corrupt. What write pattern survives this?",
@@ -622,7 +622,7 @@
       ],
       "practice": [],
       "practiceNote": "The section mini-project covers this: resume equivalence and interruption handling with declared tolerances.",
-      "stopWhen": "Your disk-roundtrip resume matches the continuous run bitwise, and a changed-seed or unrestored-RNG resume is caught by your own equivalence check.",
+      "stopWhen": "Your disk-roundtrip resume matches the continuous run (exactly on CPU, or within a declared tolerance elsewhere), and a changed-seed or unrestored-RNG resume is caught by your own equivalence check.",
       "fit": {
         "verdict": "added",
         "note": "Coverage failed for atomic checkpoint writes; Python's os.replace reference fills that gap beside the PyTorch save and reproducibility docs."
@@ -665,7 +665,7 @@
         {
           "resource": "pytorch-compile-troubleshooting",
           "title": "Breaks, guards, recompiles and logs",
-          "url": "https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html",
+          "url": "https://docs.pytorch.org/docs/stable/user_guide/torch_compiler/torch.compiler_troubleshooting.html",
           "locator": "Terminology with the graph break, guards, recompilation and dynamic shapes definitions; Logging Tools with TORCH_LOGS graph_breaks, guards and recompiles; Simple Workarounds including data-dependent fixes; Reporting Issues, Ablation with eager and inductor backends",
           "depth": "Read Terminology, Logging Tools and Simple Workarounds fully. Skim TorchDynamo internals and Reporting Issues."
         }
@@ -676,11 +676,11 @@
         "Data-dependent control flow is the classic break: .item, tensor conditions and prints split the graph. Hoist, use torch.cond, or capture scalar outputs.",
         "Equivalence comes before timing. Compare eager and compiled values and gradients with a tolerance, across shapes, before believing any speedup."
       ],
-      "reproduce": "Compile a pure function and assert eager and compiled outputs match. Then compile a branch on flag.item(): read the log line naming Tensor.item() as the break, show fullgraph=True raises on it, and show dynamic=False compiling one graph per shape with a counter of unique graphs.",
+      "reproduce": "Compile a pure function and assert eager and compiled outputs match. Then compile a branch on flag.item() and read the TORCH_LOGS=graph_breaks line naming Tensor.item() as the break. Call torch._dynamo.reset(), compile the same function with fullgraph=True and show it raises. Finally count unique graphs with a counting backend: dynamic=False gives one per shape.",
       "traps": [
         "Reporting a speedup without a break count. A fully broken compile is just eager with overhead, and the timer will not tell you.",
-        "Closing over Python floats or scheduler values. Guards treat them as constants and recompile per value; wrap them in tensors.",
-        "Assuming dynamic shapes are free. Dynamic kernels avoid recompiles only where ops allow; overspecialization still needs the dynamic log to diagnose."
+        "Feeding changing Python floats, such as a scheduled learning rate, into a compiled function. Under dynamic=False each new value recompiles until the limit of 8; the default recompiles once and then treats the float as dynamic. A tensor avoids both.",
+        "Reusing a function across compile experiments. Caches are per code object, so a fullgraph=True compile of a function already compiled without it can reuse the old entries and not raise. Call torch._dynamo.reset() between experiments."
       ],
       "selfTest": [
         {
@@ -689,7 +689,7 @@
         },
         {
           "q": "Under dynamic=False, one shape reuses its graph while a new shape adds a second. What does dynamic=True change?",
-          "a": "It traces shape-generic kernels up front to avoid one recompile per shape, where the operations allow it."
+          "a": "dynamic=True traces shape-generic graphs from the start, where the operations allow it. The default, None, compiles static first and recompiles once as dynamic after a shape change: two graphs for sizes 3, 3, 4 and 5, against three under dynamic=False."
         },
         {
           "q": "Timing collapses to eager speed after several shape changes. Which limit fired, and how do you see why?",
@@ -754,7 +754,7 @@
           "title": "Profiler inside a training loop",
           "url": "https://www.learnpytorch.io/10_pytorch_profiling",
           "locator": "Adjust training function to track results with SummaryWriter: train_step with tensorboard_trace_handler, non_blocking transfers, autocast forward, and backward plus step inside the profiled range",
-          "depth": "Transfer the annotation pattern into your own compact model. Do not keep the tutorial's EfficientNet code."
+          "depth": "Transfer the annotation pattern into your own compact model. Do not keep the tutorial's EfficientNet code, and do not copy its fp16 autocast loop, which has no GradScaler."
         },
         {
           "resource": "tensortonic-memory-flops",
