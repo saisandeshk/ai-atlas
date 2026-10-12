@@ -14,13 +14,14 @@ __all__ = [
 
 
 def pack_documents(documents, context_length, eos_id):
-    """Return (inputs, targets, owners), each int64 [windows, context_length].
+    """Return (inputs, targets, loss_mask), each [windows, context_length].
 
     Append one EOS to EVERY document (including empty documents). EOS belongs
     to that document. Concatenate, then take context_length+1-token windows at
     context_length strides, dropping incomplete windows. Inputs are each
-    window's first tokens, targets its last tokens, and owners identify the
-    input tokens' original documents. Document indices start at zero.
+    window's first tokens and targets its last tokens, both int64. The boolean
+    loss_mask is true iff input and target belong to the same document: token
+    to its own EOS is supervised, but EOS to the next document is not.
     """
     if context_length < 1:
         raise ValueError("context_length must be positive")
@@ -34,7 +35,8 @@ def pack_documents(documents, context_length, eos_id):
     count = max(0, (len(stream) - 1) // context_length)
     offsets = np.arange(count)[:, None] * context_length
     positions = offsets + np.arange(context_length)[None, :]
-    return stream[positions], stream[positions + 1], ownership[positions]
+    loss_mask = ownership[positions] == ownership[positions + 1]
+    return stream[positions], stream[positions + 1], loss_mask
 
 
 def document_attention_mask(document_ids):
@@ -63,18 +65,22 @@ def _word_ngrams(text, n, short_document=False):
 
 
 def exact_duplicates(documents):
-    """Return index groups (size >= 2), in first-occurrence order.
+    """Return sorted indices of documents repeating an earlier document.
 
     Equivalence is NFC normalization plus whitespace collapse/trim; case is
-    preserved. Indices inside each group are in original document order.
+    preserved. Keep the first occurrence; return every subsequent occurrence.
     """
-    groups = {}
+    seen = set()
+    duplicates = []
     for index, document in enumerate(documents):
-        groups.setdefault(_normalize(document), []).append(index)
-    return [indices for indices in groups.values() if len(indices) > 1]
+        normalized = _normalize(document)
+        if normalized in seen:
+            duplicates.append(index)
+        seen.add(normalized)
+    return duplicates
 
 
-def near_duplicate_pairs(documents, n=3, threshold=0.8):
+def near_duplicate_pairs(documents, n=5, threshold=0.8):
     """Return (i, j), i < j, whose word-ngram-set Jaccard >= threshold.
 
     Normalize NFC and whitespace, preserving case. A document shorter than
@@ -97,10 +103,11 @@ def near_duplicate_pairs(documents, n=3, threshold=0.8):
 
 
 def contamination_report(training_documents, evaluation_documents, n=13):
-    """Return a float64 vector of contamination fractions, one per eval doc.
+    """Return list[float] contamination fractions, one per evaluation document.
 
-    Each fraction is the proportion of DISTINCT evaluation word ngrams that
-    occur in the union of training documents' ngram sets. Document boundaries
+    Each fraction is the proportion of evaluation word-ngram OCCURRENCES that
+    occur in the union of training documents' ngram sets. Repeated evaluation
+    ngrams count repeatedly in both numerator and denominator. Document boundaries
     are not crossed. Normalize NFC and whitespace, preserving case. Evaluation
     documents shorter than n words score zero, even if present verbatim in
     training. Training documents shorter than n contribute no ngrams.
@@ -112,6 +119,8 @@ def contamination_report(training_documents, evaluation_documents, n=13):
         training.update(_word_ngrams(document, n))
     fractions = []
     for document in evaluation_documents:
-        evaluation = _word_ngrams(document, n)
-        fractions.append(len(evaluation & training) / len(evaluation) if evaluation else 0.0)
-    return np.asarray(fractions, dtype=np.float64)
+        words = _normalize(document).split()
+        evaluation = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]
+        matched = sum(ngram in training for ngram in evaluation)
+        fractions.append(matched / len(evaluation) if evaluation else 0.0)
+    return fractions

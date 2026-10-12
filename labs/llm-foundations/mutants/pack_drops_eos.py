@@ -17,4 +17,5 @@ def pack_documents(documents, context_length, eos_id):
     ownership = np.asarray(owners, dtype=np.int64)
     count = max(0, (len(stream) - 1) // context_length)
     positions = np.arange(count)[:, None] * context_length + np.arange(context_length)[None, :]
-    return stream[positions], stream[positions + 1], ownership[positions]
+    loss_mask = ownership[positions] == ownership[positions + 1]
+    return stream[positions], stream[positions + 1], loss_mask

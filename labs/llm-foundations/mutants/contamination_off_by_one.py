@@ -2,7 +2,6 @@
 
 from reference import *
 import unicodedata
-import numpy as np
 
 
 def contamination_report(training_documents, evaluation_documents, n=13):
@@ -20,6 +19,7 @@ def contamination_report(training_documents, evaluation_documents, n=13):
     fractions = []
     for document in evaluation_documents:
         tokens = words(document)
-        evaluation = {tuple(tokens[i : i + n]) for i in range(len(tokens) - n)}
-        fractions.append(len(evaluation & training) / len(evaluation) if evaluation else 0.0)
-    return np.asarray(fractions, dtype=np.float64)
+        evaluation = [tuple(tokens[i : i + n]) for i in range(len(tokens) - n)]
+        matched = sum(ngram in training for ngram in evaluation)
+        fractions.append(matched / len(evaluation) if evaluation else 0.0)
+    return fractions
