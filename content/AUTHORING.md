@@ -63,6 +63,7 @@ Units live in `content/units/<route-id>/<section-id>.json`, one file per section
 - **Reproduce.** The one result to reproduce closed-book: a derivation, an algorithm, or a small program.
 - **Traps.** Two or three misconceptions or bugs that the material does not stress.
 - **Self-test.** Three to five questions with short, correct answers. They test understanding, not recall of wording.
+- **Correct in principle.** Check every focus point, trap, answer and stop condition from first principles, not only against the source. Sources contain errors, and a claim about an experiment or control must say what a correct run would actually show. When a source exercise is wrong, skip it in a `depth` note and say why.
 - **Practice.** Named external items: a problem, an assignment part, a notebook exercise, a lab. Never a whole platform or course. A unit may leave practice empty when the section mini-project covers it, and says so.
 - **Stop when.** One observable condition for leaving the unit.
 - **Fit.** The outcome of the fit check below: `kept`, `added`, or `replaced`, with a one-line note.
@@ -79,6 +80,10 @@ Resource-Survey scores resource quality. The fit check asks whether the located 
 6. **Time fit:** the located part is far longer than the unit needs, with no narrower locator.
 
 Search for new material only after a failure, with a budget of one search pass and a few candidates. A candidate must beat the current material on the failing criterion, be opened to confirm its locator, and enter the section's `addedResources` with a role, priority, access value, and use note. Record the outcome in the unit's `fit`. "Could be slightly better" is not a failure.
+
+### Review
+
+Every unit file is reviewed before it merges: locators are spot-checked against the sources, every number in a reproduce step or answer is recomputed, and every conceptual claim is checked independently. [`docs/PILOT.md`](../docs/PILOT.md) records what the Stage 07 review found.
 
 ### Mini-projects and capstones
 

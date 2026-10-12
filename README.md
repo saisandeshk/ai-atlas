@@ -10,6 +10,7 @@ The companion contains the complete seven-stage core route and all eight fully a
 - **Whole map:** the complete seven-stage core dependency spine.
 - **Tracks:** eight fully authored advanced specialization directions from Roadmap-Final.
 - **Local progress:** browser-local persistence with no account or server dependency.
+- **Study units (Stage 07 pilot):** for each section, cards of 2 to 6 hours that say what to open, how far to go, what to reproduce, how to self-test and when to stop; a mini-project per section; and a capstone rubric. See [`docs/PILOT.md`](docs/PILOT.md).
 
 ## Source of truth
 
@@ -25,6 +26,8 @@ Each section must contain:
 6. a visible list of material deliberately left for later.
 
 See [`content/AUTHORING.md`](content/AUTHORING.md) for the rules that keep later stages consistent.
+
+Study units live beside the curriculum in [`content/units`](content/units): one file per section, plus a mini-project file per section and a `_route.json` capstone rubric. The build merges them into the site and the reading copies, and `content:check` validates them. The pytest lab that checks the Stage 07 mini-projects lives in [`labs/llm-foundations`](labs/llm-foundations).
 
 ## Work locally
 
