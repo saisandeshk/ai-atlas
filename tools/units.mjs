@@ -103,7 +103,9 @@ function rejectTodo(value, label, errors) {
   if (typeof value === 'string') {
     if (/\bTODO\b/.test(value)) errors.push(`${label} still says TODO`);
   } else if (Array.isArray(value)) {
-    value.forEach((item, index) => rejectTodo(item, `${label}[${index}]`, errors));
+    value.forEach((item, index) =>
+      rejectTodo(item, `${label}[${index}]`, errors),
+    );
   } else if (value && typeof value === 'object') {
     for (const [key, item] of Object.entries(value))
       rejectTodo(item, `${label}.${key}`, errors);
@@ -131,7 +133,9 @@ function checkMiniProject(mini, unitIds, miniLabel, errors) {
     mini.checks.forEach((check, checkIndex) => {
       const checkLabel = `${miniLabel}.checks[${checkIndex}]`;
       if (!allowedCheckKinds.has(check?.kind))
-        errors.push(`${checkLabel}.kind must be harness, external-tests or rubric`);
+        errors.push(
+          `${checkLabel}.kind must be harness, external-tests or rubric`,
+        );
       if (!nonEmptyString(check?.name))
         errors.push(`${checkLabel}.name is missing`);
       if (check?.url) checkHttps(check.url, `${checkLabel}.url`, errors);
@@ -142,7 +146,12 @@ function checkMiniProject(mini, unitIds, miniLabel, errors) {
 
 // strict: every section with units must also have its mini-project file.
 // Authors of one file validate without it; the build is strict.
-export function validateUnitFiles(curriculum, files, errors, { strict = false } = {}) {
+export function validateUnitFiles(
+  curriculum,
+  files,
+  errors,
+  { strict = false } = {},
+) {
   const routes = [
     ...curriculum.stages,
     ...curriculum.advancedTracks.filter((track) =>
@@ -156,7 +165,10 @@ export function validateUnitFiles(curriculum, files, errors, { strict = false } 
   const projectFiles = new Map(
     files
       .filter((file) => file.name.endsWith('.project'))
-      .map((file) => [`${file.route}/${file.name.replace(/\.project$/, '')}`, file]),
+      .map((file) => [
+        `${file.route}/${file.name.replace(/\.project$/, '')}`,
+        file,
+      ]),
   );
   for (const file of files) rejectTodo(file.data, file.relative, errors);
 
@@ -200,9 +212,7 @@ export function validateUnitFiles(curriculum, files, errors, { strict = false } 
     added.forEach((resource, index) =>
       checkResource(resource, `${label}: addedResources[${index}]`, errors),
     );
-    const pool = new Set([
-      ...section.resources.map((resource) => resource.id),
-    ]);
+    const pool = new Set(section.resources.map((resource) => resource.id));
     for (const resource of added) {
       if (pool.has(resource.id))
         errors.push(`${label}: resource ID ${resource.id} is already used`);
@@ -251,7 +261,9 @@ export function validateUnitFiles(curriculum, files, errors, { strict = false } 
           const scope = topicScope.get(topic);
           if (!scope) errors.push(`${unitLabel}: unknown topic ${topic}`);
           else if (scope !== 'required' && scope !== 'optional')
-            errors.push(`${unitLabel}: ${scope} topic ${topic} stays outside units`);
+            errors.push(
+              `${unitLabel}: ${scope} topic ${topic} stays outside units`,
+            );
           if (owner.has(topic))
             errors.push(
               `${unitLabel}: topic ${topic} is already in unit ${owner.get(topic)}`,
@@ -264,7 +276,11 @@ export function validateUnitFiles(curriculum, files, errors, { strict = false } 
       checkStrings(unit.focus, `${unitLabel}.focus`, 2, 4, errors);
       checkStrings(unit.traps, `${unitLabel}.traps`, 2, 3, errors);
 
-      if (!Array.isArray(unit.next) || unit.next.length < 1 || unit.next.length > 3) {
+      if (
+        !Array.isArray(unit.next) ||
+        unit.next.length < 1 ||
+        unit.next.length > 3
+      ) {
         errors.push(`${unitLabel}.next needs 1 to 3 links`);
       } else {
         unit.next.forEach((link, linkIndex) => {
@@ -330,7 +346,10 @@ export function validateUnitFiles(curriculum, files, errors, { strict = false } 
         });
       }
 
-      if (!allowedVerdicts.has(unit.fit?.verdict) || !nonEmptyString(unit.fit?.note))
+      if (
+        !allowedVerdicts.has(unit.fit?.verdict) ||
+        !nonEmptyString(unit.fit?.note)
+      )
         errors.push(`${unitLabel}.fit needs a verdict and a note`);
     }
 
@@ -345,14 +364,20 @@ export function validateUnitFiles(curriculum, files, errors, { strict = false } 
 
     const project = projectFiles.get(`${route.id}/${section.id}`);
     if (!project) {
-      if (strict) errors.push(`${label}: ${section.id}.project.json is missing`);
+      if (strict)
+        errors.push(`${label}: ${section.id}.project.json is missing`);
       continue;
     }
     if (!project.data.miniProject) {
       errors.push(`${project.relative}: miniProject is missing`);
       continue;
     }
-    checkMiniProject(project.data.miniProject, unitIds, `${project.relative}: miniProject`, errors);
+    checkMiniProject(
+      project.data.miniProject,
+      unitIds,
+      `${project.relative}: miniProject`,
+      errors,
+    );
   }
 
   for (const { ref, label } of pendingNext) {

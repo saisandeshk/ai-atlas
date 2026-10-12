@@ -134,7 +134,9 @@ function unitsMarkdown(section) {
   );
   const lines = ['### Study units', ''];
   section.units.forEach((unit, index) => {
-    const targets = unit.target.map((target) => targetLabels[target]).join(' + ');
+    const targets = unit.target
+      .map((target) => targetLabels[target])
+      .join(' + ');
     lines.push(
       `#### U${index + 1}. ${unit.title}`,
       '',
@@ -189,7 +191,9 @@ function unitsMarkdown(section) {
       '',
     );
   });
+  // Only a strict build guarantees the mini-project; skip it while drafting.
   const mini = section.miniProject;
+  if (!mini) return lines;
   lines.push(
     `### Mini-project: ${mini.title}`,
     '',
