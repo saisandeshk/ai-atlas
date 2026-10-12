@@ -1349,7 +1349,7 @@ A fixed bug returns unless a test pins it. A flaky test teaches the team to igno
 - Flakiness means uncontrolled state: randomness, clocks, threads, leftover files or test order. Parallel runs and randomized ordering expose order dependence.
 - Rerun plugins and quarantines mitigate; they do not fix. Isolate the source first, then control it, quarantine it with an owner, or delete the test.
 
-**Reproduce:** Write assert random.random() < 0.5 and run it 10 times: expect about half to fail (5 failed and 5 passed here, about 0.07 s per run on a 12th Gen Intel Core i9-12900K with Python 3.14.4 and pytest 9.1.1). Seed it with random.seed(1) (first draw 0.134) for 5 passes in 5 runs, then random.seed(0) (first draw 0.844) for 5 failures: seeding makes the outcome deterministic, not correct. Then mark a known failure xfail(strict=True), fix the code, and watch the suite fail on XPASS until you remove the mark.
+**Reproduce:** Write assert random.random() < 0.5 and run it 10 times: expect about half to fail (5 failed and 5 passed in the reference run, about 0.07 s per run on a 12th Gen Intel Core i9-12900K with Python 3.14.4 and pytest 9.1.1). Seed it with random.seed(1) (first draw 0.134) for 5 passes in 5 runs, then random.seed(0) (first draw 0.844) for 5 failures: seeding makes the outcome deterministic, not correct. Then mark a known failure xfail(strict=True), fix the code, and watch the suite fail on XPASS until you remove the mark.
 
 **Traps**
 
