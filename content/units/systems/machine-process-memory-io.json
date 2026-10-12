@@ -214,53 +214,96 @@
         "fork-exec-wait-scheduling-states-and-context-switches"
       ],
       "outcomes": [
-        "TODO"
+        "Trace fork, exec and wait while identifying kernel-owned state and preserved process identity.",
+        "Distinguish a privilege-mode transition from a scheduler context switch.",
+        "Implement child launch and status collection with an explicit exec-failure path.",
+        "Predict ready, running and blocked transitions under a stated scheduling model."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's shell-processes-environment unit and its exit-status and trap exercises. Here you trace the kernel process model, not shell syntax, and make the launcher own every child it creates.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/machine-process-memory-io/file-descriptors-signals",
+          "note": "Give the child deliberate I/O and termination ownership."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ostep-process-memory-persistence",
+          "title": "The process and its API",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-api.pdf",
+          "locator": "Chapter 4, Sections 4.1 to 4.5 (Processes, linked from the book contents); Chapter 5, Sections 5.1 to 5.4, including Figures 5.1 to 5.4",
+          "depth": "Read the redirection example for the fork/exec boundary; leave descriptor details to the next unit."
+        },
+        {
+          "resource": "ostep-process-memory-persistence",
+          "title": "Protected execution and scheduling",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-mechanisms.pdf",
+          "locator": "Chapter 6, Sections 6.1 to 6.3; Chapter 7, Sections 7.1 to 7.2 and 7.6 to 7.8 (CPU Scheduling, linked from the book contents)",
+          "depth": "Treat round robin as a model, not Linux's normal scheduler. A context switch can disturb cache/TLB locality; it does not necessarily flush every cache or every tagged TLB entry."
+        },
+        {
+          "resource": "algomaster-os-selected",
+          "title": "Linux process launch and switching",
+          "url": "https://algomaster.io/learn/operating-systems/fork-exec-wait-exit",
+          "locator": "What exec Replaces and What It Preserves; Encoded Wait Status; Handling an Interrupted Wait; Multithreaded fork Considerations; Failure Handling by Operation",
+          "depth": "Then use Context Switching, Mode Switches vs. Context Switches and Blocking, Preemption, and the State Model. Do not benchmark switch cost yet."
+        },
+        {
+          "resource": "mit-61810-process-vm-labs",
+          "title": "Xv6 utilities: the exec task",
+          "url": "https://pdos.csail.mit.edu/6.1810/2025/labs/util.html",
+          "locator": "exec: adding -exec cmd to find; hints on fork, exec and wait",
+          "depth": "Read and sketch the lifecycle only. RISC-V tools and QEMU are not installed here, so do not claim a make grade result. Leave full util-lab completion to a provisioned course environment."
         }
       ],
       "focus": [
-        "TODO"
+        "Fork creates a child with a different PID; successful exec replaces its address space while retaining its PID. Wait consumes an owned child's termination record.",
+        "System calls enter controlled kernel code. A call can return in the same task without any switch to another task; blocking or preemption can cause scheduling.",
+        "Ready is not running, and blocked is not merely low CPU usage. Linux's R status includes running and runnable tasks.",
+        "Response time and turnaround time answer different questions. A policy comparison needs arrivals, CPU bursts, I/O durations and switch assumptions."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a single-threaded Python launcher using os.fork, os.execl and os.waitpid. In the child, os.write its PID before exec; execute /bin/sh with arguments -c 'echo "after exec pid=$$"; exit 7'. The parent waits for that PID and decodes WIFEXITED/WEXITSTATUS. Repeat with /atlas-missing-executable, catching OSError in the child and calling os._exit(127). Run taskset -c 2 strace -f -e trace=process -- /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I launcher.py. Match the pre/post-exec PID; verify normal exit 7 and launch failure 127. These are program-selected codes, not a universal exec-error encoding. Keep the trace showing process creation, execve and wait4; Linux's fork wrapper may use clone.",
       "traps": [
-        "TODO"
+        "Expecting the parent to run first after fork, or treating a sleep as a synchronization guarantee.",
+        "Returning through normal Python cleanup after a failed child exec. Use os._exit for this post-fork failure path and collect the result in the parent.",
+        "Extending this single-threaded fork pattern to a multithreaded runtime. Copied locks can remain owned by threads that no longer exist in the child."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does successful exec return zero to the old program?",
+          "a": "No. It does not return. Only failure returns to the old image; the kernel keeps the process identity but installs a new program image."
+        },
+        {
+          "q": "What must happen after a blocked child's I/O completes before it executes again?",
+          "a": "It becomes runnable and the scheduler must select it. Completion does not imply immediate execution."
+        },
+        {
+          "q": "Is every system call a context switch?",
+          "a": "No. It changes privilege mode, but another task need not run. A blocked call can lead to a context switch."
+        },
+        {
+          "q": "Can the raw wait status be compared directly with exit code 7?",
+          "a": "No. First test normal exit with WIFEXITED and then decode WEXITSTATUS. Signaled termination has a different interpretation."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "OSTEP process-run.py: CPU/I/O state prediction",
+          "url": "https://github.com/remzi-arpacidusseau/ostep-homework/tree/master/cpu-intro",
+          "locator": "README Overview and process-run.py; use -s 1 and -s 2 with -l 5:50,5:100 -L 5",
+          "note": "Predict the full trace before adding -c -p. Compare SWITCH_ON_IO with SWITCH_ON_END and IO_RUN_LATER with IO_RUN_IMMEDIATE. The answer flag is the simulator's oracle, not a Linux scheduler test. Save one matching local launcher trace for the section evidence pack."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your launcher reaps both success and exec-failure children, and your two-seed simulator predictions distinguish blocked time from ready time and a mode switch from a task switch.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "OSTEP provides process mechanisms and scheduling assumptions, AlgoMaster provides launch edge cases, and the named simulator plus a local traced launcher meet implement depth without an unavailable xv6 toolchain."
       }
     },
     {
       "id": "file-descriptors-signals",
       "title": "File descriptors, pipes, signals and process lifecycle",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "implement"
       ],
@@ -269,47 +312,85 @@
         "signals-exit-status-zombies-orphans-and-lifecycle-ownership"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a parent-child pipe with deliberate redirection, closure and reaping on each path.",
+        "Predict shared open-file offsets and close-on-exec behavior across dup, fork and exec.",
+        "Diagnose a retained pipe writer or zombie from kernel state rather than from a timeout alone.",
+        "Distinguish signal notification, delivery, termination and status collection."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's shell-processes-environment unit, including signal exit conventions. This unit exposes descriptor references, pipe endpoint counts and child status records that make shell pipelines and process supervisors work.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/machine-process-memory-io/namespaces-cgroups-containers",
+          "note": "Carry lifecycle ownership into a PID namespace."
+        },
+        {
+          "unit": "systems/networking-rpc/sockets-framing",
+          "note": "Extend descriptor ownership and partial-I/O handling to byte-stream sockets."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-os-selected",
+          "title": "Descriptor entries versus open descriptions",
+          "url": "https://algomaster.io/learn/operating-systems/file-descriptors",
+          "locator": "The Three-Level Model through Descriptor Flags vs. File Status Flags; Observing Descriptors Through /proc; Demonstrating Shared and Independent Offsets"
+        },
+        {
+          "resource": "algomaster-os-selected",
+          "title": "Signals and child ownership",
+          "url": "https://algomaster.io/learn/operating-systems/signals",
+          "locator": "The Signal Lifecycle; Dispositions: Default, Ignore, or Catch; Why Handlers Must Be Tiny; Interrupted System Calls and EINTR; Signal Masks and Pending Signals; SIGCHLD: Notification, Not Reaping",
+          "depth": "Then read Zombies and Orphans: What Exactly Is a Zombie?, Reaping Without Blocking, What Is an Orphan? and Subreapers and Process Supervisors. Leave multithreaded signal coordination to concurrency."
+        },
+        {
+          "resource": "linux-proc-strace",
+          "title": "Wait status and child states",
+          "url": "https://man7.org/linux/man-pages/man2/wait.2.html",
+          "locator": "DESCRIPTION: wait() and waitpid(), status macros, waitid() and WNOWAIT; NOTES on zombies"
+        },
+        {
+          "resource": "ostep-process-memory-persistence",
+          "title": "Offsets shared through fork and dup",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf",
+          "locator": "Chapter 39, Sections 39.4 to 39.6, especially Shared File Table Entries: fork() And dup()"
         }
       ],
       "focus": [
-        "TODO"
+        "A descriptor entry holds its own close-on-exec flag; the open file description holds the shared offset and status flags. A repeated open creates independent open state.",
+        "After dup2, close unused pipe endpoints in both processes. EOF requires an empty pipe and no remaining write references; parent exit is not the definition of EOF.",
+        "Signals have dispositions and per-thread masks. SIGCHLD can coalesce; drain waitable children rather than counting notifications.",
+        "A zombie has already released its user memory and descriptors. An orphan changes parent; Linux can adopt it through a subreaper rather than the host PID 1."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a Python parent with two os.pipe pairs. Fork one child, dup2 its request-read end onto fd 0 and response-write end onto fd 1, close all original endpoints and execl /bin/cat. In the parent close the child-only ends, write b'abc\n' with a partial-write loop, close the request writer, read the response until EOF and waitpid the child. Assert exactly b'abc\n' and normal exit 0. Run strace -f -e trace=process,pipe,pipe2,dup2,read,write,close -- /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I pipes.py. In a separate empty pipe, set the reader nonblocking: retaining the writer gives BlockingIOError, closing the last writer gives b''. Finally fork a child that sets SIGTERM to SIG_DFL, announces readiness through a pipe and waits; signal it only after readiness. Use waitid with WEXITED|WNOWAIT to observe /proc/<pid>/status state Z, then waitpid and verify WIFSIGNALED with WTERMSIG==SIGTERM. Use no sleep as an ordering guarantee.",
       "traps": [
-        "TODO"
+        "Keeping a spare write descriptor open and waiting for EOF forever. Inheritance and duplication both retain references.",
+        "Assuming Python's newly created descriptors survive exec. They are non-inheritable by default; deliberate dup2 onto standard I/O is inheritable unless requested otherwise.",
+        "Calling arbitrary logging or allocation from a native signal handler, or assuming shell status 128+signal is the raw wait status."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A child reads through an inherited regular-file descriptor. Does the parent's offset advance?",
+          "a": "Yes, if both entries still refer to the same inherited open file description. Separate open calls would have independent offsets."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "The producer exited, but an unrelated child inherited its pipe writer. Will an empty pipe return EOF?",
+          "a": "No. A write reference still exists. A blocking reader waits and a nonblocking reader reports EAGAIN until the last writer closes."
+        },
+        {
+          "q": "Why does one SIGCHLD handler invocation not imply one terminated child?",
+          "a": "Standard signals can coalesce and SIGCHLD can report other child state changes. Reap in a loop with waitpid(-1, ..., WNOHANG), handling the documented return cases."
+        },
+        {
+          "q": "Can SIGKILL remove a zombie's retained status record?",
+          "a": "No. It is already terminated. Its parent or adopter must collect the record; signal delivery is not reaping."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a supervised pipe worker with a descriptor ownership diagram, deliberate leaked-writer regression test, signal termination, zombie observation, and guaranteed closure and reaping on success and failure.",
+      "stopWhen": "The pipe round trip passes, your nonblocking leak test distinguishes EAGAIN from EOF, and your signal test observes then reaps the zombie with a correctly decoded wait status.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "OSTEP and the selected AlgoMaster descriptor, signal and zombie lessons explain owned kernel state; wait(2) supplies the precise observation contract and the mini-project supplies implementation practice."
       }
     },
     {
