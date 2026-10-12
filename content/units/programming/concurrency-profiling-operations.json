@@ -20,6 +20,16 @@
       "access": "Free",
       "use": "Read Chapter 21, The Pitfalls of Queries per Second, Client-Side Throttling, Utilization Signals, Handling Overload Errors and Conclusions. Read Chapter 12, Triage, Examine, Diagnose, Test and Treat, and Making Troubleshooting Easier for a service runbook. Skip datacenter load-balancing implementation details.",
       "url": "https://sre.google/sre-book/handling-overload/"
+    },
+    {
+      "id": "kubernetes-health-concepts",
+      "role": "reference",
+      "priority": "required",
+      "name": "Liveness, Readiness, and Startup Probes",
+      "provider": "Kubernetes",
+      "access": "Free",
+      "use": "Read Liveness probe, Readiness probe and Startup probe for the different health decisions and failure actions. Apply the contracts to a local service; do not install Kubernetes or configure a cluster.",
+      "url": "https://kubernetes.io/docs/concepts/workloads/pods/probes/"
     }
   ],
   "units": [
@@ -461,7 +471,7 @@
     {
       "id": "logs-metrics-traces",
       "title": "Structured logs, metrics and traces",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -471,53 +481,81 @@
         "tracing"
       ],
       "outcomes": [
-        "TODO"
+        "Add structured event logs, low-cardinality counters and latency histograms to a bounded service.",
+        "Preserve trace context through async workers and link request logs to the relevant span.",
+        "Locate a seeded dependency failure using telemetry while excluding credentials and request payloads."
       ],
-      "why": "TODO",
+      "why": "A profile explains where code spends resources; telemetry explains which requests and failures are affected. Correlation should make a fault diagnosable without turning every request ID into a metric series.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/health-containers-runbooks",
+          "note": "Turn the signals into health decisions and recovery instructions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "opentelemetry-python",
+          "title": "Instrument one request, not a whole platform",
+          "url": "https://opentelemetry.io/docs/languages/python/instrumentation/",
+          "locator": "Setup; Traces: Creating spans, Creating nested spans, Get the current span, Set span status, Record exceptions in spans, Change the default propagation format; Metrics: Creating and using synchronous instruments; Logs; Semantic convention stability",
+          "depth": "Use local or in-memory exporters and pin the SDK version. The Logs API/SDK is under development; structured Python logging plus explicit trace/span fields is sufficient. Do not build a Collector deployment."
+        },
+        {
+          "resource": "opentelemetry-python",
+          "title": "Metric attribute sets have a budget",
+          "url": "https://opentelemetry.io/docs/specs/otel/metrics/sdk/#cardinality-limits",
+          "locator": "Cardinality limits: Configuration, Overflow attribute, Synchronous instrument cardinality limits and Asynchronous instrument cardinality limits",
+          "depth": "Understand limits and overflow, not SDK internals. Keep the application's label space bounded even when an SDK limit exists."
+        },
+        {
+          "resource": "opentelemetry-python",
+          "title": "Minimize sensitive telemetry at the source",
+          "url": "https://opentelemetry.io/docs/security/handling-sensitive-data/",
+          "locator": "Your responsibility; Data minimization; Protecting sensitive data; Risk and limitations of hashing for anonymization"
         }
       ],
       "focus": [
-        "TODO"
+        "Log event name, request ID, trace ID, span ID, outcome class and elapsed time as fields. Allowlist fields before serialization; exception messages and URLs can contain secrets too.",
+        "Use counters for completed, failed, rejected and retried work; a histogram for latency; and a gauge for current queue depth. Route templates and bounded error classes are labels; raw paths, user IDs and request IDs are not.",
+        "Create child spans while the intended parent context is active. New asyncio tasks copy current context at creation; a long-lived queue worker needs the producer's context carried with each item rather than assumed ambient context.",
+        "Trace IDs join per-request evidence but do not describe aggregate health. Sampling may omit a request's trace; keep useful error logs and metrics even when no exported trace is available."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Instrument a request span with a dependency child span created in an owned async task. Capture spans and structured logs locally, and record a request counter and duration histogram labelled only by route template and outcome. Run 100 distinct request IDs with one seeded dependency failure. Assert child parent IDs and trace IDs agree, logs carry the active span identity, and each metric has only the two expected attribute sets: ok and error. Pass a dummy authorization secret and assert it appears nowhere in exported logs, spans or metrics. Mark the dependency span ERROR and locate that request from the signals, without new print statements.",
       "traps": [
-        "TODO"
+        "Putting trace_id or request_id on every metric. Correlation then creates unbounded attribute sets instead of a useful aggregate.",
+        "Assuming the context of a task created at startup follows every item it later dequeues. Propagate the item's context explicitly.",
+        "Treating hashed user IDs as safe anonymization or recording full exception payloads before redaction. Predictable hashes can be reversed by enumeration."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can two bounded labels still create many metric series?",
+          "a": "Distinct combinations multiply. Budget the full attribute-set space, not each label in isolation."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does record_exception automatically express your handled failure policy?",
+          "a": "No. It records an exception event. Set span status deliberately when a handled failure makes the operation unsuccessful."
+        },
+        {
+          "q": "Which signal reveals queue pressure without looking up a particular request?",
+          "a": "A queue-depth gauge together with admission rejection, retry and latency metrics. Logs and traces explain individual cases."
+        },
+        {
+          "q": "How should a queue worker recover a producer's trace context?",
+          "a": "Carry the context with the item and attach it while processing, detaching in finally. Task-creation context alone is not per-item propagation."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: structured request logs, bounded-label metrics, per-item trace propagation, secret exclusion and diagnosis of a seeded pipeline fault.",
+      "stopWhen": "You can find the seeded failure by request and trace identity, verify parentage and the bounded metric attribute sets, and prove the dummy secret is absent from every exported signal.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept OpenTelemetry's instrumentation, security and metric-spec pages within the existing resource family. Local exporters and mini-project fault diagnosis reach implement depth without an observability platform."
       }
     },
     {
       "id": "health-containers-runbooks",
       "title": "Health checks, containers, supervision and runbooks",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -527,47 +565,89 @@
         "runbooks"
       ],
       "outcomes": [
-        "TODO"
+        "Separate readiness, liveness and startup checks so a dependency outage does not cause a restart storm.",
+        "Package a non-root service with pinned inputs, validated runtime configuration, explicit resource limits and a tested termination path.",
+        "Write and exercise a runbook for latency, memory growth, worker death, invalid configuration and dependency recovery."
       ],
-      "why": "TODO",
+      "why": "A running process is not necessarily ready to serve, and restarting it is not always a repair. Health and supervision need distinct contracts backed by an operator's recovery checks.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/profiling-benchmarking",
+          "note": "Re-measure the service under its actual container limits after a recovery or optimization."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "kubernetes-health-concepts",
+          "title": "Three health questions with different actions",
+          "url": "https://kubernetes.io/docs/concepts/workloads/pods/probes/",
+          "locator": "Liveness probe; Readiness probe; Startup probe",
+          "depth": "Read only the contracts and failure actions. Implement local endpoints; cluster orchestration stays outside this section."
+        },
+        {
+          "resource": "docker-guides",
+          "title": "Containerize a Python service",
+          "url": "https://docs.docker.com/guides/python/containerize/",
+          "locator": "Containerize a Python application: Create the Docker assets, Dockerfile and .dockerignore examples; Run the application",
+          "depth": "Stop before Use containers for Python development. Adapt only the packaging to your service. The sample uses Python 3.12 and an authenticated DHI registry; use an official Python 3.14 image pinned by digest instead, with explicit USER and exec-form CMD as below. No registry login or database is needed."
+        },
+        {
+          "resource": "docker-guides",
+          "title": "Reproducible inputs and a non-root entrypoint",
+          "url": "https://docs.docker.com/build/building/best-practices/",
+          "locator": "Pin base image versions; Exclude with .dockerignore; Dockerfile instructions: CMD, ENV, ENTRYPOINT and USER"
+        },
+        {
+          "resource": "docker-guides",
+          "title": "Resource limits and supervision",
+          "url": "https://docs.docker.com/engine/containers/resource_constraints/",
+          "locator": "Memory: Limit a container's access to memory, --memory and --memory-swap; CPU: --cpus; then Start containers automatically, Use a restart policy and Restart policy details",
+          "depth": "Use https://docs.docker.com/engine/containers/start-containers-automatically/ for the restart-policy reading. Do not disable the OOM killer or configure privileged scheduling."
+        },
+        {
+          "resource": "google-sre-operations",
+          "title": "A runbook tests hypotheses and verifies recovery",
+          "url": "https://sre.google/sre-book/effective-troubleshooting/",
+          "locator": "Triage; Examine; Diagnose; Test and Treat; Making Troubleshooting Easier",
+          "depth": "Skip Case Study and Negative Results Are Magic. Use the named method sections to write commands and expected observations for your small service, not an organization-wide incident process."
         }
       ],
       "focus": [
-        "TODO"
+        "Readiness controls admission; liveness asks whether restarting can restore progress. Startup checks protect slow initialization. A required dependency may make readiness fail while the process remains live; do not wire every dependency failure to liveness.",
+        "Validate typed runtime configuration before becoming ready. Keep secrets outside source, build context and image layers, and redact diagnostics. Pin base-image digests and dependencies, with an explicit update policy.",
+        "Use non-root USER and exec-form CMD so the application receives termination signals. Set CPU and memory limits at runtime; CPU quota can throttle, and memory exhaustion can kill the process before it cleans up.",
+        "A plain Docker restart policy reacts to process exit, not an unhealthy flag. Choose one supervisor, cap failure restarts where appropriate and record exit/OOM evidence. A runbook names symptom, safe test, expected observation, mitigation, rollback and recovery gate."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Containerize a small health-enabled version of the pipeline on CPython 3.14 with a pinned base digest, non-root USER and exec-form CMD. Run with --cpus=1 --memory=128m --memory-swap=128m and inspect both configured limits and cgroup values. Validate startup configuration before readiness. Inject a required-dependency outage: readiness fails, liveness stays healthy and recovery restores readiness without a restart. Send SIGTERM with accepted work in flight: readiness drops, new work is rejected and recorded work drains before the stop deadline. In a separate run, force a nonzero process exit and verify a bounded on-failure policy restarts it. Capture exit status and restart count, then follow your runbook to confirm recovery.",
       "traps": [
-        "TODO"
+        "Using dependency reachability as liveness. Restarting every replica during a shared outage adds load and loses useful local state.",
+        "Deleting a secret in a later Dockerfile layer. The earlier layer still contains it; prevent it from entering the image at all.",
+        "Assuming Docker HEALTHCHECK removes traffic or on-failure repairs an unhealthy but running process. Those actions need a separate consumer of the health signal."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What does a failed readiness probe do in Kubernetes?",
+          "a": "It marks the Pod unready for Service traffic. It does not itself restart the container. Liveness failures trigger restarts after configured tolerances."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why distinguish a startup check from liveness?",
+          "a": "A startup probe gates readiness and liveness probing until initialization succeeds, avoiding premature restart decisions."
+        },
+        {
+          "q": "Does --cpus=1 reserve a dedicated physical core?",
+          "a": "No. It limits available CPU time through quota. Placement and contention are separate constraints."
+        },
+        {
+          "q": "Why check OOMKilled as well as an exit code such as 137?",
+          "a": "An exit code alone does not identify the cause of SIGKILL. Runtime OOM evidence and memory metrics help distinguish limit exhaustion from an external kill."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: health contracts, non-root bounded container execution, configuration validation, SIGTERM drain, supervised failure recovery and an exercised operational runbook.",
+      "stopWhen": "The container checks demonstrate non-root identity, enforced limits, dependency recovery without restarts, graceful SIGTERM handling and bounded crash recovery; another reader can execute the runbook and confirm its recovery gate.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for readiness/liveness/startup contracts and actionable runbooks. Kubernetes' concepts page and Google SRE's troubleshooting method fill those gaps beside the existing Docker packaging and supervision references."
       }
     }
   ]
