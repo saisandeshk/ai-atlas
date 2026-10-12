@@ -1,14 +1,10 @@
-"""Bug: causal attention ignores document ownership and crosses boundaries."""
+"""Supervise EOS-to-next-document targets instead of masking document crossings."""
 
 from reference import *
 import numpy as np
 
 
-def document_attention_mask(document_ids):
-    """Bug: allow every earlier key, including keys from other documents."""
-    owners = np.asarray(document_ids)
-    if owners.ndim not in (1, 2):
-        raise ValueError("document_ids must be a vector or a batch of vectors")
-    length = owners.shape[-1]
-    causal = np.arange(length)[:, None] >= np.arange(length)[None, :]
-    return np.broadcast_to(causal, owners.shape[:-1] + causal.shape).copy()
+def pack_documents(docs, context_length, eos_id):
+    from reference.data import pack_documents as correct
+    inputs, targets, loss_mask = correct(docs, context_length, eos_id)
+    return inputs, targets, np.ones_like(loss_mask)

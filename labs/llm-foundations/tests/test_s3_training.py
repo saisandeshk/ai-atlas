@@ -1,7 +1,5 @@
 """Sampling boundaries, learnable next-token prediction, and exact resume."""
 import math
-from pathlib import Path
-
 import numpy as np
 import pytest
 import torch
@@ -53,8 +51,7 @@ def test_sampling_matches_brute_force_random_cases(lab, batched):
 def test_sampling_greedy_and_exact_nucleus_boundaries(lab, temperature, k, p):
     """Include exactly-reaching and crossing tokens; k>=V and p=1 keep all."""
     logits = torch.tensor([math.log(4), math.log(2), math.log(1), math.log(1/2)], dtype=torch.float64)
-    # Use exact binary masses .5,.25,.125,.0625 normalized via softmax;
-    # the boundary below is obtained from the same softmax to avoid decimal rounding.
+    # Obtain the boundary from the same softmax to avoid decimal rounding.
     if p == .75:
         p = logits.softmax(-1)[:2].sum().item()
     expected = brute_probs(logits, temperature, k, p)

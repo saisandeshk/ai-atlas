@@ -15,15 +15,6 @@ from torch.utils.flop_counter import FlopCounterMode
 from adapters import LabConfig
 
 
-@pytest.fixture(scope="module", autouse=True)
-def single_threaded_torch():
-    """Avoid thread-pool overhead for these tiny CPU-only accounting models."""
-    previous = torch.get_num_threads()
-    torch.set_num_threads(1)
-    yield
-    torch.set_num_threads(previous)
-
-
 class AccountingBlock(nn.Module):
     """A test-owned block with explicit, full-quadratic attention matmuls."""
 
@@ -51,9 +42,21 @@ class AccountingBlock(nn.Module):
         k = self.k(normalized).view(batch, length, c.n_kv_heads, d // c.n_heads)
         v = self.v(normalized).view(batch, length, c.n_kv_heads, d // c.n_heads)
         q = q.transpose(1, 2)
-        k = k.transpose(1, 2).repeat_interleave(c.n_heads // c.n_kv_heads, dim=1)
+        k = k.transpose(1, 2)
+        # RoPE and causal masking add no matmul FLOPs, but keep this an actual
+        # shared-contract decoder rather than a parameter-only mock module.
+        angles = torch.arange(length)[:, None] * c.rope_theta ** (
+            -torch.arange(0, d // c.n_heads, 2, dtype=x.dtype) / (d // c.n_heads))
+        def rotate(tensor):
+            even, odd = tensor[..., ::2], tensor[..., 1::2]
+            return torch.stack((even*angles.cos()-odd*angles.sin(),
+                                even*angles.sin()+odd*angles.cos()), -1).flatten(-2)
+        q, k = rotate(q), rotate(k)
+        k = k.repeat_interleave(c.n_heads // c.n_kv_heads, dim=1)
         v = v.transpose(1, 2).repeat_interleave(c.n_heads // c.n_kv_heads, dim=1)
-        probabilities = (q @ k.transpose(-2, -1) / math.sqrt(d // c.n_heads)).softmax(-1)
+        scores = q @ k.transpose(-2, -1) / math.sqrt(d // c.n_heads)
+        causal = torch.arange(length)[:, None] >= torch.arange(length)[None, :]
+        probabilities = scores.masked_fill(~causal, float("-inf")).softmax(-1)
         attended = (probabilities @ v).transpose(1, 2).reshape(batch, length, d)
         x = x + self.o(attended)
         normalized = x * torch.rsqrt(x.square().mean(-1, keepdim=True) + 1e-5)

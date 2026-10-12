@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-def pack_documents(documents, context_length, eos_id):
+def pack_documents(docs, context_length, eos_id):
     """Return (inputs, targets, loss_mask), each [windows, context_length].
 
     Append one EOS to EVERY document (including empty documents). EOS belongs
@@ -26,7 +26,7 @@ def pack_documents(documents, context_length, eos_id):
     if context_length < 1:
         raise ValueError("context_length must be positive")
     tokens, owners = [], []
-    for index, document in enumerate(documents):
+    for index, document in enumerate(docs):
         chunk = list(document) + [eos_id]
         tokens.extend(chunk)
         owners.extend([index] * len(chunk))
@@ -39,15 +39,15 @@ def pack_documents(documents, context_length, eos_id):
     return stream[positions], stream[positions + 1], loss_mask
 
 
-def document_attention_mask(document_ids):
-    """Return a boolean allowed-attention mask for 1D or batched 2D owners.
+def document_attention_mask(doc_ids):
+    """Return a boolean [T,T] allowed-attention mask for one 1D ID array.
 
     The final two axes are (query, key). A query may attend to itself and
     earlier tokens ONLY when both tokens have the same document owner.
     """
-    owners = np.asarray(document_ids)
-    if owners.ndim not in (1, 2):
-        raise ValueError("document_ids must be a vector or a batch of vectors")
+    owners = np.asarray(doc_ids)
+    if owners.ndim != 1:
+        raise ValueError("doc_ids must be a vector")
     length = owners.shape[-1]
     causal = np.arange(length)[:, None] >= np.arange(length)[None, :]
     return (owners[..., :, None] == owners[..., None, :]) & causal
@@ -64,7 +64,7 @@ def _word_ngrams(text, n, short_document=False):
     return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
 
 
-def exact_duplicates(documents):
+def exact_duplicates(docs):
     """Return sorted indices of documents repeating an earlier document.
 
     Equivalence is NFC normalization plus whitespace collapse/trim; case is
@@ -72,7 +72,7 @@ def exact_duplicates(documents):
     """
     seen = set()
     duplicates = []
-    for index, document in enumerate(documents):
+    for index, document in enumerate(docs):
         normalized = _normalize(document)
         if normalized in seen:
             duplicates.append(index)
@@ -80,7 +80,7 @@ def exact_duplicates(documents):
     return duplicates
 
 
-def near_duplicate_pairs(documents, n=5, threshold=0.8):
+def near_duplicate_pairs(docs, n=5, threshold=0.8):
     """Return (i, j), i < j, whose word-ngram-set Jaccard >= threshold.
 
     Normalize NFC and whitespace, preserving case. A document shorter than
@@ -91,7 +91,7 @@ def near_duplicate_pairs(documents, n=5, threshold=0.8):
         raise ValueError("n must be positive")
     if not 0 <= threshold <= 1:
         raise ValueError("threshold must be between zero and one")
-    shingles = [_word_ngrams(text, n, short_document=True) for text in documents]
+    shingles = [_word_ngrams(text, n, short_document=True) for text in docs]
     pairs = []
     for i, left in enumerate(shingles):
         for j in range(i + 1, len(shingles)):
@@ -102,7 +102,7 @@ def near_duplicate_pairs(documents, n=5, threshold=0.8):
     return pairs
 
 
-def contamination_report(training_documents, evaluation_documents, n=13):
+def contamination_report(train_docs, eval_docs, n=13):
     """Return list[float] contamination fractions, one per evaluation document.
 
     Each fraction is the proportion of evaluation word-ngram OCCURRENCES that
@@ -115,10 +115,10 @@ def contamination_report(training_documents, evaluation_documents, n=13):
     if n < 1:
         raise ValueError("n must be positive")
     training = set()
-    for document in training_documents:
+    for document in train_docs:
         training.update(_word_ngrams(document, n))
     fractions = []
-    for document in evaluation_documents:
+    for document in eval_docs:
         words = _normalize(document).split()
         evaluation = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]
         matched = sum(ngram in training for ngram in evaluation)

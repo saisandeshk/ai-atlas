@@ -1,25 +1,17 @@
-"""Bug: omit the final evaluation ngram (including the sole 13-word gram)."""
-
+"""Measure contamination with n-1-word shingles instead of n-word shingles."""
 from reference import *
-import unicodedata
+from reference.data import _normalize
 
 
-def contamination_report(training_documents, evaluation_documents, n=13):
-    """Bug: evaluation windows stop one position too early."""
-    if n < 1:
-        raise ValueError("n must be positive")
-
-    def words(text):
-        return unicodedata.normalize("NFC", text).split()
-
+def contamination_report(train_docs, eval_docs, n=13):
+    width = n - 1
     training = set()
-    for document in training_documents:
-        tokens = words(document)
-        training.update(tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1))
-    fractions = []
-    for document in evaluation_documents:
-        tokens = words(document)
-        evaluation = [tuple(tokens[i : i + n]) for i in range(len(tokens) - n)]
-        matched = sum(ngram in training for ngram in evaluation)
-        fractions.append(matched / len(evaluation) if evaluation else 0.0)
-    return fractions
+    for doc in train_docs:
+        words = _normalize(doc).split()
+        training.update(tuple(words[i:i+width]) for i in range(len(words)-width+1))
+    result = []
+    for doc in eval_docs:
+        words = _normalize(doc).split()
+        grams = [tuple(words[i:i+width]) for i in range(len(words)-width+1)]
+        result.append(sum(gram in training for gram in grams) / len(grams) if grams else 0.)
+    return result
