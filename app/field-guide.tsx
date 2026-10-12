@@ -40,7 +40,6 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { GlobalSearch, type SearchEntry } from './global-search';
-import { PalettePreview } from './palette-preview';
 import { ThemeToggle } from './theme-toggle';
 
 type Scope = 'required' | 'optional' | 'depth' | 'later';
@@ -2057,7 +2056,6 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
           </a>
         </span>
       </footer>
-      <PalettePreview />
     </main>
   );
 }
