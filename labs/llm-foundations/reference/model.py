@@ -75,12 +75,13 @@ class Decoder(nn.Module):
         if config.tie_embeddings:
             self.head.weight = self.embedding.weight
 
-    def forward(self, tokens, cache=None, start_pos=0):
+    def forward(self, tokens, cache=None, start_pos=0, *, rope_start=None):
         if start_pos + tokens.shape[1] > self.config.context_length:
             raise ValueError("prefix exceeds context_length")
         if cache is not None and cache[0][0].shape[-2] != start_pos:
             raise ValueError("start_pos must equal cache length")
-        positions = torch.arange(start_pos, start_pos + tokens.shape[1], device=tokens.device)
+        position_start = start_pos if rope_start is None else rope_start
+        positions = torch.arange(position_start, position_start + tokens.shape[1], device=tokens.device)
         x = self.embedding(tokens)
         updated = []
         for i, block in enumerate(self.blocks):
