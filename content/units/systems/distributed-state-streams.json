@@ -251,47 +251,67 @@
         "rebalancing-ownership-epochs-and-stale-writers"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how range and hash partition keys trade scan locality against load distribution.",
+        "Derive key movement and request skew for an explicit partition change.",
+        "Trace a stale-owner write and explain what resource-enforced epochs do and do not prevent."
       ],
-      "why": "TODO",
+      "why": "Moving bytes does not transfer exclusive ownership by itself. Partition placement, request routing and stale-writer rejection must agree before a rebalanced shard can safely accept effects.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/distributed-state-streams/logs-delivery-semantics",
+          "note": "Apply ownership epochs to consumers that resume a partition after failover."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: partition placement and routing",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Sharding by Key Range through Operations: Automatic Versus Manual Rebalancing, pp. 256 to 265; Request Routing, pp. 265 to 266"
+        },
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: enforcing ownership at the resource",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 9, Distributed Locks and Leases, including Fencing off zombies and delayed requests and Fencing with multiple replicas, pp. 373 to 376"
         }
       ],
       "focus": [
-        "TODO"
+        "A partition key determines colocation. Range partitioning supports nearby-key scans but can concentrate timestamp writes; hashing spreads distinct keys, not repeated requests for one key.",
+        "Separate keys-to-shards from shards-to-nodes. Fixed virtual shards avoid remapping every key when the node count changes.",
+        "Routing metadata can be stale during transfer. Record an ownership epoch and decide when the new owner and receiving resource have installed it.",
+        "A resource that remembers the greatest accepted fencing token rejects lower tokens only after learning the newer one. Persist that fence with the protected mutation; equal-token retries still need operation deduplication."
       ],
-      "reproduce": "TODO",
+      "reproduce": "By hand or in Python 3.14, use integer keys 0 through 11 and the toy hash h(k)=k. Changing node assignment from k%3 to k%4 moves nine keys. Instead keep 12 fixed shards, initially owned by shard%3, and move only shards 3,7,11 to new node 3: three keys move and each node owns three keys. For a separate workload of 90 requests for key 0 and one for each key 1 through 11, k%3 gives request counts [93,4,4]. Then trace writes at one shared resource with initial maximum token 7: A writes (token 7,x=old) and receives OK; B installs token 8 and writes x=new; delayed A writes (7,x=old) and is rejected. Remove the token check and A overwrites new. Also test A arriving before the resource sees token 8: a greatest-seen-token check still accepts 7. Check these counts and orders directly, not as a benchmark; issuance of token 8 elsewhere is not instantaneous revocation at this resource.",
       "traps": [
-        "TODO"
+        "Using Python's process-randomized string hash as a persistent partition function.",
+        "Assuming balanced key counts imply balanced request load or that hashing can split a single hot key.",
+        "Checking a lease only at the sender. Pauses and delayed requests can outlive that check; fencing is resource enforcement, not a clock trick or an exactly-once mechanism."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does adding nodes not fix one overloaded partition key?",
+          "a": "If all requests for that key remain on one shard, its load stays concentrated. Splitting the logical key requires application aggregation or another workload-specific design."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What is stable when a fixed shard is moved to a new node?",
+          "a": "The key-to-shard mapping. Shard-to-node placement and routing metadata change."
+        },
+        {
+          "q": "Has issuing token 8 revoked token 7 at every resource?",
+          "a": "No. A greatest-seen-token resource must first install or observe 8, and all protected resources must enforce the fence."
+        },
+        {
+          "q": "Can token 8 be used for two duplicate increments?",
+          "a": "Yes, if equal tokens are accepted. Fencing blocks stale owners, not duplicate operations from the current owner. Deduplication needs an operation identity and atomic effect boundary."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: partition movement and hot-key counts, ownership transfer, persistent resource-side fencing, and delayed stale writes before and after the new epoch is installed.",
+      "stopWhen": "You reproduce both movement counts and the skew, then explain why the stale write is rejected only after the receiving resource installs the new fence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA's sharding and fencing sections cover placement, transfer and stale-owner limits at explain depth; the mini-project supplies ownership-change tests."
       }
     },
     {
@@ -308,47 +328,68 @@
         "idempotent-consumers-and-transactional-effect-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Trace append, acknowledgement, effect and offset boundaries under consumer failure.",
+        "Implement a replaying consumer with an atomic database effect-and-offset boundary.",
+        "State an effectively-once effect contract without extending it to external systems."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's http-apis-idempotency and transactions-isolation units. Here the mechanism is a retained log and a consumer checkpoint: deduplicating a request is not enough if its effect and progress can disagree after a crash.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/distributed-state-streams/stream-lag-watermarks-state",
+          "note": "Add retention, poison records and state reconstruction to replay."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: retained logs and consumer recovery",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log-Based Message Brokers through Consumer offsets, pp. 495 to 498; Fault Tolerance, including Atomic commit revisited and Idempotence, pp. 526 to 528"
+        },
+        {
+          "resource": "kafka-design",
+          "title": "Kafka 4.3 design: delivery and transaction scope",
+          "url": "https://kafka.apache.org/43/design/design/#message-delivery-semantics",
+          "locator": "Persistence; The Consumer > Consumer Position; Message Delivery Semantics; Using Transactions",
+          "depth": "Use Persistence for the append-to-page-cache mechanism, not its hardware-specific performance numbers. Use classic consumer groups for this model, not share groups. Do not install Kafka for this unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Define the checkpoint as the next offset to process, scoped by consumer group and partition. Reading does not delete a retained log record; replay is limited by retention.",
+        "Offset-before-effect can skip work after a crash; effect-before-offset can repeat it. A transport acknowledgement, append acknowledgement and consumer progress commit are different boundaries.",
+        "For a single in-order consumer, store effect and next offset atomically in the same database. Concurrent owners require fencing or transactional serialization as well.",
+        "Kafka transactions can couple Kafka output records with input offsets. External email, payments or another database do not join that transaction merely because the producer is idempotent."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a small program with Python 3.14's sqlite3 module, not the absent sqlite3 CLI or Kafka. Model one retained input partition as the immutable record (offset 0, delta +5), with database tables effect(total=0) and progress(pos=0), where pos is the next offset. Use a fresh on-disk database per case, journal_mode=DELETE and synchronous=FULL. In a child process, inject os._exit(9) after committing pos=1 but before the effect; reopening gives (total,pos)=(0,1), so restart skips the effect. Inject exit after committing the increment but before pos: reopening gives (5,0), and normal replay gives (10,1). Finally put both updates in BEGIN IMMEDIATE/COMMIT: exit before COMMIT reopens at (0,0), exit after COMMIT at (5,1), and restart from the stored pos ends at (5,1) in both cases. Close and reopen connections, replay only offset >= pos, and assert all four outcomes. These are process-exit tests with CPython 3.14.4 and SQLite 3.46.1, not a power-loss durability claim. Extend the model to two independent groups with separate progress; neither group advances the other's checkpoint.",
       "traps": [
-        "TODO"
+        "Recording deduplication metadata separately from the protected effect. A crash between them can lose or duplicate work.",
+        "Committing past a failed record when later records finish first. A single offset represents a contiguous processed prefix, not an arbitrary set of completed tasks.",
+        "Equating append into the page cache with stable storage, or a process-exit test with proof against power failure."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does effect-before-offset produce a duplicate after a crash?",
+          "a": "The durable effect survives, but the old checkpoint instructs the replacement consumer to repeat the same record."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Is setting a value always an idempotent substitute for incrementing?",
+          "a": "Not generally. Replaying an older set can overwrite newer state. Ordering, version checks or transactional deduplication must protect the intended effect."
+        },
+        {
+          "q": "What identifies one consumed record in a partitioned log?",
+          "a": "The log or topic identity, partition and offset. Offset alone is not globally unique, and effect deduplication must also have the right consumer/application scope."
+        },
+        {
+          "q": "Does atomic database effect-and-offset commit make an email exactly once?",
+          "a": "No. The email service is outside that transaction. It needs a cooperating idempotency boundary or another explicit delivery contract."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a checksummed retained log, independent group/partition checkpoints, replay after each crash boundary, and atomic effect-plus-progress or deduplication metadata. Keep external effects outside the claimed transaction scope.",
+      "stopWhen": "Your child-process tests reproduce the skip and duplicate, both transactional cases recover to total 5, and your contract names the effect store, offset scope and excluded external effects.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA and the pool's Kafka design reference cover retained logs and current transaction boundaries; the mini-project supplies durable-log practice while SQLite makes the effect boundary runnable locally."
       }
     },
     {
