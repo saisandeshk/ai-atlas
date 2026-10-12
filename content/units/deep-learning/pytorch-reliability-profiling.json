@@ -344,7 +344,6 @@
       "traps": [
         "Reading allow_tf32 after setting fp32_precision, or the reverse. Current PyTorch raises a mixing error, so pick one API and stay on it.",
         "Clipping .grad between backward and scaler.step without unscale_ first. The threshold then applies to scaled values and silently clips the wrong updates.",
-        "Running backward inside the autocast context. The recipe puts backward outside; the forward dtypes already determine the backward dtypes.",
         "Copying CUDA fp16 settings to CPU. The recipe requires a CUDA GPU; on CPU use bf16 autocast and do not expect the fp16 asserts to transfer."
       ],
       "selfTest": [
@@ -541,6 +540,271 @@
       "fit": {
         "verdict": "kept",
         "note": "The checkpoint reference covers semantics, variant differences and RNG behavior, with the mini-project supplying practice."
+      }
+    },
+    {
+      "id": "complete-resume-state",
+      "title": "Complete checkpoints, atomic writes and reproducibility boundaries",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "complete-checkpoint-and-resume-state",
+        "atomic-writes-and-reproducibility-boundaries"
+      ],
+      "outcomes": [
+        "Save and restore every state a resume needs: model, optimizer, scheduler, scaler, epoch, RNG and data position.",
+        "Write checkpoints atomically so a crash never leaves a half-written file on the load path.",
+        "State the exact reproducibility boundary: what matches bitwise, what matches statistically, and what never matches."
+      ],
+      "why": "Resume bugs waste entire training runs: the loss looks fine while the data order, the schedule, or the augmentation stream quietly diverges. The checkpoint contract is what makes a restart a continuation instead of a new experiment.",
+      "next": [
+        {
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs",
+          "note": "Use resume equivalence as a control when a restarted run diverges."
+        },
+        {
+          "route": "distributed-training",
+          "note": "Complete state grows into sharded and multi-worker resume later."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-reliability",
+          "title": "General checkpoints for resume",
+          "url": "https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html",
+          "locator": "What is a state_dict; Saving and Loading a General Checkpoint: save and load patterns, optimizer state, 2 to 3 times model size, .tar convention, eval versus train mode; the best_model_state reference pitfall",
+          "depth": "Skip Saving an Exported Program and the DataParallel section unless your model uses them."
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Reproducibility: seeds, determinism and data loading",
+          "url": "https://docs.pytorch.org/docs/stable/notes/randomness.html",
+          "locator": "Controlling sources of randomness including manual_seed across devices; Avoiding nondeterministic algorithms with the cross-release and CPU-versus-GPU limits; DataLoader worker seeding with worker_init_fn and generator; CUDA convolution benchmarking versus determinism"
+        },
+        {
+          "resource": "python-os-replace",
+          "title": "Atomic renames for checkpoint writes",
+          "url": "https://docs.python.org/3/library/os.html#os.replace",
+          "locator": "os.replace: a successful rename is atomic, so write the checkpoint to a temp file in the same directory, flush and fsync, then replace the final name"
+        }
+      ],
+      "focus": [
+        "A resume checkpoint is a dict of state, not a model file: epoch, model, optimizer, scheduler, scaler, RNG states and the sampler position all belong in it.",
+        "state_dict returns references to live tensors. Training on after building the dict mutates the saved copy too; serialize to disk or deepcopy at save time.",
+        "Per-worker RNG needs explicit construction. A Generator built in Dataset init is fork-copied identically into every worker and repeats its stream.",
+        "Bitwise resume holds on one machine, one build, one device kind. Across releases, platforms, or CPU versus GPU, only statistical equivalence is promised."
+      ],
+      "reproduce": "On CPU, train 3 steps, save the full dict to disk, train 2 more, then load the disk file into fresh model and optimizer objects, restore the RNG state, run 2 steps, and show bitwise equal weights. Rerun the resume without restoring RNG and show it diverges.",
+      "traps": [
+        "Reloading from the in-memory dict after further training. The dict aliases live optimizer buffers, so the resume silently starts from the later state.",
+        "Seeding only torch.manual_seed with several DataLoader workers. Global RNGs get per-worker seeds, but a copied Generator object repeats exactly; build it per worker from torch.initial_seed.",
+        "Writing the checkpoint straight to the final name. A mid-write crash leaves a corrupt file on the load path; temp file plus os.replace avoids it."
+      ],
+      "selfTest": [
+        {
+          "q": "Name the minimum checkpoint contents for exact CPU resume of SGD with momentum, a StepLR scheduler, AMP and a shuffled loader.",
+          "a": "Model, optimizer, scheduler, scaler, epoch, torch and CUDA RNG states, and the sampler position or loader generator state."
+        },
+        {
+          "q": "A saved dict is kept in memory, training continues, then a fresh optimizer loads that dict. Why are its buffers wrong?",
+          "a": "state_dict returns references, so continued training mutated the same buffers the dict aliases. Serialize to disk or deepcopy at save time."
+        },
+        {
+          "q": "Two DataLoader workers emit identical augmentation streams. State the bug and the fix.",
+          "a": "A Generator built in Dataset init was fork-copied identically into both workers. Build it per worker from torch.initial_seed in worker_init_fn, or pass a generator."
+        },
+        {
+          "q": "The job dies mid-write and the checkpoint is corrupt. What write pattern survives this?",
+          "a": "Write to a temp file in the same directory, flush and fsync, then os.replace onto the final name. Readers only ever see complete files."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: resume equivalence and interruption handling with declared tolerances.",
+      "stopWhen": "Your disk-roundtrip resume matches the continuous run bitwise, and a changed-seed or unrestored-RNG resume is caught by your own equivalence check.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for atomic checkpoint writes; Python's os.replace reference fills that gap beside the PyTorch save and reproducibility docs."
+      }
+    },
+    {
+      "id": "torch-compile-graph-breaks",
+      "title": "torch.compile: capture, guards, graph breaks and dynamic shapes",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "torch-compile-capture-guards-and-graph-breaks",
+        "dynamic-shapes-recompilation-and-semantic-comparison"
+      ],
+      "outcomes": [
+        "Compile a stable fragment and prove eager equivalence on values and gradients.",
+        "Trigger a graph break and a recompilation on purpose, then read each from the logs.",
+        "Choose fullgraph, dynamic and backend settings from the failure you want to forbid or allow."
+      ],
+      "why": "Compile silently accepts partial graphs: a break just runs that part eagerly. Without break counts and equivalence checks, a speedup number can hide a semantics change.",
+      "next": [
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/profiling-phases-verification",
+          "note": "Measure compiled versus eager inside profiled phases."
+        },
+        {
+          "route": "inference",
+          "note": "Capture, guards and backends return at deployment time."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-compile-troubleshooting",
+          "title": "torch.compile parameters",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.compile.html",
+          "locator": "fullgraph, dynamic, backend and mode; guard failures with TORCH_LOGS=guards; recompile_limit of 8 before falling back to eager"
+        },
+        {
+          "resource": "pytorch-compile-troubleshooting",
+          "title": "Breaks, guards, recompiles and logs",
+          "url": "https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html",
+          "locator": "Terminology with the graph break, guards, recompilation and dynamic shapes definitions; Logging Tools with TORCH_LOGS graph_breaks, guards and recompiles; Simple Workarounds including data-dependent fixes; Reporting Issues, Ablation with eager and inductor backends",
+          "depth": "Read Terminology, Logging Tools and Simple Workarounds fully. Skim TorchDynamo internals and Reporting Issues."
+        }
+      ],
+      "focus": [
+        "Default compile is partial: each frame compiles what it can and runs the rest eagerly. fullgraph=True turns an unnoticed break into a loud error.",
+        "Guards are runtime checks on shapes, types and values. A failed guard recompiles, and eight recompiles exhaust the budget and fall back to eager.",
+        "Data-dependent control flow is the classic break: .item, tensor conditions and prints split the graph. Hoist, use torch.cond, or capture scalar outputs.",
+        "Equivalence comes before timing. Compare eager and compiled values and gradients with a tolerance, across shapes, before believing any speedup."
+      ],
+      "reproduce": "Compile a pure function and assert eager and compiled outputs match. Then compile a branch on flag.item(): read the log line naming Tensor.item() as the break, show fullgraph=True raises on it, and show dynamic=False compiling one graph per shape with a counter of unique graphs.",
+      "traps": [
+        "Reporting a speedup without a break count. A fully broken compile is just eager with overhead, and the timer will not tell you.",
+        "Closing over Python floats or scheduler values. Guards treat them as constants and recompile per value; wrap them in tensors.",
+        "Assuming dynamic shapes are free. Dynamic kernels avoid recompiles only where ops allow; overspecialization still needs the dynamic log to diagnose."
+      ],
+      "selfTest": [
+        {
+          "q": "Compiled code matches eager but the log names Tensor.item() as a graph break. What happened to the function?",
+          "a": "Dynamo split it at the .item() call and runs that part eagerly. Fix by hoisting the value out, using torch.cond, or enabling scalar capture."
+        },
+        {
+          "q": "Under dynamic=False, one shape reuses its graph while a new shape adds a second. What does dynamic=True change?",
+          "a": "It traces shape-generic kernels up front to avoid one recompile per shape, where the operations allow it."
+        },
+        {
+          "q": "Timing collapses to eager speed after several shape changes. Which limit fired, and how do you see why?",
+          "a": "The recompile limit, default 8, fell back to eager. Inspect the failing guards with TORCH_LOGS=recompiles."
+        },
+        {
+          "q": "Why compare values and gradients with tolerance before trusting a compile speedup?",
+          "a": "Partial capture or specialization can change numerics. Equivalence first proves the speedup measures the same computation."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: triggered graph-break repair with eager comparison.",
+      "stopWhen": "You can trigger, name and fix one break and one recompile from the logs, with eager equivalence holding across your test shapes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The compile reference and the troubleshooting guide cover capture, guards, breaks and dynamic shapes at measure depth, with the mini-project supplying practice."
+      }
+    },
+    {
+      "id": "profiling-phases-verification",
+      "title": "Profiling training phases and verifying optimizations",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "profiler-annotations-and-phase-timing",
+        "data-wait-transfer-forward-backward-and-optimizer-decomposition",
+        "correctness-and-learning-checks-after-optimization"
+      ],
+      "outcomes": [
+        "Annotate a training step and attribute time to data wait, transfer, forward, backward and optimizer phases.",
+        "Read self versus total time and memory, and split shared operators by input shape.",
+        "Revalidate learning and resume behavior after any optimization, and explain one model-versus-measured discrepancy."
+      ],
+      "why": "Optimization without a phase breakdown optimizes the wrong line. The profile decides whether the step is data-starved, launch-bound, compute-bound or sync-bound, and the revalidation proves the faster run still learns.",
+      "next": [
+        {
+          "unit": "deep-learning/training-dynamics/objective-checks-controls",
+          "note": "Reuse the overfit and shuffled-label controls as learning checks."
+        },
+        {
+          "route": "gpu",
+          "note": "Phase analysis generalizes to kernels, overlap and roofline work."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-reliability",
+          "title": "PyTorch Profiler recipe",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html",
+          "locator": "Step 3 execution time with activities, record_function and key_averages self versus total; group_by_input_shape with record_shapes; Step 4 memory with profile_memory; Step 5 chrome trace export; Step 7 schedule, on_trace_ready and prof.step for long jobs"
+        },
+        {
+          "resource": "pytorch-reliability",
+          "title": "Tuning guide: data flow and zeroing",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html",
+          "locator": "Enable asynchronous data loading and augmentation with num_workers and pin_memory; Use parameter.grad = None instead of zeroing; Avoid unnecessary CPU-GPU synchronization"
+        },
+        {
+          "resource": "learn-pytorch-profiler",
+          "title": "Profiler inside a training loop",
+          "url": "https://www.learnpytorch.io/10_pytorch_profiling",
+          "locator": "Adjust training function to track results with SummaryWriter: train_step with tensorboard_trace_handler, non_blocking transfers, autocast forward, and backward plus step inside the profiled range",
+          "depth": "Transfer the annotation pattern into your own compact model. Do not keep the tutorial's EfficientNet code."
+        },
+        {
+          "resource": "tensortonic-memory-flops",
+          "title": "Transformer Training FLOP Estimator",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator",
+          "locator": "Estimate one training step from forward matrix multiplications and a supplied forward attention cost"
+        }
+      ],
+      "focus": [
+        "Annotate before measuring: one range per phase with record_function, plus DataLoader timing outside the step, so data wait cannot hide inside forward.",
+        "Self time excludes children and total includes them. A big total with small self points at the children, not at the named line.",
+        "Predict first, then profile. Write the expected slowest phase and the expected memory peak before running, and explain the residual in writing.",
+        "Every optimization revalidates learning: loss, gradients, controls and resume. A faster run that learns differently is a defect, not a win."
+      ],
+      "reproduce": "On CPU, profile one annotated step of a small MLP with forward, backward and optimizer ranges. Show the train_step total covers its children, export the chrome trace to a nonempty file, and write one sentence attributing the largest phase.",
+      "traps": [
+        "Profiling with stacks, anomaly detection or gradcheck on and calling it a measurement. Debug tooling distorts the run; measure the clean configuration.",
+        "Tuning the fastest phase. Rank phases first; a 2x win on 5 percent of the step is noise against an unexamined data wait.",
+        "Skipping learning checks after AMP, compile or fusion. Numerics move silently; rerun controls and resume checks before keeping the change."
+      ],
+      "selfTest": [
+        {
+          "q": "key_averages shows forward total 55 percent but self 13 percent. Where is the rest?",
+          "a": "In child operators such as addmm. Self excludes children while total includes them."
+        },
+        {
+          "q": "One aten operator appears twice with different shapes. Which flags produce that split?",
+          "a": "record_shapes True with group_by_input_shape True on the averages."
+        },
+        {
+          "q": "The memory table shows aten::empty with large self memory and convolutions with none. What does that mean?",
+          "a": "empty performs the allocation, so it owns the self bytes. The convolutions allocate through calls beneath them."
+        },
+        {
+          "q": "After AMP, compile and a larger batch, loss matches but step time barely moves. Name the next two checks.",
+          "a": "Read which phase dominates; the bottleneck may be data wait or sync, not math. Then confirm debug tooling is off before further tuning."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Transformer Training FLOP Estimator",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator",
+          "locator": "Estimate one training step from forward matrix multiplications and a supplied forward attention cost",
+          "note": "Free problem. Then reconcile your estimate with the compact model's profiled step and write down every included and excluded term."
+        }
+      ],
+      "stopWhen": "Your annotated profile attributes every phase, your prediction names the slowest one before the run, and one optimization ships with passing learning and resume checks.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The profiler recipe, tuning guide and notebook transfer cover annotation, phases and revalidation, and the TensorTonic problem gives checked FLOP practice."
       }
     }
   ]
