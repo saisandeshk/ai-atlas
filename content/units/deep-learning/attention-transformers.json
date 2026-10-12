@@ -16,47 +16,96 @@
         "stable-row-wise-softmax"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the 1/sqrt(d_k) scale from unit-variance query and key components and state the assumption it needs.",
+        "Implement stable scaled dot-product attention from tensor operations, with a row-wise softmax that cannot overflow in fp32.",
+        "Explain attention output as a convex combination of values and predict how a logit shift moves the weights."
       ],
-      "why": "TODO",
+      "why": "Attention is the only communication path between positions in a transformer. If the scale, the softmax axis or the stability fix is wrong, every later block inherits the error.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/attention-transformers/attention-masks",
+          "note": "Feed masked scores into the same row-wise softmax."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/multi-head-cross-attention",
+          "note": "Reuse single-head attention inside per-head projections."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "udl-attention",
+          "title": "Dot-product self-attention through scaling",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Sections 12.2 to 12.3.2 (pp. 208 to 214): value, query and key computation in equations 12.2 to 12.4, attention weights in 12.5, matrix form in 12.7 and 12.8, and the scaling argument with equation 12.9"
+        },
+        {
+          "resource": "udl-attention",
+          "title": "Notebook 12.1: self-attention",
+          "url": "https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap12/12_1_Self_Attention.ipynb",
+          "locator": "The complete notebook, referenced in the margin of the matrix-form derivation"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Queries, keys and values",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/queries-keys-values.html",
+          "locator": "Section 11.1: the attention-pooling equation, the nonnegative, convex-combination, single-selection and average-pooling cases, and show_heatmaps"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Dot-product attention and scaling",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html",
+          "locator": "Section 11.3.1 including the variance-d derivation of the scaled scoring function, then the Scaled Dot Product Attention class with the (2, 1, 2) query toy and heatmap check",
+          "depth": "Skip Additive Attention; it is not a unit topic. Read the batch matrix multiplication part of Section 11.3.2 for shapes only."
+        },
+        {
+          "resource": "pytorch-sdpa-reference",
+          "title": "Equivalent-implementation box",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html",
+          "locator": "The Efficient implementation equivalent code box: default scale 1/sqrt(E), score-times-scale order, and softmax-then-dropout order"
         }
       ],
       "focus": [
-        "TODO"
+        "Queries, keys and values are three learned linear maps of the same input. D2L builds them bias-free by default while UDL equations 12.4 and 12.6 carry bias vectors, so the two parameter counts differ by construction.",
+        "Under independent zero-mean unit-variance components, q^T k has variance d. The 1/sqrt(d) factor restores unit variance before the softmax; without it large d saturates the softmax and gradients vanish.",
+        "Stable softmax subtracts the row max first. Naive fp32 softmax on the UDL Problem 12.4 logits overflows at exp(100): that entry becomes inf/inf, which is NaN, and the rest become 0. The shifted form returns the correct weights.",
+        "UDL lays inputs out as D by N columns with softmax per column; D2L uses batch by queries by keys with softmax on the last axis. In both, exactly one axis sums to 1: check which one before reading any heatmap."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the 1/sqrt(d) scale from the variance argument. Then hand-compute the Deep-ML 490 first test: scores [[0.7071, 0], [0, 0.7071]], weights [[0.6698, 0.3302], [0.3302, 0.6698]], output [[1.6605, 2.6605], [2.3395, 3.3395]].",
       "traps": [
-        "TODO"
+        "Computing softmax as exp(z)/sum(exp(z)) in fp32. exp(100) overflows to inf, so the sum is inf, the large entry becomes NaN and every other entry 0. Always subtract the row max, and recheck any code that skips it.",
+        "Softmaxing the wrong axis after a transpose. UDL and D2L sum over different axes by layout; a heatmap that sums to 1 along queries instead of keys inverts the routing story.",
+        "Quoting D2L parameter counts for UDL equations or vice versa. The bias terms add 3D parameters; carry them only when the equations you implement include them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Query and key components are independent with zero mean and unit variance, in dimension d. What are the mean and variance of their dot product, and what scale restores unit variance?",
+          "a": "Mean 0 and variance d, since the dot product sums d independent unit-variance products. Multiply by 1/sqrt(d) to restore unit variance before the softmax."
+        },
+        {
+          "q": "Naive fp32 softmax meets UDL Problem 12.4 logits [-3, 1, 100, 5, -1]. What comes out, what does the max-subtracted form give, and what do the 25 derivatives say?",
+          "a": "Naive exp overflows at exp(100), so the denominator is inf and the output is [0, 0, NaN, 0, 0]. Max-subtracted softmax gives y3 near 1 and the rest near 0. All 25 derivatives are near 0 (largest magnitude about 5.5e-42): a saturated softmax with vanishing gradients."
+        },
+        {
+          "q": "A self-attention block takes N = 5 inputs of width D = 8, with queries, keys and values also width 8. How many QKV weights and biases, how many attention weights, and how many weights and biases in a fully connected DN to DN map?",
+          "a": "QKV: 3 times (64 + 8) = 216. Attention weights: 25. Fully connected: 1600 weights plus 40 biases = 1640."
+        },
+        {
+          "q": "Why must attention weights be nonnegative and sum to one, and where does each output lie?",
+          "a": "They form a convex combination, so each output is a weighted average of the value vectors and lies in their convex hull. Routing language only makes sense under this constraint."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deep-ML 490: Build Scaled Dot-Product Attention",
+          "url": "https://www.deep-ml.com/problems/490",
+          "locator": "Both shown tests (the 2x2 identity Q/K case and the 1x3 over 2x3 case) plus the prompt mask rule (0 blocks, 1 keeps)",
+          "note": "The two shown tests are unmasked and check outputs and weights to 4 decimals. Add your own hand-computed masked case before the masks unit."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the scale without notes, reproduce the 490 numbers by hand, and your own implementation matches a softmax-based reference on random small cases.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL scaling derivation plus D2L DotProductAttention and the SDPA oracle cover all three topics at derive and implement depth, and Deep-ML 490 gives checked practice."
       }
     },
     {
@@ -71,47 +120,89 @@
         "causal-masks-padding-masks-and-all-masked-rows"
       ],
       "outcomes": [
-        "TODO"
+        "Combine causal and padding masks into one score bias and predict each row's valid positions.",
+        "Implement valid-length masking and state exactly what a fully masked row returns.",
+        "Prove causal behavior with a future-token intervention test rather than by inspecting weights."
       ],
-      "why": "TODO",
+      "why": "Masks decide which tokens may speak to which. A leak through a future position or a padding slot silently changes the objective the model optimizes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/attention-transformers/multi-head-cross-attention",
+          "note": "Carry the same mask through folded head batches."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/transformer-block-anatomy",
+          "note": "Place the mask inside a full residual block."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "udl-attention",
+          "title": "Masked self-attention and interaction matrices",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.7.2 (pp. 222 to 223): setting dot products to negative infinity before softmax, with Figure 12.12 loss wiring; Section 12.9 with Figure 12.15 (pp. 227 to 228) for encoder versus decoder interaction counts"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Masked softmax operation",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html",
+          "locator": "Section 11.3.2 Masked Softmax Operation: the -1e6 fill, and both runnable examples on (2, 2, 4) inputs with valid lengths [2, 3] and [[1, 3], [2, 4]]"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Decoder causal lengths",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html",
+          "locator": "TransformerDecoderBlock: the training branch building dec_valid_lens rows [1, 2, ..., num_steps], and the inference branch passing None with cached key_values"
+        },
+        {
+          "resource": "pytorch-sdpa-reference",
+          "title": "Mask semantics, causality and dropout",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html",
+          "locator": "The boolean-mask Note (True means participate, inverse of MultiheadAttention key_padding_mask), the is_causal parameter entry including the non-square upper-left bias, and the dropout Warning that dropout applies in every mode"
         }
       ],
       "focus": [
-        "TODO"
+        "Padding and causal masks compose by intersection: a score survives only if both allow it. D2L valid_lens expresses padding lengths, the decoder [1..n] rows express causality, and a real batch needs both at once.",
+        "Mask value conventions differ by API. SDPA bool True means participate while MultiheadAttention key_padding_mask True means mask out. Copying one convention into the other leaks padding.",
+        "A fully masked row has no agreed meaning. D2L -1e6 gives uniform weights, all -inf through plain softmax gives NaN, and SDPA on CPU returned zeros in version 2.14. Test your convention instead of assuming one.",
+        "SDPA applies dropout_p in every mode. Pass 0.0 outside training or evaluation outputs stay stochastic."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build combined causal plus padding masks for two sequences of valid lengths 3 and 2 over 4 keys, show every disallowed weight is exactly 0, then change a future token and a padded value and show the earlier valid outputs do not move.",
       "traps": [
-        "TODO"
+        "Trusting uniform weights on a fully masked row. D2L returns 1/n there, so padding values still mix into the output unless you zero the row downstream.",
+        "Passing both attn_mask and is_causal to SDPA. The function raises an error; pick one expression of the same mask.",
+        "Leaving dropout_p nonzero during evaluation or testing. Outputs differ run to run and differential tests against a manual path fail for no structural reason."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "D2L masked_softmax meets a row with valid length 0 over 4 keys. What weights come out and why is that dangerous?",
+          "a": "Uniform weights 0.25 each: all four -1e6 entries softmax equally. The output mixes padding values with full weight, so the row must be zeroed or excluded downstream."
+        },
+        {
+          "q": "An SDPA bool mask marks padding as True. What happens, and how does MultiheadAttention key_padding_mask differ?",
+          "a": "SDPA treats True as participate, so padding joins attention: a leak. MultiheadAttention key_padding_mask uses the inverse convention, True means mask out. Invert when migrating."
+        },
+        {
+          "q": "Why is a future-token intervention a stronger causal proof than reading attention weights?",
+          "a": "Weights show one layer; dropout, residuals and later layers remix paths. Perturbing a future token and requiring earlier outputs to stay fixed tests the composed block, including leaks through paths the weight plot never shows."
+        },
+        {
+          "q": "SDPA is called with dropout_p 0.5 during evaluation. What goes wrong?",
+          "a": "Dropout still applies in every mode, so outputs stay stochastic. Pass 0.0 when the caller is not training."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deep-ML 490 masked-case drill",
+          "url": "https://www.deep-ml.com/problems/490",
+          "locator": "The prompt mask rule (0 blocks, 1 keeps); the two shown tests are unmasked",
+          "note": "Hand-compute a two-query masked case, assert blocked weights are exactly 0, and add a future-token intervention test in your own repository."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your combined mask gives exact zeros in every disallowed slot, the intervention test passes, and you can state each API mask convention and fully-masked-row behavior from memory.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL masked-attention theory plus D2L valid-length mechanics and decoder lengths plus SDPA mask semantics cover the topic at implement and measure depth, with the 490 mask rule as named practice."
       }
     },
     {
@@ -126,47 +217,108 @@
         "multi-head-shapes-concatenation-and-output-projection"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish self-attention from cross-attention by which tensors supply queries, keys and values.",
+        "Implement head splitting, per-head attention, concatenation and output projection with exact shapes.",
+        "Explain why fixing total width while varying head count holds parameters and compute flat."
       ],
-      "why": "TODO",
+      "why": "Heads are parallel representation subspaces, and cross-attention is the bridge between sequences. Shape errors here run without error and fail silently as wrong mixing.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/attention-transformers/transformer-block-anatomy",
+          "note": "Place multi-head attention inside a full residual block."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/attention-cost-accounting",
+          "note": "Count the projections and scores you just shaped."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "udl-attention",
+          "title": "Multi-head self-attention",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.3.3 (pp. 214 to 215): per-head equations 12.10 and 12.11, D/H sizing, and concatenation with output projection in equation 12.12"
+        },
+        {
+          "resource": "udl-attention",
+          "title": "Cross-attention for encoder-decoder models",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.8 with Figure 12.14 (pp. 226 to 227): queries from decoder embeddings, keys and values from encoder embeddings"
+        },
+        {
+          "resource": "udl-attention",
+          "title": "Notebook 12.2: multi-head self-attention",
+          "url": "https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap12/12_2_Multihead_Self_Attention.ipynb",
+          "locator": "The complete notebook, referenced in the margin of the multi-head derivation"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Multi-head attention implementation",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/multihead-attention.html",
+          "locator": "Section 11.5: the head equations with p set to num_hiddens over num_heads, transpose_qkv and transpose_output, the valid_lens repeat per head, and the num_hiddens 100 with num_heads 5 shape check"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Self-attention call and decoder cross-attention",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html",
+          "locator": "Section 11.6 Self-Attention: the attention(X, X, X, valid_lens) toy with batch 2, 4 queries and width 100",
+          "depth": "Stop before the CNN, RNN and self-attention comparison and before Positional Encoding; both belong to later units."
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Decoder self versus encoder-decoder attention",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html",
+          "locator": "TransformerDecoderBlock: attention1 over (X, key_values, key_values) with dec_valid_lens versus attention2 over (Y, enc_outputs, enc_outputs) with enc_valid_lens"
         }
       ],
       "focus": [
-        "TODO"
+        "D2L sets per-head width to num_hiddens over num_heads, so all four projections stay num_hiddens by num_hiddens. The head count changes mixing, not size.",
+        "Heads fold into the batch axis: (batch, steps, heads, width) becomes (batch times heads, steps, width) for the shared attention call, then unfolds back. valid_lens must repeat once per head to stay aligned.",
+        "Cross-attention reuses the identical math with different sources: queries from the decoder state, keys and values from encoder outputs, with padding-only lengths.",
+        "UDL Problem 12.5 is the cost intuition: narrow heads at fixed total width keep the implementation efficient."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, walk shapes for batch 2, 4 queries, width 100, 5 heads: projections stay (2, 4, 100), folded per-head tensors are (10, 4, 20), concatenation restores (2, 4, 100). State BERT per-head width 64 from 1024 over 16 heads.",
       "traps": [
-        "TODO"
+        "Folding heads with one reshape. Going straight from (batch, steps, hidden) to (batch times heads, steps, hidden/heads) runs without error but gives each head a mix of positions. Split hidden into (heads, head width), move the head axis next to batch, then merge, as transpose_qkv does.",
+        "Repeating valid_lens in the wrong order. D2L folds batch-major, so lengths need repeat_interleave ([l0, l0, l1, l1]). Tiling with repeat ([l0, l1, l0, l1]) has the right length and silently masks heads with another example's length. Dropping the repeat fails loudly in masked_softmax.",
+        "Assuming cross-attention needs a new formula. Only the sources change; calling self-attention with (Y, encoder outputs, encoder outputs) is the whole difference."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "BERT uses width 1024 with 16 heads. What is the per-head width, and what shape are its per-head query matrices?",
+          "a": "64. Each per-head query, key and value matrix is 64 by 1024."
+        },
+        {
+          "q": "Why does fixing total width while varying head count hold parameters and compute flat?",
+          "a": "All four projections stay num_hiddens by num_hiddens regardless of head count, so QKVO parameters stay 4 times width squared and per-head matmuls sum back to the same total."
+        },
+        {
+          "q": "In the D2L decoder block, which tensors supply queries, keys and values to the second attention call, and which lengths mask it?",
+          "a": "Queries come from the decoder state Y after self-attention; keys and values come from encoder outputs. Only encoder padding lengths mask it; there is no causal mask on this call."
+        },
+        {
+          "q": "The valid_lens repeat per head is deleted. What breaks?",
+          "a": "The folded batch has batch times heads rows but only batch lengths, so D2L masked_softmax fails with a mask shape error. The silent form of the bug is tiling with repeat instead of repeat_interleave: the count matches, but heads use another example's length."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Named-Dimension Batched Attention Scores",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-einsum-attention-scores",
+          "locator": "The single named problem in the PyTorch and einops group: batched multi-head query-key scores contracting only the head-width dimension",
+          "note": "The problem page renders client-side; the verified contract is its title and description. Implement scores with named batch, head, sequence and width axes, then cross-check against your multi-head block under batch and head permutations."
+        },
+        {
+          "name": "D2L Multi-Head Attention: Exercise 1 (visualize heads)",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/multihead-attention.html",
+          "locator": "Exercises in Section 11.5: visualize attention weights of multiple heads in the toy experiment",
+          "note": "Plot one head per panel on the same input and confirm different heads attend differently; identical panels expose a split bug."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your multi-head block returns (2, 4, 100) on the D2L toy, per-head weights match a manual single-head call, and masking with valid lengths [3, 2] zeroes the same key slots in every head.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL multi-head and cross-attention theory plus the D2L shape-checked implementation cover both topics at implement depth, with the TensorTonic axis problem as named practice."
       }
     },
     {
@@ -181,53 +333,95 @@
         "positional-information-and-position-offsets"
       ],
       "outcomes": [
-        "TODO"
+        "Prove permutation equivariance of unpositioned self-attention and explain why order needs extra input.",
+        "Implement sinusoidal absolute encodings and predict any entry from the closed form.",
+        "Derive the relative-offset rotation and use it to explain shift generalization."
       ],
-      "why": "TODO",
+      "why": "Self-attention sees sets, not sequences. Positional information is the only place order enters, so every offset bug becomes a meaning bug.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/attention-transformers/transformer-block-anatomy",
+          "note": "Add positions before the first residual block."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/attention-masks",
+          "note": "Recheck valid indices after any position shift."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "udl-attention",
+          "title": "Positional encoding",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.3.1 (pp. 213 to 214): permutation equivariance, absolute encoding matrix, and relative per-offset parameters, with Figure 12.5"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Positional encoding implementation and theory",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html",
+          "locator": "Positional Encoding: the sine-cosine formula, the PositionalEncoding class with max_len 1000 and dropout after the add, the encoding_dim 32 with num_steps 60 run plotting columns 6:10, the binary-frequency intuition, and the relative-offset rotation derivation"
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Order-free self-attention",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html",
+          "locator": "The paragraphs before Positional Encoding on parallel computation discarding sequential order"
         }
       ],
       "focus": [
-        "TODO"
+        "Without positions the block is permutation-equivariant: Sa[XP] equals Sa[X]P. UDL Problem 12.3 asks for this proof; it is the reason order must be injected as input.",
+        "Absolute encodings add a unique column per position. The D2L TransformerEncoder scales embeddings by sqrt(width) before the add because the encodings stay in [-1, 1].",
+        "Sinusoid pairs rotate with offset: position i plus delta is a fixed 2x2 rotation of position i, depending on delta and frequency only. Shifting text shifts encodings linearly.",
+        "Relative schemes index by the offset between key and query positions, not by absolute index. They survive absolute shifts that absolute tables must relearn."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write p(i, 2j) and p(i, 2j+1), sketch the Sa[XP] equals Sa[X]P proof, and verify the 2x2 rotation numerically for one (i, delta, j) triple.",
       "traps": [
-        "TODO"
+        "Not stating where positions enter. UDL lists three placements: once at the input, at every layer, or only in the query and key computation. The last leaves values free of position, which changes what later layers can read; write down which one your block uses.",
+        "Exceeding D2L max_len 1000. The stored table is fixed width, so longer inputs fail on the add; rebuild the table instead of truncating silently.",
+        "Comparing encodings or outputs in train mode. D2L applies dropout to the sum of embeddings and encodings, so train-mode runs drop entries at random; compare in eval mode or with dropout 0, as the D2L plot does."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "State permutation equivariance for self-attention and explain why it forces positional input.",
+          "a": "Sa[XP] equals Sa[X]P for any permutation matrix P: reordering inputs reorders outputs identically. The block therefore carries no order information, so positions must enter as extra input."
+        },
+        {
+          "q": "Write the D2L sinusoidal encoding entries.",
+          "a": "p(i, 2j) equals sin(i / 10000^(2j/d)) and p(i, 2j+1) equals cos(i / 10000^(2j/d)), with i the position and d the width."
+        },
+        {
+          "q": "What does the 2x2 rotation from position i to position i plus delta depend on?",
+          "a": "Only the offset delta and the pair frequency omega_j. It never depends on the absolute position i, which is why a fixed shift is a fixed linear map."
+        },
+        {
+          "q": "A 1500-token input meets D2L default PositionalEncoding. What happens?",
+          "a": "The stored table is 1000 wide, so the slice caps at 1000 and the add fails on shape mismatch. Rebuild the encoding with a larger max_len."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "D2L PositionalEncoding: frequency and offset check",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html",
+          "locator": "The encoding_dim 32 with num_steps 60 run plotting columns 6:10, plus the relative-offset rotation derivation",
+          "note": "Reproduce the column plot, then assert the 2x2 rotation identity numerically for one (i, delta, j) triple in your own repository."
+        },
+        {
+          "name": "UDL Problem 12.3: permutation equivariance",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Problems (p. 239): show Sa[XP] equals Sa[X]P for equation 12.8",
+          "note": "Pen-and-paper proof through the value, query and key maps and the column-wise softmax."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your encoding table matches the closed form entry by entry, the rotation check passes, and you can say which tensors carry position into the first attention call.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL equivariance and encoding theory plus the D2L formula, runnable example and rotation derivation cover the topic at derive and implement depth, with named book and notebook practice."
       }
     },
     {
       "id": "transformer-block-anatomy",
       "title": "Transformer blocks: residual stream, normalization and feed-forward",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "explain",
         "implement"
@@ -238,47 +432,81 @@
         "encoder-decoder-and-encoder-decoder-patterns"
       ],
       "outcomes": [
-        "TODO"
+        "Contrast pre- and post-normalization block orders and predict where activations and gradients differ.",
+        "Implement a pre-normalized residual attention-plus-MLP block with explicit positions and shape invariance.",
+        "Select encoder, decoder or encoder-decoder structure from the task's context needs.",
+        "Explain what a gated feed-forward adds over the plain two-matrix MLP and what it costs."
       ],
-      "why": "TODO",
+      "why": "The block is the unit that stacks. Normalization order decides trainability at depth, and the encoder, decoder and cross choice decides which context each token may use.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/attention-transformers/attention-cost-accounting",
+          "note": "Count the block you just built."
+        },
+        {
+          "unit": "deep-learning/attention-transformers/attention-tradeoffs-hazards",
+          "note": "Stress-test the block you just built."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "udl-attention",
+          "title": "Transformer layers, BERT, GPT and encoder-decoder models",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.4 (pp. 215 to 216) for the post-norm layer in equation 12.13; Section 12.6 (pp. 219 to 221) for BERT widths, heads and parameter counts; Section 12.7 (pp. 222 to 225) for autoregressive factorization, masked training and GPT-3 sizes; Section 12.8 (pp. 226 to 227) for cross-attention with Figure 12.13",
+          "depth": "Skip Section 12.5.1 tokenization and the GPT-3 few-shot anecdotes; stop Section 12.7 at generation mechanics."
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Feed-forward, AddNorm, encoder and decoder blocks",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html",
+          "locator": "PositionWiseFFN, the AddNorm residual-plus-LayerNorm class, TransformerEncoderBlock, TransformerDecoderBlock with its three norms and same-width comment, and the encoder shape-invariance checks",
+          "depth": "Read Training for loss wiring only; do not run full machine-translation training here."
+        },
+        {
+          "resource": "d2l-attention",
+          "title": "Pre-norm vision transformer block",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html",
+          "locator": "ViTBlock with its pre-versus-post-normalization paragraph, PatchEmbedding with the (96, 16, 512) shape check, and Putting It All Together for encoder-only assembly",
+          "depth": "Skip Training; the Fashion-MNIST run is not part of this unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Post-norm (UDL equation 12.13, D2L encoder) normalizes after each residual add; pre-norm (ViTBlock) normalizes the branch inputs and adds untouched residuals. D2L states pre-norm trains more effectively.",
+        "Residuals force equal widths: D2L requires decoder num_hiddens to equal the encoder width for the adds and the cross QK^T product.",
+        "Neither D2L MLP is gated: PositionWiseFFN is ReLU and ViTMLP is GELU with dropout. A gated block adds a third projection and an elementwise product; hold parameters fixed by shrinking width, not by ignoring the extra matrix.",
+        "Pattern follows context: BERT-style encoders read both sides for representations, GPT-style decoders mask the future for generation, encoder-decoders add cross-attention for sequence-to-sequence tasks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build the ViTBlock-pattern pre-norm block (norm, attention, add, norm, MLP, add) and show a (2, 100, 24) input returns (2, 100, 24). Then convert one D2L post-norm block to pre-norm and list exactly which lines moved.",
       "traps": [
-        "TODO"
+        "Calling SDPA with nonzero dropout_p in eval. Dropout applies in every mode, so a finished block still jitters; set 0.0 outside training.",
+        "Normalizing the wrong axis. LayerNorm statistics run over the feature width (D2L norm_shape equals num_hiddens); including batch or sequence axes computes nonsense moments.",
+        "Counting a gated MLP as two matrices. The gate is a third full projection; parameter and FLOP claims must include it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Write the operation order of a post-norm and a pre-norm attention sublayer.",
+          "a": "Post-norm: Y equals LayerNorm(X plus Attention(X)). Pre-norm: Y equals X plus Attention(LayerNorm(X)). Same parts, different order; only pre-norm keeps a clean residual path."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Contrast BERT and GPT-3 on attention pattern, objective and size.",
+          "a": "BERT is a bidirectional encoder trained to predict masked words: 24 layers, width 1024, 16 heads of width 64, MLP width 4096. GPT-3 is a causal decoder trained on next tokens: 96 layers, width 12288, 96 heads of width 128."
+        },
+        {
+          "q": "Why must the D2L decoder match the encoder num_hiddens?",
+          "a": "Residual adds need identical shapes, and encoder-decoder attention multiplies decoder queries against encoder keys. Different widths break both the adds and the score product."
+        },
+        {
+          "q": "What is missing from D2L MLPs if the target is a gated feed-forward?",
+          "a": "A third projection and the elementwise gate product. Both D2L MLPs are plain two-matrix stacks, so the gated block must be built and its extra matrix counted."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a pre-normalized residual attention-plus-gated-MLP block with explicit positions, shape-invariance checks and serialization.",
+      "stopWhen": "Your block holds shapes across depths, gives the same output on two eval-mode runs, and you can convert post-norm to pre-norm on demand.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL layer and model-pattern theory plus D2L post-norm and pre-norm blocks cover all three topics at explain and implement depth, with block practice assigned to the section mini-project."
       }
     },
     {
@@ -295,47 +523,91 @@
         "quadratic-score-materialization"
       ],
       "outcomes": [
-        "TODO"
+        "Derive attention and MLP parameter, FLOP, score-memory and activation costs across batch, heads, sequence and width.",
+        "Measure score materialization for a stated shape and report it in correct binary units.",
+        "Explain which term dominates in short- versus long-sequence regimes and what the math-backend upcast changes."
       ],
-      "why": "TODO",
+      "why": "Attention scales quadratically in sequence length. The budget must be derived before launch, because the out-of-memory error arrives after the design is fixed.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/attention-transformers/attention-tradeoffs-hazards",
+          "note": "Turn the cost model into architecture choices and tests."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/gpu-memory-accounting",
+          "note": "Reconcile the hand count with measured allocator categories."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "d2l-attention",
+          "title": "Complexity, sequential ops and path lengths",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html",
+          "locator": "Comparing CNNs, RNNs, and Self-Attention: O(k n d^2) with O(1) ops and O(n/k) path for CNNs, O(n d^2) with O(n) ops and path for RNNs, O(n^2 d) with O(1) ops and path for self-attention"
+        },
+        {
+          "resource": "udl-attention",
+          "title": "Quadratic attention and model sizes",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.2.1 (p. 209) for N^2 attention weights independent of width; Section 12.9 (pp. 227 to 228) for roughly half the interactions in decoders and the sparsification gallery; BERT and GPT-3 parameter listings (pp. 219 and 224 to 225) as worked sizes",
+          "depth": "Treat the sparsification gallery as orientation only; sparse kernels are a later topic."
+        },
+        {
+          "resource": "pytorch-sdpa-reference",
+          "title": "Backends and precision behavior",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html",
+          "locator": "The three-implementation Note with backend selection functions, and the Numerical accuracy paragraph: math backend keeps fp32 intermediates for half and bf16 inputs, and outputs may differ by backend",
+          "depth": "Skip grouped-query attention; it belongs to decoder specialization."
         }
       ],
       "focus": [
-        "TODO"
+        "Count with multiply-add as 2 FLOP: QKVO projections 8 n d^2, scores plus weighting 4 n^2 d, width-4d MLP 16 n d^2. At n 512 and d 1024 that is about 5.37 GFLOP for attention and 8.59 GFLOP for the MLP.",
+        "Score memory is heads times n^2 entries in the working dtype: 16 heads at n 512 in fp32 is exactly 16 MiB, 1 MiB per head. At n 4096 the same block needs 1 GiB.",
+        "Causal masking keeps n(n+1)/2 pairs, so the necessary score FLOPs roughly halve, as UDL notes. A dense matmul followed by a mask still computes all n^2 scores; only a kernel that skips masked tiles saves the work, and only a fused kernel avoids materializing the scores.",
+        "The math backend upcasts half and bf16 intermediates to fp32, so measured bytes can exceed a naive dtype-times-entries count. Fused backends can change numerics without changing the asymptotic count."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, fill the table for n 512, d 1024, h 16, fp32: attention parameters 4.19M, MLP parameters 8.39M, score memory 16 MiB, attention forward about 5.37 GFLOP. Then scale scores to n 4096 and show 1 GiB.",
       "traps": [
-        "TODO"
+        "Mixing MACs with FLOPs. One multiply-add is 2 FLOP; state the convention or totals disagree by exactly 2x.",
+        "Quoting GB for GiB quantities. 16 times 4096^2 times 4 bytes is 2^30 bytes: 1 GiB, not 1 GB.",
+        "Trusting fused-kernel numerics to match the math path bit for bit. The docs warn outputs may differ by backend; test within tolerance, not equality."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "How many score bytes do 8 heads at n 1024 in fp32 need?",
+          "a": "8 times 1024^2 entries times 4 bytes equals 33,554,432 bytes, which is 32 MiB."
+        },
+        {
+          "q": "Why does decoder attention need only about half the encoder score FLOPs, and when is the saving real?",
+          "a": "Causality keeps the lower triangle: n(n+1)/2 pairs instead of n^2, roughly half for long sequences. A dense matmul plus mask still spends all n^2; the saving is real only in a kernel that skips masked blocks."
+        },
+        {
+          "q": "How many bias-free attention parameters does one BERT-width layer hold?",
+          "a": "4 times 1024^2 equals 4,194,304, about 4.19M. Biases would add 4 times 1024 on top."
+        },
+        {
+          "q": "Sequence length grows from 512 to 4096 at fixed width. What scales by 64, and what becomes the main cost?",
+          "a": "Score entries, bytes and score FLOPs all scale by 8^2 equals 64, while projection FLOPs scale by 8 and weights stay fixed. The score tensor grows from 16 MiB to 1 GiB per layer and example, so it is usually the first memory limit. Since n is now above 2d, score FLOPs also exceed the projection FLOPs."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "D2L Attention Scoring Functions: Exercise 3 (cost scaling)",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html",
+          "locator": "Exercises: cost versus key, query and value dimensionality and count, plus the memory-bandwidth follow-up",
+          "note": "Answer with the derived 8nd^2 plus 4n^2d model and the 512-case numbers, stating the multiply-add convention."
+        },
+        {
+          "name": "TensorTonic: Transformer Training FLOP Estimator",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator",
+          "locator": "The estimator problem in the PyTorch and einops group of the free language-modeling-from-scratch plan",
+          "note": "It estimates one training step from forward matrix multiplications plus a supplied forward attention cost. Match its forward matmul terms to your 8nd^2 and 16nd^2 counts, then document how it counts the backward pass and every term it includes or leaves out."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand table matches measured score bytes and a profiler FLOP count within stated conventions, and you can name the dominant attention term on either side of n equals 2d (6d once the MLP is included).",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "D2L complexity analysis plus UDL quadratic and size material plus SDPA backend notes cover all three topics at derive and measure depth, with the D2L exercise and FLOP estimator as practice."
       }
     },
     {
@@ -353,47 +625,79 @@
         "noncontiguous-and-variable-length-input-behavior"
       ],
       "outcomes": [
-        "TODO"
+        "Compare convolution, recurrence and attention by invariance, path length, parallelism, state and scaling, and pick the simplest adequate mechanism.",
+        "Run an intervention battery (future-token, padding, permutation) that proves mask and position semantics.",
+        "Diagnose axis, contiguity and dtype hazards in a multi-head implementation.",
+        "State which behaviors need measurement (backend, dtype, length regime) versus derivation."
       ],
-      "why": "TODO",
+      "why": "Attention fails quietly: transposed axes still run, padding still mixes, fused kernels still return. Only deliberate tests separate a correct block from a plausible one.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/pytorch-reliability-profiling/profiling-phases-verification",
+          "note": "Profile the verified block phase by phase."
+        },
+        {
+          "route": "llm-foundations",
+          "note": "Carry the verified block into decoder specialization."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "d2l-attention",
+          "title": "Architecture comparison and hazard sites",
+          "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html",
+          "locator": "Comparing CNNs, RNNs, and Self-Attention with its figure, plus the transpose_qkv and transpose_output pair and the valid_lens repeat in the multi-head implementation for the axis checklist"
+        },
+        {
+          "resource": "udl-attention",
+          "title": "Transformer summary and long-sequence gallery",
+          "url": "https://udlbook.github.io/udlbook/",
+          "locator": "Section 12.11 (p. 232) for parallel computation with quadratic scaling; Section 12.9 gallery (pp. 227 to 228) for sparsification patterns at recognition depth; Section 12.10 (pp. 228 to 231) for convolutional inductive bias versus data scale",
+          "depth": "Stop at recognition of the gallery patterns; sparse and image architectures are not built here."
+        },
+        {
+          "resource": "pytorch-sdpa-reference",
+          "title": "Backend selection and determinism limits",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html",
+          "locator": "Backend selection functions, the outputs-may-differ paragraph, and the cuDNN nondeterminism Note with its deterministic flag"
         }
       ],
       "focus": [
-        "TODO"
+        "Choose by mechanism, not fashion: CNNs share local filters with translation structure, RNNs carry fixed state through O(n) sequential steps, attention pays O(n^2 d) for content-based O(1) paths. The D2L table makes the trade exact.",
+        "The axis checklist is short: which axis the softmax sums to 1, whether head splitting precedes the transpose, whether valid_lens repeats per head, and whether transposed tensors are contiguous before any view.",
+        "Interventions beat inspections: perturb future tokens, change padded content, permute the batch (and the sequence, for an unmasked block without positions), and require matching outputs. UDL Section 12.7.2 explains how a decoder that sees the future can cheat; only the intervention proves yours cannot.",
+        "Some claims need a run: fused-backend numerics, half-precision intermediates, and the length where materialization binds. Derive the model, then measure the regime."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On your own block, run the three-test battery: changing future tokens leaves earlier outputs unchanged; changing padded content leaves valid outputs unchanged; permuting the batch permutes the outputs the same way. Also show that permuting the sequence permutes outputs for an unmasked block without positions, and fails once the causal mask is on. Then differential-test forward and backward against the SDPA math backend within tolerance, excluding fully masked rows.",
       "traps": [
-        "TODO"
+        "Asserting bitwise equality across backends. The docs say outputs may differ by backend and that cuDNN may pick a nondeterministic algorithm; tolerance plus a pinned backend is the valid test.",
+        "Using view on a freshly transposed tensor. Head-fold transposes are noncontiguous; view fails where reshape, or contiguous plus view, succeeds.",
+        "Reading causality off one layer weights. Dropout, residuals and later layers remix paths; the intervention on the composed block is the proof."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Fill the D2L trade-off row for CNNs, RNNs and self-attention: compute order, sequential ops, max path.",
+          "a": "CNN: O(k n d^2), O(1), O(n/k). RNN: O(n d^2), O(n), O(n). Self-attention: O(n^2 d), O(1), O(1)."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Which D2L line protects multi-head masking, and what is the failure without it?",
+          "a": "torch.repeat_interleave(valid_lens, num_heads, dim=0). Without it D2L masked_softmax fails with a mask shape error. Tiling with repeat instead runs but gives heads another example's length, because the fold is batch-major."
+        },
+        {
+          "q": "Why must the SDPA differential test exclude fully masked rows?",
+          "a": "Conventions disagree there: D2L -1e6 gives uniform weights, all -inf through plain softmax gives NaN, and SDPA on CPU returned zeros in PyTorch 2.14. Assert your convention in a separate test."
+        },
+        {
+          "q": "transpose_qkv ends with reshape after permute. Why not view?",
+          "a": "Permuted tensors are noncontiguous, and view requires contiguity. reshape copies when needed; view would raise. Call contiguous first if a later view matters."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the intervention battery, variable-length and noncontiguous stress cases, and the SDPA differential test with the fully-masked-row convention pinned.",
+      "stopWhen": "The battery passes on shapes you did not tune for, including all-padded rows under your stated convention, and you can attribute any mismatch to mask, axis, dtype or backend.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "D2L comparison and shape-checked code plus UDL trade-off discussion plus SDPA backend limits cover all four topics at explain and measure depth, with the battery assigned to the section mini-project."
       }
     }
   ]
