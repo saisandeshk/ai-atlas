@@ -1,6 +1,27 @@
 {
   "section": "training-dynamics",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "access": "Free",
+      "id": "pytorch-groupnorm",
+      "name": "PyTorch GroupNorm reference",
+      "priority": "reference",
+      "provider": "PyTorch",
+      "role": "reference",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html",
+      "use": "Read how input channels are split into num_groups groups and which axes each group normalizes; compare num_groups 1 against num_channels."
+    },
+    {
+      "access": "Free",
+      "id": "pytorch-rmsnorm",
+      "name": "PyTorch RMSNorm reference",
+      "priority": "reference",
+      "provider": "PyTorch",
+      "role": "reference",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html",
+      "use": "Read the RMS formula and which axes normalized_shape covers; note the missing mean centering and bias."
+    }
+  ],
   "units": [
     {
       "id": "init-signal-scale",
@@ -15,47 +36,76 @@
         "activation-and-gradient-scale-across-depth"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the He variance 2/fan-in for ReLU layers from variance propagation, and state the Xavier form for symmetric activations.",
+        "Predict whether activations and gradients shrink or grow across depth for a stated initialization scale.",
+        "Measure per-layer activation and gradient norms in a deep MLP and name the failing regime."
       ],
-      "why": "TODO",
+      "why": "Every later unit assumes signals survive the forward and backward pass. Wrong scale fails silently as flat or exploding loss, and no optimizer setting repairs it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "note": "Match activation and gradient signatures to dead, saturated or exploding regimes.",
+          "unit": "deep-learning/training-dynamics/unit-health-residual-paths"
+        },
+        {
+          "note": "See how normalization re-centers and re-scales the signals derived here.",
+          "unit": "deep-learning/training-dynamics/normalization-axes"
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Chapter 7, Section 7.5 through 7.5.3 (pp. 107 to 111): forward variance, backward variance and the 4/(fan-in + fan-out) compromise",
+          "resource": "udl-training",
+          "title": "Parameter initialization (derivation)",
+          "url": "https://udlbook.github.io/udlbook/"
+        },
+        {
+          "locator": "Vanishing and Exploding Gradients, Breaking the Symmetry, Parameter Initialization and Xavier Initialization; Summary",
+          "resource": "d2l-training",
+          "title": "Numerical stability, symmetry breaking and Xavier",
+          "url": "https://d2l.ai/chapter_multilayer-perceptrons/numerical-stability-and-init.html#sec-numerical-stability"
         }
       ],
       "focus": [
-        "TODO"
+        "ReLU keeps about half of symmetric inputs, so E[h^2] is half the pre-activation variance. That half is where the factor 2 in He comes from.",
+        "Xavier balances fan-in against fan-out for the near-linear regime. UDL's compromise averages the two He conditions; it is not the classic tanh Xavier formula.",
+        "Constant initialization never breaks symmetry: identical weights give identical gradients, so units update identically forever. Randomness must differ across units, not just across layers.",
+        "Variance preservation is an expectation over random draws. One unlucky draw still skews a narrow layer, so width matters alongside scale."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive sigma^2 = 2/fan-in for a ReLU layer from mean-zero pre-activations and E[h^2] = Var(f)/2. Then measure activation variance across a 50 by 100 MLP at init variances 0.001, 0.02 and 1.0, and show only 0.02 holds scale with depth.",
       "traps": [
-        "TODO"
+        "Using Xavier variance for ReLU layers. Without the factor 2 the forward variance halves each layer; use He for ReLU and Xavier-style 1/fan forms for tanh or sigmoid.",
+        "Reading UDL equation 7.34 as classic Xavier. It averages two He conditions; the book Notes on p. 113 say Xavier drops the factor 2.",
+        "Concluding stability from one seed. Variance statements are expectations, so rerun narrow layers with fresh draws before trusting a scale."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "a": "2/200 = 0.01. The ReLU clips about half of symmetric pre-activations to zero, halving E[h^2]; the 2 compensates that half.",
+          "q": "A ReLU layer has fan-in 200. What weight variance preserves activation scale, and why 2 and not 1?"
+        },
+        {
+          "a": "Uniform U(-sqrt(6/384), sqrt(6/384)) = U(-0.125, 0.125), since 6/(256+128) = 1/64.",
+          "q": "Tanh layer, fan-in 256, fan-out 128. Give the D2L Xavier uniform bound."
+        },
+        {
+          "a": "Every unit computes the same forward value and receives the same gradient, so they update identically forever. Symmetry never breaks; use independent random draws.",
+          "q": "All weights in an MLP layer are initialized to the same constant. What happens?"
+        },
+        {
+          "a": "Pre-activation magnitudes grow with depth until floating point saturates, and gradient norms grow backward through the same products. Both come from multiplying by large weights at every layer.",
+          "q": "Init variance is far too large. Which two signatures do you expect forward and backward?"
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Exercises: the symmetry-breaking, constant-init and eigenvalue questions",
+          "name": "D2L Numerical Stability and Initialization: Exercises",
+          "url": "https://d2l.ai/chapter_multilayer-perceptrons/numerical-stability-and-init.html"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive 2/fan-in without notes, and your variance probe shows stable scale at the He value with decay below it and growth above it.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL derives He forward and backward with the ReLU half, and D2L adds symmetry breaking with the Xavier uniform form. No search needed.",
+        "verdict": "kept"
       }
     },
     {
@@ -71,47 +121,83 @@
         "residual-paths-and-gradient-flow"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish dead, saturated, vanishing and exploding regimes from activation histograms and gradient norms.",
+        "Explain how residual identity paths change the gradient product and which failure they leave in place.",
+        "Predict train-time versus test-time behavior differences caused by batch statistics."
       ],
-      "why": "TODO",
+      "why": "Most failed runs show one of four signatures. Reading the signature decides whether to change the activation, the scale, the depth structure or the evaluation mode.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "note": "Control the scale you just learned to measure.",
+          "unit": "deep-learning/training-dynamics/normalization-axes"
+        },
+        {
+          "note": "Turn these signatures into ordered repair drills.",
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs"
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Chapter 7, Section 7.5 opening (pp. 107 to 108): small versus large init variance and the vanishing and exploding gradient problem",
+          "resource": "udl-training",
+          "title": "Vanishing and exploding gradients (problem setup)",
+          "url": "https://udlbook.github.io/udlbook/"
+        },
+        {
+          "locator": "Vanishing and Exploding Gradients: the matrix-product gradient form, sigmoid tails versus ReLU, and Breaking the Symmetry",
+          "resource": "d2l-training",
+          "title": "Vanishing and exploding gradients, activations",
+          "url": "https://d2l.ai/chapter_multilayer-perceptrons/numerical-stability-and-init.html#sec-numerical-stability"
+        },
+        {
+          "depth": "Stop at Section 11.4. Skip the architecture catalog in 11.5 and later.",
+          "locator": "Chapter 11, Sections 11.2 through 11.4 (pp. 189 to 194): residual connections and gradient paths, exploding variance in residual nets, and batch normalization training statistics",
+          "resource": "udl-training",
+          "title": "Residual blocks and batch normalization",
+          "url": "https://udlbook.github.io/udlbook/"
         }
       ],
       "focus": [
-        "TODO"
+        "Sigmoid derivatives peak at 0.25 and decay to zero at both tails; tanh peaks at 1 but still decays. Products of many such terms vanish, while ReLU passes 1 on its active side and 0 elsewhere.",
+        "A residual block outputs x + f(x), so its gradient is I plus residual terms. The identity term gives every layer a direct path, but He init still doubles per-block variance, which is why these nets pair residuals with normalization.",
+        "Dead ReLU units output zero and pass zero gradient for all negative inputs. A large negative bias update can silence a unit for the rest of training.",
+        "Batch normalization uses batch statistics during training and frozen statistics at test time. A train and eval gap with normalization present points at state handling before architecture."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write a two-block residual unrolling x2 = x0 + f1(x0) + f2(x0 + f1(x0)) and its gradient with respect to x0, and circle the identity term that survives even if both residual Jacobians vanish.",
       "traps": [
-        "TODO"
+        "Calling any flat loss a vanishing-gradient problem. Dead units, saturated outputs, too-small learning rates and broken objectives all flatten curves; check gradient norms before renaming the failure.",
+        "Believing residuals remove all scale problems. UDL Section 11.3 shows per-block variance still doubles under He init; residuals fix paths while normalization fixes scale.",
+        "Testing with training-mode normalization or dropout and reporting the gap as overfitting. Set eval mode first, then compare."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "a": "Each sigmoid derivative is at most 0.25, so ten layers multiply gradient norms by at most 0.25^10, about 1e-6. The product of small derivatives is the vanishing gradient.",
+          "q": "Sigmoid MLP, gradients shrink by about 0.2 per layer across 10 layers. Explain the size."
+        },
+        {
+          "a": "Dead. Their pre-activations stay negative, so the ReLU derivative is zero and no gradient reaches their weights. Without a gradient they cannot recover under plain SGD.",
+          "q": "Half the ReLUs in a layer output zero on every training example and their weights never change. Dead or saturated, and why stuck?"
+        },
+        {
+          "a": "Its Jacobian is I plus df/dx, so the gradient contains an identity term that reaches early layers directly instead of only through products of small or unstable Jacobians.",
+          "q": "Why does x + f(x) train deeper than f(x) alone, in one gradient sentence?"
+        },
+        {
+          "a": "Rerun eval in evaluation mode, with frozen batch statistics and dropout off, to rule out stale state. Only then compare curves for genuine overfitting.",
+          "q": "Train accuracy 95 percent, eval 70 percent, with batch normalization and dropout. Name the first two checks."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "LeNet with Batch Normalization; Exercises: the learning-rate comparison and failure-point questions",
+          "name": "D2L LeNet with Batch Normalization: learning-rate robustness",
+          "url": "https://d2l.ai/chapter_convolutional-modern/batch-norm.html"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You classify a dead, a saturated and an exploding layer from histograms and gradient norms alone, and you write the residual gradient with its identity term without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "UDL covers residual paths with gradient equations and D2L covers activation-side failures; batch train and test behavior comes from both. No search needed.",
+        "verdict": "kept"
       }
     },
     {
@@ -126,47 +212,88 @@
         "batch-layer-group-and-rms-normalization-axes"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the normalized output, parameter count and normalized axes for batch, layer, group and RMS normalization.",
+        "Implement layer normalization from tensor ops and match the reference on random input.",
+        "Predict when batch statistics help, hurt or break, and choose the matching normalization."
       ],
-      "why": "TODO",
+      "why": "Normalization decides which axes share statistics and whether evaluation depends on the batch. The wrong choice breaks single-example prediction or leaks batch mates into each output.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "note": "Debug stale train and eval normalization state.",
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs"
+        },
+        {
+          "note": "Place normalization inside residual blocks.",
+          "unit": "deep-learning/attention-transformers/transformer-block-anatomy"
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Batch Normalization Layers (fully connected and convolutional), Layer Normalization, and Batch Normalization During Prediction",
+          "resource": "d2l-training",
+          "title": "Batch, layer and prediction behavior",
+          "url": "https://d2l.ai/chapter_convolutional-modern/batch-norm.html#batch-normalization-layers"
+        },
+        {
+          "locator": "Chapter 11, Section 11.4 (pp. 192 to 194): batch equations, train versus test statistics, and costs with benefits",
+          "resource": "udl-training",
+          "title": "Batch normalization (equations and behavior)",
+          "url": "https://udlbook.github.io/udlbook/"
+        },
+        {
+          "locator": "GroupNorm page: channel grouping, normalized axes and the affine parameters",
+          "resource": "pytorch-groupnorm",
+          "title": "Group normalization axes",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html"
+        },
+        {
+          "locator": "RMSNorm page: RMS formula, normalized_shape axes, and absent centering",
+          "resource": "pytorch-rmsnorm",
+          "title": "RMS normalization formula",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html"
         }
       ],
       "focus": [
-        "TODO"
+        "Batch norm normalizes each channel over batch and spatial axes with learned per-channel scale and shift. One example's training output depends on the other batch members.",
+        "Layer norm normalizes one example over its features with no running statistics, so train and test match. Group norm sits between: G channel groups per example, with G = C giving per-channel behavior.",
+        "RMS norm drops mean centering and bias and scales by the root mean square only. Fewer statistics, same axis argument.",
+        "PyTorch tracks batch statistics as exponential running averages during training. D2L's full-dataset recomputation after training describes the goal, not the implementation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, implement layer normalization for a (batch, features) input from sums only. Then compute batch norm by hand for values [0, 2, 4] with unit scale, zero shift and zero epsilon: outputs -1.225, 0 and 1.225.",
       "traps": [
-        "TODO"
+        "Normalizing with batch statistics at test time. Eval must use the tracked running statistics; a batch of one at test time otherwise collapses every activation toward the shift parameter.",
+        "Keeping the bias before a normalization. Centering subtracts any constant offset, so that bias is redundant; the D2L Exercises ask exactly this.",
+        "Treating RMS norm as layer norm without bias. It also removes mean centering, so a large constant offset passes through scaled but unshifted."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "a": "Mean 2, variance 8/3, std 1.633. Outputs (-2/1.633, 0, 2/1.633) = (-1.225, 0, 1.225).",
+          "q": "Batch values [0, 2, 4], gamma 1, beta 0, epsilon 0. What are the normalized outputs?"
+        },
+        {
+          "a": "Batch, height and width. Even one image supplies H times W values per channel, so mean and variance are defined. Fully connected batch norm has only the batch axis and degenerates at batch size 1.",
+          "q": "Conv input (N, C, H, W). Which axes does batch norm use per channel, and why does batch size 1 still work?"
+        },
+        {
+          "a": "G = 1 normalizes all channels and spatial positions jointly with one mean and variance. G = C normalizes each channel separately, which is per-channel instance behavior.",
+          "q": "Group norm with G = 1 versus G = C on one example. What does each compute?"
+        },
+        {
+          "a": "RMS = sqrt((9+16)/2) = 3.536. Outputs (0.849, 1.131). No centering is applied.",
+          "q": "RMS norm input [3, 4], gamma 1. What is the output?"
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Implementation from Scratch and Concise Implementation: build batch norm, match the concise layer, and answer the bias-removal exercise",
+          "name": "D2L Batch Normalization from Scratch and Concise implementation",
+          "url": "https://d2l.ai/chapter_convolutional-modern/batch-norm.html#implementation-from-scratch"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your from-scratch layer norm matches the framework output on random input, and you state each method's axes and eval behavior without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "Pool covers batch and layer axes at depth; group and RMS axes had no locator, so the two PyTorch references were added.",
+        "verdict": "added"
       }
     },
     {
