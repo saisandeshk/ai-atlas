@@ -20,6 +20,16 @@
       "access": "Free",
       "use": "Section 1 only, p. 1: timestamp order as a chosen serialization order. The section pool omits Lecture 19; this fills the timestamp-ordering vocabulary gap without assigning all of OCC.",
       "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/19-timestampordering.pdf"
+    },
+    {
+      "id": "sqlite-wal-contract",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "SQLite Write-Ahead Logging",
+      "provider": "SQLite",
+      "access": "Free",
+      "use": "Sections 1 and 3 only: rollback journaling remains the default and WAL is an opt-in mode. Correct the dated SQLite statement in CMU Lecture 21; inspect the bundled engine without running concurrent WAL writers.",
+      "url": "https://sqlite.org/wal.html"
     }
   ],
   "units": [
@@ -603,7 +613,7 @@
     {
       "id": "wal-recovery-durability",
       "title": "Write-ahead logging, recovery, checksums and durability",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "explain",
         "implement"
@@ -614,53 +624,106 @@
         "acknowledgement-page-cache-flush-and-stable-durability-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Trace WAL-before-page and commit-before-ack ordering using log sequence numbers.",
+        "Implement bounded, checksummed append records and deterministic recovery of complete prefixes.",
+        "Specify snapshot publication, directory durability and a safe log-retention boundary.",
+        "Diagnose torn tails, corruption and lost acknowledged writes without treating process death as a power-loss test."
       ],
-      "why": "TODO",
+      "why": "Build on Systems' files-fsync-durability unit rather than repeat its rename experiment. The new mechanism is recovery of logical state and its index after interruption, with a precise acknowledgment and corruption contract.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/databases-durable-storage/storage-evolution-amplification",
+          "note": "Preserve this recovery contract during format changes and compaction."
+        },
+        {
+          "unit": "systems/distributed-state-streams/logs-delivery-semantics",
+          "note": "Separate durable local acknowledgment from delivery and replay effects."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cmu-15445-storage-transactions",
+          "title": "Lecture 21: Database Logging",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/21-logging.pdf",
+          "locator": "Sections 1-2, pp. 1-2, and sections 6-7, pp. 4-6: buffer policies, WAL and logging schemes",
+          "depth": "Skip section 5: SQLite did not replace rollback journals after 2010; WAL is optional. Skip section 8's blanket checkpoint-pruning claim; use the recovery metadata in Lecture 22 to determine needed log history."
+        },
+        {
+          "resource": "cmu-15445-storage-transactions",
+          "title": "Lecture 22: Database Crash Recovery",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/22-recovery.pdf",
+          "locator": "Sections 1-5, pp. 1-6: LSNs, execution, checkpoints and ARIES recovery",
+          "depth": "Trace analysis, redo and undo; do not implement ARIES. Redo can start before the checkpoint at the minimum recLSN. In Figure 4, follow the text's largest-lastLSN reverse undo rule, not the caption's 'oldest' starting point. PostgreSQL's MVCC/WAL recovery is not a literal implementation of this generic undo protocol."
+        },
+        {
+          "resource": "ostep-persistence",
+          "title": "OSTEP: crash consistency",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-journaling.pdf",
+          "locator": "Chapter 42, section 42.3, Journaling (or Write-Ahead Logging)",
+          "depth": "Use write ordering and corruption detection for your own append-only store. Skip filesystem simulation and performance exercises."
+        },
+        {
+          "resource": "ostep-persistence",
+          "title": "OSTEP: data integrity",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-integrity.pdf",
+          "locator": "Chapter 45, sections 45.3-45.6, Detecting Corruption, Using Checksums, Misdirected Writes and Lost Writes"
+        },
+        {
+          "resource": "postgresql-query-transaction-lab",
+          "title": "PostgreSQL 18: Write-Ahead Logging",
+          "url": "https://www.postgresql.org/docs/18/wal-intro.html",
+          "locator": "Section 28.3, WAL-before-data, REDO and group commit"
+        },
+        {
+          "resource": "sqlite-wal-contract",
+          "title": "SQLite: rollback journal versus WAL mode",
+          "url": "https://sqlite.org/wal.html",
+          "locator": "Sections 1, Overview, and 3, Activating And Configuring WAL Mode",
+          "depth": "Inspect the default using one connection. Do not run a multi-connection WAL exercise on an old bundled SQLite build."
         }
       ],
       "focus": [
-        "TODO"
+        "Before flushing a dirty page, durable WAL must cover its pageLSN. Before acknowledging a durable commit, durable WAL must cover its commit record; data pages can follow later.",
+        "ARIES repeats history, including loser updates, then undoes losers. A single-writer append-only store can instead replay complete committed records into a rebuildable index; its recovery protocol is smaller.",
+        "A checksum detects many corruptions, not intent, lost whole records or adversarial changes. Bound lengths before allocating; distinguish incomplete EOF from a complete frame with a bad checksum.",
+        "For a snapshot at log offset K, flush the new snapshot, durably publish its name, flush a new manifest, atomically replace the old manifest and fsync its directory. Retain the old generation and required log until publication is durable."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use CPython 3.14.4 via /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I. Print sqlite3.sqlite_version and inspect PRAGMA journal_mode on a fresh on-disk database with one connection: the tested SQLite 3.46.1 returned delete, not wal. Then implement a single-writer log with struct.pack('>II',length,crc) followed by payload; length is the payload byte count, capped at 1024, and crc is zlib.crc32(struct.pack('>I',length)+payload). Use payloads b'a=1', b'b=2', b'a=3'. Each frame is 11 bytes. Append all bytes with short-write handling and fsync before acknowledging; for a newly created log, fsync its parent directory too. Rebuild the latest-key index by scanning validated frames. Test every byte-prefix truncation from 0 through 33: recover exactly the complete prefix and return its ending offset, giving 34 cases. Incomplete EOF is an uncommitted tail under this model; a complete frame with a bad CRC or an excessive length is an error, not silently discarded. Flip byte 9 in the complete log and require a corruption error. The full log gives a=3,b=2, and rebuilding twice gives the same state. Finally draw crashes before and after durable manifest publication: recovery must select a complete old or new generation and retain the log needed by that generation. These are deterministic fault-model tests, not evidence of surviving a real power cut.",
       "traps": [
-        "TODO"
+        "Acknowledging after write returns, but before fsync succeeds. Kernel page-cache acceptance is not stable-storage durability.",
+        "Deleting the old log as soon as a snapshot file exists. Its contents and the selecting manifest must both be durably published first.",
+        "Silently truncating any bad checksum as a torn tail. That can hide corruption or destroy acknowledged state; fail closed unless the recovery contract independently proves the suffix was uncommitted."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What is illegal about flushing a page at pageLSN=80 when durable WAL ends at 70?",
+          "a": "A crash could leave the changed page without the recovery record needed to explain it. Flush WAL through 80 first."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can a committed transaction survive while its data pages are still dirty in memory?",
+          "a": "Yes, if durable log records are sufficient to redo its committed effects and the engine's durability settings guarantee that log boundary."
+        },
+        {
+          "q": "Can a record checksum detect deletion of the entire final valid frame?",
+          "a": "No. The remaining frames still validate. An independent expected boundary or acknowledgment record is needed to detect that loss."
+        },
+        {
+          "q": "Why does SIGKILL not establish power-loss durability?",
+          "a": "It kills a process but leaves the kernel and its dirty page cache alive. The data can persist after process death without having been durable before it."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: checksummed append-only state, a rebuildable offset index, every short-write and publication boundary, fsync-error handling, torn-tail versus corruption policy, snapshot/manifest recovery and an acknowledged-prefix oracle.",
+      "stopWhen": "All 34 prefix cases match the independent prefix oracle, the corruption case fails closed, replay is idempotent, and the publication trace never selects an incomplete generation or drops its required log.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "CMU, OSTEP and PostgreSQL meet recovery depth, but CMU's SQLite statement fails currency. The official SQLite mode contract corrects it; six hours includes deterministic recovery rather than a full ARIES implementation."
       }
     },
     {
       "id": "storage-evolution-amplification",
       "title": "Record evolution, amplification and LSM trees",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain"
       ],
@@ -670,47 +733,79 @@
         "lsm-compaction-mechanics-and-bloom-filters"
       ],
       "outcomes": [
-        "TODO"
+        "Specify old/new reader and writer compatibility for stored records, including defaults and unknown fields.",
+        "Explain memtable flush, sorted-run compaction, tombstones and Bloom-filter lookup decisions.",
+        "Account for read, write and temporary-space amplification at a named storage layer."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's schema-evolution-migrations unit. Stored encodings outlive deployed code, and compaction rewrites persistent history; this unit goes below Alembic into record compatibility and storage-engine amplification.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/security-privacy-evolution/safe-migration-revocation",
+          "note": "Use the compatibility matrix to define rollback boundaries."
+        },
+        {
+          "route": "distributed-systems",
+          "note": "Extend compaction and version retention to replicated state."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-transactions",
+          "title": "DDIA, second edition: log-structured storage",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Log-Structured Storage, printed pp. 118-124, including SSTables, Bloom filters and compaction strategies; Comparing B-Trees and LSM-Trees, pp. 129-132"
+        },
+        {
+          "resource": "ddia-storage-transactions",
+          "title": "DDIA, second edition: encoding and evolution",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 5, Formats for Encoding Data and JSON, XML, and Binary Variants, printed pp. 163-168; Field tags and schema evolution, p. 171; Dataflow Through Databases, pp. 178-179",
+          "depth": "Use compatibility and field-identity rules. Skip byte-by-byte format comparisons and RPC; no protobuf or Avro installation is required."
+        },
+        {
+          "resource": "cmu-15445-storage-transactions",
+          "title": "Lecture 9: Bloom filters",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/09-indexes2.pdf",
+          "locator": "Sections 1-2, Index vs. Filters and Bloom filter, pp. 1-2",
+          "depth": "Stop before Skip List. LSM mechanics and Bloom filters are the optional topic's bounded extension, not a full storage engine."
         }
       ],
       "focus": [
-        "TODO"
+        "Backward compatibility is new readers accepting old records; forward compatibility is old readers accepting new records. Unknown-field preservation matters when old code reads, modifies and writes a new record.",
+        "An LSM writes to a memtable and durability log, flushes sorted immutable runs, then merges runs by key and recency. A tombstone cannot be dropped while an older value can still be reached or a supported snapshot needs it.",
+        "Write amplification needs a byte or operation denominator and a layer boundary. Count log writes, flushes and compaction separately; engine bytes are not flash-controller bytes.",
+        "Bloom filters can rule out a missing key, but a positive answer still needs lookup. The no-false-negative property assumes correct construction and publication with the matching run; ordinary membership filters do not answer arbitrary intervals."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, merge old sorted run [(1,1),(2,1),(3,1)] and newer run [(1,2),(2,2),(4,1)], where each pair is (key,value), and keep the newer duplicate: [(1,2),(2,2),(3,1),(4,1)]. Encode each pair using struct.pack('>QQ',key,value), exactly 16 bytes. Count only run-file writes: the two initial runs total 96 bytes and compaction writes 64, so total writes/input update bytes is 160/96=5/3. Keeping both inputs until output publication uses 160/64=2.5 times the compacted live-record bytes. These are exact model byte counts, excluding WAL, manifests, filters, filesystem blocks and device GC, not measured device amplification. Then specify a JSON record v1 with key and value, and a compatible v2 that adds optional expires_at defaulting to null. Test all four old/new writer-reader combinations in Python; the old reader must preserve unknown fields if it rewrites records, and the new reader must fill the absent default. Changing value from an integer to an object is a separate breaking change, not the optional-field case.",
       "traps": [
-        "TODO"
+        "Reporting only memtable ingestion bytes as LSM write amplification. Deferred flush and compaction still consume writes.",
+        "Deleting tombstones before considering older runs and active snapshots, allowing old values to reappear.",
+        "Dropping unknown fields on an old reader's rewrite, or reusing a retired binary field tag for a different meaning."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is the compaction model's write amplification 5/3 rather than 64/96?",
+          "a": "The numerator includes both initial run writes and the compaction output: 96+64. Counting only the output omits the initial writes."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can temporary space exceed final live data even though compaction removes duplicates?",
+          "a": "Old input runs must coexist with the new output until safe publication and reader release. The final output is smaller, but the peak includes both."
+        },
+        {
+          "q": "Can a correct Bloom filter's positive answer establish that a value exists?",
+          "a": "No. Other keys may have set all queried bits. Lookup must verify the key and handle versions or tombstones."
+        },
+        {
+          "q": "Does successfully reading a v2 record with old code prove a safe rolling upgrade?",
+          "a": "No. Check new readers on old records, old readers on new records, defaults, and rewrites that preserve unknown fields; rollback may encounter data written by the new version."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: versioned record decoding, a four-way compatibility matrix, crash-safe compaction publication, tombstone-retention tests, and separate logical byte counters for append, flush and rewrite work.",
+      "stopWhen": "Your merged state and byte accounting match the model, all compatibility cases include rewrite checks, and you can explain when tombstones and input runs remain necessary.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The located DDIA storage and encoding sections cover evolution and amplification; CMU supplies bounded optional Bloom-filter depth and the mini-project supplies compatibility and compaction failures."
       }
     }
   ]
