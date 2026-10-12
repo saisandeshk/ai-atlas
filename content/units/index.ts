@@ -60,6 +60,21 @@ import unitFile57 from './programming/python-execution-model.json';
 import unitFile58 from './programming/python-execution-model.project.json';
 import unitFile59 from './programming/testing-debugging-reproducibility.json';
 import unitFile60 from './programming/testing-debugging-reproducibility.project.json';
+import unitFile61 from './systems/_route.json';
+import unitFile62 from './systems/concurrency-bounded-work.json';
+import unitFile63 from './systems/concurrency-bounded-work.project.json';
+import unitFile64 from './systems/databases-durable-storage.json';
+import unitFile65 from './systems/databases-durable-storage.project.json';
+import unitFile66 from './systems/distributed-state-streams.json';
+import unitFile67 from './systems/distributed-state-streams.project.json';
+import unitFile68 from './systems/machine-process-memory-io.json';
+import unitFile69 from './systems/machine-process-memory-io.project.json';
+import unitFile70 from './systems/networking-rpc.json';
+import unitFile71 from './systems/networking-rpc.project.json';
+import unitFile72 from './systems/observability-reliability-design.json';
+import unitFile73 from './systems/observability-reliability-design.project.json';
+import unitFile74 from './systems/security-privacy-evolution.json';
+import unitFile75 from './systems/security-privacy-evolution.project.json';
 
 export const unitFiles: Array<{ route: string; name: string; data: unknown }> = [
   { route: 'algorithms', name: '_route', data: unitFile0 },
@@ -123,4 +138,19 @@ export const unitFiles: Array<{ route: string; name: string; data: unknown }> = 
   { route: 'programming', name: 'python-execution-model.project', data: unitFile58 },
   { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile59 },
   { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile60 },
+  { route: 'systems', name: '_route', data: unitFile61 },
+  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile62 },
+  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile63 },
+  { route: 'systems', name: 'databases-durable-storage', data: unitFile64 },
+  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile65 },
+  { route: 'systems', name: 'distributed-state-streams', data: unitFile66 },
+  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile67 },
+  { route: 'systems', name: 'machine-process-memory-io', data: unitFile68 },
+  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile69 },
+  { route: 'systems', name: 'networking-rpc', data: unitFile70 },
+  { route: 'systems', name: 'networking-rpc.project', data: unitFile71 },
+  { route: 'systems', name: 'observability-reliability-design', data: unitFile72 },
+  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile73 },
+  { route: 'systems', name: 'security-privacy-evolution', data: unitFile74 },
+  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile75 },
 ];

@@ -1,0 +1,66 @@
+{
+  "miniProject": {
+    "title": "Threat model, least-privilege tests, a privacy-bounded aggregate and a safe migration",
+    "hours": "12 to 16",
+    "brief": "Set the trust boundary of the service slice and test it: a threat model of the store and its migration path, scoped credentials with expiry, tenant isolation on every path, a hash-chained audit log, verified backups, one differentially private aggregate with its limits stated, and a canary migration with rollback and revocation under a failed dependency.",
+    "units": [
+      "threat-modeling",
+      "identity-access-secrets",
+      "tenant-isolation-injection",
+      "audit-fail-modes-supply-chain",
+      "ml-privacy-attacks",
+      "differential-privacy-basics",
+      "safe-migration-revocation"
+    ],
+    "steps": [
+      "Draw the system model: client, proxy, server, store, catalog, backups and the migration job, with trust boundaries, data flows, data stores, processes and external entities. List the assets and two adversary profiles, one an insider with backup access. Write abuse cases for unauthorized mutation, cross-tenant reads, stale credentials, sensitive logs and restore or migration paths; each ends in a test or an explicit residual-risk sentence.",
+      "Authenticate every request with a credential issued per client: a token carrying tenant, scopes (read, write, admin) and expiry, signed with HMAC-SHA256 under a server key. The issuer refuses scopes the client's policy does not allow, and the server checks the signature with hmac.compare_digest, the expiry on its own clock with a declared skew allowance, and the scope for the operation. Tests reject missing, forged, expired, out-of-scope and wrong-tenant credentials, and admin operations need a separate, logged credential.",
+      "Make the tenant part of every key and query, taken from the authenticated credential and never from a request field: the store prefixes keys by tenant, idempotency keys are scoped by tenant and client, and catalog queries are parameterized and tenant-scoped. Test cross-tenant reads and writes on the normal path, the retry path (a retried write whose idempotency key matches another tenant's must not replay that tenant's response), the stale-read fallback and the restore path. Keep the injection fixture (acme' OR '1'='1 returns both tenants when interpolated, one row when parameterized) and a test that the protocol never unpickles input.",
+      "Write security events (authentication failures, scope denials, cross-tenant attempts, admin actions) to a hash-chained audit log in which each record holds the hash of the previous one and tokens are redacted before hashing. Test that every rejected attempt from the previous steps leaves exactly one audit record and that editing or deleting a record fails verification. When the authorization policy cannot load, deny, and write down what that costs in availability.",
+      "Back up the store and catalog with a manifest of SHA-256 digests, restore into a fresh directory and database, and verify digests, the record count from the log, tenant predicates and the audit chain before serving. Test that a corrupted backup is refused.",
+      "Release one differentially private aggregate from the usage data, such as total writes per day across tenants with each tenant's daily count clamped. With OpenDP 0.16.0, state the privacy unit and adjacency (one tenant-day added or removed), clamp bounds, sensitivity, noise scale, epsilon, delta and the budget spent across releases, kept in a ledger that blocks a release over budget. OpenDP noise is not seeded, so measure utility over at least 1000 releases in several runs and report the spread. Write the residual-risk statement: values lost to clamping, releases beyond the budget, and data outside the privacy unit.",
+      "Migrate the record format from v1 to v2 behind a canary: read both versions, write v2 only for the canary fraction, compare error rate and p99, and roll back with v1 readers still able to read every record written. Practise the rollback once on purpose. Then revoke a credential while the issuer is down: the server keeps enforcing its cached revocation list instead of failing open, and a test shows the revoked token rejected during the outage."
+    ],
+    "deliverables": [
+      "dossier/security/: the threat model diagram, assets, adversaries, abuse cases and residual risks.",
+      "The credential, tenant-isolation, injection, deserialization and audit tests, passing, with the failing output each was written against.",
+      "The backup and restore verification script with a refused corrupted backup.",
+      "The private release: code, parameters, budget ledger, utility measurements and the residual-risk statement.",
+      "The migration drill: canary numbers, the rollback and the revocation test under a failed dependency."
+    ],
+    "checks": [
+      {
+        "kind": "rubric",
+        "name": "Self-grade with the rubric below"
+      }
+    ],
+    "rubric": [
+      {
+        "criterion": "Threat model",
+        "pass": "Every abuse case ends in a passing test or a residual-risk sentence, and the model covers backup, restore and migration paths.",
+        "strong": "The insider case names what the audit log can and cannot show about it."
+      },
+      {
+        "criterion": "Least privilege",
+        "pass": "Missing, forged, expired, out-of-scope and wrong-tenant credentials are rejected by tests, and the admin path is separate and logged.",
+        "strong": "Tenant scope comes from the credential on every path, with tests for the retry, cache and restore paths as well as the normal one."
+      },
+      {
+        "criterion": "Integrity",
+        "pass": "The audit chain detects an edited or deleted record, tokens are redacted, and a corrupted backup is refused before serving.",
+        "strong": "Restore verification checks tenant predicates and the audit chain, not only file digests."
+      },
+      {
+        "criterion": "Privacy",
+        "pass": "The release states unit, adjacency, clamp, sensitivity, epsilon, delta and spent budget, with measured utility.",
+        "strong": "The residual-risk statement names concrete cases outside the guarantee, and the ledger blocks an over-budget release."
+      },
+      {
+        "criterion": "Safe evolution",
+        "pass": "The canary migration ran with a rollback that left every record readable, and revocation held while the issuer was down.",
+        "strong": "The drill has a timeline, and the rollback fired from metrics rather than by hand."
+      }
+    ],
+    "feedsInto": "Capstone dossier: the threat model, least-privilege tests, safe migration and rollback, and the bounded private aggregate with its limits."
+  }
+}
