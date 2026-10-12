@@ -1,0 +1,433 @@
+{
+  "section": "tokenization-corpus-data",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "text-bytes-normalization",
+      "title": "Text as bytes: Unicode, encodings and normalization",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "unicode-code-points-byte-encodings-and-invalid-byte-policy",
+        "normalization-choices-and-distinctions-they-erase",
+        "character-byte-and-token-counts"
+      ],
+      "outcomes": [
+        "TODO"
+      ],
+      "why": "TODO",
+      "next": [
+        {
+          "unit": "TODO",
+          "note": "TODO"
+        }
+      ],
+      "study": [
+        {
+          "resource": "TODO",
+          "title": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "focus": [
+        "TODO"
+      ],
+      "reproduce": "TODO",
+      "traps": [
+        "TODO"
+      ],
+      "selfTest": [
+        {
+          "q": "TODO",
+          "a": "TODO"
+        }
+      ],
+      "practice": [
+        {
+          "name": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "stopWhen": "TODO",
+      "fit": {
+        "verdict": "kept",
+        "note": "TODO"
+      }
+    },
+    {
+      "id": "byte-level-bpe",
+      "title": "Byte-level BPE: training, merges and tie-breaking",
+      "hours": 6,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "byte-level-tokenization-and-complete-input-coverage",
+        "bpe-pair-counts-merges-and-deterministic-tie-breaking"
+      ],
+      "outcomes": [
+        "Run BPE training by hand on a small corpus, apply the tie-breaking rule, and predict the merge list.",
+        "Implement byte-level BPE training from a blank file, with regex pre-tokenization and special tokens as hard boundaries.",
+        "Explain why a byte-level vocabulary encodes any input without an unknown token."
+      ],
+      "why": "Every later count in this stage, from sequence lengths to KV-cache bytes, is measured in tokens, and BPE decides what a token is. The merge list is part of the model's identity: change one tie-break and every token ID downstream shifts.",
+      "next": [
+        {
+          "unit": "llm-foundations/tokenization-corpus-data/tokenizer-identity-streaming",
+          "note": "Turn the merge list into an encoder and decoder you can trust."
+        },
+        {
+          "unit": "llm-foundations/tokenization-corpus-data/tokenizer-design-choices",
+          "note": "Weigh vocabulary size and contrast BPE with Unigram."
+        }
+      ],
+      "study": [
+        {
+          "resource": "raschka-llm-tokenization",
+          "title": "BPE tokenizer from scratch (notebook)",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/05_bpe-from-scratch/bpe-from-scratch.ipynb",
+          "locator": "Sections 1.1 to 1.4 for bytes, the vocabulary and a worked example, then 3.1 for training, encoding and decoding",
+          "depth": "Skim section 2, the simple implementation. Skip 3.3, loading OpenAI's GPT-2 files, until the identity unit."
+        },
+        {
+          "resource": "cs336-a1-tokenizer-contract",
+          "title": "CS336 Assignment 1 handout",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 2.4, BPE Tokenizer Training, with Example (bpe_example) (pp. 5 to 7), then Section 2.5 on removing special tokens before pre-tokenization and optimizing the merge step (pp. 8 to 9)"
+        }
+      ],
+      "focus": [
+        "The base vocabulary is all 256 byte values, so coverage is complete before the first merge. Merges only shorten sequences.",
+        "Pairs are counted inside pre-tokens, weighted by how often each pre-token occurs. No pair crosses a pre-token or special-token boundary.",
+        "Ties go to the lexicographically greater pair. Without a fixed rule, two correct trainers produce different merge lists.",
+        "After a merge, only the counts of pairs that overlap the merged occurrences change. Updating just those makes training fast."
+      ],
+      "reproduce": "By hand, train on the CS336 example corpus (low x5, lower x2, widest x3, newest x6) for six merges and get s t, e st, o w, l ow, w est, n e. Then tokenize newest as [ne, west].",
+      "traps": [
+        "Decoding token bytes to str to compare or print them. A merged token can be a partial UTF-8 sequence, so decoding fails or maps distinct tokens to the same replacement character.",
+        "Pre-tokenizing before splitting on special tokens. Their text then enters the pair counts as ordinary pieces such as <| and endoftext, and steals merges.",
+        "Treating vocab_size as the number of merges. It includes the 256 byte values, the merges and the special tokens."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can byte-level BPE encode any string, while a character vocabulary built from a corpus cannot?",
+          "a": "Its base vocabulary holds all 256 byte values, and every string has a UTF-8 encoding. A character vocabulary covers only the characters seen in training, so an unseen character needs an unknown token."
+        },
+        {
+          "q": "The pairs (A, B), (A, C), (B, ZZ) and (BA, A) tie for the highest count. Which one merges under the CS336 rule?",
+          "a": "(BA, A). The rule takes the lexicographically greatest pair, and BA sorts after A and B."
+        },
+        {
+          "q": "After (s, t) merges into st, which pair counts can change?",
+          "a": "Only counts next to the merged occurrences. Each neighbouring pair (x, s) or (t, y) loses those occurrences, the new pairs (x, st) and (st, y) gain them, and (s, t) loses every occurrence that merged. All other counts stay the same."
+        },
+        {
+          "q": "A training file contains [Doc 1]<|endoftext|>[Doc 2]. What goes wrong if you pre-tokenize it without splitting on the special token first?",
+          "a": "The special token's text is pre-tokenized like ordinary text, so its pieces enter the pair counts and can earn merges. The trainer should split on special tokens so that they act as hard boundaries and contribute nothing to the counts."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 1: train_bpe",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_train_bpe.py",
+          "locator": "Problem (train_bpe) in Section 2.4; connect your trainer to run_train_bpe in tests/adapters.py and pass tests/test_train_bpe.py",
+          "note": "The public tests compare your merges and vocabulary with a reference, check special-token handling, and require training on the small fixture in under 1.5 seconds. Implement it in your own repository."
+        }
+      ],
+      "stopWhen": "You reproduce the six example merges by hand, and your own trainer passes all three tests in tests/test_train_bpe.py.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Raschka notebook and the CS336 handout cover both topics at derive and implement depth, and the CS336 public tests give checked practice."
+      }
+    },
+    {
+      "id": "tokenizer-design-choices",
+      "title": "Tokenizer design choices: vocabulary size, Unigram and special tokens",
+      "hours": 3,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "unigram-tokenizer-intuition-and-contrast-with-bpe",
+        "vocabulary-size-token-fertility-and-sequence-length-trade-offs",
+        "special-token-ids-boundaries-and-injection-policy",
+        "tokenizer-comparisons-across-language-and-code-slices"
+      ],
+      "outcomes": [
+        "TODO"
+      ],
+      "why": "TODO",
+      "next": [
+        {
+          "unit": "TODO",
+          "note": "TODO"
+        }
+      ],
+      "study": [
+        {
+          "resource": "TODO",
+          "title": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "focus": [
+        "TODO"
+      ],
+      "reproduce": "TODO",
+      "traps": [
+        "TODO"
+      ],
+      "selfTest": [
+        {
+          "q": "TODO",
+          "a": "TODO"
+        }
+      ],
+      "practice": [
+        {
+          "name": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "stopWhen": "TODO",
+      "fit": {
+        "verdict": "kept",
+        "note": "TODO"
+      }
+    },
+    {
+      "id": "tokenizer-identity-streaming",
+      "title": "A tokenizer you can trust: round trips, identity and streaming",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "encode-decode-round-trip-and-serialized-tokenizer-identity",
+        "streaming-inputs-and-chunk-boundary-invariance"
+      ],
+      "outcomes": [
+        "TODO"
+      ],
+      "why": "TODO",
+      "next": [
+        {
+          "unit": "TODO",
+          "note": "TODO"
+        }
+      ],
+      "study": [
+        {
+          "resource": "TODO",
+          "title": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "focus": [
+        "TODO"
+      ],
+      "reproduce": "TODO",
+      "traps": [
+        "TODO"
+      ],
+      "selfTest": [
+        {
+          "q": "TODO",
+          "a": "TODO"
+        }
+      ],
+      "practice": [
+        {
+          "name": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "stopWhen": "TODO",
+      "fit": {
+        "verdict": "kept",
+        "note": "TODO"
+      }
+    },
+    {
+      "id": "packing-and-loss-masks",
+      "title": "From documents to training examples: packing and loss masks",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "documents-boundary-tokens-truncation-and-packing",
+        "causal-loss-masks-across-packed-document-boundaries",
+        "split-before-fit-and-split-before-pack-discipline"
+      ],
+      "outcomes": [
+        "TODO"
+      ],
+      "why": "TODO",
+      "next": [
+        {
+          "unit": "TODO",
+          "note": "TODO"
+        }
+      ],
+      "study": [
+        {
+          "resource": "TODO",
+          "title": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "focus": [
+        "TODO"
+      ],
+      "reproduce": "TODO",
+      "traps": [
+        "TODO"
+      ],
+      "selfTest": [
+        {
+          "q": "TODO",
+          "a": "TODO"
+        }
+      ],
+      "practice": [
+        {
+          "name": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "stopWhen": "TODO",
+      "fit": {
+        "verdict": "kept",
+        "note": "TODO"
+      }
+    },
+    {
+      "id": "provenance-dedup-contamination",
+      "title": "Provenance, deduplication and contamination",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "source-and-document-identities-lineage-and-provenance",
+        "exact-deduplication-and-near-duplicate-strategy",
+        "contamination-probes-and-false-match-review"
+      ],
+      "outcomes": [
+        "TODO"
+      ],
+      "why": "TODO",
+      "next": [
+        {
+          "unit": "TODO",
+          "note": "TODO"
+        }
+      ],
+      "study": [
+        {
+          "resource": "TODO",
+          "title": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "focus": [
+        "TODO"
+      ],
+      "reproduce": "TODO",
+      "traps": [
+        "TODO"
+      ],
+      "selfTest": [
+        {
+          "q": "TODO",
+          "a": "TODO"
+        }
+      ],
+      "practice": [
+        {
+          "name": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "stopWhen": "TODO",
+      "fit": {
+        "verdict": "kept",
+        "note": "TODO"
+      }
+    },
+    {
+      "id": "filtering-mixtures-sharding",
+      "title": "Filtering, mixtures and deterministic shards",
+      "hours": 3,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "filtering-reasons-yield-and-representative-slices",
+        "mixture-weights-sampling-units-and-token-exposure",
+        "deterministic-sharding-manifests-and-restart-behavior",
+        "small-pii-toxicity-and-quality-filter-policy-exercise"
+      ],
+      "outcomes": [
+        "TODO"
+      ],
+      "why": "TODO",
+      "next": [
+        {
+          "unit": "TODO",
+          "note": "TODO"
+        }
+      ],
+      "study": [
+        {
+          "resource": "TODO",
+          "title": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "focus": [
+        "TODO"
+      ],
+      "reproduce": "TODO",
+      "traps": [
+        "TODO"
+      ],
+      "selfTest": [
+        {
+          "q": "TODO",
+          "a": "TODO"
+        }
+      ],
+      "practice": [
+        {
+          "name": "TODO",
+          "url": "https://TODO",
+          "locator": "TODO"
+        }
+      ],
+      "stopWhen": "TODO",
+      "fit": {
+        "verdict": "kept",
+        "note": "TODO"
+      }
+    }
+  ]
+}
