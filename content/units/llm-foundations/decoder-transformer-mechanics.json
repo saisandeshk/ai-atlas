@@ -1,6 +1,17 @@
 {
   "section": "decoder-transformer-mechanics",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "nanogpt-residual-init",
+      "role": "implementation",
+      "priority": "support",
+      "name": "nanoGPT - residual projection initialization",
+      "provider": "Andrej Karpathy",
+      "access": "Free",
+      "use": "Read model.py: MLP, Block, GPT.__init__'s special scaled initialization of c_proj.weight, and GPT._init_weights. Contrast the depth-dependent residual initialization with CS336's component initialization; do not adopt the training or generation code.",
+      "url": "https://github.com/karpathy/nanoGPT/blob/master/model.py"
+    }
+  ],
   "units": [
     {
       "id": "embeddings-and-positions",
@@ -463,7 +474,7 @@
     {
       "id": "modern-decoder-block",
       "title": "The modern decoder block: residuals, RMSNorm and SwiGLU",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "explain",
         "implement"
@@ -475,53 +486,103 @@
         "initialization-and-residual-scale-vocabulary"
       ],
       "outcomes": [
-        "TODO"
+        "Explain the pre-norm residual stream and contrast its gradient path with post-norm.",
+        "Implement per-token RMSNorm, a bias-free SwiGLU feed-forward network and both residual sublayers.",
+        "Contrast LayerNorm with RMSNorm and a two-matrix GELU FFN with three-matrix SwiGLU.",
+        "Distinguish component initialization from depth-dependent residual-projection scaling and state the chosen recipe."
       ],
-      "why": "TODO",
+      "why": "Attention mixes positions; the feed-forward network transforms each position, and residual additions preserve the model width. Normalization placement and initialization change how a deep stack carries signals and gradients.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/decoder-transformer-mechanics/assemble-and-verify-decoder",
+          "note": "Stack these blocks and add the final norm and vocabulary head."
+        },
+        {
+          "unit": "llm-foundations/causal-training-generation/numerical-health",
+          "note": "Track activation and gradient behavior during training."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modern-llm-decoder",
+          "title": "Normalization, gating and norm placement",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb",
+          "locator": "Component Upgrades: LayerNorm and RMSNorm hand calculations, RMSNorm full implementation, The SwiGLU gating mechanism, Full SwiGLU FFN implementation, and Post-Norm versus Pre-Norm comparison",
+          "depth": "Read the formulas and code. Skip the eight-layer gradient demonstration; a single random example is not a general stability proof."
+        },
+        {
+          "resource": "raschka-attention-gpt",
+          "title": "GELU FFN baseline",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/01_main-chapter-code/ch04.ipynb",
+          "locator": "Section 4.3, Implementing a feed forward network with GELU activations"
+        },
+        {
+          "resource": "cs336-a1-model-contract",
+          "title": "Initialization and modern block specifications",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 3.3.1, Parameter Initialization, printed p. 17; section 3.4 through 3.4.2, printed pp. 19 to 22; section 3.5 through problem (transformer_block), printed p. 26"
+        },
+        {
+          "resource": "nanogpt-residual-init",
+          "title": "Depth-scaled residual initialization",
+          "url": "https://github.com/karpathy/nanoGPT/blob/master/model.py",
+          "locator": "MLP and Block classes; GPT.__init__ from self.apply(self._init_weights) through the c_proj.weight initialization loop; GPT._init_weights",
+          "depth": "Use this as a contrasting GPT-2 recipe, not a replacement for the CS336 test architecture. Skip pretrained loading, optimizer setup and generation."
         }
       ],
       "focus": [
-        "TODO"
+        "Write y=x+Attn(RMSNorm(x)), then z=y+FFN(RMSNorm(y)). Normalize the branch input, not the residual sum; final stack normalization comes later.",
+        "LayerNorm subtracts the feature mean and divides by feature standard deviation. RMSNorm divides by sqrt(mean(x^2)+eps), without centering, and uses one learned gain per feature.",
+        "SwiGLU is W_down(SiLU(W_gate*x) * (W_up*x)). Its gate is not bounded to [0, 1]. Three bias-free matrices cost 3D*F parameters; a two-matrix GELU FFN costs 2D*F at the same hidden width.",
+        "CS336 specifies truncated-normal component weights and unit RMSNorm gains. nanoGPT instead uses base std=0.02 and residual-projection std=0.02/sqrt(2L); that scales initial branch weights, not the residual identity path."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a pre-norm RMSNorm-SwiGLU block with the causal attention you already own. Zero the attention output projection and FFN down projection: the block must return x and give the identity input gradient, with dropout disabled.",
       "traps": [
-        "TODO"
+        "Normalizing across tokens instead of the feature axis. That couples positions and can leak future information even when attention is causal.",
+        "Squaring low-precision activations before upcasting. Overflow has already happened; accumulate RMS statistics in float32 first.",
+        "Copying the notebook's explanation that a SwiGLU gate is a probability. SiLU can be negative or exceed one; the sigmoid factor alone is bounded."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "For x=[1, 3, 5, 7], unit gains and negligible epsilon, how do LayerNorm and RMSNorm differ?",
+          "a": "LayerNorm gives [-3, -1, 1, 3]/sqrt(5), before any affine shift. RMSNorm gives [1, 3, 5, 7]/sqrt(21), whose mean is not zero."
+        },
+        {
+          "q": "Why does SwiGLU often use F near 8D/3 instead of 4D?",
+          "a": "Three matrices give 3D*F weights. Setting F=8D/3 matches the 8D^2 weights of a two-matrix FFN with hidden width 4D, before rounding or biases."
+        },
+        {
+          "q": "What is the clean gradient path supplied by x+f(norm(x))?",
+          "a": "Its Jacobian includes an identity term plus the branch Jacobian. Unlike post-norm, the residual identity contribution does not pass through a normalization Jacobian; this is not a guarantee against every training instability."
+        },
+        {
+          "q": "In nanoGPT, why are both attention and MLP c_proj weights scaled with layer count?",
+          "a": "Both project branch outputs back into the residual stream. With two residual branches per layer, the recipe reduces their initial standard deviation by sqrt(2L) to limit accumulation across depth."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: rmsnorm and positionwise_feedforward",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py",
+          "locator": "Problems (rmsnorm) and (positionwise_feedforward), sections 3.4.1 and 3.4.2; implement run_rmsnorm, run_silu and run_swiglu and pass test_rmsnorm, test_silu_matches_pytorch and test_swiglu"
+        },
+        {
+          "name": "CS336 Assignment 1: transformer_block",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py",
+          "locator": "Problem (transformer_block), section 3.5; implement run_transformer_block and pass test_transformer_block",
+          "note": "Add your own zero-branch identity and gradient test, zero-input RMSNorm test and a test showing that changing another token cannot change this token's norm or FFN output."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "All four named public tests pass, the zero-branch block passes output and input-gradient identity checks, and you explain norm placement, gating and your initialization recipe without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for depth-dependent residual-projection initialization in the located pool material. A bounded search and the primary notebook's source link led to the verified author-hosted nanoGPT model.py; existing sources and CS336 tests remain the main route."
       }
     },
     {
       "id": "assemble-and-verify-decoder",
       "title": "Assembling and verifying a decoder",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -534,47 +595,104 @@
         "encoder-only-bert-contrast"
       ],
       "outcomes": [
-        "TODO"
+        "Assemble a configurable decoder from owned tensor components, ending in raw [B, T, V] logits.",
+        "Derive component parameter counts and dominant forward matrix-multiplication terms, distinguishing tied and untied heads.",
+        "Verify causal prefix equivalence and match an independent reference under transferred weights.",
+        "Contrast the decoder's causal next-token use with BERT's bidirectional masked-token use."
       ],
-      "why": "TODO",
+      "why": "Correct components do not automatically make a correct model. Assembly checks catch final-norm, configuration, weight-sharing and information-flow defects before training hides them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/causal-training-generation/next-token-objective",
+          "note": "Turn raw vocabulary logits into the shifted next-token loss."
+        },
+        {
+          "unit": "llm-foundations/evaluation-model-arithmetic/params-and-flops",
+          "note": "Extend the component count into a full model arithmetic report."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/prove-cache-correct",
+          "note": "Reuse prefix equivalence when validating incremental execution."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modern-llm-decoder",
+          "title": "Decoder assembly, configuration and tying",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part1-foundation/06-mini-gpt.ipynb",
+          "locator": "Implementing MiniGPT from scratch: Implementation of MiniGPT and Logits and predictions; Reading the nanoGPT source code: The main thread of GPT.forward and Weight Tying: sharing weights between input and output",
+          "depth": "Read architecture and shape flow only. Skip training, generation demos and the full GPT-2 parameter survey; substitute your modern blocks for the teaching version."
+        },
+        {
+          "resource": "raschka-attention-gpt",
+          "title": "Full tensor model and tied parameter count",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/01_main-chapter-code/ch04.ipynb",
+          "locator": "Section 4.6, Coding the GPT model, through the weight-tying and memory-count discussion",
+          "depth": "Skip the larger GPT-2 configuration exercise and section 4.7 generation. Keep the final normalization and raw-logit contract."
+        },
+        {
+          "resource": "cs336-a1-model-contract",
+          "title": "Full model and resource accounting",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 3.1, Transformer LM, printed pp. 13 to 14; section 3.5, The Full Transformer LM, including (transformer_lm), Resource accounting and (transformer_accounting), printed pp. 26 to 28",
+          "depth": "Do transformer_accounting parts (a) to (c). Leave the model-size sweep and long-context sweep in parts (d) and (e) for the model-arithmetic section."
+        },
+        {
+          "resource": "modern-llm-decoder",
+          "title": "Optional encoder-only contrast",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb",
+          "locator": "Decoder-Only Architecture: the Encoder-Only, Encoder-Decoder and next-token-training comparison",
+          "depth": "Use only for the optional BERT contrast. Do not start an encoder implementation or model survey."
         }
       ],
       "focus": [
-        "TODO"
+        "One configuration owns V, D, layer count L, query and KV head counts, FFN width F, RoPE theta, context policy and tying. Validate divisibility before creating weights; different layers share a design, not all their parameters.",
+        "A tied head uses the same [V, D] Parameter as input lookup and computes h @ E^T. Equal initial values in separate Parameters are not tying; gradients from lookup and classification must accumulate into one weight.",
+        "For bias-free MHA with two RMSNorms and SwiGLU per block, untied parameters are 2VD + L*(4D^2 + 3DF + 2D) + D. Tying subtracts VD; standard RoPE adds no learned parameters.",
+        "List dense forward terms: per layer 8BTD^2 for MHA projections, 4BT^2D for QK and AV, and 6BTDF for SwiGLU matrices; the vocabulary head adds 2BTDV. Use the slow per-head oracle and suffix interventions to check causality, not a loss curve."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Build a two-layer decoder with V=32, D=16, H=4 and F=48, using bias-free MHA, RoPE, two RMSNorms per block and one final RMSNorm. Derive 7,760 untied or 7,248 tied parameters, reconcile with unique registered weights, and verify unchanged prefix logits after replacing every suffix token.",
       "traps": [
-        "TODO"
+        "Adding softmax inside the model's training forward path. Return raw logits; the loss owns normalization.",
+        "Matching a CS336 snapshot with a tied output head. Its supplied embedding and lm_head weights are independent; test untied mode there and tying separately.",
+        "Checking causality only in the attention matrix. Cross-token normalization or a composition error can still alter prefix logits."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does tying the head remove the vocabulary projection's compute?",
+          "a": "No. It removes a separate VD weight matrix, but h @ E^T still costs about 2BTDV dense FLOPs."
+        },
+        {
+          "q": "What should changing tokens after zero-based position i do to logits through i?",
+          "a": "Nothing within numerical tolerance, with identical prefix positions and deterministic evaluation. Those logits may depend on tokens at positions at most i, not the suffix."
+        },
+        {
+          "q": "If sequence length doubles at fixed batch and width, which dominant terms quadruple?",
+          "a": "Dense QK and attention-times-V work, and the stored score/probability matrices, scale quadratically. Projection and FFN terms scale linearly with length."
+        },
+        {
+          "q": "Why cannot an ordinary BERT forward pass serve as this causal decoder oracle?",
+          "a": "BERT uses bidirectional attention for masked-token prediction, so its representations can use right context. The decoder must preserve the causal prefix boundary."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: transformer_lm",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py",
+          "locator": "Problem (transformer_lm), section 3.5; implement run_transformer_lm and pass test_transformer_lm and test_transformer_lm_truncated_input",
+          "note": "Use the untied MHA contract for snapshots. Add prefix-alone versus full-sequence comparisons, adversarial suffix changes, tied-weight identity and gradient accumulation checks, and a full-model comparison using the slow attention oracle. Keep dropout off."
+        },
+        {
+          "name": "CS336 Assignment 1: transformer_accounting, parts (a) to (c)",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Problem (transformer_accounting), printed pp. 27 to 28: parameter and FP32 weight memory count, forward matrix multiplies and dominant FLOPs",
+          "note": "This written problem has no public accounting test. Check its algebra against your tiny model's unique parameter count, using tests/test_model.py's model tests for implementation correctness; do not allocate the XL model."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both full-model public tests pass, the tiny parameter count matches the derivation, and your model matches the slow reference and preserves prefix logits under suffix replacement in tied and untied modes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The primary assembly path, Raschka tying discussion and CS336 model and accounting contracts cover composition and costs; existing explicit-oracle work supplies the causal intervention checks."
       }
     }
   ]
