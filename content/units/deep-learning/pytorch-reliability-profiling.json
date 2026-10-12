@@ -1,6 +1,17 @@
 {
   "section": "pytorch-reliability-profiling",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "python-os-replace",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Python os - os.replace",
+      "provider": "Python Software Foundation",
+      "access": "Free",
+      "use": "Read os.replace for the atomic-rename step of checkpoint writes: save to a temp file in the same directory, flush and fsync, then replace the final name.",
+      "url": "https://docs.python.org/3/library/os.html#os.replace"
+    }
+  ],
   "units": [
     {
       "id": "eager-dispatch-saved-tensors",
@@ -14,47 +25,78 @@
         "saved-tensors-and-their-lifetimes"
       ],
       "outcomes": [
-        "TODO"
+        "Trace one eager operation from the Python call to its backward Function node and name each node on the path.",
+        "Explain which forward tensors autograd must keep for backward, how long they live, and what frees them.",
+        "Predict whether an in-place edit raises at the edit or at backward, and state what the version numbers mean."
       ],
-      "why": "TODO",
+      "why": "Every memory number and profiler row later in this section is a consequence of this graph. If you cannot name the saved tensors, you cannot explain what checkpointing or the profiler is measuring.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/pytorch-foundations/custom-autograd-functions",
+          "note": "Custom Functions build directly on save_for_backward and version rules."
+        },
+        {
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs",
+          "note": "Graph and saved-state reasoning locates stale-state and detachment faults."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-checkpoint-reference",
+          "title": "How autograd encodes the history",
+          "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html#how-autograd-encodes-the-history",
+          "locator": "How autograd encodes the history: Function graph rebuilt each iteration, grad_fn entry points, what-you-run-is-what-you-differentiate"
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Saved tensors",
+          "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html#saved-tensors",
+          "locator": "Saved tensors: the x-squared example, save_for_backward, _saved attribute inspection, the pow identity-True and exp identity-False examples with shared storage"
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "In-place checks and saved-tensor hooks",
+          "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html#in-place-operations-with-autograd",
+          "locator": "In-place operations with autograd and In-place correctness checks: version counters and the no-error-means-correct-gradients guarantee",
+          "depth": "Skim Hooks for saved tensors after the pack_hook and unpack_hook contract. Skip the multithreading and complex-number sections."
         }
       ],
       "focus": [
-        "TODO"
+        "The graph is rebuilt from scratch every iteration. A grad_fn object from a previous iteration is stale and must never be reused.",
+        "Forward keeps only what backward needs. For x squared it keeps x; the rest of the forward temporaries are free to go.",
+        "Object identity of a saved tensor is an implementation detail. The pow case returns the same object and the exp case returns a different object, but both share storage and compare equal.",
+        "The first backward frees saved tensors. A second backward without retain_graph fails because the saved values are gone, not because the graph forgot the formula."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book on CPU: build y = (x @ W + b).relu().sum() with small requires-grad tensors, walk y.grad_fn through next_functions, and write down SumBackward0, ReluBackward0, AddBackward0, MmBackward0 and AccumulateGrad in order. Then show (x ** 2).grad_fn._saved_self is x gives True while its storage is shared.",
       "traps": [
-        "TODO"
+        "Reading _saved_self is as identity proof. Packing may return a new object sharing storage, so test storage and equality, never identity.",
+        "Editing a leaf with requires_grad errors at the edit, but editing a saved non-leaf passes and fails at backward with a version error. The two messages describe different checks.",
+        "Assuming no-grad regions keep no state and therefore cost nothing. They keep no graph, but the forward compute and its live outputs still cost time and memory."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "For y = (x @ W + b).relu().sum(), name the backward node types from y down to the leaves.",
+          "a": "SumBackward0, ReluBackward0, AddBackward0, MmBackward0, then AccumulateGrad at each leaf."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "x.pow(2).grad_fn._saved_self is x is True, but x.exp().grad_fn._saved_result is y is False. Do both saved tensors share storage with the named tensor?",
+          "a": "Yes. Both compare equal and share storage. Whether packing returns the same object depends on whether the saved tensor is an output of its own grad_fn, which is an implementation detail."
+        },
+        {
+          "q": "The first loss.backward() succeeds and the second raises about saved intermediate values. What was freed, and what flag keeps it?",
+          "a": "The saved tensors were freed after the first backward. Pass retain_graph=True to keep them for a second backward."
+        },
+        {
+          "q": "Backward fails with expected version 0 but found version 1 on a saved tensor. What do the two numbers mean?",
+          "a": "The tensor was saved at version 0 and edited in place once since. Any current version above the saved version means gradients computed from it would be wrong."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: saved-tensor accounting and autograd-state instrumentation for the compact model.",
+      "stopWhen": "You complete the reproduce walk without notes, and can predict for any small graph which tensors survive until backward and which edit raises where.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The autograd mechanics note covers eager history, saved tensors and version checks at explain depth, with the mini-project supplying practice."
       }
     },
     {
@@ -70,47 +112,78 @@
         "accidental-synchronization-and-measurement-error"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why GPU launches return before the work finishes and where PyTorch syncs for you.",
+        "Order wait_stream and record_stream correctly when a side stream consumes a default-stream tensor.",
+        "Time a GPU operation with events and show why a bare wall clock understates it."
       ],
-      "why": "TODO",
+      "why": "Every speedup claim in this section stands or falls on timing discipline. Async execution makes naive timers lie, and a hidden sync can pose as a slow kernel.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/pytorch-reliability-profiling/profiling-phases-verification",
+          "note": "Apply event discipline inside annotated profiled phases."
+        },
+        {
+          "route": "gpu",
+          "note": "Streams, overlap and sync cost return as first-class GPU topics."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Asynchronous execution and CUDA streams",
+          "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html",
+          "locator": "Asynchronous execution: enqueue semantics, CUDA_LAUNCH_BLOCKING, and the Event timing example; CUDA streams: default-stream auto-sync, the wait_stream plus record_stream fix, and Stream semantics of backward passes",
+          "depth": "Skip the TF32, GEMM precision, allocator-tuning and CUDA-graph sections here. They belong to later units."
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Pinned memory and asynchronous copies",
+          "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html",
+          "locator": "Best practices, Use pinned memory buffers: pin_memory, non_blocking copies, and overlapping transfer with compute"
+        },
+        {
+          "resource": "pytorch-reliability",
+          "title": "Operations that force synchronization",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html",
+          "locator": "GPU specific optimizations, Avoid unnecessary CPU-GPU synchronization: the print, item, copy, nonzero and data-dependent-control-flow list"
         }
       ],
       "focus": [
-        "TODO"
+        "Launches enqueue; they do not execute. On-device order is preserved per stream, and PyTorch syncs around CPU-GPU copies on the default stream only.",
+        "Side streams get no automatic safety. The consumer stream waits on the producer with wait_stream, and the tensor records its new stream with record_stream so its memory is not reused early.",
+        "non_blocking=True is a request, not a command. From pageable host memory the copy still syncs; pin the source first.",
+        "Backward follows forward stream placement. Grads produced under a side-stream backward must be consumed in the same stream context or after an explicit wait."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On a CUDA GPU, time a 2048 by 2048 fp32 matmul both ways: CUDA events around the op with a synchronize before reading, versus a bare perf_counter around the launch. The event time lands in the tens of milliseconds while the bare clock shows a fraction of a millisecond, because it measures enqueue only. Exact numbers depend on hardware; the direction of the gap is the assertion.",
       "traps": [
-        "TODO"
+        "Timing with time.perf_counter and no sync, then reporting the result as kernel time. You timed the launch, not the work.",
+        "Calling .item(), printing a CUDA tensor, or branching on one inside the timed region. Each forces a sync and the stall gets billed to the wrong line.",
+        "Assuming default-stream safety extends to side streams. The docs sum example is wrong without wait_stream and record_stream even though nothing reads stale data."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "An Event-timed matmul reports 35 ms while a bare wall clock reports 0.2 ms. Which is the kernel time and why?",
+          "a": "The Event time. Launches are asynchronous, so the bare clock measures enqueue only. Events plus a synchronize measure the queued work."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Data comes from pageable host memory with .to(device, non_blocking=True). Is the copy asynchronous?",
+          "a": "Effectively no. Asynchronous host-to-device copies need pinned source memory, so set pin_memory=True in the loader first."
+        },
+        {
+          "q": "loss.backward() runs under torch.cuda.stream(s). Where may the .grad tensors be consumed?",
+          "a": "Inside the same stream context, or after the consuming stream waits on s. Using them on the default stream without a wait is unsafe in current PyTorch."
+        },
+        {
+          "q": "Which of print(t), t.item() and t.to(cpu) force a host sync for a CUDA tensor t?",
+          "a": "All three. Each needs the values or the transfer finished on the host before Python continues."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: synchronized phase timing with explicit stream boundaries.",
+      "stopWhen": "Your two-way timing shows the enqueue gap on your GPU, and you can point at the sync in any snippet that prints, copies, or branches on a CUDA tensor.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The CUDA semantics note and the tuning guide cover streams, sync and timing at explain and measure depth, with the mini-project supplying practice."
       }
     },
     {
@@ -127,379 +200,90 @@
         "temporary-workspace-input-and-allocator-reserve"
       ],
       "outcomes": [
-        "TODO"
+        "Derive persistent training memory from parameter, gradient, optimizer-state and activation terms at stated precision.",
+        "Read allocated, reserved and peak counters and explain each discrepancy between them.",
+        "Separate live tensors, allocator reserve and outside-allocator memory when an OOM makes no sense."
       ],
-      "why": "TODO",
+      "why": "OOM errors name a requested size but never the cause. The fix differs completely between live tensors, cached reserve and fragmentation, and only the counters tell them apart.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/pytorch-reliability-profiling/activation-checkpointing",
+          "note": "Trade the activation term for recompute once the model is measured."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/mixed-precision-autocast",
+          "note": "Halve the parameter, gradient and activation terms with precision choice."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Caching-allocator memory management",
+          "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html",
+          "locator": "Memory management: memory_allocated and max_memory_allocated for tensors, memory_reserved and max_memory_reserved for the allocator, empty_cache releasing only unused segments"
+        },
+        {
+          "resource": "pytorch-checkpoint-reference",
+          "title": "Snapshot-based memory debugging",
+          "url": "https://docs.pytorch.org/docs/stable/torch_cuda_memory.html",
+          "locator": "Generating a Snapshot with _record_memory_history and _dump_snapshot; Allocator State History: segments, blocks and active_allocated versus inactive states; Identifying Non-PyTorch allocations",
+          "depth": "Skip pinned host-memory capture. Use device-only snapshots for this unit."
+        },
+        {
+          "resource": "pytorch-reliability",
+          "title": "Profiler memory analysis",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html",
+          "locator": "Step 4, Using profiler to analyze memory consumption: profile_memory with self versus total memory and the aten::empty example"
+        },
+        {
+          "resource": "tensortonic-memory-flops",
+          "title": "Mixed-Precision Training Memory Accountant",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant",
+          "locator": "Compute exact storage for parameters, gradients, saved activations, and optimizer state from tensor shapes and byte widths"
         }
       ],
       "focus": [
-        "TODO"
+        "fp32 Adam training holds about 16 bytes per parameter before activations: 4 for the weight, 4 for the gradient, 8 for the two moment buffers. Precision and optimizer choice change the constants, not the method.",
+        "Allocated sums live tensors; reserved sums allocator segments. A 4 MiB tensor can sit inside 20 MiB of reserve, and nvidia-smi reports closer to reserve.",
+        "Peak counters are sticky. Reset them immediately before the measured region or the peak belongs to an earlier phase.",
+        "empty_cache returns unused segments to the driver. It never frees live tensors and never defragments them, so it cannot make a too-large tensor fit."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive fp32 Adam memory for a 10M-parameter model as 160 MB before activations, then on a CUDA GPU allocate one 1024 by 1024 fp32 tensor and read memory_allocated as 4.00 MiB with memory_reserved strictly above it. State both numbers and which one nvidia-smi tracks.",
       "traps": [
-        "TODO"
+        "Reading nvidia-smi as live usage. It sees driver-side reserve, including cached segments and non-PyTorch allocations such as NCCL.",
+        "Calling empty_cache to fix an OOM and concluding memory is fine when it passes. The live set did not shrink; the next larger batch still fails.",
+        "Comparing a derived model against current allocated only. Peak across forward, backward and optimizer phases is the number that must fit, and it needs a reset counter."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A 10M-parameter model trains in fp32 with Adam and no AMP. How many bytes do parameters, gradients and optimizer states hold?",
+          "a": "40 MB, 40 MB and 80 MB: 160 MB total before activations, workspace, inputs and reserve."
+        },
+        {
+          "q": "After allocating one 1024 by 1024 fp32 tensor, allocated reads 4.00 MiB and reserved reads 20.00 MiB. What is the extra 16 MiB?",
+          "a": "Cached allocator segments held for reuse, not live tensors. nvidia-smi tracks closer to reserved than to allocated."
+        },
+        {
+          "q": "Peak grows every loop iteration while current stays flat. What was forgotten?",
+          "a": "reset_peak_memory_stats before the measured region. Max counters never decrease on their own."
+        },
+        {
+          "q": "Will empty_cache let a run allocate one bigger tensor than the OOM size?",
+          "a": "No. It releases unused segments to the driver but keeps every live tensor, so a tensor that genuinely does not fit still fails."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Mixed-Precision Training Memory Accountant",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant",
+          "locator": "Solve the storage accounting from tensor shapes and byte widths",
+          "note": "Free problem. Then reconcile your formula with the compact model's profiler memory table and write down every included and excluded term."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand-derived parameter, gradient and optimizer bytes match the profiler within stated exclusions, and you can attribute any allocated-versus-reserved gap to segments, peak staleness or outside-allocator memory.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
-      }
-    },
-    {
-      "id": "mixed-precision-autocast",
-      "title": "Precision formats, autocast and gradient scaling",
-      "hours": 4,
-      "target": [
-        "explain",
-        "implement"
-      ],
-      "topics": [
-        "fp32-tf32-style-settings-fp16-and-bf16",
-        "autocast-gradient-scaling-and-unscale-before-clip-order"
-      ],
-      "outcomes": [
-        "TODO"
-      ],
-      "why": "TODO",
-      "next": [
-        {
-          "unit": "TODO",
-          "note": "TODO"
-        }
-      ],
-      "study": [
-        {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "focus": [
-        "TODO"
-      ],
-      "reproduce": "TODO",
-      "traps": [
-        "TODO"
-      ],
-      "selfTest": [
-        {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
-        {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "stopWhen": "TODO",
-      "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
-    },
-    {
-      "id": "numerical-failure-instrumentation",
-      "title": "Overflow, underflow and finding the first invalid value",
-      "hours": 3,
-      "target": [
-        "measure"
-      ],
-      "topics": [
-        "nonassociativity-overflow-and-underflow",
-        "first-invalid-value-instrumentation"
-      ],
-      "outcomes": [
-        "TODO"
-      ],
-      "why": "TODO",
-      "next": [
-        {
-          "unit": "TODO",
-          "note": "TODO"
-        }
-      ],
-      "study": [
-        {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "focus": [
-        "TODO"
-      ],
-      "reproduce": "TODO",
-      "traps": [
-        "TODO"
-      ],
-      "selfTest": [
-        {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
-        {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "stopWhen": "TODO",
-      "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
-    },
-    {
-      "id": "activation-checkpointing",
-      "title": "Activation checkpointing and recomputation",
-      "hours": 3,
-      "target": [
-        "implement",
-        "measure"
-      ],
-      "topics": [
-        "activation-checkpointing-and-recomputation"
-      ],
-      "outcomes": [
-        "TODO"
-      ],
-      "why": "TODO",
-      "next": [
-        {
-          "unit": "TODO",
-          "note": "TODO"
-        }
-      ],
-      "study": [
-        {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "focus": [
-        "TODO"
-      ],
-      "reproduce": "TODO",
-      "traps": [
-        "TODO"
-      ],
-      "selfTest": [
-        {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
-        {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "stopWhen": "TODO",
-      "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
-    },
-    {
-      "id": "complete-resume-state",
-      "title": "Complete checkpoints, atomic writes and reproducibility boundaries",
-      "hours": 4,
-      "target": [
-        "implement"
-      ],
-      "topics": [
-        "complete-checkpoint-and-resume-state",
-        "atomic-writes-and-reproducibility-boundaries"
-      ],
-      "outcomes": [
-        "TODO"
-      ],
-      "why": "TODO",
-      "next": [
-        {
-          "unit": "TODO",
-          "note": "TODO"
-        }
-      ],
-      "study": [
-        {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "focus": [
-        "TODO"
-      ],
-      "reproduce": "TODO",
-      "traps": [
-        "TODO"
-      ],
-      "selfTest": [
-        {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
-        {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "stopWhen": "TODO",
-      "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
-    },
-    {
-      "id": "torch-compile-graph-breaks",
-      "title": "torch.compile: capture, guards, graph breaks and dynamic shapes",
-      "hours": 4,
-      "target": [
-        "measure"
-      ],
-      "topics": [
-        "torch-compile-capture-guards-and-graph-breaks",
-        "dynamic-shapes-recompilation-and-semantic-comparison"
-      ],
-      "outcomes": [
-        "TODO"
-      ],
-      "why": "TODO",
-      "next": [
-        {
-          "unit": "TODO",
-          "note": "TODO"
-        }
-      ],
-      "study": [
-        {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "focus": [
-        "TODO"
-      ],
-      "reproduce": "TODO",
-      "traps": [
-        "TODO"
-      ],
-      "selfTest": [
-        {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
-        {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "stopWhen": "TODO",
-      "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
-    },
-    {
-      "id": "profiling-phases-verification",
-      "title": "Profiling training phases and verifying optimizations",
-      "hours": 5,
-      "target": [
-        "measure"
-      ],
-      "topics": [
-        "profiler-annotations-and-phase-timing",
-        "data-wait-transfer-forward-backward-and-optimizer-decomposition",
-        "correctness-and-learning-checks-after-optimization"
-      ],
-      "outcomes": [
-        "TODO"
-      ],
-      "why": "TODO",
-      "next": [
-        {
-          "unit": "TODO",
-          "note": "TODO"
-        }
-      ],
-      "study": [
-        {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "focus": [
-        "TODO"
-      ],
-      "reproduce": "TODO",
-      "traps": [
-        "TODO"
-      ],
-      "selfTest": [
-        {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
-        {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
-        }
-      ],
-      "stopWhen": "TODO",
-      "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "CUDA memory docs, the snapshot guide and the profiler recipe cover counters and categories, and the TensorTonic problem gives checked accounting practice."
       }
     }
   ]
