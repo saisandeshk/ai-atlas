@@ -109,3 +109,21 @@ The brief now has a "tools and lessons" section, a Python environment with CPU P
 The lesson from the pilot holds: locators were nearly always right, and the errors were plausible claims that only failed when run or derived. Running the claim in PyTorch 2.14, or on the local GPU, settled most of them.
 
 **Lab verdict: no lab for Stage 05.** Public checks already cover the pure-function parts: the TensorTonic autograd-from-scratch problems, Deep-ML 384, 393 and 490, and the CS231n Assignment 2 and 3 notebook checks. PyTorch itself is the independent oracle for the learner's own differential tests. The rest of the stage is measurement and diagnosis, which a rubric judges better than a harness.
+
+### Stage 04 Classical Machine Learning (October 2026)
+
+Five sections, 42 units and about 145 illustrative hours, drafted by Muse Spark 1.3 (xhigh) from the Stage 05 brief. Each section took 9 to 20 minutes. Codex was not used.
+
+Review found at least five real errors per section, and more than a dozen in the linear and evaluation sections, more than in Stage 05. Classical ML cards quote many small numbers from library runs, and most errors were a number without the setup that produced it, a demo scored on its own training data, or an API claim that had changed in scikit-learn 1.9:
+
+| Section | Main review fixes |
+|---|---|
+| 1 Formulation, data contracts and baselines | A "leak measurement" that was an identity (least-squares predictions do not change under per-column rescaling); same-hour weather declared as an oracle-forecast assumption; the misspelled category behind the unseen-category demo; the duplicate-row effect located on the copied rows; 75 gaps in hour.csv. |
+| 2 Linear and probabilistic prediction | The sigmoid rounds to exactly 1.0 near z = 36.7, not 710, so the naive loss fails far sooner for y = 0; lbfgs stops early under separation at the default tol with no warning (16.57 against a true 21.50 at C = 1e6); liblinear raises on three or more classes in 1.9; Ridge versus Lasso alpha wording; naive Bayes, LDA and QDA nesting. |
+| 3 Trees, ensembles, neighbors and kernels | Murphy section scope and page numbers; XGBoost and CatBoost parameter claims; kNN ties that depend on training order; the mechanism behind split importance between twin features; soft voting with SVC failing at predict, not fit. |
+| 4 Features and unsupervised learning | A nonexistent imputer class; ColumnTransformer silently dropping new columns even with remainder=passthrough; the KMeans n_init default since 1.4; the IsolationForest score sign and the leaf-size convention Deep-ML 367 needs. |
+| 5 Evaluation, uncertainty and shift | Calibration and threshold demos scored on training data, rebuilt on held-out splits; a paired-versus-unpaired width that compared two different simulations; the ISLP double-dip that Tukey's method, not Holm's, adjusts; parallel ICE lines for a linear model; the permutation p-value floor. |
+
+**Pool changes.** The Illinois CS446 Fall 2025 slides sit behind a university login (HTTP 401), so the three CS446 entries were removed. ISLP is now the linear-section primary, HOML the trees-section primary, and ISLP the required theory companion for trees and for unsupervised learning. Mitchell's chapter on naive Bayes and logistic regression, which the course assigns for Lectures 6-8, joins the linear section as added theory. The Deep-ML entries in three sections said to use at most one problem; the cards use three to five as unit checks, each with tests read in review, so those notes now list the reviewed problems.
+
+**Lab verdict: no lab for Stage 04.** Public checks already cover the pure-function parts: Deep-ML 15, 106 and 140 for the linear section, 138, 20, 307, 21 and 280 for trees and kernels, 17, 19, 341, 259 and 367 for unsupervised learning, and 260 for calibration. scikit-learn is the independent oracle for the learner's own differential tests. The rest of the stage is measurement and decision-making, which a rubric judges better than a harness.
