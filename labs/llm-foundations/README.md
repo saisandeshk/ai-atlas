@@ -86,8 +86,33 @@ This is a trial harness: tests stay only if they catch real mistakes at fair cos
 
 ## Runtime
 
-Initial CPU reference measurements: s1 1.11s, s2 3.62s, s3 2.04s,
-s4 1.34s, s5 1.24s (pytest elapsed times, including startup for each run).
-The final verification report records fresh wall-clock times and total runtime.
-The budget is under 90 seconds for the full reference run and under 45 seconds
-for s3. The 21-mutant audit deliberately runs 21 full suites and takes longer.
+Measured on an Intel Core i9-12900K, Linux, Python 3.13.14,
+PyTorch 2.14.1+cpu, one PyTorch CPU thread:
+
+| Test file | Passing cases | Pytest elapsed | Process wall time |
+| --- | ---: | ---: | ---: |
+| `test_s1_data.py` | 23 | 1.05s | 1.57s |
+| `test_s2_decoder.py` | 19 | 1.09s | 1.62s |
+| `test_s3_training.py` | 18 | 2.01s | 2.54s |
+| `test_s4_eval_arithmetic.py` | 41 | 1.34s | 1.87s |
+| `test_s5_kv_cache.py` | 24 | 1.19s | 1.73s |
+| Full reference suite (one process) | 125 | 2.56s | 3.08s |
+
+The s3 entropy training/validation test itself took 0.79s. Its validation CE
+was 0.930762 versus exact entropy H=0.884119, leaving 0.303357 below the upper
+bound. The complete stub run skipped all 125 cases with no failures.
+These are local CPU measurements, not a claim about every laptop. The budget
+is under 90 seconds for the full reference run and under 45 seconds for s3.
+The 21-mutant audit deliberately runs 21 full suites and takes longer.
+Final audit: all 21 listed mutants caused assertion failures, in 65.40s wall
+time (s1 4/4, s2 4/4, s3 6/6, s4 4/4, s5 3/3). Each was also inspected to
+confirm exactly one public adapter override. No mutant substitutions were needed.
+
+### Contract clarifications
+
+The training checkpoint exposes a `model` state-dict key so the test can
+evaluate learner-trained weights without assuming internal parameter names.
+The fixed 200-step schedule horizon makes resume independent of call length.
+Contamination counts eval n-gram occurrences, not distinct eval shingles;
+the training side is a union of shingles. No required function was removed
+or shape/dtype changed, and every listed mutant uses one adapter override.

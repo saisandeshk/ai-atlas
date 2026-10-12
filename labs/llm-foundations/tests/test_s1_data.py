@@ -138,9 +138,11 @@ def test_contamination_13_12_word_boundary(lab):
     """Thirteen-word overlap counts; twelve-word and empty eval documents score zero."""
     thirteen = " ".join(f"w{i}" for i in range(13))
     twelve = " ".join(f"w{i}" for i in range(12))
-    actual = lab.contamination_report([thirteen, twelve], [thirteen, twelve, ""])
+    # A full-length eval doc sharing only twelve words must also score zero;
+    # this distinguishes the shingle boundary from the short-document rule.
+    actual = lab.contamination_report([thirteen, twelve], [thirteen, twelve, "", twelve + " unseen"])
     assert isinstance(actual, list) and all(isinstance(score, float) for score in actual), "contamination_report must return list[float], not an ndarray"
-    np.testing.assert_array_equal(actual, [1.0, 0.0, 0.0], err_msg="13 words yield one 13-gram; 12 words yield none and must score zero")
+    np.testing.assert_array_equal(actual, [1.0, 0.0, 0.0, 0.0], err_msg="Only a full 13-word overlap counts; twelve shared words and short documents must score zero")
 
 
 def test_contamination_union_fraction_and_no_boundary_crossing(lab):

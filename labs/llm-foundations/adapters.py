@@ -22,7 +22,7 @@ class LabConfig:
     tie_embeddings: bool = False
 
 
-def pack_documents(docs: list[list[int]], context_length: int, eos_id: int):
+def pack_documents(docs: list[list[int]], context_length: int, eos_id: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Append EOS to every doc (including empty docs), concatenate in order.
 
     Window k starts at k*context_length, has context_length+1 tokens, and
@@ -36,7 +36,7 @@ def pack_documents(docs: list[list[int]], context_length: int, eos_id: int):
     raise NotImplementedError("Connect this to your code: document packing")
 
 
-def document_attention_mask(doc_ids: np.ndarray):
+def document_attention_mask(doc_ids: np.ndarray) -> np.ndarray:
     """Return bool [T,T] for one [T] ID array: allow (i,j) iff j<=i and IDs agree."""
     raise NotImplementedError("Connect this to your code: document attention mask")
 
@@ -49,7 +49,7 @@ def exact_duplicates(docs: list[str]) -> list[int]:
     raise NotImplementedError("Connect this to your code: exact deduplication")
 
 
-def near_duplicate_pairs(docs: list[str], n: int = 5, threshold: float = 0.8):
+def near_duplicate_pairs(docs: list[str], n: int = 5, threshold: float = 0.8) -> list[tuple[int, int]]:
     """Return sorted (i,j), i<j, with exact word-shingle Jaccard >= threshold.
     Normalize as exact_duplicates then whitespace-split. Use sets of word
     n-grams; a document shorter than positive n has one shingle, its whole
@@ -58,7 +58,7 @@ def near_duplicate_pairs(docs: list[str], n: int = 5, threshold: float = 0.8):
     raise NotImplementedError("Connect this to your code: near deduplication")
 
 
-def contamination_report(train_docs: list[str], eval_docs: list[str], n: int = 13):
+def contamination_report(train_docs: list[str], eval_docs: list[str], n: int = 13) -> list[float]:
     """One float per eval doc: fraction of word n-gram occurrences found in
     the union of training n-grams. NFC/whitespace normalize, preserve case.
     Fewer than positive n eval words gives 0.0; short train docs add nothing.
@@ -66,7 +66,7 @@ def contamination_report(train_docs: list[str], eval_docs: list[str], n: int = 1
     raise NotImplementedError("Connect this to your code: contamination report")
 
 
-def grouped_query_attention(q, k, v, causal: bool):
+def grouped_query_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, causal: bool) -> torch.Tensor:
     """Return floating [B,Hq,T,d], same dtype/device, no dropout.
     q [B,Hq,T,d], k/v [B,Hkv,S,d], Hq divisible by Hkv. Head h uses KV
     head h//(Hq//Hkv). Scale by 1/sqrt(d). For causal=True S>=T, query t
@@ -75,7 +75,7 @@ def grouped_query_attention(q, k, v, causal: bool):
     raise NotImplementedError("Connect this to your code: grouped query attention")
 
 
-def apply_rope(x: torch.Tensor, positions: torch.Tensor, theta: float):
+def apply_rope(x: torch.Tensor, positions: torch.Tensor, theta: float) -> torch.Tensor:
     """Rotate floating x [...,T,d] (even d), preserving shape/dtype/device.
     Integer positions [T] are absolute. Adjacent pair (2i,2i+1) rotates by
     positions*theta**(-2i/d): (a*cos-b*sin, a*sin+b*cos). theta is positive;
@@ -94,14 +94,14 @@ def make_model(config: LabConfig, seed: int) -> torch.nn.Module:
     raise NotImplementedError("Connect this to your code: decoder construction")
 
 
-def model_logits(model, tokens: torch.Tensor):
+def model_logits(model: torch.nn.Module, tokens: torch.Tensor) -> torch.Tensor:
     """CPU int64 tokens [B,T], 1<=T<=context_length -> float32 [B,T,vocab].
     Use causal attention, positions 0..T-1, and no cross-batch mixing.
     """
     raise NotImplementedError("Connect this to your code: decoder forward")
 
 
-def filter_probs(logits, temperature: float, top_k: int | None, top_p: float | None):
+def filter_probs(logits: torch.Tensor, temperature: float, top_k: int | None, top_p: float | None) -> torch.Tensor:
     """Floating logits [V] or [B,V] -> probabilities, same shape/dtype/device.
     Divide by positive temperature, softmax, retain top k (positive; k>=V
     keeps all), renormalize, then retain smallest descending nucleus whose
@@ -151,7 +151,7 @@ def adamw_training_bytes(config: LabConfig, param_bytes: int = 4) -> dict:
     raise NotImplementedError("Connect this to your code: optimizer memory arithmetic")
 
 
-def bootstrap_ci(scores: np.ndarray, confidence: float, n_resamples: int, seed: int):
+def bootstrap_ci(scores: np.ndarray, confidence: float, n_resamples: int, seed: int) -> tuple[float, float]:
     """Percentile bootstrap mean CI for nonempty numeric 1D scores.
     np.random.default_rng(seed) draws n_resamples length-N replacement samples.
     Return float quantiles at (1-confidence)/2, (1+confidence)/2 with NumPy
@@ -161,7 +161,7 @@ def bootstrap_ci(scores: np.ndarray, confidence: float, n_resamples: int, seed: 
     raise NotImplementedError("Connect this to your code: bootstrap confidence interval")
 
 
-def paired_bootstrap_diff(a, b, confidence: float, n_resamples: int, seed: int):
+def paired_bootstrap_diff(a: np.ndarray, b: np.ndarray, confidence: float, n_resamples: int, seed: int) -> tuple[float, float]:
     """Percentile bootstrap CI for mean(a-b), equal nonempty numeric 1D arrays.
     Resample indices JOINTLY. RNG, quantiles and confidence/resample limits
     match bootstrap_ci. Preserve pairing even when per-item variance is large.
@@ -169,12 +169,12 @@ def paired_bootstrap_diff(a, b, confidence: float, n_resamples: int, seed: int):
     raise NotImplementedError("Connect this to your code: paired bootstrap difference")
 
 
-def make_cached_model(config: LabConfig, seed: int):
+def make_cached_model(config: LabConfig, seed: int) -> torch.nn.Module:
     """Seeded CPU float32 shared decoder; cached/uncached use identical weights."""
     raise NotImplementedError("Connect this to your code: cached decoder construction")
 
 
-def cached_forward(model, tokens: torch.Tensor, cache, start_pos: int):
+def cached_forward(model, tokens: torch.Tensor, cache, start_pos: int) -> tuple[torch.Tensor, object]:
     """New CPU int64 [B,T] -> (float32 logits [B,T,vocab], updated opaque cache).
     None means prefill at start_pos=0; otherwise start_pos is existing prefix
     length. RoPE uses absolute start_pos..start_pos+T-1. Append only new K/V
@@ -185,14 +185,14 @@ def cached_forward(model, tokens: torch.Tensor, cache, start_pos: int):
     raise NotImplementedError("Connect this to your code: incremental cached forward")
 
 
-def uncached_forward(model, tokens: torch.Tensor):
+def uncached_forward(model, tokens: torch.Tensor) -> torch.Tensor:
     """Full CPU int64 [B,T] -> float32 [B,T,vocab], same weights as cached
     path, positions 0..T-1; neither consult nor update any cache.
     """
     raise NotImplementedError("Connect this to your code: full-prefix forward")
 
 
-def kv_cache_bytes(config: LabConfig, batch: int, seq_len: int, bytes_per_element: int):
+def kv_cache_bytes(config: LabConfig, batch: int, seq_len: int, bytes_per_element: int) -> int:
     """2*layers*batch*seq_len*n_kv_heads*(d_model/n_heads)*element bytes, int.
     K/V only; seq_len denotes allocated, not necessarily used, length.
     """
