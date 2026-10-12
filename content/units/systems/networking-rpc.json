@@ -357,8 +357,8 @@
       }
     },
     {
-      "id": "TODO",
-      "title": "TODO",
+      "id": "sockets-framing",
+      "title": "Sockets, partial reads and writes, and message framing",
       "hours": 5,
       "target": [
         "implement"
@@ -369,52 +369,102 @@
         "length-prefixed-framing-limits-and-malformed-input"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a length-prefixed framed protocol that survives partial reads, partial writes and coalesced arrivals.",
+        "Derive framing state for partial, coalesced, oversized, truncated and malformed input.",
+        "Enforce size limits and version checks, and close cleanly on protocol errors."
       ],
-      "why": "TODO",
+      "why": "TCP hands you a byte stream; messages are your construction. This unit builds the framing layer the fault-tested service slice reuses. It assumes the Programming asyncio.Queue admission and drain patterns (programming/concurrency-profiling-operations/backpressure-graceful-shutdown) and moves them onto the wire.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/networking-rpc/rpc-schemas-tracing",
+          "note": "Put schemas, versions and trace context inside the frames."
+        },
+        {
+          "unit": "systems/networking-rpc/network-fault-injection",
+          "note": "Attack the framer with scripted delay, duplicate and truncation faults."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "beej-network-programming",
+          "title": "Stream sockets client and server",
+          "url": "https://beej.us/guide/bgnet/html/",
+          "locator": "Section 5.7 (send and recv); Sections 6.1 and 6.2 (simple stream server and client); build the pair first"
+        },
+        {
+          "resource": "beej-network-programming",
+          "title": "Partial sends and shutdown",
+          "url": "https://beej.us/guide/bgnet/html/",
+          "locator": "Section 7.4 (Handling Partial sends); Section 5.9 (close and shutdown)",
+          "depth": "Use shutdown for the half-close direction vocabulary only; full drain behavior belongs to the connections unit."
+        },
+        {
+          "resource": "beej-network-concepts",
+          "title": "Stream parsing and the word server",
+          "url": "https://beej.us/guide/bgnet0/html/",
+          "locator": "Section 11.2 (Processing a Stream into Packets); Section 11.3.1 (multiple sentences at once); Chapter 13 (The Word Server: get_next_word_packet and extract_word)"
+        },
+        {
+          "resource": "algomaster-network-labs",
+          "title": "Framed TCP sockets in Python",
+          "url": "https://algomaster.io/learn/computer-networks/tcp-socket-programming",
+          "locator": "Why One recv() or read() Is Not Enough; Python: Reading and Writing Framed Messages; Closing and End-of-Stream; Timeouts Bound Waiting"
+        },
+        {
+          "resource": "algomaster-network-labs",
+          "title": "A production-shaped echo protocol",
+          "url": "https://algomaster.io/learn/computer-networks/concurrent-tcp-server",
+          "locator": "The Persistent Echo Protocol (4-byte big-endian length prefix, 64 KiB limit); Concurrency Boundaries; Admission Before Task Creation",
+          "depth": "Adopt the length prefix, size limit and 30-second frame deadline. Leave the Java port and the load client for the latency unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Every recv can return one byte, one frame, several frames, or anything between. The parser keeps explicit state: bytes still needed for the header, then bytes still needed for the payload.",
+        "sendall is a loop, not a guarantee. A raw send can write fewer bytes; the remainder must be retried, not dropped.",
+        "Limits come before parsing: check the declared length against the maximum before allocating or reading the payload.",
+        "A version or length violation is a protocol error. Reply if the protocol allows, then close. Never resynchronize by scanning payload bytes for a magic value."
       ],
-      "reproduce": "TODO",
+      "reproduce": "With CPython 3.14.4 on loopback, send two 10-byte frames back-to-back (28 wire bytes) and read with recv(5): exactly 6 calls return all bytes. Repeat with one recv(4096): a single call returns all 28 bytes with both frames coalesced. Reference run on Linux x86-64 kernel 7.0.0-38-generic, i9-12900K confirmed both counts.",
       "traps": [
-        "TODO"
+        "Assuming one send equals one recv. Coalescing and splitting are normal; the 28-byte two-frame burst routinely arrives in one recv on loopback.",
+        "Growing the buffer from the declared length without a cap. A corrupt 4 GB prefix becomes a memory-exhaustion attack; validate first.",
+        "Treating a clean FIN mid-frame as a complete message. A peer that began a frame and closed sent a truncated message: a protocol error, not a short message."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "recv(5) returned 3 bytes of a 4-byte header, then the next recv returns 0 bytes. What happened and what does the framer do?",
+          "a": "The peer closed mid-frame. The framer reports a truncation protocol error; the 3 bytes are not a message."
+        },
+        {
+          "q": "The length prefix says 100 bytes but only 60 arrived and there was no FIN. What does the framer do?",
+          "a": "It waits with the receive deadline running. A partial payload is state (40 bytes still needed), not an error, until the deadline or close."
+        },
+        {
+          "q": "Why check the length against 64 KiB before reading the payload?",
+          "a": "To bound allocation and read work from untrusted bytes. Reading first lets a bogus prefix force a huge allocation."
+        },
+        {
+          "q": "Two frames arrive in one recv. Does the application need two reads?",
+          "a": "No. The framer consumes both from the buffered bytes and delivers two messages; read count and message count are unrelated."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Beej's Network Concepts: Project The Word Server",
+          "url": "https://beej.us/guide/bgnet0/html/",
+          "locator": "Chapter 13: implement get_next_word_packet and extract_word against the word-packet format",
+          "note": "Free. A stream-to-packet parser with the same state shape as your length-prefixed framer."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your framer passes partial, coalesced, oversized, truncated and garbage-prefix cases, and a peer that closes mid-frame yields a protocol error, never a short message.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Beej stream, partial-send and parsing chapters plus the AlgoMaster socket and echo-server lessons cover all three topics at implement depth, with the word-server project as practice."
       }
     },
     {
-      "id": "TODO",
-      "title": "TODO",
+      "id": "rpc-schemas-tracing",
+      "title": "RPC schemas, versions, errors and trace context",
       "hours": 3,
       "target": [
         "explain",
@@ -425,47 +475,213 @@
         "request-ids-correlation-and-end-to-end-trace-context"
       ],
       "outcomes": [
-        "TODO"
+        "Define an RPC schema with field identity, presence rules and safe evolution (add, never reuse).",
+        "Separate transport status from RPC status when reading errors.",
+        "Propagate W3C trace context across hops and keep correlation IDs intact."
       ],
-      "why": "TODO",
+      "why": "Schemas and status codes are the contract clients program against; trace context is how you debug it. It builds on the Programming OpenTelemetry unit (programming/concurrency-profiling-operations/logs-metrics-traces), which covered spans and bounded labels; here the wire format is the mechanism.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/networking-rpc/rpc-deadlines-retries-idempotency",
+          "note": "Add deadlines and safe retries on top of the status taxonomy."
+        },
+        {
+          "unit": "systems/distributed-state-streams/logs-delivery-semantics",
+          "note": "Reuse idempotent consumers and trace correlation for log delivery."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-encoding-evolution",
+          "title": "Schemas and service dataflow",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 5, Formats for Encoding Data (printed pp. 163 to 177) for schema merits and compatibility; Dataflow Through Services: REST and RPC (printed pp. 180 to 186) for version coexistence",
+          "depth": "Read the two sections only, not the whole chapter. Follow the idempotence pointer to Chapter 12 later, in the streams section."
+        },
+        {
+          "resource": "mit-65840-rpc-bridge",
+          "title": "MIT 6.5840 Lecture 2: RPC structure",
+          "url": "https://pdos.csail.mit.edu/6.824/notes/l-rpc.txt",
+          "locator": "The Remote Procedure Call section: stub, dispatcher, marshalling and the kv.go handler example",
+          "depth": "Read the RPC half only; the threading and crawler half is assumed from the concurrency stage."
+        },
+        {
+          "resource": "algomaster-network-labs",
+          "title": "Schemas, status and evolution in gRPC",
+          "url": "https://algomaster.io/learn/computer-networks/grpc-and-protobuf",
+          "locator": "Protocol Buffers as a Schema; Presence and Default Values; Evolving a Protobuf Contract Safely; The Five-Byte gRPC Message Prefix; HTTP Status Is Not RPC Status; gRPC Status Codes"
+        },
+        {
+          "resource": "grpc-status-codes",
+          "title": "The status list",
+          "url": "https://grpc.io/docs/guides/status-codes/",
+          "locator": "Full list of Status codes, including DEADLINE_EXCEEDED, UNAVAILABLE, and the codes never generated by the library"
+        },
+        {
+          "resource": "w3c-trace-context",
+          "title": "Traceparent and tracestate",
+          "url": "https://www.w3.org/TR/trace-context/",
+          "locator": "Section 3.2 (traceparent format and examples); Sections 3.4 to 3.5 (legal mutations when forwarding)"
         }
       ],
       "focus": [
-        "TODO"
+        "Wire identity is the field number, not the name. Renaming tag 2 is wire-compatible; changing 2 to 4 deletes a field and creates another.",
+        "proto3 scalars conflate absent with default. Use optional, oneof or message fields when the distinction changes behavior.",
+        "HTTP 200 with a nonzero grpc-status is an RPC failure. Monitors that check only HTTP status report success while every call fails.",
+        "Forwarding a trace means sending traceparent with a new parent-id and preserving tracestate order; a hop that regenerates the trace-id splits the trace."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, parse 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 into version 00, 16-byte trace-id, 8-byte parent-id and sampled flag, and state the legal forwarding mutations (new parent-id, optional sampled change, restart, downgrade). Then add a request-id field to your framed protocol and show it echoed unchanged in the response.",
       "traps": [
-        "TODO"
+        "Reusing a deleted field number for a new type. Old binaries parse the new bytes as the old type; use a fresh number.",
+        "Hiding errors inside OK responses. Clients, retry policies and metrics can only reason about errors carried in status.",
+        "Putting secrets or high-cardinality values into trace context. traceparent and tracestate propagate to every downstream service, and the spec forbids personally identifying data there."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Field 2 changes from string to int32 with the same number. Wire-compatible?",
+          "a": "No. The same number means the same field identity; old readers decode the new bytes under the old type. Add a new field with a new number instead."
+        },
+        {
+          "q": "A proxy returns HTTP 200 for an RPC that failed with grpc-status 14. What should the dashboard show?",
+          "a": "An RPC failure with UNAVAILABLE. Transport success and RPC outcome are separate channels."
+        },
+        {
+          "q": "A service forwards traceparent byte-identical and appends its tracestate entry. Correct?",
+          "a": "No. It must set parent-id to its own current operation ID; byte-identical forwarding claims the downstream work is the same span. New tracestate entries go first, not last."
+        },
+        {
+          "q": "Why must the server application stop its own work when gRPC signals cancellation for deadline?",
+          "a": "The runtime only signals; spawned database calls and child RPCs keep running and consuming resources until the application stops them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Audit Correlation ID Propagation",
+          "url": "https://algomaster.io/practice/system-design/audit-correlation-id-propagation",
+          "locator": "brokenHops and firstBrokenHop over receive-forward chains; regenerated IDs break the boundary rule",
+          "note": "Free. A later hop that preserves a regenerated ID is not itself broken; only the regenerating hop is."
+        },
+        {
+          "name": "AlgoMaster: Calculate Trace Span Exclusive Time",
+          "url": "https://algomaster.io/practice/system-design/calculate-trace-span-exclusive-time",
+          "locator": "Exclusive time as duration minus the union of direct-child intervals; ties break by smaller ID",
+          "note": "Premium. Subtract the union [10,80), not the sum of overlapping children."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You evolve a schema without breaking an old reader, classify an RPC failure by its status code, and trace one request across two hops without dropping its ID.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Pool lacked schema, status and trace wire references; DDIA Chapter 5, the gRPC status list and W3C trace-context fill those gaps beside the MIT RPC notes."
+      }
+    },
+    {
+      "id": "rpc-deadlines-retries-idempotency",
+      "title": "Deadlines, retries and idempotency across RPC",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "deadlines-timeouts-backoff-jitter-and-retry-budgets",
+        "idempotency-keys-duplicate-suppression-and-ambiguous-side-effects"
+      ],
+      "outcomes": [
+        "Derive a retry budget and the worst-case attempt amplification across layered retries.",
+        "Propagate an absolute deadline across hops without extending it.",
+        "Implement idempotency keys with a durable state machine and state exactly when an outcome is unknown."
+      ],
+      "why": "A timeout tells the client nothing about the server. This unit turns that ambiguity into a protocol: bounded retries plus keys that make repeats safe. It assumes the Programming retry-budget and idempotency-ledger units (programming/concurrency-profiling-operations/cancellation-timeouts-retries, programming/interfaces-data-apis/http-apis-idempotency) and moves them from HTTP handlers onto the RPC wire.",
+      "next": [
+        {
+          "unit": "systems/networking-rpc/network-fault-injection",
+          "note": "Prove the deadline and duplicate handling under scripted faults."
+        },
+        {
+          "unit": "systems/observability-reliability-design/overload-control",
+          "note": "Generalize retry budgets to fleet-wide overload control."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mit-65840-rpc-bridge",
+          "title": "MIT 6.5840 Lecture 2: RPC failure ambiguity",
+          "url": "https://pdos.csail.mit.edu/6.824/notes/l-rpc.txt",
+          "locator": "RPC problem: what to do about failures (the client does not know if the server saw the request); best-effort RPC; at-most-once; the two-Put reordering example"
+        },
+        {
+          "resource": "algomaster-network-labs",
+          "title": "Retries, backoff and budgets",
+          "url": "https://algomaster.io/learn/computer-networks/retries-and-backoff",
+          "locator": "Timeouts and Ambiguous Outcomes; Full Jitter; Fleet-Wide Retry Budget; Avoid Retry Amplification Across Layers; A Deadline-Aware Retry Loop"
+        },
+        {
+          "resource": "algomaster-network-labs",
+          "title": "Idempotency keys and durable execution",
+          "url": "https://algomaster.io/learn/computer-networks/idempotency",
+          "locator": "Idempotency Keys Identify One Logical Operation; Define the Key Contract (scope, fingerprint, replay, retention); The Server Needs a Durable State Machine; Atomicity Closes the Crash Window"
+        },
+        {
+          "resource": "grpc-deadlines-guide",
+          "title": "Deadlines and propagation",
+          "url": "https://grpc.io/docs/guides/deadlines/",
+          "locator": "Overview (deadline versus timeout); Deadlines on the Client; Deadline Propagation (remaining-time forwarding, clock-skew shielding)"
+        },
+        {
+          "resource": "algomaster-network-labs",
+          "title": "gRPC deadlines, cancellation and retries",
+          "url": "https://algomaster.io/learn/computer-networks/grpc-and-protobuf",
+          "locator": "Deadlines, Cancellation, and Retries: realistic deadlines, application-owned cancellation, retry only safe-to-repeat operations"
+        }
+      ],
+      "focus": [
+        "Every timeout hides three possible server states: never saw it, executed and failed to reply, executed and reply lost. Retry design starts by listing all three.",
+        "Deadlines are absolute points in time; timeouts are durations. Propagate the remaining time, never a fresh full timeout, or downstream work outlives the caller.",
+        "A retry budget bounds attempts per operation and per fleet. Unbounded per-hop retries multiply across layers into a retry storm.",
+        "Idempotency keys need a durable state machine (received, in-progress, completed) with atomic transitions; memory-only dedup forgets across restarts."
+      ],
+      "reproduce": "Closed-book, propagate startTime 0 and client timeout 100 through processing times [10,20,5] with local bounds [80,100,10]: hop deadlines [90,90,45]. Then run the deterministic proxy on loopback (CPython 3.14.4): 200 ms injected delay with a 100 ms client deadline records a client timeout although the server processed the request; the duplicate proxy leaves a second frame waiting on the connection. Reference run on kernel 7.0.0-38-generic, i9-12900K confirmed both rows.",
+      "traps": [
+        "Retrying on DEADLINE_EXCEEDED without an idempotency key. The first attempt may have completed; the retry repeats the side effect.",
+        "Resetting a full timeout at each hop. Three hops with 2 s timeouts can run 6 s past a 2 s caller deadline.",
+        "Treating at-most-once as safety. Never resending avoids duplicates but turns every lost reply into a user-visible failure; choose the semantics per operation."
+      ],
+      "selfTest": [
+        {
+          "q": "The client timeout fires at 100 ms; the server log shows the write committed at 150 ms. What does the client know?",
+          "a": "Nothing about the outcome. The timeout only proves the reply did not arrive in time; the effect may have happened, and only a keyed status check can resolve it."
+        },
+        {
+          "q": "Two layers each retry up to 3 times on failure. What is the worst-case attempt count for one user request?",
+          "a": "Up to 16: the outer layer makes 1 initial attempt plus 3 retries, and each of the 4 can trigger up to 4 inner attempts. Layered retries multiply."
+        },
+        {
+          "q": "Why does gRPC convert a deadline to a remaining-time timeout before forwarding?",
+          "a": "Server clocks may disagree. Sending a duration shields propagation from clock skew; sending an absolute timestamp does not."
+        },
+        {
+          "q": "A duplicate arrives while the first attempt is still IN_PROGRESS. What does the state machine do?",
+          "a": "It joins the in-flight attempt rather than starting a second execution, then replays the same response to both deliveries."
+        }
+      ],
+      "practice": [
+        {
+          "name": "AlgoMaster: Propagate a gRPC Deadline",
+          "url": "https://algomaster.io/practice/system-design/propagate-a-grpc-deadline",
+          "locator": "propagate with remaining-time bounds, parent cap, and -1 past the inherited deadline",
+          "note": "Free. The [90,90,45] hand derivation in Reproduce is the first case; the exact-deadline case returns -1."
+        },
+        {
+          "name": "AlgoMaster: Build an Idempotent Consumer",
+          "url": "https://algomaster.io/practice/system-design/build-an-idempotent-consumer",
+          "locator": "process returns true on first delivery, false on duplicates, without resetting recorded IDs",
+          "note": "Free. Extend it with an IN_PROGRESS state and a restart to reach the unit's durable contract."
+        }
+      ],
+      "stopWhen": "You derive hop deadlines and a layered retry budget by hand, and your keyed server produces one effect for any number of duplicate deliveries including a restart.",
+      "fit": {
+        "verdict": "added",
+        "note": "Pool retry, idempotency and MIT failure lessons cover the mechanisms; the gRPC deadlines guide adds the verified propagation contract beside them."
       }
     },
     {
