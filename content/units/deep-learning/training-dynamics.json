@@ -30,6 +30,36 @@
       "role": "reference",
       "url": "https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html",
       "use": "Read the AdamW algorithm box for the decoupled weight-decay step, the bias-corrected moments and the defaults, and follow the Decoupled Weight Decay Regularization link for the argument."
+    },
+    {
+      "access": "Free",
+      "id": "pytorch-cross-entropy",
+      "name": "PyTorch CrossEntropyLoss reference",
+      "priority": "reference",
+      "provider": "PyTorch",
+      "role": "reference",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html",
+      "use": "Read Shape, Parameters (weight, ignore_index, reduction, label_smoothing) and both Examples; extend the class-index example with ignore_index and a class weight."
+    },
+    {
+      "access": "Free",
+      "id": "smith-cyclical-lr",
+      "name": "Cyclical Learning Rates for Training Neural Networks (Smith, 2017)",
+      "priority": "reference",
+      "provider": "arXiv",
+      "role": "reference",
+      "url": "https://arxiv.org/abs/1506.01186",
+      "use": "Read the abstract and the range test: increase the rate linearly for a few epochs and read usable bounds off the loss curve."
+    },
+    {
+      "access": "Free",
+      "id": "tuning-playbook-instability",
+      "name": "Deep Learning Tuning Playbook FAQ: debugging optimization failures",
+      "priority": "reference",
+      "provider": "Google Research",
+      "role": "reference",
+      "url": "https://github.com/google-research/tuning_playbook",
+      "use": "Read How can optimization failures be debugged and mitigated (identifying unstable workloads, warmup, clipping) and Batch normalization implementation details."
     }
   ],
   "units": [
@@ -656,47 +686,92 @@
         "tiny-set-overfit-and-shuffled-label-controls"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-position cross-entropy with class weights, ignore_index masks and mean versus sum reduction.",
+        "Run single-batch overfit and shuffled-label controls and state what each outcome proves about capacity, optimization and data."
       ],
-      "why": "TODO",
+      "why": "A failing run is usually a broken objective before it is a broken optimizer. Shape, mask and reduction bugs change the loss silently, and the two controls separate them from optimization failures in minutes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "note": "Turn control failures into ordered repair drills.",
+          "unit": "deep-learning/training-dynamics/diagnosing-failed-runs"
+        },
+        {
+          "note": "Ground the loss in stable softmax and reduction semantics.",
+          "unit": "deep-learning/neural-autodiff/stable-softmax-losses"
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Chapter 5: Maximum likelihood (5.1), Recipe for constructing loss functions (5.2) and multiclass classification (5.5)",
+          "resource": "udl-training",
+          "title": "Loss construction from likelihood",
+          "url": "https://udlbook.github.io/udlbook/"
+        },
+        {
+          "locator": "Shape, Parameters (weight, ignore_index, reduction, label_smoothing) and both Examples",
+          "resource": "pytorch-cross-entropy",
+          "title": "Target shapes, masks, weights and reductions",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html"
+        },
+        {
+          "locator": "Section 8.4 with 15 percent randomized labels, and Chapter 20, Section 20.2.1: fitting random pixels and labels as capacity evidence",
+          "resource": "udl-training",
+          "title": "Random-label fitting evidence",
+          "url": "https://udlbook.github.io/udlbook/"
+        },
+        {
+          "locator": "Underfitting or Overfitting and Model Selection: capacity versus error and cross-validation discipline",
+          "resource": "d2l-training",
+          "title": "Overfit, underfit and selection",
+          "url": "https://d2l.ai/chapter_linear-regression/generalization.html#underfitting-or-overfitting"
         }
       ],
       "focus": [
-        "TODO"
+        "Mean reduction divides by the count of non-ignored positions, not the batch size. Changing the mask changes the denominator, so compare masked losses only at equal mask rates.",
+        "ignore_index removes padding from both loss and gradient but keeps the positions in the tensor. Weight rescales classes for imbalance; neither fixes mislabeled data.",
+        "Single-batch overfit that fails proves an optimization or capacity bug, not a data bug: the model cannot fit even a handful of examples.",
+        "Shuffled labels that still train to near zero prove capacity and optimization are fine. A true-label failure after that points at features or labels, not the optimizer."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute cross-entropy for logits [[2, 1, 0], [1, 2, 0]] with targets [0, -100] under ignore_index -100 and mean reduction: 0.408. Then write the two controls with their pass and fail readings.",
       "traps": [
-        "TODO"
+        "Averaging a masked loss over the full batch size. The docs divide by valid weight only; recomputing the mean yourself after masking double-counts the mask.",
+        "Expecting shuffled labels to fail to fit. Overparameterized nets fit random labels; failure to fit shuffled labels is the surprising result that indicts optimization.",
+        "Comparing cross-entropy values across different reductions or target sets as quality scores. Mean versus sum differ by the denominator, and different targets differ in what they average over."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "a": "The second position is ignored. First position: softmax gives p0 = e^2/(e^2+e+1) = 0.665, loss -ln(0.665) = 0.408. Mean over one valid position: 0.408.",
+          "q": "Logits [[2, 1, 0], [1, 2, 0]], targets [0, -100], ignore_index -100, mean reduction. What is the loss?"
+        },
+        {
+          "a": "Data scale, label noise and evaluation protocol are ruled out as the blocker. What remains is capacity, objective wiring, or optimization: learning rate, initialization or gradient flow.",
+          "q": "Single-batch overfit stalls at high loss. What is ruled out, and what remains?"
+        },
+        {
+          "a": "It proves the model and optimizer can fit arbitrary patterns, so capacity and optimization work. The true-label failure is about signal: features, labels or leakage, not fitting power.",
+          "q": "Shuffled-label training reaches near-zero loss but true-label training does not generalize. What does the control prove?"
+        },
+        {
+          "a": "Its unreduced loss is multiplied by 5 and the mean divides by the sum of valid weights, so it pulls the average five times harder than an unweighted example.",
+          "q": "Class weight 5.0 on the rare class under mean reduction. How does one rare example count?"
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "locator": "Examples with class indices and class probabilities; extend the first with ignore_index and weight and check the denominator by hand",
+          "name": "PyTorch CrossEntropyLoss doc examples, extended",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html"
+        },
+        {
+          "locator": "Exercises: the zero-training-error question and the cross-validation questions",
+          "name": "D2L Generalization: Exercises",
+          "url": "https://d2l.ai/chapter_linear-regression/generalization.html"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand-computed masked loss matches the framework to three decimals, and both controls give the predicted reading on a broken and a healthy run.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "Loss construction comes from UDL 5 and the controls from UDL 8 and 20 evidence; exact mask, weight and reduction semantics had no pool locator, so the PyTorch CrossEntropyLoss reference was added.",
+        "verdict": "added"
       }
     },
     {
@@ -712,48 +787,85 @@
         "learning-curves-per-slice-errors-and-seed-variation"
       ],
       "outcomes": [
-        "TODO"
+        "Localize flat, diverging, NaN and eval-gap failures to objective, optimization, state or data causes using competing controls.",
+        "Instrument the first invalid value and per-slice errors, and report seed variation instead of single-run conclusions.",
+        "Repair a failing compact run, add a regression test, and defend the configuration with measured evidence."
       ],
-      "why": "TODO",
+      "why": "Loss curves alone never name the broken mechanism. Diagnosis is a designed experiment per failure, and this unit turns the section checkpoint into a repeatable drill.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "note": "Fix stale state with correct train and eval loops and metrics.",
+          "unit": "deep-learning/pytorch-foundations/explicit-train-eval-loops"
+        },
+        {
+          "note": "Trace the first invalid value with framework instrumentation.",
+          "unit": "deep-learning/pytorch-reliability-profiling/numerical-failure-instrumentation"
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "depth": "Read Sections 8.1 through 8.3. Skip double descent in 8.4 here.",
+          "locator": "Chapter 8, Sections 8.1 through 8.3 (pp. 118 to 126): training a simple model, sources of error, and reducing error",
+          "resource": "udl-training",
+          "title": "Error sources and learning curves",
+          "url": "https://udlbook.github.io/udlbook/"
+        },
+        {
+          "locator": "Revisiting Overfitting and Regularization, Early Stopping, and Classical Regularization Methods for Deep Networks",
+          "resource": "d2l-training",
+          "title": "Overfitting, interpolation and early stopping",
+          "url": "https://d2l.ai/chapter_multilayer-perceptrons/generalization-deep.html#early-stopping"
+        },
+        {
+          "locator": "FAQ How can optimization failures be debugged and mitigated: Identifying unstable workloads, Potential fixes, Learning rate warmup, Gradient clipping",
+          "resource": "tuning-playbook-instability",
+          "title": "Debugging optimization failures",
+          "url": "https://github.com/google-research/tuning_playbook#how-can-optimization-failures-be-debugged-and-mitigated"
+        },
+        {
+          "locator": "Batch Normalization During Prediction and Dropout in Practice, revisited with a stale-state lens: frozen statistics, eval mode, and what a mode gap proves",
+          "resource": "d2l-training",
+          "title": "Train and eval state revisited",
+          "url": "https://d2l.ai/chapter_convolutional-modern/batch-norm.html#batch-normalization-during-prediction"
         }
       ],
       "focus": [
-        "TODO"
+        "Flat from the start means no learning signal: check objective wiring and LR scale before touching the architecture. Diverging or NaN means too much update: halve the LR, enable clipping, then bisect to the first invalid op.",
+        "An eval gap that vanishes in eval mode was stale state, not overfitting. Compare modes before comparing curves.",
+        "Aggregate metrics hide slice failures. Cut errors by source, length or class, and rerun the fix on a second seed; one seed proves nothing about stability.",
+        "Patience-based early stopping needs a no-improvement threshold and a fixed budget. Without both, stopping decisions are hindsight."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the five-branch drill: flat, diverging, NaN or Inf, eval gap, noisy plateau. For each, name the first measurement, the control that splits two causes, and the fix you try first.",
       "traps": [
-        "TODO"
+        "Reading any falling training loss as progress. Memorization falls too; only held-out slices and controls tell fitting from learning.",
+        "Fixing NaN by lowering precision or adding epsilon. That hides the first invalid op; find it, then decide between LR, clipping, init and objective order.",
+        "Reporting the best of many seeds as the result. The playbook tunes over seeds explicitly; report spread across at least two before claiming a fix."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "a": "Zero gradient flow (dead or broken graph) versus an objective that ignores the predictions (wrong targets or reduction). Log gradient norms: all-zero norms point at flow; healthy norms with flat loss point at the objective.",
+          "q": "Loss is exactly flat from step 0 with nonzero LR. Name two causes and the one measurement that splits them."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "a": "Halve the LR and rerun to test update scale; enable global-norm clipping; log the first step whose activations or gradients go non-finite and inspect that op's inputs. Change one thing per rerun.",
+          "q": "Loss explodes to NaN at step 200 after falling. What is the ordered response?"
+        },
+        {
+          "a": "Stale evaluation state, not overfitting. Eval must use frozen statistics with dropout off; the gap measures mode mismatch until modes are fixed.",
+          "q": "Eval error exceeds train error only when dropout and batch norm are in training mode. Diagnosis?"
+        },
+        {
+          "a": "The fix is not established; seed variation dominates. Rerun both configs on at least two more seeds and compare means and spreads before keeping it.",
+          "q": "A fix works on seed 0 but fails on seed 1. What do you conclude and what next?"
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "Given a fresh failing run, you name the branch, run its control, repair it and show the fix holding on a second seed.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
+        "note": "Error signatures and early stopping come from UDL 8 and D2L; NaN and divergence triage had no pool procedure, so the Tuning Playbook FAQ was added. Integrated repair practice belongs to the section mini-project.",
+        "verdict": "added"
+      },
+      "practiceNote": "The section mini-project covers this: fault-injection diagnosis of a failing compact run with regression tests across two seeds."
     }
   ]
 }
