@@ -6,7 +6,7 @@
       "role": "reference",
       "priority": "support",
       "name": "Gil Tene - How NOT to Measure Latency (talk)",
-      "provider": "Azul Systems via YouTube",
+      "provider": "Strange Loop Conference via YouTube",
       "access": "Free",
       "use": "Use for coordinated-omission vocabulary only: closed-loop testers that wait for each reply, the missing samples under queueing, and the correction concept of recording intended send time. Do not adopt wrk, hey or ab; write the small Python generator in the saturation unit instead.",
       "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU"
@@ -106,7 +106,7 @@
       "traps": [
         "Treating a shared request ID as proof of causation. Sampling, retries and shared queues break the causal reading; the ID joins evidence, it does not assign blame.",
         "Putting request IDs, user IDs or tokens in metric labels. Each new value mints new series, and secrets in labels leak into every backend that stores them.",
-        "Averaging a histogram across services and reading the result as a percentile. Percentiles come from pooled raw samples, never from averaged summaries."
+        "Averaging per-service p99 values and reading the result as the fleet p99. Merge histogram bucket counts or pool raw samples, then take the percentile."
       ],
       "selfTest": [
         {
@@ -122,8 +122,8 @@
           "a": "Its decision uses the trace ID before the outcome exists. Keeping all errors needs tail sampling, which waits for completed spans and pays stateful cost."
         },
         {
-          "q": "Two services report the same averaged p99. Can you rank them?",
-          "a": "No. Averaged quantiles are not the quantile of the pooled data. Recompute from retained raw samples with their sample sizes."
+          "q": "Two services report p99 values. Can you average them into a combined p99?",
+          "a": "No. The average of two quantiles is not the quantile of the pooled data. Merge their histograms or retained raw samples, with sample sizes, and compute it again."
         }
       ],
       "practice": [],
@@ -194,20 +194,20 @@
         "Separate service time from queue wait in every measurement. Utilization explains which one dominates.",
         "Percentiles need raw samples and n. Report n with the value, never a bare p99."
       ],
-      "reproduce": "Run this seeded script with /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I (CPython 3.14.4; seed 7 makes it reproducible on any machine; checked on Linux x86-64, kernel 7.0.0-38-generic, i9-12900K): 5000 samples, 2% from N(400, 80) ms else N(40, 8) ms, clipped at 1 ms, nearest-rank percentiles. Confirm n=5000, mean 48.19 ms, p50 40.16 ms, p95 55.16 ms, p99 421.05 ms, max 627.33 ms. Then explain why a dashboard showing mean 48 ms and p95 55 ms still hides about 100 requests above 400 ms.",
+      "reproduce": "With CPython 3.14.4's random module and random.seed(7), draw 5000 samples: if random.random() < 0.02 take max(1, random.gauss(400, 80)), else max(1, random.gauss(40, 8)), in ms. With nearest-rank percentiles (rank ceil(p x n / 100)) you should get mean 48.19 ms, p50 40.16 ms, p95 55.16 ms, p99 421.05 ms and max 627.33 ms. Count the samples above 200 ms (108) and above 400 ms (60), and explain why a dashboard showing mean 48 ms and p95 55 ms shows none of them.",
       "traps": [
-        "Averaging percentiles from shards or windows. The two halves here give p95 54.84 and 55.45 ms; only the pooled computation is the p95.",
+        "Averaging percentiles from shards or windows. Shards with different traffic and tails give an average of p99s that is no request population's p99; pool the samples or merge histogram counts first.",
         "Mixing failed-request latency into success latency, or dropping it. Fast 500s flatter the mean while slow errors are worse than fast ones; track both.",
         "Reading 60% average utilization as headroom. The saturated resource is the most constrained one; queue wait grows on its utilization, not the average."
       ],
       "selfTest": [
         {
-          "q": "Mean 48 ms and p95 55 ms over 5000 requests. How many exceed 400 ms?",
-          "a": "About 100. The p99 is 421.05 ms, so at least 50 exceed 421 ms, and the 2% slow mixture puts roughly 100 above 400 ms. Count from samples, never from the mean."
+          "q": "In that run, mean is 48 ms and p95 is 55 ms over 5000 requests. How many requests are slower than 200 ms?",
+          "a": "108, about 2%, and 60 of them are above 400 ms. Only the p99 (421 ms) hints at them. Count from the samples; the mean and p95 cannot tell you."
         },
         {
-          "q": "100 rps with 5% errors and 10% of requests retried once: throughput versus goodput?",
-          "a": "Throughput counts completions (100 rps plus 10 retry rps of load). Goodput counts first-try useful completions (95 rps). Retries add load without adding goodput."
+          "q": "Clients send 100 new requests/s. 10% fail on the first try and are retried once, and every retry succeeds. Offered load, throughput and goodput?",
+          "a": "Offered load and throughput are 110 attempts/s (100 successes plus 10 failures); goodput is 100 successful requests/s. Retries add 10% load without adding goodput."
         },
         {
           "q": "Utilization reads 85% but latency is flat. Saturated?",
@@ -215,7 +215,7 @@
         },
         {
           "q": "Why exponential histogram buckets?",
-          "a": "Latency spans orders of magnitude. Factor-of-3 buckets resolve both the 40 ms body and the 400 ms tail without storing every sample."
+          "a": "Latency spans orders of magnitude. Buckets growing by about 3x (0-10, 10-30, 30-100, 100-300 ms) resolve both the 40 ms body and the 400 ms tail without storing every sample."
         }
       ],
       "practice": [],
@@ -258,13 +258,13 @@
           "resource": "google-sre-core",
           "title": "SLIs, SLOs, SLAs and error budgets",
           "url": "https://sre.google/sre-book/service-level-objectives/",
-          "locator": "Service Level Terminology (Indicators; Objectives; Agreements); Indicators in Practice (availability as yield; durability); Aggregation; Objectives in Practice (Defining Objectives with 90%, 99% and 99.9% bands; error budget paragraph)"
+          "locator": "Service Level Terminology (Indicators; Objectives, with The Global Chubby Planned Outage; Agreements); Indicators in Practice (availability as yield; durability); Aggregation; Objectives in Practice (Defining Objectives with 90%, 99% and 99.9% bands; error budget paragraph)"
         },
         {
           "resource": "google-sre-core",
           "title": "Choosing targets and setting expectations",
           "url": "https://sre.google/sre-book/service-level-objectives/",
-          "locator": "Choosing Targets (do not pick from current performance; as few SLOs as possible); SLOs Set Expectations (The Global Chubby Planned Outage; safety margin; do not overachieve)"
+          "locator": "Choosing Targets (do not pick from current performance; as few SLOs as possible); SLOs Set Expectations (safety margin; do not overachieve)"
         },
         {
           "resource": "google-sre-core",
@@ -311,7 +311,7 @@
         },
         {
           "q": "Two replicas at 0.99 each share one rack power feed. Combined availability?",
-          "a": "Not 0.9999. The independence assumption fails; the shared feed makes it one failure near 0.99."
+          "a": "Not 0.9999. Parallel math assumes independent failures; the shared feed fails both at once, so the pair is no better than the feed itself."
         },
         {
           "q": "RPO is 1 hour and the last verified backup is 90 minutes old. Pass?",
@@ -393,11 +393,11 @@
       ],
       "focus": [
         "L = lambda W needs matching units: (requests/s) x s = requests. It holds for long-run averages in a stable system; it predicts nothing about tails.",
-        "Utilization rho = lambda/mu governs the wait. At rho 0.5, 0.8 and 0.95 the M/D/1 mean wait is 0.5x, 2x and 9.5x the service time; the seeded simulation measured 4.86, 19.97 and 80.87 ms against theory 5, 20 and 95 ms at 10 ms service.",
+        "Utilization rho = lambda/mu governs the wait. At rho 0.5, 0.8 and 0.95 the M/D/1 mean wait is 0.5x, 2x and 9.5x the service time; a seeded 60 s simulation at 10 ms service measured 4.86, 19.97 and 80.87 ms against theory 5, 20 and 95 ms.",
         "Capacity is per resource. The bottleneck is the smallest capacity-over-work ratio: 12000/1, 5000/2 and 20000/0.5 give 2500 rps at the database.",
         "Approximations carry ranges. M/M/1 assumes Poisson arrivals and exponential service; burstier arrivals or heavier-tailed service widen the real wait. Report the assumption beside the number."
       ],
-      "reproduce": "Run a seeded single-server FIFO simulation (seed 11, lambda 80/s, deterministic service 10 ms, T 60 s) and confirm mean queue wait near 20 ms (measured 20.475 ms against M/D/1 theory rho x S/(2 x (1 - rho)) = 20.000 ms), with L from lambda W (2.4380) matching the windowed time-average count (2.4553) within a few percent. Checked with CPython 3.14.4 on Linux x86-64, kernel 7.0.0-38-generic, i9-12900K; seeds make it reproducible anywhere. Then derive server count for that workload: 80 rps x 0.01 s = 0.8 average concurrent, so one server runs at rho 0.8 and two at 0.4.",
+      "reproduce": "Simulate a single FIFO server with CPython 3.14.4: random.seed(11), Poisson arrivals at 80/s from random.expovariate for 60 s, deterministic 10 ms service. The mean queue wait should be 20.475 ms against M/D/1 theory rho x S / (2 x (1 - rho)) = 20.000 ms, so the mean time in system is 30.475 ms and Little's Law gives L = 80 x 0.030475 = 2.44. Check the law directly: the time-average number in system over 5 to 55 s is 2.52, against lambda W 2.49 for the arrivals in that window. Then size servers: 0.8 average busy, so one server runs at rho 0.8 and two at 0.4.",
       "traps": [
         "Applying L = lambda W to percentiles or to a draining queue. It relates long-run averages in a stable system only.",
         "Quoting lambda without a window. Poisson bursts exceed the average; size the bound for the peak window, not the daily mean.",
@@ -417,8 +417,8 @@
           "a": "2500 rps at the database (5000/2), the smallest ratio."
         },
         {
-          "q": "Simulation gives 80.87 ms at rho 0.95 against theory 95 ms. Accept?",
-          "a": "Yes, with a stated range. Finite-horizon bias and transient stalls move the average; lengthen T, drop warmup, and report both numbers."
+          "q": "The simulation gives 80.87 ms at rho 0.95 against theory 95 ms. Contradiction?",
+          "a": "No. Near rho 1 the queue relaxes slowly and the run starts empty, so a 60 s run reads low. Lengthen it, drop a warm-up, repeat with several seeds and report the spread beside the theory."
         }
       ],
       "practice": [
@@ -491,11 +491,11 @@
       ],
       "focus": [
         "Open-loop sends on a schedule whether or not replies returned; closed-loop waits for each reply. Past the knee, closed-loop self-throttles and reports flat latency while the queue explodes.",
-        "Section-machine simulation (seed 21, 10 ms service, 500 ms stall every 200th request, T 30 s, CPython 3.14.4): open-loop at 60, 80 and 90 rps gives mean 96.3, 341.1 and 1843.1 ms with p99 502.8, 759.1 and 3727.5 ms; closed-loop with 5 clients gives mean 62.1 ms at 80.5 completed rps. Same server, different stories.",
+        "Seeded simulation (CPython 3.14.4, seed 21, 10 ms service, 500 ms stall every 200th request, 30 s): capacity is about 80.3 rps. Open loop at 60, 80 and 90 rps gives mean 96.3, 341.1 and 1843.1 ms and p99 502.8, 759.1 and 3727.5 ms, and the 90 rps numbers keep growing with run length. Closed loop with 5 clients gives mean 62.1 ms at 80.5 completed rps. Same server, different stories.",
         "The first saturation point is where queue wait passes service time and goodput stops rising with offered load. Past it the bottleneck migrates: server CPU, then queue memory, then the dependency.",
         "Keep every raw sample. Percentiles come from the retained records with n; the generator log is part of the evidence."
       ],
-      "reproduce": "Write a small open-loop generator (Poisson schedule via random.expovariate, record intended send time and completion, single FIFO server with 10 ms service and a 500 ms stall every 200th request, seed 21, T 30 s) and confirm the 80 rps row: mean about 341 ms, p50 about 341 ms, p95 about 650 ms, p99 about 759 ms. Then run the closed-loop twin (5 clients, next request on completion: mean about 62 ms, p99 540 ms, 80.5 completed rps) and state which run a learner should trust for tail latency and why.",
+      "reproduce": "Write a small open-loop generator with CPython 3.14.4 (random.seed(21), Poisson schedule via random.expovariate, latency counted from the intended send time, one FIFO server with 10 ms service and a 500 ms stall on every 200th request, 30 s) and confirm the 80 rps row: mean 341.1 ms, p50 341.1 ms, p95 649.5 ms, p99 759.1 ms with nearest-rank percentiles. Then run the closed-loop twin (5 clients, next request on completion: mean 62.1 ms, p99 540.0 ms, 80.5 completed rps) and state which run to trust for tail latency and why.",
       "traps": [
         "Tuning the closed loop until latency looks good. Fewer clients or think time hides the queue; the offered load is no longer the stated load.",
         "Reading server-side latency only. Queue wait before the handler is user-visible latency; instrument arrival-to-start separately.",
@@ -512,7 +512,7 @@
         },
         {
           "q": "Why record intended send time, not just start and end?",
-          "a": "Late sends are user-visible wait. Correction adds now minus intended time, so the generator's own delay is not silently dropped."
+          "a": "A request that should have gone out earlier was already waiting from the user's point of view. Measuring from the intended send time keeps that wait; measuring from the actual send drops it."
         }
       ],
       "practice": [],
@@ -672,7 +672,7 @@
         "Canary metrics must indicate user-visible problems and attribute to the change: reuse SLIs, prefer crash and failure signals in the small first stage, split canary from control in monitoring, and distrust before/after comparisons across time.",
         "Health says the process answers; correctness signals say the answers are right. A serving-but-wrong version passes readiness and needs a domain check (output quality, freshness watermark, reconciliation count)."
       ],
-      "reproduce": "Closed-book, map components api (zones a, b), db (a, a) and cache (c): at-risk components are db and cache (under two zones), and the dead set after zone a fails is db. Then walk zone-a loss plus a bad canary at 5% and state what still serves reads and writes under N=5, R=3, W=3.",
+      "reproduce": "Closed-book, map components api (zones a, b), db (a, a) and cache (c): at-risk components are db and cache (under two zones), and the dead set after zone a fails is db. Then take a five-replica store with N=5, R=3, W=3 spread 2, 2 and 1 over zones a, b and c: walk zone-a loss plus a bad canary on 5% of traffic, and state what still serves reads and writes and what the canary metrics must show before rollback.",
       "traps": [
         "Counting two replicas as redundancy. Same zone, same deploy, same config or same dependency is one domain.",
         "Promoting a canary on aggregate error rate. A 5% canary at 20% errors reads as 1% overall; split canary versus control first.",
@@ -863,11 +863,11 @@
       ],
       "focus": [
         "Unit cost is per useful request in the constrained resource: 10 ms service time is 0.01 CPU-s per request, so 80 rps costs 0.8 CPU and 95 goodput rps costs 0.95 CPU.",
-        "Headroom is provisioned over expected peak at a utilization target: 0.8 CPU at a 0.7 target provisions about 1.15 CPUs, with autoscale bounds and kill switches capping the bill when the model breaks.",
-        "10x (800 rps) needs 8 CPUs at the same efficiency, or shedding, degrading or removing the work. Amdahl bounds the parallel half: 90% parallel on 4 CPUs gives 3.08x, not 4x.",
+        "Headroom is provisioned over expected peak at a utilization target: 0.8 CPU at a 0.7 target provisions about 1.14 CPUs, with autoscale bounds and kill switches capping the bill when the model breaks.",
+        "10x (800 rps) is 8 CPU-seconds of work per second, so about 11.4 CPUs at the same 0.7 target, or shedding, degrading or removing work. Amdahl bounds splitting one request or job across CPUs: 90% parallel on 4 CPUs gives 3.08x, not 4x.",
         "The simpler alternative (one process, no cache, fewer moving parts) wins unless the complex design names the failure or cost it removes."
       ],
-      "reproduce": "Closed-book, derive from 10 ms service and 80 rps: 0.8 CPU used, about 1.15 CPUs provisioned at a 0.7 target. Show the 10x table (800 rps needs 8 CPUs at the same efficiency, or shed, degrade or simplify), with the Amdahl check 1/(0.1 + 0.9/4) = 3.07692.",
+      "reproduce": "Closed-book, derive from 10 ms service and 80 rps: 0.8 CPU used, about 1.14 CPUs provisioned at a 0.7 target. Show the 10x table (800 rps is 8 CPUs busy, about 11.4 provisioned at 0.7, or shed, degrade or simplify), and the Amdahl check for parallelizing one job: 1/(0.1 + 0.9/4) = 3.07692.",
       "traps": [
         "Pricing peak capacity at 100% utilization. Queue math forbids it; buy the headroom or buy the queue.",
         "Counting hosts instead of the constrained resource. Cost follows CPU-s, bytes stored and bytes moved per request, not box count.",
@@ -876,11 +876,11 @@
       "selfTest": [
         {
           "q": "80 rps at 10 ms service with target rho 0.7: provision?",
-          "a": "0.8/0.7 = about 1.15 CPUs. Round up with the autoscale minimum and bound the maximum."
+          "a": "0.8/0.7 = about 1.14 CPUs. Round up to whole CPUs, set the autoscale minimum and bound the maximum."
         },
         {
-          "q": "Amdahl with 0.9 parallel on 4 CPUs: speedup? Lesson for 10x?",
-          "a": "3.07692. The serial 10% caps scale-out; past the cap only less work per request, or shedding, helps."
+          "q": "Amdahl with 0.9 parallel on 4 CPUs: speedup? What does it say about 10x load?",
+          "a": "3.07692, and never above 10x with any CPU count. That caps speeding up one job. Serving 10x more independent requests needs 10x the CPU-seconds, or less work per request, shedding or degradation."
         },
         {
           "q": "A simpler single-process design handles 3x but not 10x. Keep the complex one?",
