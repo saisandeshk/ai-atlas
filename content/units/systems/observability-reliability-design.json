@@ -1,6 +1,27 @@
 {
   "section": "observability-reliability-design",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "gil-tene-latency",
+      "role": "reference",
+      "priority": "support",
+      "name": "Gil Tene - How NOT to Measure Latency (talk)",
+      "provider": "Azul Systems via YouTube",
+      "access": "Free",
+      "use": "Use for coordinated-omission vocabulary only: closed-loop testers that wait for each reply, the missing samples under queueing, and the correction concept of recording intended send time. Do not adopt wrk, hey or ab; write the small Python generator in the saturation unit instead.",
+      "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU"
+    },
+    {
+      "id": "mm1-queue-reference",
+      "role": "reference",
+      "priority": "reference",
+      "name": "M/M/1 queue - model definition and stationary analysis",
+      "provider": "Wikipedia",
+      "access": "Free",
+      "use": "Read Model definition (Poisson arrivals, exponential service, single server, infinite buffer, FIFO) and Stationary analysis (stability lambda < mu, rho = lambda/mu, L = rho/(1 - rho), response time 1/(mu - lambda) via Little's Law). Use the closed forms as approximations with assumptions stated, checked by your own simulation.",
+      "url": "https://en.wikipedia.org/wiki/M/M/1_queue"
+    }
+  ],
   "units": [
     {
       "id": "telemetry-signals-cardinality",
@@ -15,47 +36,102 @@
         "metric-cardinality-labels-aggregation-and-sampling"
       ],
       "outcomes": [
-        "TODO"
+        "Explain what each of metrics, structured logs, traces and events records, and which questions each answers.",
+        "Connect the signals of one request through a propagated request identifier, and state where correlation stops proving causation.",
+        "Predict the stored series count from a label set, and replace an unbounded label with a bounded design plus sampling."
       ],
-      "why": "TODO",
+      "why": "The Programming stage already instrumented a pipeline with OpenTelemetry, bounded labels and secret exclusion in its logs-metrics-traces unit, taken here as assumed background. This unit turns that telemetry into evidence: SLOs, saturation readings and incident diagnosis all read the same signals, so the signals must be cheap, bounded and joinable before any decision uses them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/observability-reliability-design/latency-throughput-saturation",
+          "note": "Read tails and saturation from the histograms this unit instruments."
+        },
+        {
+          "unit": "systems/observability-reliability-design/slos-error-budgets-recovery",
+          "note": "Turn these signals into SLI metrics with windows and budgets."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "google-sre-core",
+          "title": "Monitoring definitions and black-box versus white-box",
+          "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+          "locator": "Definitions (white-box versus black-box monitoring); Black-Box Versus White-Box; Symptoms Versus Causes"
+        },
+        {
+          "resource": "google-sre-core",
+          "title": "The four golden signals and tail instrumentation",
+          "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+          "locator": "The Four Golden Signals (latency, traffic, errors, saturation); Worrying About Your Tail: histogram buckets 0 to 10 ms, 10 to 30 ms, 30 to 100 ms and up by factors near 3; Choosing an Appropriate Resolution for Measurements",
+          "depth": "Read the bucket example as the instrumentation contract. Skip the Bigtable and Gmail case studies; they return in the incidents unit."
+        },
+        {
+          "resource": "google-sre-workbook",
+          "title": "Monitoring data sources and purposeful metrics",
+          "url": "https://sre.google/workbook/monitoring/",
+          "locator": "Sources of Monitoring Data (Move information from logs to metrics); Metrics with Purpose (Dependencies; Saturation; Status of Served Traffic; Implementing Purposeful Metrics)"
+        },
+        {
+          "resource": "google-sre-core",
+          "title": "Labels, vectors and series cost",
+          "url": "https://sre.google/sre-book/practical-alerting/",
+          "locator": "Storage in the Time-Series Arena (about 24 bytes per data point; 1 million series for 12 hours at 1-minute intervals in under 17 GB RAM); Labels and Vectors (labelset, variable expression, vectors)"
+        },
+        {
+          "resource": "opentelemetry-python-service",
+          "title": "Signals: traces, metrics, logs and baggage",
+          "url": "https://opentelemetry.io/docs/concepts/signals/",
+          "locator": "Signals: Traces (path of a request); Metrics (measurement at runtime); Logs (recording of an event); Baggage (context passed between signals)"
+        },
+        {
+          "resource": "opentelemetry-python-service",
+          "title": "Python manual instrumentation: tracer, spans, attributes and metrics",
+          "url": "https://opentelemetry.io/docs/languages/python/instrumentation/",
+          "locator": "Traces (Acquire Tracer; Creating spans; Add attributes to a span); Metrics (Creating and using synchronous instruments)"
+        },
+        {
+          "resource": "opentelemetry-python-service",
+          "title": "Sampling: head versus tail",
+          "url": "https://opentelemetry.io/docs/concepts/sampling/",
+          "locator": "Terminology (sampled versus not sampled); Head Sampling (decision from trace ID before the outcome); Tail Sampling (error and latency criteria; stateful operating cost)"
         }
       ],
       "focus": [
-        "TODO"
+        "White-box metrics expose internals and imminent failure; black-box checks prove user-visible symptoms. Page on symptoms, debug with causes.",
+        "One label-value combination is one stored series. At 3 services x 5 endpoints x 3 codes x 4 instances the metric holds 180 series; adding a 200,000-value user label takes it to 9,000,000.",
+        "Head sampling decides from the trace ID before the outcome is known, so it cannot keep every error. Tail sampling waits for completed spans and pays stateful cost.",
+        "Keep what the Programming unit enforced: bounded label values, no secrets in attributes, and raw records retained behind every aggregate."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute the series count for labels service (3 values), endpoint (5), status (3) and instance (4): 180. Add user_id with 200,000 values: 9,000,000. State which label breaks the budget and give the bounded replacement: drop user_id from the metric and keep it on sampled traces only.",
       "traps": [
-        "TODO"
+        "Treating a shared request ID as proof of causation. Sampling, retries and shared queues break the causal reading; the ID joins evidence, it does not assign blame.",
+        "Putting request IDs, user IDs or tokens in metric labels. Each new value mints new series, and secrets in labels leak into every backend that stores them.",
+        "Averaging a histogram across services and reading the result as a percentile. Percentiles come from pooled raw samples, never from averaged summaries."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "When should a page come from black-box rather than white-box monitoring?",
+          "a": "When the condition is already user-visible and urgent. White-box predicts or explains; black-box proves the symptom. Every page stays urgent, actionable and needing intelligence."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A metric has labels with 3, 5, 3 and 4 values. How many series? What happens when a 200,000-value label is added?",
+          "a": "180 series; then 9,000,000. Collection, storage and query cost scale with series count, so the unbounded label must move to sampled traces or logs."
+        },
+        {
+          "q": "Why can head sampling miss every error in a release?",
+          "a": "Its decision uses the trace ID before the outcome exists. Keeping all errors needs tail sampling, which waits for completed spans and pays stateful cost."
+        },
+        {
+          "q": "Two services report the same averaged p99. Can you rank them?",
+          "a": "No. Averaged quantiles are not the quantile of the pooled data. Recompute from retained raw samples with their sample sizes."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the instrumented request path (request ID, queue wait, handler time, storage time, status, bounded labels) with local export, raw record retention and an enforced cardinality budget.",
+      "stopWhen": "You compute both series counts without notes, join one request across a metric, a log line and two spans by ID, and can name the label you would refuse.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "SRE monitoring, alerting label math, workbook metrics and OTel signals, instrumentation and sampling cover all topics at explain depth."
       }
     },
     {
@@ -71,47 +147,83 @@
         "throughput-goodput-errors-utilization-and-saturation"
       ],
       "outcomes": [
-        "TODO"
+        "Define latency, throughput, goodput, utilization and saturation, and separate queue wait from service time.",
+        "Report p50, p95 and p99 from raw samples with the sample size, and explain what the mean hides.",
+        "Measure a load sweep on your machine and name the saturated resource with its utilization."
       ],
-      "why": "TODO",
+      "why": "Every SLO and capacity number later in this section reads a latency distribution. Assumed background: the Programming profiling-benchmarking unit, which built benchmark harnesses; this unit makes their output honest, with distributions first and one-number summaries never.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/observability-reliability-design/littles-law-capacity",
+          "note": "Turn the measured wait into concurrency and capacity math."
+        },
+        {
+          "unit": "systems/observability-reliability-design/saturation-open-loop-load",
+          "note": "Rerun the sweep with an open-loop generator that cannot hide queueing."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "google-sre-core",
+          "title": "Latency, traffic, errors and saturation",
+          "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+          "locator": "The Four Golden Signals (latency of success versus failure; traffic; errors by policy; saturation with the 99th percentile over one minute as early signal)"
+        },
+        {
+          "resource": "google-sre-core",
+          "title": "Aggregation hides tails",
+          "url": "https://sre.google/sre-book/service-level-objectives/",
+          "locator": "Aggregation (burst averaging example; percentile bands in Figure 4-1); A Note on Statistical Fallacies (mean versus median under skew)"
+        },
+        {
+          "resource": "google-sre-core",
+          "title": "Mean versus tail",
+          "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+          "locator": "Worrying About Your Tail: 100 ms mean at 1,000 rps with 1% of requests at 5 seconds; exponential histogram buckets"
+        },
+        {
+          "resource": "google-sre-workbook",
+          "title": "Saturation and served-traffic metrics",
+          "url": "https://sre.google/workbook/monitoring/",
+          "locator": "Metrics with Purpose (Saturation: track every resource, hard limits and degradation thresholds; Status of Served Traffic: break down by status and quota denial)"
         }
       ],
       "focus": [
-        "TODO"
+        "Latency is a distribution. The SRE example (mean 100 ms, 1% at 5 s) and the Figure 4-1 bands show why one mean plus one threshold cannot describe user experience.",
+        "Goodput counts useful completions; throughput counts all completions; errors by policy can turn slow successes into failures. Saturation is the fraction of the most constrained resource, and most systems degrade before 100%.",
+        "Separate service time from queue wait in every measurement. Utilization explains which one dominates.",
+        "Percentiles need raw samples and n. Report n with the value, never a bare p99."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run this seeded script with /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I (CPython 3.14.4; seed 7 makes it reproducible on any machine; checked on Linux x86-64, kernel 7.0.0-38-generic, i9-12900K): 5000 samples, 2% from N(400, 80) ms else N(40, 8) ms, clipped at 1 ms, nearest-rank percentiles. Confirm n=5000, mean 48.19 ms, p50 40.16 ms, p95 55.16 ms, p99 421.05 ms, max 627.33 ms. Then explain why a dashboard showing mean 48 ms and p95 55 ms still hides about 100 requests above 400 ms.",
       "traps": [
-        "TODO"
+        "Averaging percentiles from shards or windows. The two halves here give p95 54.84 and 55.45 ms; only the pooled computation is the p95.",
+        "Mixing failed-request latency into success latency, or dropping it. Fast 500s flatter the mean while slow errors are worse than fast ones; track both.",
+        "Reading 60% average utilization as headroom. The saturated resource is the most constrained one; queue wait grows on its utilization, not the average."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Mean 48 ms and p95 55 ms over 5000 requests. How many exceed 400 ms?",
+          "a": "About 100. The p99 is 421.05 ms, so at least 50 exceed 421 ms, and the 2% slow mixture puts roughly 100 above 400 ms. Count from samples, never from the mean."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "100 rps with 5% errors and 10% of requests retried once: throughput versus goodput?",
+          "a": "Throughput counts completions (100 rps plus 10 retry rps of load). Goodput counts first-try useful completions (95 rps). Retries add load without adding goodput."
+        },
+        {
+          "q": "Utilization reads 85% but latency is flat. Saturated?",
+          "a": "Not necessarily. Saturation is about the most constrained resource and its queue. Check queue wait, queue depth, the 99th percentile trend and per-resource utilization."
+        },
+        {
+          "q": "Why exponential histogram buckets?",
+          "a": "Latency spans orders of magnitude. Factor-of-3 buckets resolve both the 40 ms body and the 400 ms tail without storing every sample."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a load sweep through saturation on the learner's service reporting p50, p95 and p99 from retained raw samples with n, plus throughput, goodput, queue depth, utilization, errors and recovery.",
+      "stopWhen": "Your script prints the five stated numbers, and you can explain the hidden 2% tail and name the saturation signal you would alert on.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "SRE golden signals, aggregation and tail sections with the workbook saturation metrics cover both topics at explain and measure depth."
       }
     },
     {
@@ -126,47 +238,108 @@
         "recovery-point-recovery-time-and-backup-freshness"
       ],
       "outcomes": [
-        "TODO"
+        "Derive an error budget from an SLO and window, and convert it into allowed failures and minutes.",
+        "Combine component availabilities for series and parallel topologies, stating the independence assumption.",
+        "Specify RPO and RTO for a store, and check backup freshness against the RPO."
       ],
-      "why": "TODO",
+      "why": "SLOs turn monitoring into decisions: ship or freeze, page or ticket. Readiness and liveness from the Programming health-containers-runbooks unit, taken as assumed background, become SLI inputs here, and the error budget prices every later choice about load, rollout and incidents.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/observability-reliability-design/incidents-postmortems",
+          "note": "Spend the budget through response, timelines and postmortems."
+        },
+        {
+          "unit": "systems/observability-reliability-design/failure-domains-safe-rollout",
+          "note": "Protect the budget with canaries and failure-domain reasoning."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "google-sre-core",
+          "title": "SLIs, SLOs, SLAs and error budgets",
+          "url": "https://sre.google/sre-book/service-level-objectives/",
+          "locator": "Service Level Terminology (Indicators; Objectives; Agreements); Indicators in Practice (availability as yield; durability); Aggregation; Objectives in Practice (Defining Objectives with 90%, 99% and 99.9% bands; error budget paragraph)"
+        },
+        {
+          "resource": "google-sre-core",
+          "title": "Choosing targets and setting expectations",
+          "url": "https://sre.google/sre-book/service-level-objectives/",
+          "locator": "Choosing Targets (do not pick from current performance; as few SLOs as possible); SLOs Set Expectations (The Global Chubby Planned Outage; safety margin; do not overachieve)"
+        },
+        {
+          "resource": "google-sre-core",
+          "title": "Risk and the motivation for error budgets",
+          "url": "https://sre.google/sre-book/embracing-risk/",
+          "locator": "Measuring Service Risk; Motivation for Error Budgets; Forming Your Error Budget"
+        },
+        {
+          "resource": "google-sre-workbook",
+          "title": "SLI ratios and the worked API example",
+          "url": "https://sre.google/workbook/implementing-slos/",
+          "locator": "What to Measure: Using SLIs (good events over total events); A Worked Example (API 97% availability, 90% under 450 ms, 99% under 900 ms; 109,897-error budget); Choosing an Appropriate Time Window (four-week rolling)"
+        },
+        {
+          "resource": "google-sre-workbook",
+          "title": "Error budget policy and decisions",
+          "url": "https://sre.google/workbook/implementing-slos/",
+          "locator": "Establishing an Error Budget Policy; Documenting the SLO and Error Budget Policy; Decision Making Using SLOs and Error Budgets (single release consuming 13% of budget)"
+        },
+        {
+          "resource": "google-sre-workbook",
+          "title": "Burn-rate alert shapes",
+          "url": "https://sre.google/workbook/alerting-on-slos/",
+          "locator": "Ways to Alert on Significant Events (Alert on Burn Rate; Multiwindow, Multi-Burn-Rate Alerts)",
+          "depth": "Read for alert-shape vocabulary only. Alert implementation belongs to the incidents unit."
         }
       ],
       "focus": [
-        "TODO"
+        "SLI is good events over total events; SLO is the target; the error budget is 100% minus the SLO times the window event count.",
+        "A 99.9% SLO over 30 days allows 43.2 minutes of full outage; over 3 million requests it allows 3,000 errors. The same budget reads both ways.",
+        "Series availability multiplies (0.999 x 0.995 = 0.99401) only for independent failures. Shared power, zones or deploys break the multiplication.",
+        "RPO bounds data loss (backup freshness); RTO bounds downtime (restore plus failover). MTBF 720 h with MTTR 1 h gives 0.99861, and holding 0.999 needs MTTR at most 0.72072 h."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the 30-day 99.9% budget (30 x 24 x 60 x 0.001 = 43.2 minutes), the series product 0.999 x 0.995 = 0.99401 with independence stated, and the MTBF/MTTR pair 720/721 = 0.99861 with maximum MTTR 720 x 0.001/0.999 = 0.72072 h. Then state the RPO check a restore drill must pass: the newest restorable record is no older than the RPO.",
       "traps": [
-        "TODO"
+        "A 100% SLO. Change itself is the top outage source, so 100% forbids deploys and leaves no room to improve.",
+        "Setting the SLO from current performance. It locks in heroic effort or hides user pain; start loose and tighten with evidence.",
+        "Quoting availability without the window and without independence. 99.9% over a week is 10.1 minutes, not 43.2."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "3 million requests in 4 weeks at 99.9% availability: budget? One outage caused 1500 errors: share?",
+          "a": "3,000 errors; the outage spent 50% of the budget."
+        },
+        {
+          "q": "Two replicas at 0.99 each share one rack power feed. Combined availability?",
+          "a": "Not 0.9999. The independence assumption fails; the shared feed makes it one failure near 0.99."
+        },
+        {
+          "q": "RPO is 1 hour and the last verified backup is 90 minutes old. Pass?",
+          "a": "No. Freshness exceeds RPO, so restore would lose up to 90 minutes. Take and verify a new backup."
+        },
+        {
+          "q": "A burn-rate alert fires while the window SLO dashboard is green. What does that mean?",
+          "a": "Budget is being consumed fast relative to the window. The multiwindow alert predicts exhaustion before the window average moves."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Calculate System Availability",
+          "url": "https://algomaster.io/practice/system-design/calculate-system-availability",
+          "locator": "AvailabilityCalculator.calculate: series product versus parallel 1-minus-product-of-failures, rounded to 5 places",
+          "note": "Attempt only after your own series and parallel estimates. Compare the platform answer with the independence assumption written down."
+        },
+        {
+          "name": "AlgoMaster: Plan Reliability Recovery Targets",
+          "url": "https://algomaster.io/practice/system-design/plan-reliability-recovery-targets",
+          "locator": "availability (MTBF/(MTBF+MTTR)), maximumMttr and meetsTarget on unrounded availability",
+          "note": "Attempt only after your own MTBF and MTTR numbers. Check meetsTarget against the unrounded value, not the rounded one."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive all four numbers without notes and can defend one SLO choice with its window, budget and policy action.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "SRE SLO, risk and workbook implementation, policy and burn-rate material cover availability, budgets and recovery targets at derive depth."
       }
     },
     {
