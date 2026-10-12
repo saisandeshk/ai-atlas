@@ -196,7 +196,7 @@ A shorter token sequence buys context space, but a larger vocabulary costs param
 **Practice**
 
 - [Hugging Face LLM Course: Unigram 'huggun' segmentation](https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm) - Now your turn!: determine the tokenization of 'huggun' and its score. Enumerate valid paths from the given vocabulary and frequency table before using code. The best path is [hug, g, un], with score (15/210)*(20/210)*(16/210).
-- [Deep-ML Lab 19: Build a Tokenizer for Language Modeling](https://www.deep-ml.com/labs/19) - Implement train_tokenizer(corpus, vocab_size) in standard Python; the lab trains a bigram model on your tokens and scores held-out bits per character. Free in the browser. Compare a byte-level baseline with BPE at the full 256-token budget, and check whether the better compressor also gives the lower bits per character.
+- [Deep-ML Lab 19: Build a Tokenizer for Language Modeling](https://www.deep-ml.com/labs/19) - Implement train_tokenizer(corpus, vocab_size) in standard Python; the lab trains a bigram model on your tokens and scores held-out bits per character. Compare a byte-level baseline with BPE at the full 256-token budget, and check whether the better compressor also gives the lower bits per character.
 
 **Stop when:** You solve the segmentation and window-count examples without notes, and can defend vocabulary and literal-special-token policies with separate prose, code and non-English examples.
 
