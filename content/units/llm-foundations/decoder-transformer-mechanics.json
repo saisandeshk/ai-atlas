@@ -287,7 +287,7 @@
     {
       "id": "mqa-gqa",
       "title": "MQA and GQA: sharing keys and values",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "derive",
         "implement"
@@ -298,47 +298,79 @@
         "one-small-mha-versus-gqa-memory-comparison"
       ],
       "outcomes": [
-        "TODO"
+        "Derive MHA, MQA and GQA projection shapes and bias-free parameter counts at matched model and head widths.",
+        "Implement causal grouped attention with an explicit query-to-KV-head mapping and differential tests.",
+        "Explain KV-memory savings without claiming an equal reduction in attention work or unchanged expressivity."
       ],
-      "why": "TODO",
+      "why": "Sharing K and V changes both the learned projections and the state kept during decoding. Counting query heads as KV heads gives the wrong memory estimate.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/decoder-transformer-mechanics/assemble-and-verify-decoder",
+          "note": "Make the head structure an explicit model configuration choice."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/kv-memory-arithmetic",
+          "note": "Extend the per-layer KV calculation across layers and sequences."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modern-llm-decoder",
+          "title": "MHA, MQA and grouped-query implementation",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb",
+          "locator": "Multi-Head Attention: MHA and GQA, the MHA vs GQA vs MQA KV Cache hand calculation comparison, and GQA implementation",
+          "depth": "Stop before QK-Norm. Skip MLA and the architecture survey. Read Exercise 3, How much KV Cache does GQA save, for practice."
+        },
+        {
+          "resource": "pytorch-sdpa-reference",
+          "title": "Contiguous grouped-head reference",
+          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention",
+          "locator": "Equivalent Python implementation: enable_gqa and repeat_interleave; GQA constraints note; Parameters and Shape legend",
+          "depth": "Use the head mapping and functional contract after your explicit grouped oracle passes. Skip backend and kernel tuning."
         }
       ],
       "focus": [
-        "TODO"
+        "Let D=Hq*d and Hkv divide Hq. Q is [B, Hq, T, d]; unexpanded K and V are [B, Hkv, T, d]. MHA has Hkv=Hq; MQA has Hkv=1.",
+        "In PyTorch weight layout, Wq and Wo are [D, D], while Wk and Wv are [Hkv*d, D]. The bias-free total is 2D^2 + 2D*Hkv*d.",
+        "SDPA maps query head h to KV head floor(h/(Hq/Hkv)). The notebook's expand-then-reshape instead interleaves KV heads; choose one convention and make weight ordering and the oracle agree.",
+        "Optional comparison: allocate unexpanded K and V at the same B, T, d and dtype for MHA and GQA, then compare numel()*element_size(). Do not count expanded temporary tensors as compact cache storage."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement a causal grouped-head loop and batched path for D=16, Hq=4 and Hkv=2, using contiguous groups. Derive 768 projection parameters versus MHA's 1024, and show that compact KV tensors use half the bytes at matched B, T and dtype.",
       "traps": [
-        "TODO"
+        "Using repeat rather than repeat_interleave while assuming contiguous groups. Shapes match, but queries read the wrong KV head.",
+        "Storing expanded K and V as the cache. That loses the compact representation's memory saving.",
+        "Expecting independently initialized MHA and GQA to produce equal outputs. Sharing restricts projections; equality needs a deliberately expanded shared-weight MHA reference."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "With Hq=8 and Hkv=2 under contiguous grouping, which query heads share KV head 1?",
+          "a": "Zero-based query heads 4, 5, 6 and 7. Each group contains Hq/Hkv=4 query heads."
+        },
+        {
+          "q": "For D=1024, Hq=16 and Hkv=4, what are the K weight shape and total projection parameters?",
+          "a": "d=64, so Wk is [256, 1024]. The four bias-free projections total 2,621,440 parameters, versus MHA's 4,194,304."
+        },
+        {
+          "q": "Does four times fewer KV heads imply four times less QK attention work?",
+          "a": "No. Every query head still computes scores and a weighted value sum. KV projection and compact storage costs shrink; the number of query-head score matrices stays the same."
+        },
+        {
+          "q": "For B=1, T=2048, d=128 and two-byte elements, what does changing 32 KV heads to 4 save per layer?",
+          "a": "K plus V fall from 33,554,432 bytes to 4,194,304 bytes: 32 MiB to 4 MiB, an 87.5% reduction."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Modern LLM Notebook: Exercise 3, How much KV Cache does GQA save",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb",
+          "locator": "Exercises: Exercise 3, How much KV Cache does GQA save; complete the three quantities and pass its assertions",
+          "note": "Extend the exercise in your own repository with the reproduce task. Compare outputs and shared-KV gradients against a head loop for Hkv=Hq, Hkv=1 and an intermediate group count. Reject invalid divisibility."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The named exercise passes, your grouped outputs and gradients match the explicit loop for all three head structures, and you derive compact KV bytes and projection counts without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The primary notebook covers shapes, costs and named practice; the pool's SDPA contract resolves head-group ordering for an independent implementation check."
       }
     },
     {
@@ -354,47 +386,78 @@
         "rope-offsets-and-relative-position-identity"
       ],
       "outcomes": [
-        "TODO"
+        "Derive (R_i q)^T(R_j k)=q^T R_(j-i) k for paired rotations.",
+        "Implement RoPE on Q and K with explicit position IDs, head-local pairs and preserved output dtype.",
+        "Detect pairing and offset errors using norm, common-offset and nonzero-position tests."
       ],
-      "why": "TODO",
+      "why": "RoPE makes position differences enter attention through rotations of Q and K. An implementation that silently restarts positions at zero can pass a short demo and fail incremental decoding.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/decoder-transformer-mechanics/modern-decoder-block",
+          "note": "Insert rotary attention into the pre-norm residual block."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/build-kv-cache",
+          "note": "Preserve absolute positions when appending rotated keys."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modern-llm-decoder",
+          "title": "Paired rotations and relative dot products",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb",
+          "locator": "Rotary Position Encoding (RoPE): 2D rotation mathematical intuition, From 2D to higher dimensions, and Full RoPE implementation",
+          "depth": "Stop before Experimental comparison. The rotation identity, not a plotted attention pattern, is the result to reproduce."
+        },
+        {
+          "resource": "cs336-a1-model-contract",
+          "title": "Explicit position IDs and rotary attention contract",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 3.4.3, Relative Positional Embeddings and problem (rope), printed pp. 22 to 23; section 3.4.5, Applying RoPE, printed p. 25"
         }
       ],
       "focus": [
-        "TODO"
+        "For zero-based pair r, frequency is theta^(-2r/d). Rotate [x_2r, x_(2r+1)] by position*frequency using radians, not degrees.",
+        "R_i^T R_j=R_(j-i). The positional factor depends on the difference; content vectors q and k still matter.",
+        "Apply the rotation after projection and head splitting to Q and K, not V. Require an even rotary width and agree on adjacent-pair versus split-half layout.",
+        "Index sin/cos with the supplied positions, including nonzero offsets. Compute angles and rotations in float32 when needed and cast the result back; buffers are not trainable weights."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, multiply the two 2D rotation matrices to derive R_i^T R_j=R_(j-i), then implement adjacent-pair RoPE. For fixed q and k, verify equal dot products at positions (2, 5) and (12, 15) and compare against the unrotated relative-rotation expression.",
       "traps": [
-        "TODO"
+        "Mixing adjacent pairs with a split-half reference without permuting channels and projection weights. Both conventions can work, but their raw tensors are not interchangeable.",
+        "Using arange(T) instead of supplied position IDs. This discards offsets and per-sequence positions.",
+        "Inferring monotonic distance decay or reliable long-context quality from the identity. Rotations are periodic, and the identity alone guarantees neither."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why do a common offset c on query and key positions cancel?",
+          "a": "R_(i+c)^T R_(j+c)=R_(j-i), assuming unchanged q, k and frequencies. The rotary positional factor is unchanged."
+        },
+        {
+          "q": "With theta=10000 and d=4, what frequencies do the two adjacent pairs use?",
+          "a": "1 and 0.01 radians per position. Position p gives angles p and p/100."
+        },
+        {
+          "q": "Should rotating a vector change its norm?",
+          "a": "Not in exact arithmetic. Each 2D rotation is orthogonal; numerical tests allow a dtype-appropriate tolerance."
+        },
+        {
+          "q": "For a full paired rotation, what should happen with an odd head width?",
+          "a": "Reject it unless a separate partial-rotation contract explicitly leaves a channel unrotated. The assignment's full paired construction needs an even width."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: rope and rotary multihead_self_attention",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py",
+          "locator": "Problem (rope), section 3.4.3, and Applying RoPE, section 3.4.5; implement run_rope and run_multihead_self_attention_with_rope and pass test_rope and test_multihead_self_attention_with_rope",
+          "note": "Add your own position-zero, nonzero-offset, common-offset dot-product, norm-preservation and odd-width rejection tests. Test float32 and a supported low-precision dtype. For positions beyond a precomputed table, test the documented extension or rejection policy."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both named public tests and your offset and pairing tests pass, and you derive the relative-position identity without looking at the notebook.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The primary notebook verifies the rotation derivation; CS336 supplies an explicit position-ID contract and two public implementation tests within a four-hour scope."
       }
     },
     {
