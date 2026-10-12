@@ -455,7 +455,7 @@
     {
       "id": "transactions-isolation",
       "title": "Transactions, isolation anomalies and ORM boundaries",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "explain",
         "measure"
@@ -465,53 +465,95 @@
         "orms"
       ],
       "outcomes": [
-        "TODO"
+        "Explain commit, rollback, savepoints and the PostgreSQL isolation anomaly table, including where PostgreSQL exceeds the standard.",
+        "Demonstrate one isolation anomaly or prevented anomaly on the live database at a named isolation level with the interleaving written out.",
+        "Draw the ORM transaction boundary with Session, identity map and eager loading, and fix one N+1 with selectinload."
       ],
-      "why": "TODO",
+      "why": "Concurrent writers share your tables. Without explicit transactions and a chosen isolation level, a retry or a second writer turns an invariant into a suggestion. The database prevents what you ask it to prevent, and nothing more.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/interfaces-data-apis/indexes-query-plans",
+          "note": "Measure the plans behind the invariant checks."
+        },
+        {
+          "unit": "programming/interfaces-data-apis/http-apis-idempotency",
+          "note": "Retried requests need transaction boundaries that make replay safe."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-sql",
+          "title": "What Is a Transaction plus ACID Properties",
+          "url": "https://algomaster.io/learn/sql-interview/what-is-a-transaction",
+          "locator": "BEGIN, COMMIT, ROLLBACK; auto-commit mode; SAVEPOINT and partial rollback. Companion ACID Properties at the acid-properties URL: atomicity, consistency, isolation, durability with WAL. Reference PostgreSQL 3.4 Transactions (bank transfer, savepoints)"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "Isolation Levels",
+          "url": "https://algomaster.io/learn/sql-interview/isolation-levels",
+          "locator": "Read phenomena (dirty, non-repeatable and phantom reads); the four levels; PostgreSQL vs MySQL defaults. Reference Transaction Isolation 13.2 with Table 13.1: READ UNCOMMITTED behaves as READ COMMITTED, and REPEATABLE READ has no phantom reads"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "Locking, Deadlocks and MVCC",
+          "url": "https://algomaster.io/learn/sql-interview/locking-mechanisms",
+          "locator": "Row vs table locks; SELECT FOR UPDATE; NOWAIT and SKIP LOCKED. Companions Deadlocks (detection, consistent lock ordering) and MVCC (xmin and xmax, per-statement vs per-transaction snapshots) at their lesson URLs"
+        },
+        {
+          "resource": "sqlalchemy-docs",
+          "title": "Session basics plus relationship loading",
+          "url": "https://docs.sqlalchemy.org/en/21/orm/session_basics.html",
+          "locator": "What the Session does (identity map, unit of work); autoflush; expiring and refreshing. Companion relationship loading at the orm/queryguide/relationships page: lazy default and N+1, selectinload, joinedload, raiseload guard"
         }
       ],
       "focus": [
-        "TODO"
+        "PostgreSQL has three real levels: READ UNCOMMITTED behaves as READ COMMITTED, and REPEATABLE READ blocks phantom reads, which is stronger than the standard requires.",
+        "REPEATABLE READ holds the snapshot from the first statement of the transaction. A concurrent update to a target row raises could-not-serialize, and the application retries the whole transaction.",
+        "The Session is the ORM transaction boundary plus an identity map: one object per primary key. Touching lazy relationships after commit issues new SELECTs or fails outside a session.",
+        "SAVEPOINT discards part of a transaction while keeping the rest. Forgetting COMMIT leaves an idle transaction that holds locks and bloats the database."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, run the two-session interleaving on PostgreSQL 18: session A begins REPEATABLE READ and reads balance 100; session B updates to 200 and commits; session A re-reads (still 100), commits, and reads 200. State the isolation level, the anomaly prevented, and the retry rule.",
       "traps": [
-        "TODO"
+        "REPEATABLE READ equals serializable. It does not: serialization anomalies are still possible, and only SERIALIZABLE plus retry logic on SQLSTATE 40001 prevents them.",
+        "No retry loop on serialization failures. Concurrent writers make these routine, not exceptional; abort and rerun the whole transaction.",
+        "Touching relationships after session close is free. Lazy loading fires one SELECT per parent (N+1) inside a session and fails outside it; use selectinload or joinedload and guard with raiseload."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "In the reproduce interleaving, what does session A read second, and why?",
+          "a": "100. REPEATABLE READ holds the snapshot from the first statement of the transaction. After commit it reads 200. Verified on PostgreSQL 18.6."
+        },
+        {
+          "q": "Which cells of Table 13.1 differ between the SQL standard and PostgreSQL?",
+          "a": "PostgreSQL READ UNCOMMITTED behaves as READ COMMITTED, and REPEATABLE READ has no phantom reads. Both guarantees are stronger than the standard minimums."
+        },
+        {
+          "q": "A REPEATABLE READ update raises could not serialize access due to concurrent update. What does the application do?",
+          "a": "Roll back and retry the whole transaction from the beginning. The retried transaction sees the committed change in its new snapshot."
+        },
+        {
+          "q": "Loading N parents then touching children issues how many statements under lazy loading, and after selectinload?",
+          "a": "N+1 under lazy loading. Two with selectinload: one for parents, one IN query for children."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "PostgreSQL tutorial transactions: bank transfer with savepoints",
+          "url": "https://www.postgresql.org/docs/current/tutorial-transactions.html",
+          "locator": "Section 3.4: the transfer with BEGIN, COMMIT and ROLLBACK plus the savepoint example",
+          "note": "Replay on the section database: wrap a three-statement transfer with one bad statement, roll back, and show balances unchanged. Then run the reproduce interleaving and record both reads."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The transfer rollback leaves balances unchanged, the REPEATABLE READ interleaving prints 100 then 200, and the N+1 conversion shows N+1 statements before and 2 after.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "ORM coverage failed on the pool alone: no pool resource draws the Session and identity-map boundary or names the N+1 fix, so the SQLAlchemy 2.1 docs join the AlgoMaster and PostgreSQL transaction material."
       }
     },
     {
       "id": "indexes-query-plans",
       "title": "Indexes, selectivity and query plans",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain",
         "measure"
@@ -520,47 +562,83 @@
         "indexes-plans"
       ],
       "outcomes": [
-        "TODO"
+        "Explain B-tree versus sequential access, selectivity, and leftmost-prefix, partial and covering index choices.",
+        "Read EXPLAIN and EXPLAIN ANALYZE plans, compare estimated and actual rows, and name the scan and join strategy.",
+        "Measure two index designs on controlled data and explain the selectivity-dependent result with table size and ANALYZE state."
       ],
-      "why": "TODO",
+      "why": "A missing index turns a lookup into a full scan, and a wrong index taxes writes without helping reads. Plans show what the database actually does, and selectivity decides which design wins on your data.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/interfaces-data-apis/http-apis-idempotency",
+          "note": "Index the idempotency-key and pagination lookups behind the endpoints."
+        },
+        {
+          "route": "systems",
+          "note": "Carry plan reading into storage and I/O behavior."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-sql",
+          "title": "How Indexes Work",
+          "url": "https://algomaster.io/learn/sql-interview/how-indexes-work",
+          "locator": "What an index is; B-tree equality, range and sorted output; hash limits; selectivity threshold; write and storage overhead"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "Composite, Partial and Covering Indexes",
+          "url": "https://algomaster.io/learn/sql-interview/composite-partial-covering-indexes",
+          "locator": "Leftmost prefix rule and column order; partial indexes for hot subsets; covering indexes with INCLUDE; GIN and GiST note"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "EXPLAIN and Reading Execution Plans",
+          "url": "https://algomaster.io/learn/sql-interview/explain-and-execution-plans",
+          "locator": "EXPLAIN vs EXPLAIN ANALYZE; cost fields; scan types; join strategies; bottlenecks. Companion Query Optimization and Anti-Patterns at its lesson URL: functions on indexed columns, implicit conversions, SELECT star, OR, N+1. Reference Using EXPLAIN 14.1 (basics, ANALYZE, caveats)"
         }
       ],
       "focus": [
-        "TODO"
+        "High-selectivity equality predicates gain most. Low-selectivity filters and tiny tables stay on sequential scans, and every index taxes writes.",
+        "Equality columns come before range columns in composite indexes, and only the leftmost prefix is usable. A range column first wastes the rest.",
+        "EXPLAIN shows estimates and planner costs. EXPLAIN ANALYZE executes and shows actual rows, loops, buffers and timing. Costs are planner units, not milliseconds.",
+        "Plans depend on statistics. State table size and ANALYZE state with every claim, and distrust toy-table plans."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, on a 5000-row ANALYZEd table (32 pages): show the sequential-scan aggregation plan with cost and row estimate, add an index on the filter column, and show the bitmap plan with actual rows and execution time from EXPLAIN ANALYZE.",
       "traps": [
-        "TODO"
+        "Cost numbers are milliseconds. They are abstract planner units; only the EXPLAIN ANALYZE Execution Time is measured, on your hardware and cache state.",
+        "Wrapping an indexed column in a function. The predicate becomes unsargable and the plan falls back to a scan; rewrite the predicate or index the expression.",
+        "One index per column. Leftmost-prefix rules, OR conditions and implicit type conversions defeat single-column indexes; check the plan, not the schema."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A 5000-row ANALYZEd table filters user_id = 7 with 100 matches. What changes after CREATE INDEX on user_id?",
+          "a": "Sequential scan at cost 0.00 to 94.50 becomes a bitmap heap scan at cost 5.06 to 38.31 with 100 actual rows and sub-millisecond execution. Measured on PostgreSQL 18.6 in Docker on a 32-page table."
+        },
+        {
+          "q": "A filter has equality on status and a range on created_at. How do you order the composite index?",
+          "a": "Equality first, then range: (status, created_at). Range first wastes the second column under the leftmost rule."
+        },
+        {
+          "q": "EXPLAIN estimates 10 rows but ANALYZE shows 4500 actual. What do you do first?",
+          "a": "Run ANALYZE and re-check. Stale or missing statistics is the first suspect before rewriting the query."
+        },
+        {
+          "q": "Why can an index slow a workload down?",
+          "a": "Every write maintains each index, and unused or duplicate indexes cost storage and write amplification without speeding any read."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Measured plan improvement on the section database",
+          "url": "https://www.postgresql.org/docs/current/using-explain.html",
+          "locator": "EXPLAIN ANALYZE with buffers: before and after plans for a selective filter plus a join from your service schema",
+          "note": "Use a table over 1000 rows, run ANALYZE, and record pages, row counts, both plans and both execution times. Fix one anti-pattern from the lesson (function-wrapped column or SELECT star) and show the plan change."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You show before and after EXPLAIN ANALYZE with table size and ANALYZE state, explain why the selective case improved, and name one case on the same tables where the index does not help.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AlgoMaster index and EXPLAIN lessons plus the PostgreSQL Using EXPLAIN guide cover selectivity, plan reading and anti-patterns at measure depth, with the measurement done on the live database; no gap needed a new resource."
       }
     },
     {
