@@ -49,6 +49,17 @@ import unitFile46 from './llm-foundations/kv-cache-prefill-decode.json';
 import unitFile47 from './llm-foundations/kv-cache-prefill-decode.project.json';
 import unitFile48 from './llm-foundations/tokenization-corpus-data.json';
 import unitFile49 from './llm-foundations/tokenization-corpus-data.project.json';
+import unitFile50 from './programming/_route.json';
+import unitFile51 from './programming/concurrency-profiling-operations.json';
+import unitFile52 from './programming/concurrency-profiling-operations.project.json';
+import unitFile53 from './programming/interfaces-data-apis.json';
+import unitFile54 from './programming/interfaces-data-apis.project.json';
+import unitFile55 from './programming/native-systems-literacy.json';
+import unitFile56 from './programming/native-systems-literacy.project.json';
+import unitFile57 from './programming/python-execution-model.json';
+import unitFile58 from './programming/python-execution-model.project.json';
+import unitFile59 from './programming/testing-debugging-reproducibility.json';
+import unitFile60 from './programming/testing-debugging-reproducibility.project.json';
 
 export const unitFiles: Array<{ route: string; name: string; data: unknown }> = [
   { route: 'algorithms', name: '_route', data: unitFile0 },
@@ -101,4 +112,15 @@ export const unitFiles: Array<{ route: string; name: string; data: unknown }> = 
   { route: 'llm-foundations', name: 'kv-cache-prefill-decode.project', data: unitFile47 },
   { route: 'llm-foundations', name: 'tokenization-corpus-data', data: unitFile48 },
   { route: 'llm-foundations', name: 'tokenization-corpus-data.project', data: unitFile49 },
+  { route: 'programming', name: '_route', data: unitFile50 },
+  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile51 },
+  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile52 },
+  { route: 'programming', name: 'interfaces-data-apis', data: unitFile53 },
+  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile54 },
+  { route: 'programming', name: 'native-systems-literacy', data: unitFile55 },
+  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile56 },
+  { route: 'programming', name: 'python-execution-model', data: unitFile57 },
+  { route: 'programming', name: 'python-execution-model.project', data: unitFile58 },
+  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile59 },
+  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile60 },
 ];
