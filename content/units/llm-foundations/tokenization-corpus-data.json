@@ -1,6 +1,17 @@
 {
   "section": "tokenization-corpus-data",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "python-unicode-normalization",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Python unicodedata - normalization forms",
+      "provider": "Python Software Foundation",
+      "access": "Free",
+      "use": "Read unicodedata.normalize for canonical and compatibility equivalence, and unidata_version for recording the normalization database version.",
+      "url": "https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize"
+    }
+  ],
   "units": [
     {
       "id": "text-bytes-normalization",
@@ -15,47 +26,84 @@
         "character-byte-and-token-counts"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why code-point, UTF-8 byte and token counts differ, including combining marks and control characters.",
+        "Defend a normalization and invalid-byte policy, and state which distinctions it cannot preserve.",
+        "Predict whether a round trip returns the original text or only its normalized form."
       ],
-      "why": "TODO",
+      "why": "A tokenizer receives encoded text, not the glyphs on your screen. A silent decoding or normalization change can alter document identity before BPE even starts.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/tokenization-corpus-data/byte-level-bpe",
+          "note": "Use bytes as the complete base vocabulary."
+        },
+        {
+          "unit": "llm-foundations/tokenization-corpus-data/provenance-dedup-contamination",
+          "note": "Keep raw identity separate from normalized identity."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a1-tokenizer-contract",
+          "title": "CS336 Assignment 1: Unicode and encodings",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Sections 2.1 and 2.2, including Problems (unicode1) and (unicode2) (pp. 3 to 5); Section 2.6.2, Decoding text (p. 11)"
+        },
+        {
+          "resource": "python-unicode-normalization",
+          "title": "Canonical and compatibility normalization",
+          "url": "https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize",
+          "locator": "unicodedata.normalize: NFC, NFD, NFKC and NFKD, with the cedilla and Roman numeral examples; unicodedata.unidata_version"
+        },
+        {
+          "resource": "hf-tokenizers-course",
+          "title": "Normalization and pre-tokenization",
+          "url": "https://huggingface.co/learn/llm-course/chapter6/4#normalization",
+          "locator": "Normalization, Pre-tokenization and SentencePiece: normalize_str and the repeated-space examples",
+          "depth": "Stop before Algorithm overview. Use the library calls to inspect behavior, not to replace your later blank-file implementation."
         }
       ],
       "focus": [
-        "TODO"
+        "Python len(str) counts code points, not visible grapheme clusters. UTF-8 uses one to four bytes per Unicode scalar value; token counts depend on the tokenizer.",
+        "NFC merges canonically equivalent spellings. NFKC also collapses compatibility distinctions; lowercasing and accent stripping are separate choices.",
+        "Rejecting malformed UTF-8, replacing it and preserving raw bytes are different contracts. The CS336 text decoder uses replacement, not a reversible arbitrary-byte interface.",
+        "Record the encoding, error policy, normalization form and Unicode database version before comparing counts or content hashes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, make a count table for 'é', 'e\\u0301', '牛' and chr(0): code points and UTF-8 bytes before and after NFC. Explain why the first two become identical under NFC, but a token count still needs a named tokenizer.",
       "traps": [
-        "TODO"
+        "Decoding one byte at a time. A UTF-8 character can span several bytes, so concatenate token bytes before decoding.",
+        "Promising raw-text round trips after lowercasing or normalization. Lost distinctions cannot be recovered from token IDs alone.",
+        "Using errors='ignore' as cleanup. It deletes malformed bytes and can make distinct raw documents look identical."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can 'é' and 'e\\u0301' look identical but have different lengths?",
+          "a": "The first has one code point and two UTF-8 bytes. The second has two code points and three bytes. Both represent the same canonical text; NFC maps both to 'é'."
+        },
+        {
+          "q": "What happens to the Roman numeral 'Ⅰ' under NFC and NFKC?",
+          "a": "NFC retains it. NFKC maps it to the Latin capital letter 'I', erasing the compatibility distinction."
+        },
+        {
+          "q": "Does complete byte vocabulary coverage make replacement decoding reversible for malformed input?",
+          "a": "No. Token bytes can preserve the input, but replacing malformed UTF-8 with U+FFFD loses information. Keep a separate raw-byte path if that round trip is promised."
+        },
+        {
+          "q": "Is chr(0) an empty string or a text terminator in Python?",
+          "a": "Neither. It is the NUL code point, has length one and encodes as byte 0. It may be invisible when printed but remains in the string."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hugging Face LLM Course: cased versus uncased normalization",
+          "url": "https://huggingface.co/learn/llm-course/chapter6/4#normalization",
+          "locator": "Try it out! in Normalization: pass 'Héllò hôw are ü?' to bert-base-cased and bert-base-uncased normalizers",
+          "note": "Write down the erased distinctions. Then check the count table from Reproduce with Python and state an explicit invalid-byte policy for your corpus."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your count table agrees with Python, and you can predict the cased/uncased outputs and explain exactly what your decoding and normalization policy loses.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for concrete canonical versus compatibility normalization; Python's official normalize reference fills that gap beside CS336 and the HF inspection exercise."
       }
     },
     {
@@ -160,47 +208,93 @@
         "tokenizer-comparisons-across-language-and-code-slices"
       ],
       "outcomes": [
-        "TODO"
+        "Contrast BPE's ordered merges with Unigram's scored segmentations and vocabulary pruning.",
+        "Derive bytes-per-token, sequence-count and vocabulary-axis parameter consequences of a vocabulary change.",
+        "Define fixed special-token IDs and distinguish trusted boundary insertion from matching untrusted literal text.",
+        "Compare tokenizer efficiency on matched language and code slices without treating compression as model quality."
       ],
-      "why": "TODO",
+      "why": "A shorter token sequence buys context space, but a larger vocabulary costs parameters and output work. Special-token recognition also decides whether ordinary input can impersonate a document boundary.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/tokenization-corpus-data/tokenizer-identity-streaming",
+          "note": "Serialize the complete tokenization policy, not just the vocabulary."
+        },
+        {
+          "unit": "llm-foundations/decoder-transformer-mechanics/embeddings-and-positions",
+          "note": "Account for the vocabulary axis in model shapes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hf-tokenizers-course",
+          "title": "Unigram tokenization",
+          "url": "https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm",
+          "locator": "Training algorithm, Tokenization algorithm and Back to training; the Viterbi explanation and the 'huggun' Now your turn! question",
+          "depth": "Stop before Implementing Unigram. Recompute examples from the frequency table: the printed 'pug' products mistakenly use 5 rather than 17 for p and pu."
+        },
+        {
+          "resource": "modern-llm-token-data",
+          "title": "BPE vocabulary sizes and special tokens",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part1-foundation/02-bpe-tokenizer.ipynb",
+          "locator": "Vocabulary Sizes in Practice and Appendix: Special Tokens and the Vocabulary, immediately before Summary",
+          "depth": "Treat the vocabulary-size ranges as examples, not an optimum for every language or corpus. Skip the later step-by-step BPE appendix."
+        },
+        {
+          "resource": "cs336-a1-tokenizer-contract",
+          "title": "Compression and special-token contracts",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 2.3 (p. 5), Special tokens in Section 2.4 (pp. 6 to 7), and Problem (tokenizer_experiments), parts (a) and (b) in Section 2.7 (p. 12)",
+          "depth": "Use the experiment's matched-sample method on small local slices; do not train the full OpenWebText tokenizer here."
+        },
+        {
+          "resource": "tokenizer-corpus-project-spec",
+          "title": "Reserved-token policy",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#architecture-constraints",
+          "locator": "Architecture constraints: reserved tokens cannot be produced from ordinary text unless explicitly escaped or policy-defined"
         }
       ],
       "focus": [
-        "TODO"
+        "Unigram maximizes a segmentation's product of token probabilities, or minimizes its summed negative logs. BPE follows merge ranks; neither is simply longest-prefix matching.",
+        "For B bytes encoded as T tokens, compression is B/T. Compare the same text and preprocessing on each tokenizer, and report per-slice results rather than only a pooled mean.",
+        "Adding delta-V tokens adds delta-V times d embedding parameters, plus the same again for an untied output head. Shorter sequences do not make vocabulary costs disappear.",
+        "CS336 deliberately recognizes configured special strings. A corpus-facing interface needs a separate policy for untrusted literals and trusted boundary insertion."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, score both segmentations of 'ab' with P(a)=0.4, P(b)=0.4 and P(ab)=0.2, and select [ab]. Then derive that 12,000 bytes at 3 versus 4 bytes/token require 4,000 versus 3,000 tokens, or 8 versus 6 length-512 windows if the tail is padded.",
       "traps": [
-        "TODO"
+        "Assuming the fewest-token Unigram segmentation always wins. Token probabilities, not token count alone, determine the score.",
+        "Calling a tokenizer better because it compresses English prose more. Code, other languages, throughput and downstream behavior can disagree.",
+        "Letting a user-typed EOS spelling silently acquire the trusted EOS ID. Decide whether to reject, escape or encode it as ordinary bytes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can Unigram choose a segmentation that is not the longest available prefix?",
+          "a": "It scores the whole path. A shorter first piece can lead to a larger total probability; Viterbi compares complete paths through the token lattice."
+        },
+        {
+          "q": "A 32,000-token vocabulary grows to 48,000 at width 512. How many parameters does one embedding matrix gain?",
+          "a": "16,000 times 512 = 8,192,000. An untied output matrix gains another 8,192,000; a tied matrix does not."
+        },
+        {
+          "q": "A 1,000-byte sample takes 250 tokens with tokenizer A and 400 with B. What is the compression ratio?",
+          "a": "A has 4 bytes/token and B has 2.5. A uses fewer tokens on this sample; that alone says nothing about model quality."
+        },
+        {
+          "q": "Does reserving an EOS ID prevent special-token injection?",
+          "a": "No. The encoder must also distinguish trusted insertion from untrusted literal text. Reserving an ID only establishes its meaning."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hugging Face LLM Course: Unigram 'huggun' segmentation",
+          "url": "https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm",
+          "locator": "Now your turn!: determine the tokenization of 'huggun' and its score",
+          "note": "Enumerate valid paths from the given vocabulary and frequency table before using code. The best path is [hug, g, un], with score (15/210)*(20/210)*(16/210)."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You solve the segmentation and window-count examples without notes, and can defend vocabulary and literal-special-token policies with separate prose, code and non-English examples.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The HF mechanism and named exercise, notebook trade-offs, CS336 compression method and project policy cover all topics at explain and derive depth."
       }
     },
     {
