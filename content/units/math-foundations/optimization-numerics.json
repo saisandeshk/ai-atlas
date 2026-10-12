@@ -620,7 +620,7 @@
     {
       "id": "stable-reductions-mixed-precision",
       "title": "Stable log-sum-exp, online reductions and mixed precision",
-      "hours": 3,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -630,53 +630,96 @@
         "mixed-precision"
       ],
       "outcomes": [
-        "TODO"
+        "Derive log-sum-exp's shift identity, max bounds and convexity without relying on a loss implementation.",
+        "Implement naive, balanced pairwise and Kahan reductions and distinguish an error bound from a measured error.",
+        "Prove online mean and centered-sum invariants and test low-precision storage with higher-precision accumulation."
       ],
-      "why": "TODO",
+      "why": "Long reductions can fail even when each individual input is representable. Stable identities and explicit accumulator dtypes give you independent checks beneath probability losses and mixed-precision training.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "deep-learning/neural-autodiff/stable-softmax-losses",
+          "note": "Apply the log-partition identity to stable probability losses."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/mixed-precision-autocast",
+          "note": "Apply the distinction between storage precision and accumulation precision."
+        },
+        {
+          "unit": "llm-foundations/evaluation-model-arithmetic/likelihood-and-perplexity",
+          "note": "Use stable log probabilities and controlled reductions when aggregating likelihoods."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "convex-optimization-book",
+          "title": "Log-sum-exp as a smooth convex maximum",
+          "url": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
+          "locator": "Section 3.1.5: Log-sum-exp bounds on p. 72 and the Hessian/Cauchy-Schwarz proof on p. 74",
+          "depth": "Read only the log-sum-exp passages. Derive the max-shift identity yourself; leave gradients of a classification loss to the linked later unit."
+        },
+        {
+          "resource": "higham-summation",
+          "title": "Summation trees and compensation",
+          "url": "https://nhigham.com/wp-content/uploads/2023/10/high93s.pdf",
+          "locator": "Section 2 (pp. 784 to 786), especially equations 2.1 to 2.6; Section 3's pairwise algorithm (pp. 787 to 788) and Kahan compensated summation (pp. 789 to 790, equation 3.10)",
+          "depth": "Skip Section 2's sorting examples and Section 3's insertion and +/- methods. Derive the basic recursive bound, then inspect the balanced-tree and compensated algorithms; no probabilistic rounding model is assigned."
+        },
+        {
+          "resource": "running-variance",
+          "title": "Online mean and centered second moment",
+          "url": "https://www.johndcook.com/blog/standard_deviation/",
+          "locator": "Opening cancellation example and recurrence formulas for M_k, S_k and sample variance S_k/(k-1)",
+          "depth": "Stop before the C++ RunningStat class. Prove the invariant in exact arithmetic before translating it to NumPy. A variance can be zero, and overflow can still occur."
+        },
+        {
+          "resource": "pytorch-type-info",
+          "title": "Precision budget for inputs and accumulators",
+          "url": "https://docs.pytorch.org/docs/2.14/type_info.html",
+          "locator": "torch.finfo: eps, max and smallest_normal for float16, bfloat16, float32 and float64"
         }
       ],
       "focus": [
-        "TODO"
+        "For finite nonempty x, LSE(x)=m+log(sum exp(x_i-m)), m=max x. Every exponential is <=1 and at least one is 1, giving m<=LSE<=m+log(n). The Hessian diag(p)-pp' is PSD by a weighted-variance argument.",
+        "With unit roundoff u, no overflow or underflow and (n-1)*u<1, recursive summation has absolute error <=gamma_{n-1}*sum |x_i|, gamma_k=k*u/(1-k*u). A balanced tree shortens rounding paths; it does not remove conditioning from cancellation.",
+        "Online mean uses delta=x_n-mean_old and mean_new=mean_old+delta/n. The centered sum updates M2_new=M2_old+delta*(x_n-mean_new). Check M2_n=sum (x_i-mean_n)^2 with base case n=1, and divide by n-1 only for sample variance with n>=2.",
+        "Higher-precision accumulation can prevent repeated rounding of the running total. It cannot restore detail lost when input values were quantized; distinguish operand, product and accumulator precision."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the LSE max bounds and Hessian PSD proof, and prove the online centered-sum invariant by induction. Hand-check data [1,2,3]: mean=2, M2=2, sample variance=1. In NumPy float64 use x=[1000,1001,999]; the shifted formula gives 1001.4076059644. Compared with scipy.special.logsumexp on SciPy 1.18.1, measured absolute difference is 0; require <=1e-12, not exact equality. Implement a left-to-right sum with float64 accumulator zero, a balanced sum splitting each array at len(a)//2 recursively (empty sum zero, singleton returns its value), and Kahan with s=c=0; for each v use y=v-c, t=s+y, c=(t-s)-y, s=t. On np.concatenate((np.array([1e16],dtype=np.float64),np.ones(1024,dtype=np.float64),np.array([-1e16],dtype=np.float64))), the outputs are 0, 1022 and 1024. Against math.fsum's 1024 the measured absolute errors are 1024, 2 and 0; allow 1e-12 for these displayed checks. Run the online recurrence on [1e8+1,1e8+2,1e8+3] in that order in float64: sample variance is 1, while (sum(x*x)-3*mean(x)^2)/2 gives 0. The absolute difference from np.var(x,ddof=1) for the online result is 0, allowed <=1e-12. Finally sum 4096 float16 ones left-to-right, explicitly casting every updated accumulator to np.float16: the total stalls at 2048. np.sum on those same inputs with dtype=np.float32 gives 4096; measured absolute errors against the integer count are 2048 and 0. No random draws are needed. These examples do not establish that Kahan or an online variance algorithm wins for every input.",
       "traps": [
-        "TODO"
+        "Using np.sum as a claimed naive left-to-right baseline. Its reduction strategy depends on axis and layout; implement the order you claim to test.",
+        "Rearranging Kahan's compensation into algebraically equivalent operations. Reassociation changes the rounding errors the correction is meant to retain.",
+        "Ignoring empty inputs, infinities or the n=1 sample-variance denominator. The finite nonempty LSE contract and n>=2 variance contract need explicit checks."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is the LSE Hessian positive semidefinite but not positive definite?",
+          "a": "For finite x, p_i=exp(x_i)/sum exp(x_j) are positive and sum to one. v'(diag(p)-pp')v=sum p_i*(v_i-sum p_j*v_j)^2>=0. Positivity makes this a weighted variance; constant v gives zero, so the all-ones direction is a null direction."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Where does the online centered-sum proof use its assumptions?",
+          "a": "At n=1, mean=x1 and M2=0. For n>=2, the old centered deviations sum to zero, so recentering the first n-1 values adds (n-1)*(delta/n)^2 with no cross term. The new deviation is delta*(n-1)/n; adding its square gives delta^2*(n-1)/n=delta*(x_n-mean_new). Division uses n>0; the algebra assumes exact arithmetic, not an exact floating-point invariant."
+        },
+        {
+          "q": "Why can a small absolute summation error be a large relative one?",
+          "a": "Cancellation can make |sum x_i| tiny while sum |x_i| is large. The relative error bound contains their ratio, the summation condition number. At a zero exact sum use an absolute criterion instead."
+        },
+        {
+          "q": "Does float32 accumulation make float16 inputs equivalent to original float32 inputs?",
+          "a": "No. It improves the accumulation of already rounded inputs. Any distinction erased by conversion to float16 is still gone, even if every later addition were exact."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: derive and implement a finite-input log-partition primitive, three explicit summation orders and online mean/variance; test cancellation, large offsets, low-precision storage and accumulator choices against independent oracles.",
+      "stopWhen": "Your reduction and online-state tests reproduce the stated absolute errors, and you can prove the LSE bounds and centered-sum invariant while explaining which precision losses cannot be repaired.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage and depth failed for compensated summation and online centered variance. Higham's analysis and Cook's recurrence fill those gaps; the added dtype contract supports accumulation checks and mini-project practice."
       }
     },
     {
       "id": "residuals-tolerances",
       "title": "Residuals, tolerances and iterative-solver error",
-      "hours": 2,
+      "hours": 3,
       "target": [
         "derive",
         "measure"
@@ -685,47 +728,90 @@
         "iterative-errors"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the relationship between a linear-system residual, solution error and conditioning.",
+        "Design norm-specific absolute and relative residual tests with meaningful scales.",
+        "Distinguish residual convergence, stagnation, non-finite failure and iteration-cap termination."
       ],
-      "why": "TODO",
+      "why": "A solver stops because of a rule, not because mathematics declares the answer correct. Residual scaling and conditioning tell you what that rule actually certifies.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "classical-ml/linear-probabilistic-models/least-squares-solvers",
+          "note": "Use residual and solution-error checks when comparing linear solvers."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/numerical-failure-instrumentation",
+          "note": "Report convergence and numerical failure as separate statuses."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "fncbook",
+          "title": "Linear residuals and conditioning",
+          "url": "https://fncbook.com/python/condition-number/",
+          "locator": "Section 2.8.1, Theorem 2.8.1; Section 2.8.2, Residual and backward error, Definition 2.8.2 and equation 2.8.11",
+          "depth": "Keep the normwise residual/error relationship. Do not reproduce the later least-squares solver comparison."
+        },
+        {
+          "resource": "fncbook",
+          "title": "Fixed-point errors versus iteration stopping",
+          "url": "https://fncbook.com/python/fixed-point/",
+          "locator": "Sections 4.2.1 to 4.2.2, equations 4.2.2 to 4.2.5; follow to Section 4.3.2's newton stopping implementation",
+          "depth": "Skip Observation 4.2.1's claim of divergence for all initial values when |g'(p)|>1: starting at p stays at p. Skip Theorem 4.2.1 as stated for an arbitrary interval: existence needs completeness, for example a closed invariant interval. The contraction x/2 maps (0,1) into itself but has no fixed point there. Read the scalar stopping loop on the Newton page, not its graphical demos."
+        },
+        {
+          "resource": "convex-optimization-book",
+          "title": "Objective certificates rather than tiny steps",
+          "url": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
+          "locator": "Section 5.5.1 (pp. 241 to 242) and Section 9.1.2, equations 9.9 to 9.10 (p. 460)",
+          "depth": "Read only primal-dual gap stopping and the strong-convexity gradient-to-suboptimality bound."
         }
       ],
       "focus": [
-        "TODO"
+        "For invertible A, r=b-A*xhat=A*(x*-xhat). Hence ||xhat-x*||_2<=||A^{-1}||_2*||r||_2; when b and x* are nonzero, relative error <=kappa_2(A)*||r||_2/||b||_2.",
+        "A scale-aware residual test is ||r||_2<=atol+rtol*||b||_2. State the norm, units, atol and rtol. The normalized residual ||r||_2/(||A||_2*||xhat||_2+||b||_2) is a useful normwise backward-error measure, not a forward-error certificate.",
+        "For a mu-strongly-convex differentiable unconstrained objective, ||grad f(x)||_2^2/(2*mu) bounds the objective gap. Constraints and nonsmooth penalties need KKT or proximal residuals instead; noisy gradients are not exact stationarity residuals.",
+        "Check finite values first, then residual convergence, then stagnation and the iteration limit. Small successive steps can reflect poor scaling or rounding. Report the reason for exit rather than labeling every exit converged."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the residual-to-error bound by hand. In NumPy float64 set A=diag(1,1e-8), xstar=np.ones(2,dtype=np.float64), b=A@xstar and xhat=np.array([1,0],dtype=np.float64). Compute r=b-A@xhat: ||r||_2=1e-8, relative residual=1e-8, relative solution error=0.7071067812, kappa_2(A)=1e8, and normalized residual=5e-9 using the denominator ||A||_2*||xhat||_2+||b||_2. Allow relative scalar tolerance 1e-9 for these displayed nonzero quantities. The relative-error bound is 1, so the large observed error does not contradict it. An absolute-only threshold 1e-7 accepts this poor answer. With atol=1e-12 and rtol=1e-10, the Euclidean residual test rejects it. Multiply both A and b by 1e8: the residual becomes 1 and the relative residual remains about 1e-8; the same combined test rejects it again. Take one correction xhat+=np.linalg.solve(A,r) using the original A and r. The measured final Euclidean error and residual are both 0; require <=1e-12 rather than exact equality. Finally work the harmonic partial sums H_n by hand: successive increments tend to zero although H_n diverges. Use this to justify a stagnation status separate from residual convergence. No random draws are needed.",
       "traps": [
-        "TODO"
+        "Treating a tiny residual as a tiny solution error without checking the inverse sensitivity or condition number.",
+        "Using a relative-only tolerance when the target scale is zero, or comparing residuals in different units without rescaling atol.",
+        "Declaring convergence at maxiter or after a small update even though the residual test failed."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which assumptions are used in the relative residual bound?",
+          "a": "Invertibility gives x*-xhat=A^{-1}r. Consistent operator and vector norms give ||error||<=||A^{-1}||||r|| and ||b||<=||A||||x*||. Combine them to get the relative bound; b and x* must be nonzero to divide by their norms. No random or convergence assumption is needed."
+        },
+        {
+          "q": "Why does multiplying A and b by the same nonzero scalar leave relative residual unchanged?",
+          "a": "Both ||r|| and ||b|| acquire the scalar's absolute magnitude. The solution is unchanged, but an absolute residual tolerance must be rescaled to preserve the same test exactly."
+        },
+        {
+          "q": "Why do vanishing harmonic increments not establish convergence?",
+          "a": "H_{n+1}-H_n=1/(n+1) tends to zero. But each block from 2^(k-1)+1 through 2^k contributes at least 1/2, because it has 2^(k-1) terms each at least 1/2^k. Thus H_{2^k}>=1+k/2, including k=0, and the sums diverge."
+        },
+        {
+          "q": "What does a primal-dual gap certify, and what must be checked first?",
+          "a": "For primal-feasible x and dual-feasible multipliers, weak duality bounds f(x)-p* by f(x)-g. Check both feasibilities before interpreting the gap. Strong duality is needed to make arbitrarily tight such certificates possible, not for this lower-bound argument."
+        },
+        {
+          "q": "What makes the contraction-mapping existence guarantee valid?",
+          "a": "A nonempty complete domain, such as a closed interval of R, an invariant map g(S) contained in S, and a global Lipschitz constant q<1. Invariance keeps all iterates in S; the contraction bounds successive differences by a geometric sequence, hence the iterates are Cauchy. Completeness puts the limit in S, and continuity gives g(p)=p. The contraction also proves uniqueness. An open interval alone does not provide completeness."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "FNC Python: foil the successive-step stopping indicator",
+          "url": "https://fncbook.com/python/newton/#problem-newton-stopping",
+          "locator": "Exercise 4.3.8",
+          "note": "Attempt before using the harmonic example. Explain why a shrinking update alone is insufficient, then specify finite-value, residual, stagnation and iteration-cap statuses for your own loop."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can derive the conditioning bound, explain the small-residual counterexample, and defend a norm-and-scale-specific stopping rule that never labels stagnation or an iteration cap as residual convergence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: FNC supplies residual conditioning, fixed-point reasoning and the named stopping counterexample; Boyd supplies objective and dual-gap certificates within three hours."
       }
     }
   ]
