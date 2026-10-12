@@ -78,7 +78,9 @@ def test_decode_flops_grow_only_by_attention_to_extra_keys(lab, kv_heads):
     growth = measured[1] - measured[0]
     # Two matmuls per layer, each 2*B*Hq*1*extra_keys*head_dim FLOPs.
     attention_growth = 4 * config.n_layers * 3 * config.n_heads * 8 * (config.d_model // config.n_heads)
-    assert 0 < growth <= attention_growth * 1.05, (
+    # Zero growth is fine for a cache preallocated to context_length, whose
+    # attention already spans the full buffer.
+    assert 0 <= growth <= attention_growth * 1.05, (
         f"Decode FLOP growth {growth} exceeds attention-only budget {attention_growth}; "
         "do not recompute the prefix inside a cached decode step"
     )
