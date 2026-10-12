@@ -597,7 +597,7 @@
     {
       "id": "files-fsync-durability",
       "title": "Files, page cache, fsync, atomic rename and durability",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "explain",
         "implement"
@@ -608,53 +608,103 @@
         "acknowledged-written-flushed-and-durable-state-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Explain names, inodes, open files and directory permissions as separate filesystem state.",
+        "Implement same-filesystem atomic replacement with checked file and directory synchronization.",
+        "Distinguish accepted bytes, visible bytes, ordered writes and durability under a stated storage contract.",
+        "Detect metadata inconsistency and payload corruption without mistaking detection for recovery."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's files-paths-serialization unit and its format round trips. Here a correct byte format is only the starting point: you own publication, permissions, persistence boundaries and the evidence needed after failure.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/machine-process-memory-io/io-patterns-storage-devices",
+          "note": "Measure reads without confusing page-cache hits with device service."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ostep-process-memory-persistence",
+          "title": "Names, metadata and crash consistency",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf",
+          "locator": "Chapter 39, Sections 39.1, 39.7 to 39.9 and 39.16; Chapter 40, Sections 40.3 to 40.4 and 40.6 to 40.7; Chapter 42, Sections 42.1 to 42.3 (other chapters linked from the book contents)",
+          "depth": "Draw directory entries, inodes and allocation bitmaps; then the data/inode/bitmap crash cases and journal commit boundary. Do not implement a filesystem."
+        },
+        {
+          "resource": "ostep-process-memory-persistence",
+          "title": "Integrity and its limits",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-integrity.pdf",
+          "locator": "Chapter 45, Sections 45.3 to 45.6",
+          "depth": "Use checksum placement, misdirected/lost writes and scrubbing to separate corruption detection from redundancy-based repair."
+        },
+        {
+          "resource": "algomaster-os-selected",
+          "title": "Durability and fsync",
+          "url": "https://algomaster.io/learn/operating-systems/durability-and-fsync",
+          "locator": "Accepted, Visible, Ordered, and Durable; File Durability vs. Name Durability; Durable Atomic File Replacement",
+          "depth": "Pair with Crash Consistency: Process Crash vs. Machine Crash, Metadata Consistency vs. Application Consistency and Checksums and Validation. Keep device flush contracts and synchronization errors explicit."
+        },
+        {
+          "resource": "linux-proc-strace",
+          "title": "File and directory synchronization contracts",
+          "url": "https://man7.org/linux/man-pages/man2/fsync.2.html",
+          "locator": "DESCRIPTION: fsync, fdatasync and directory entries; ERRORS; rename(2), DESCRIPTION: replacement, open descriptors and cross-filesystem failure",
+          "depth": "Use https://man7.org/linux/man-pages/man2/rename.2.html for the second contract. Atomic name replacement is not a power-loss guarantee."
         }
       ],
       "focus": [
-        "TODO"
+        "A directory maps names to inodes. Unlink removes a name; an open reference can keep the inode and data alive. Rename does not retarget existing open descriptors.",
+        "Directory search permission governs path traversal; directory write/search permission governs name changes, subject to sticky-bit and other policy. File write permission alone does not authorize replacement of its name.",
+        "A language flush sends buffered bytes toward the kernel. Successful write can leave dirty page-cache pages; background writeback is not an application commit record.",
+        "Set the new file's intended permissions before publication. Flush the language buffer, fsync the file, rename within the destination directory and fsync that directory before acknowledging durable publication under the filesystem/device contract.",
+        "Journaling can preserve filesystem metadata consistency without preserving an application's multi-record invariant. A checksum detects some damage but supplies neither atomicity nor a missing good copy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In a private temporary directory, create state containing b'old\\n' and keep a reader open. Use tempfile.mkstemp in that same directory; fchmod its descriptor to 0600, wrap it with os.fdopen(..., 'wb'), write b'new\\n'*1024, flush and os.fsync before closing it. Call os.replace(temp, state), open the directory with O_RDONLY|O_DIRECTORY and fsync that descriptor before closing it. Reopen state and compare its SHA-256 with the intended payload; assert the retained reader still reads b'old\\n' and the published mode is 0600. Run taskset -c 2 strace -o publish.trace -e trace=openat,write,fsync,rename,renameat,renameat2,close,fchmod -- /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I publish.py. Identify the payload write, file fsync, successful rename and directory fsync in order. Check each exception and clean only your temporary files. Record filesystem/mount, kernel, Python and strace versions. This probe verifies visibility and syscall ordering, not recovered state after power loss; no power-cut test is available here.",
       "traps": [
-        "TODO"
+        "Calling close or Python flush a durability barrier, or ignoring a late fsync error and still reporting success.",
+        "Creating the temporary file on another filesystem, where rename can fail with EXDEV, or forgetting directory synchronization after publication.",
+        "Claiming a process kill simulates loss of the kernel page cache, or claiming a successful trace proves the drive honors its flush contract."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "After replacement, why can an old reader still see the old payload?",
+          "a": "Its open file description still references the old inode. New path lookup finds the replacement inode; rename changes the namespace, not existing open references."
+        },
+        {
+          "q": "Why synchronize the parent directory after fsync of the new file?",
+          "a": "The file barrier covers its data and required metadata, not necessarily persistence of the directory entry naming it. The directory barrier covers publication under the supported filesystem contract."
+        },
+        {
+          "q": "Does a metadata journal guarantee an application never reads a torn record?",
+          "a": "No. Filesystem consistency and application consistency differ. Use a record/publication protocol with validation and a stated recovery policy."
+        },
+        {
+          "q": "Can an additive byte checksum distinguish [1,2] from [2,1]?",
+          "a": "No. Both sum to 3 modulo 256. A checksum has collision limits, and even a stronger digest cannot reconstruct lost bytes."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "OSTEP fsck.py: metadata invariants",
+          "url": "https://github.com/remzi-arpacidusseau/ostep-homework/tree/master/file-journaling",
+          "locator": "README Overview; -s 1 -S 1 and -s 2 -S 2 with default sizes",
+          "note": "Before -c, traverse directory references and compare inode types, bitmaps and link counts. Identify inconsistent state, not necessarily a unique historical cause. The seed-2 answer diagnostic reverses the type-change wording; compare the initial and final inode arrays rather than trusting that sentence."
+        },
+        {
+          "name": "OSTEP checksum.py: additive, XOR and Fletcher checksums",
+          "url": "https://github.com/remzi-arpacidusseau/ostep-homework/tree/master/file-integrity",
+          "locator": "README Overview; -s 1 -d 4 and -s 2 -d 4",
+          "note": "Compute all three results before -c, using the script's modulo-255 Fletcher sums. Try -D 1,2 and -D 2,1 to expose order sensitivity. The README length example mistakenly uses -D; -d is length and -D is explicit data. Retain your local publication trace in the section mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The replacement checksum, old-descriptor assertion and mode check pass, your trace shows both synchronization scopes, and you solve both two-seed simulator exercises without claiming power-loss recovery.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The selected OSTEP persistence chapters, AlgoMaster durability/crash lessons and Linux contracts reach explain/implement depth. Named metadata and integrity simulators add precise practice; power-loss validation remains outside this host experiment."
       }
     },
     {
       "id": "io-patterns-storage-devices",
       "title": "I/O access patterns and storage devices",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "measure"
       ],
@@ -663,47 +713,90 @@
         "raid-ssd-and-device-scheduling-vocabulary"
       ],
       "outcomes": [
-        "TODO"
+        "Compare sequential, seeded-random and strided reads under explicitly matched warm-cache conditions.",
+        "Explain buffered versus mapped I/O work and report the correct byte denominator for each measurement.",
+        "Explain HDD positioning, SSD translation/garbage collection, NVMe queues and RAID failure boundaries without inferring device behavior from cache-hit timings."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's files-paths-serialization and profiling-benchmarking units. Keep parsing out of the timed region. This unit owns the access path and cache-state controls, not a second serialization throughput benchmark.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/machine-process-memory-io/namespaces-cgroups-containers",
+          "note": "Locate the mount and resource boundary around the same I/O path."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ostep-process-memory-persistence",
+          "title": "Device service mechanisms",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-devices.pdf",
+          "locator": "Chapter 36, Sections 36.3 to 36.5 and 36.7",
+          "depth": "Draw polling, interrupts and DMA ownership. DMA moves bytes without a CPU copy loop; it does not eliminate setup, completion or coherence work."
+        },
+        {
+          "resource": "algomaster-os-selected",
+          "title": "The Page Cache and Write-Back",
+          "url": "https://algomaster.io/learn/operating-systems/the-page-cache",
+          "locator": "How Buffered Reads Use the Page Cache; Readahead; Memory-Mapped Files and the Page Cache; Dirty Pages and Write-Back",
+          "depth": "Relate mmap faults to the shared file cache. A warm read can still pay syscall, copy, translation and interpreter costs."
+        },
+        {
+          "resource": "algomaster-hardware-storage-boundaries",
+          "title": "Storage Hardware",
+          "url": "https://algomaster.io/learn/operating-systems/storage-hardware",
+          "locator": "Hard Disk Drives (HDDs); Solid-State Drives (SSDs); NVMe and Parallelism",
+          "depth": "Use seek/rotation/transfer, FTL, erase blocks, garbage collection and write amplification as vocabulary. No cold-device or endurance benchmark is required."
+        },
+        {
+          "resource": "algomaster-hardware-storage-boundaries",
+          "title": "RAID Fundamentals",
+          "url": "https://algomaster.io/learn/operating-systems/raid",
+          "locator": "Comparing the Common Levels; Data-Integrity Limits of RAID; RAID vs. Backups",
+          "depth": "Optional device repair reading only. Distinguish capacity and disk-failure tolerance from corruption, deletion and independent backup recovery."
         }
       ],
       "focus": [
-        "TODO"
+        "Buffered read copies cache bytes into user buffers. Mmap installs mappings and faults as needed; reading one byte per block does less user-level copying than reading every block into a buffer.",
+        "Prewarm the whole file before each variant. Warm page-cache state is not a promise of warm CPU caches or installed mmap PTEs, and fsync does not evict cached pages.",
+        "HDD access combines positioning and transfer. SSD random access avoids mechanical seeks but still depends on queues, flash layout, controller policy and garbage collection.",
+        "RAID is not a backup. Corruption, application deletion and correlated failures can affect every replica or parity set; usable capacity and tolerated disk losses depend on the level.",
+        "Never drop global caches for a shared-host experiment. Reopening a file does not make it cold; a genuine device measurement needs a separately approved cache-control design."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Create a private 16 MiB file of 4096 blocks, each 4096 bytes; fill block i with byte i%256, flush and fsync outside timing. Prepare orders range(4096), a copy shuffled by random.Random(7), and [(j*17)%4096 for j in range(4096)]; assert each visits every block once. Before every trial, read the full file in 1 MiB chunks to prewarm the page cache. Time with perf_counter_ns: os.pread(fd,4096,i*4096)[0] over each order; a fresh read-only mmap over each order reading mapping[i*4096]; and buffered f.read(4096)[0] in sequential order after seek(0). Include mapping creation/close in its timed scope. Sum sampled bytes; every result must equal 522240. Run five trials of every variant with taskset -c 2 /home/saisandeshk/Study/Learn/ai-atlas-work/pyenv-prog/bin/python -I io.py. Record all raw times, filesystem/mount, CPU, kernel and Python versions, block size, order, prewarm and scope. Pread/buffered return 16 MiB per pass, while mmap explicitly samples only 4096 bytes and incurs page-level access. Do not call their timing ratio a device-bandwidth speedup or require a winning order.",
       "traps": [
-        "TODO"
+        "Labeling the mmap sampled-byte loop a full 16 MiB copy, or dividing every variant by file size and calling the result physical-device bandwidth.",
+        "Comparing one cold first variant with warm later variants, or keeping a mapping warm for one case while charging setup to another.",
+        "Applying an HDD scheduling model or optional RAID capacity equation as a measured property of the host's SSD."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does stride 17 visit all 4096 block indices?",
+          "a": "17 and 4096 are coprime. Multiplication by 17 modulo 4096 is a permutation, so the pass covers each block exactly once."
+        },
+        {
+          "q": "What is the sampled checksum for the file?",
+          "a": "There are 16 repeats of bytes 0 through 255: 16*(255*256/2) = 522240. The file length is 4096*4096 = 16777216 bytes = 16 MiB."
+        },
+        {
+          "q": "Does a faster warm-cache random pass show that random SSD reads beat sequential reads?",
+          "a": "No. It measures this application's warm-cache path, including syscall/copy or mapping costs. No device read or throughput claim follows without device-level evidence and cache controls."
+        },
+        {
+          "q": "For four equal D-byte disks, what are ideal usable RAID 0, 5 and 6 capacities?",
+          "a": "4D, 3D and 2D respectively, ignoring metadata. They tolerate zero, one and two disk failures in the ideal level model; none protects against all corruption or deletion."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "OSTEP disk.py: HDD positioning and scheduling",
+          "url": "https://github.com/remzi-arpacidusseau/ostep-homework/tree/master/file-disks",
+          "locator": "README Overview; -s 1 and -s 2 with -A 5,-1,0 -p FIFO, then -p SATF",
+          "note": "Use the README's starting head position and default seek/rotation geometry. Predict request order and seek/rotation/transfer totals before -c. Keep units as simulator time units, not host milliseconds. The local warm-cache experiment supplies the section mini-project's observation rather than validating this HDD model on an SSD."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "All five-repeat checksums agree, each timing states cache condition and work scope, and both two-seed disk predictions separate positioning from transfer without a host-device speed claim.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "OSTEP devices and the selected page-cache lesson cover the OS path but not the optional SSD/RAID vocabulary. Verified AlgoMaster Storage Hardware and RAID companions fill that bounded gap; disk.py and the controlled local experiment supply practice."
       }
     },
     {
