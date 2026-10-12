@@ -86,3 +86,26 @@ Otherwise use the rubric alone. The verdict is provisional until the learner has
    On pilot numbers, a stage costs part of one session of orchestration and 0 to 20% of one Codex window.
 3. **Order:** the core stages the learner will reach next, then the tracks they choose. The tracks hold 77 sections, about as many as the whole core, so do them on demand rather than all at once.
 4. **Keep the sources honest.** The pilot found errors in popular public sources: wrong arithmetic in the Hugging Face course's Unigram example, an expected-token formula that drops a token in two Modern LLM notebook exercises, and a notebook calling the SwiGLU gate a probability. The cards route around each one. Re-check fast-moving sources when a stage is revisited.
+
+## Rollout log
+
+### Stage 05 Deep Learning (October 2026)
+
+Eight sections, 60 units and about 237 illustrative hours, drafted by Muse Spark 1.3 (xhigh) from the pilot brief. Each section took 7 to 13 minutes; one run died without output and was rerun. Codex was not used.
+
+The brief now has a "tools and lessons" section, a Python environment with CPU PyTorch for running claims, and a Deep-ML test reader. Even so, review found three to six real errors per section, more than in the pilot, because these sections make more framework and numerical claims:
+
+| Section | Main review fixes |
+|---|---|
+| 1 Neural computation and reverse mode | Two "errors" in UDL that were pdftotext artifacts, checked against the rendered page; detach, clone, bias and saved-value claims. |
+| 2 PyTorch foundations | A reproduce step that could not run as written, outdated DataLoader seeding advice, checkpoint and self-test fixes, and a Pro-only practice item removed. |
+| 3 Training dynamics | How long Adam's second-moment bias correction matters, gradient accumulation, the shuffled-label control and diagnosis claims. |
+| 4 Convolutional and recurrent | The GRU gate convention, the direction of the beam-search length penalty, pooling and batch-norm claims. |
+| 5 Representation and paired modalities | A collapse-check value off by a factor of 10, an overstated SimSiam mechanism, a trap that would have moved CLIP retrieval out of its shared space, and a CS231n ablation that the notebook's pretrained start would have hidden. |
+| 6 Generative modeling | Two more false UDL errata, the beta-VAE bound (still a lower bound when beta exceeds 1), GAN coverage and sampler claims. |
+| 7 Attention and transformers | The naive softmax result ([0, 0, NaN, 0, 0], not a NaN row), a self-contradicting head-fold trap, the valid_lens repeat (dropping it fails loudly; tiling it fails silently), causal FLOP savings that need a kernel that skips masked tiles, and sequence-permutation tests under a causal mask. |
+| 8 Reliable execution and profiling | A matmul timing off by an order of magnitude (measured on a laptop RTX 3050), the stream example, TF32 API mixing (only one direction raises), torch.compile caches being per code object, float recompiles under the default dynamic setting, and resume and checkpoint wording. |
+
+The lesson from the pilot holds: locators were nearly always right, and the errors were plausible claims that only failed when run or derived. Running the claim in PyTorch 2.14, or on the local GPU, settled most of them.
+
+**Lab verdict: no lab for Stage 05.** Public checks already cover the pure-function parts: the TensorTonic autograd-from-scratch problems, Deep-ML 384, 393 and 490, and the CS231n Assignment 2 and 3 notebook checks. PyTorch itself is the independent oracle for the learner's own differential tests. The rest of the stage is measurement and diagnosis, which a rubric judges better than a harness.
