@@ -111,10 +111,10 @@
         "Constant initialization never breaks symmetry: identical weights give identical gradients, so units update identically forever. Randomness must differ across units, not just across layers.",
         "Variance preservation is an expectation over random draws. One unlucky draw still skews a narrow layer, so width matters alongside scale."
       ],
-      "reproduce": "Closed-book, derive sigma^2 = 2/fan-in for a ReLU layer from mean-zero pre-activations and E[h^2] = Var(f)/2. Then measure activation variance across a 50 by 100 MLP at init variances 0.001, 0.02 and 1.0, and show only 0.02 holds scale with depth.",
+      "reproduce": "Closed-book, derive sigma^2 = 2/fan-in for a ReLU layer from mean-zero pre-activations and E[h^2] = Var(f)/2. Then push a batch through a 50-layer, width-100 ReLU MLP at weight variances 0.001, 0.02 and 1.0 and log the mean squared pre-activation per layer. Expect 0.001 to collapse toward zero, 1.0 to overflow, and 0.02 (the He value) to stay within about an order of magnitude of its start; single draws drift, so try a few seeds.",
       "traps": [
         "Using Xavier variance for ReLU layers. Without the factor 2 the forward variance halves each layer; use He for ReLU and Xavier-style 1/fan forms for tanh or sigmoid.",
-        "Reading UDL equation 7.34 as classic Xavier. It averages two He conditions; the book Notes on p. 113 say Xavier drops the factor 2.",
+        "Reading UDL equation 7.34 as classic Xavier. It averages the forward and backward He conditions for ReLU, 4/(fan-in + fan-out); the chapter Notes (p. 113) say Glorot or Xavier initialization ignores the ReLU and so differs by a factor of two.",
         "Concluding stability from one seed. Variance statements are expectations, so rerun narrow layers with fresh draws before trusting a scale."
       ],
       "selfTest": [
@@ -142,7 +142,7 @@
           "url": "https://d2l.ai/chapter_multilayer-perceptrons/numerical-stability-and-init.html"
         }
       ],
-      "stopWhen": "You derive 2/fan-in without notes, and your variance probe shows stable scale at the He value with decay below it and growth above it.",
+      "stopWhen": "You derive 2/fan-in without notes, and your probe shows collapse below the He value, overflow above it, and bounded drift at it across a few seeds.",
       "fit": {
         "note": "UDL derives He forward and backward with the ReLU half, and D2L adds symmetry breaking with the Xavier uniform form. No search needed.",
         "verdict": "kept"
@@ -211,11 +211,11 @@
       ],
       "selfTest": [
         {
-          "a": "Each sigmoid derivative is at most 0.25, so ten layers multiply gradient norms by at most 0.25^10, about 1e-6. The product of small derivatives is the vanishing gradient.",
-          "q": "Sigmoid MLP, gradients shrink by about 0.2 per layer across 10 layers. Explain the size."
+          "q": "In a 10-layer sigmoid MLP, gradient norms shrink by about 0.2 per layer. Where does a factor near 0.2 come from, and what does it do over 10 layers?",
+          "a": "Each layer multiplies the gradient by its weights and by a sigmoid derivative of at most 0.25. Ten factors near 0.2 give about 0.2^10, roughly 1e-7, so early layers barely learn."
         },
         {
-          "a": "Dead. Their pre-activations stay negative, so the ReLU derivative is zero and no gradient reaches their weights. Without a gradient they cannot recover under plain SGD.",
+          "a": "Dead. Their pre-activations are negative on every example, so the ReLU derivative is zero and no gradient reaches their incoming weights or bias. They recover only if earlier layers happen to shift their inputs.",
           "q": "Half the ReLUs in a layer output zero on every training example and their weights never change. Dead or saturated, and why stuck?"
         },
         {
@@ -223,8 +223,8 @@
           "q": "Why does x + f(x) train deeper than f(x) alone, in one gradient sentence?"
         },
         {
-          "a": "Rerun eval in evaluation mode, with frozen batch statistics and dropout off, to rule out stale state. Only then compare curves for genuine overfitting.",
-          "q": "Train accuracy 95 percent, eval 70 percent, with batch normalization and dropout. Name the first two checks."
+          "q": "Training accuracy is 95 percent and evaluation accuracy 70 percent, with batch normalization and dropout. Name the first two checks.",
+          "a": "First, confirm evaluation runs in eval mode (model.eval(): no dropout, running statistics). Second, measure training accuracy the same way, in eval mode on a training subset, because the logged training number came from train mode. Only a gap that survives both is overfitting."
         }
       ],
       "practice": [
@@ -301,8 +301,8 @@
       ],
       "reproduce": "Closed-book, implement layer normalization for a (batch, features) input from sums only. Then compute batch norm by hand for values [0, 2, 4] with unit scale, zero shift and zero epsilon: outputs -1.225, 0 and 1.225.",
       "traps": [
-        "Normalizing with batch statistics at test time. Eval must use the tracked running statistics; a batch of one at test time otherwise collapses every activation toward the shift parameter.",
-        "Keeping the bias before a normalization. Centering subtracts any constant offset, so that bias is redundant; the D2L Exercises ask exactly this.",
+        "Normalizing with batch statistics at test time. Eval must use the tracked running statistics; with a batch of one, a fully connected batch-norm layer would map every feature to its shift parameter.",
+        "Keeping a bias right before batch normalization. Batch norm subtracts the per-channel batch mean, which removes any per-channel constant, so that bias is redundant (a D2L exercise asks this). Before layer norm a per-feature bias is not fully removed, because layer norm subtracts one mean across features.",
         "Treating RMS norm as layer norm without bias. It also removes mean centering, so a large constant offset passes through scaled but unshifted."
       ],
       "selfTest": [
@@ -407,7 +407,7 @@
       "traps": [
         "Adding L2 to Adam and calling it weight decay. The adaptive denominator rescales the penalty per coordinate; use the optimizer's decoupled decay instead.",
         "Decaying biases and normalization scales by default. They hold offsets, not feature weights; D2L excludes the bias from the penalty, and the same argument covers normalization scales.",
-        "Reading UDL's implicit-regularization equations as exact. The modified-loss forms assume small steps and exact fits; they explain tendencies, not exact trajectories."
+        "Reading UDL's implicit-regularization equations as exact. The modified loss is a first-order approximation in the step size; it explains tendencies, not exact trajectories."
       ],
       "selfTest": [
         {
@@ -439,7 +439,7 @@
           "url": "https://d2l.ai/chapter_linear-regression/weight-decay.html"
         }
       ],
-      "stopWhen": "You write both the SGD shrinkage update and the AdamW decoupled update without notes, and your lambda sweep shows training accuracy falling while validation rises then falls.",
+      "stopWhen": "You write both the SGD shrinkage update and the AdamW decoupled update without notes, and your lambda sweep on the D2L regression task shows training loss rising with lambda while validation loss first falls, then rises.",
       "fit": {
         "note": "Dropout, smoothing, augmentation and the SGD-side L2 story are covered by UDL and D2L; the decoupled AdamW correction had no pool locator, so the PyTorch AdamW reference was added.",
         "verdict": "added"
@@ -515,13 +515,13 @@
       "focus": [
         "UDL writes momentum as an exponential average of gradients, while D2L and PyTorch use heavy-ball v <- beta*v + g. Same direction, different scale: heavy-ball steps larger by 1/(1-beta).",
         "AdaGrad divides by the root of all past squared gradients, so its steps decay toward zero even far from the optimum on dense problems. RMSProp's leaking average keeps the denominator current.",
-        "Adam debiases both moments because zero initialization drags early averages down. The 1/(1-beta^t) correction matters most in the first dozen steps.",
+        "Adam debiases both moments because zero initialization drags early averages toward zero. For beta1 = 0.9 the correction fades within a few dozen steps; for beta2 = 0.999 it still multiplies v by about 10 at step 100 (1 - 0.999^100 is about 0.095) and fades only after a few thousand steps.",
         "AdamW applies weight decay before the adaptive step, outside m and v. The decay rate then means the same thing at every coordinate regardless of gradient scale."
       ],
       "reproduce": "Closed-book, run one Adam step on scalar gradient 2 with eta 0.001, betas (0.9, 0.999) and eps 1e-8: m 0.2, v 0.004, corrected 2 and 4, update 0.001. Then state the general first-step rule: about eta times the sign of the gradient.",
       "traps": [
         "Mixing UDL and PyTorch momentum hyperparameters. Beta 0.9 means an effective step 10 times larger under heavy-ball than under UDL's averaged form at the same eta.",
-        "Trusting the D2L Adam page's TensorFlow snippet for epsilon placement. Its text and other tabs divide by (sqrt(v)+eps); the TensorFlow tab adds eps outside the division.",
+        "Carrying a learning rate between SGD and Adam. Adam moves each coordinate by about lr regardless of gradient scale, while an SGD step scales with the gradient, so a good SGD rate says nothing about a good Adam rate.",
         "Tuning Adam's weight_decay as if it were L2 strength. In plain Adam the penalty enters the moments; switch to AdamW for decoupled meaning."
       ],
       "selfTest": [
@@ -626,13 +626,13 @@
       ],
       "focus": [
         "Cosine decay sets eta_t from a closed form with fixed T. Stepping the scheduler per step versus per epoch changes the curve, so record which one the code does.",
-        "Accumulation averages K equal microbatch means before stepping. That equals the full-batch mean gradient only with mean reduction, frozen parameters and no per-microbatch state; batch-norm statistics and dropout masks still differ.",
+        "Accumulation adds K microbatch gradients and steps once. Scaling each microbatch's mean loss by 1/K reproduces the full-batch mean gradient when the microbatches are equal in size and nothing updates between them. Batch-norm statistics and dropout masks still differ, and the summation order changes, so agreement is to floating-point tolerance.",
         "Scaled gradients must be unscaled before clipping. Clipping scaled values applies the threshold in the wrong units; the recipe unscales first so max_norm keeps its unscaled meaning.",
         "The range test raises the rate linearly and reads bounds off the loss: flat start, steady fall, then divergence. It sets a search interval, not an optimum."
       ],
       "reproduce": "Closed-book, write the cosine formula and evaluate it at halfway: eta0 0.3, etaT 0.01, T 20, t 10 gives 0.155. Write the clipping rescale min(1, theta/||g||) and apply it to per-param norms 3 and 4 with theta 1: total 5, scale 0.2. Write the accumulation average that reproduces a batch-32 mean from four microbatches of 8.",
       "traps": [
-        "Stepping the scheduler before the optimizer, or accumulating without zeroing at the cycle start. Both shift every update by one step; assert first-step LR and gradient equality against a full batch.",
+        "Calling scheduler.step() before optimizer.step(). PyTorch warns because the first scheduled rate is skipped; assert the rate used on step one. Forgetting zero_grad at the start of each accumulation cycle silently adds the previous cycle's gradients.",
         "Claiming accumulation equals large-batch training. Batch-norm running statistics update per microbatch and dropout draws differ, so the match is statistical, not bitwise.",
         "Treating warmup as a universal fix. The Tuning Playbook shows instabilities that need clipping or architecture change; warmup only shortens the risky early phase."
       ],
@@ -642,8 +642,8 @@
           "q": "Cosine schedule eta0 0.3, etaT 0.01, T 20. What is eta at t 10 and t 20?"
         },
         {
-          "a": "Step along (a+b+c+d)/4 with one optimizer step. It fails with sum reduction (off by 4 times), unequal microbatches, or state that updates per microbatch such as batch-norm statistics.",
-          "q": "Four microbatches of 8 with mean-reduced losses give microbatch gradients a, b, c and d. What update matches batch-32 SGD, and when does it fail to match?"
+          "q": "Four microbatches of 8 with mean-reduced losses give microbatch gradients a, b, c and d. What update matches batch-32 SGD, and when does it fail to match?",
+          "a": "One optimizer step along (a + b + c + d)/4. It fails if you add the four gradients without dividing by 4 (a step 4 times too large), if the microbatches differ in size, or if state such as batch-norm statistics updates per microbatch."
         },
         {
           "a": "After scaler.unscale_ and before scaler.step. Before unscaling, gradients carry the dynamic scale factor, so a fixed max_norm threshold means something different every iteration.",
@@ -662,7 +662,7 @@
           "url": "https://www.tensortonic.com/study-plans/language-modeling-from-scratch/cs336-l02-gradient-accumulation-step"
         },
         {
-          "locator": "Exercises: the fixed-LR baseline, the cosine-scheduler application and the warmup-length question",
+          "locator": "Exercises 1 and 4 (best fixed-rate model, warmup length); run the cosine comparison of exercise 3 on Fashion-MNIST instead of ImageNet",
           "name": "D2L Learning-Rate Scheduling: Exercises",
           "url": "https://d2l.ai/chapter_optimization/lr-scheduler.html#sec-scheduler"
         }
@@ -727,15 +727,15 @@
         }
       ],
       "focus": [
-        "Mean reduction divides by the count of non-ignored positions, not the batch size. Changing the mask changes the denominator, so compare masked losses only at equal mask rates.",
+        "Mean reduction divides by the number of non-ignored positions, or by the sum of their weights when weight is set, not by the batch size. Averaging per-batch means with different valid counts weights tokens unequally; accumulate sums and counts instead.",
         "ignore_index removes padding from both loss and gradient but keeps the positions in the tensor. Weight rescales classes for imbalance; neither fixes mislabeled data.",
         "Single-batch overfit that fails proves an optimization or capacity bug, not a data bug: the model cannot fit even a handful of examples.",
-        "Shuffled labels that still train to near zero prove capacity and optimization are fine. A true-label failure after that points at features or labels, not the optimizer."
+        "Shuffle the training labels only. On held-out data the shuffled run must score at chance; anything above chance means leakage between splits or an evaluation bug. On training data a large model can still memorize shuffled labels, more slowly than true ones, so a true-label run that trains no faster than the shuffled one is not using the signal."
       ],
       "reproduce": "Closed-book, compute cross-entropy for logits [[2, 1, 0], [1, 2, 0]] with targets [0, -100] under ignore_index -100 and mean reduction: 0.408. Then write the two controls with their pass and fail readings.",
       "traps": [
-        "Averaging a masked loss over the full batch size. The docs divide by valid weight only; recomputing the mean yourself after masking double-counts the mask.",
-        "Expecting shuffled labels to fail to fit. Overparameterized nets fit random labels; failure to fit shuffled labels is the surprising result that indicts optimization.",
+        "Dividing a masked loss by the batch size or sequence length. PyTorch divides by the valid count (the sum of valid weights); a hand-written mask that sums and divides by the full size shrinks the loss and its gradient as padding grows.",
+        "Expecting a shuffled-label run to fail to fit the training set. Overparameterized nets memorize random labels (UDL 20.2.1); the readings that matter are chance-level held-out accuracy and slower fitting than with true labels.",
         "Comparing cross-entropy values across different reductions or target sets as quality scores. Mean versus sum differ by the denominator, and different targets differ in what they average over."
       ],
       "selfTest": [
@@ -750,6 +750,10 @@
         {
           "a": "It proves the model and optimizer can fit arbitrary patterns, so capacity and optimization work. The true-label failure is about signal: features, labels or leakage, not fitting power.",
           "q": "Shuffled-label training reaches near-zero loss but true-label training does not generalize. What does the control prove?"
+        },
+        {
+          "q": "A shuffled-label run scores 30 percent held-out accuracy on a balanced 10-class task. What does that mean?",
+          "a": "Chance is 10 percent, so something leaks: duplicates across splits, labels recoverable from features such as file names or order, or an evaluation bug. Find it before trusting any true-label number."
         },
         {
           "a": "Its unreduced loss is multiplied by 5 and the mean divides by the sum of valid weights, so it pulls the average five times harder than an unweighted example.",
@@ -838,13 +842,13 @@
       "reproduce": "Closed-book, write the five-branch drill: flat, diverging, NaN or Inf, eval gap, noisy plateau. For each, name the first measurement, the control that splits two causes, and the fix you try first.",
       "traps": [
         "Reading any falling training loss as progress. Memorization falls too; only held-out slices and controls tell fitting from learning.",
-        "Fixing NaN by lowering precision or adding epsilon. That hides the first invalid op; find it, then decide between LR, clipping, init and objective order.",
-        "Reporting the best of many seeds as the result. The playbook tunes over seeds explicitly; report spread across at least two before claiming a fix."
+        "Fixing NaN by switching to float64 or adding an epsilon somewhere. Either can hide the first invalid op; find it first, then decide between learning rate, clipping, initialization and objective order.",
+        "Reporting the best of many seeds as the result. Report the spread across at least two seeds, with the same seeds for the baseline and the fix, before claiming a fix."
       ],
       "selfTest": [
         {
-          "a": "Zero gradient flow (dead or broken graph) versus an objective that ignores the predictions (wrong targets or reduction). Log gradient norms: all-zero norms point at flow; healthy norms with flat loss point at the objective.",
-          "q": "Loss is exactly flat from step 0 with nonzero LR. Name two causes and the one measurement that splits them."
+          "q": "Loss is exactly flat from step 0 with a nonzero learning rate. Name three causes and the two measurements that split them.",
+          "a": "Gradients are zero (broken or detached graph, dead units); gradients are nonzero but parameters do not move (optimizer built on other parameters, zero_grad between backward and step, a missing step); or parameters move but the loss ignores them (loss computed from a detached tensor or from the targets). Log the gradient norm and the parameter-update norm per step."
         },
         {
           "a": "Halve the LR and rerun to test update scale; enable global-norm clipping; log the first step whose activations or gradients go non-finite and inspect that op's inputs. Change one thing per rerun.",
