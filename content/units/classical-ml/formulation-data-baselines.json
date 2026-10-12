@@ -493,47 +493,89 @@
         "training-only-imputation-scaling-encoding-and-learned-state"
       ],
       "outcomes": [
-        "TODO"
+        "Identify which preprocessing statistics may be fit on which partition, and prove point-in-time availability for each feature.",
+        "Build a leakage-safe numeric and categorical pipeline with fitted state, unknown-category behavior, schema tests, and serialization.",
+        "Explain why preprocessing must live inside the split procedure rather than before it."
       ],
-      "why": "TODO",
+      "why": "Preprocessing is where most silent leakage lives. One fitted pipeline object removes the whole class of fit-on-everything bugs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "classical-ml/formulation-data-baselines/baseline-ladder",
+          "note": "Run every baseline through the same fitted pipeline."
+        },
+        {
+          "unit": "classical-ml/formulation-data-baselines/lineage-pipeline-parity",
+          "note": "Serialize the fitted pipeline and prove serving parity."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "sklearn-pitfalls-pipelines",
+          "title": "Inconsistent preprocessing and the Pipeline fix",
+          "url": "https://scikit-learn.org/stable/common_pitfalls.html",
+          "locator": "12.1 Inconsistent preprocessing with the untransformed-test run near 62.81 versus the transformed run near 0.90 and the make_pipeline fix; 12.2.1 How to avoid data leakage (split first, fit and fit_transform on train only, transform on both)"
+        },
+        {
+          "resource": "sklearn-pitfalls-pipelines",
+          "title": "Pipeline and ColumnTransformer reference",
+          "url": "https://scikit-learn.org/stable/modules/compose.html",
+          "locator": "8.1.1 Pipeline: chaining estimators (convenience, joint parameter selection, safety: same samples train transformers and predictors) with 8.1.1.1 Usage (build, access steps, nested parameters); 8.1.4 ColumnTransformer for heterogeneous data (leakage points 1 and 2, per-column transforms, remainder handling)"
+        },
+        {
+          "resource": "homl-cml-workflow",
+          "title": "Numeric and categorical pipelines in the housing notebook",
+          "url": "https://github.com/ageron/handson-mlp/blob/main/02_end_to_end_machine_learning_project.ipynb",
+          "locator": "Chapter 2 notebook, Transformation Pipelines (num_pipeline with SimpleImputer median plus StandardScaler, ColumnTransformer with num/cat pipelines, make_column_selector variant, get_feature_names_out); Handling Text and Categorical Attributes (OrdinalEncoder versus OneHotEncoder, sparse_output flag, handle_unknown ignore on <2H OCEAN/ISLAND, get_dummies mismatch); Feature Scaling (MinMaxScaler, StandardScaler)"
+        },
+        {
+          "resource": "homl-cml-workflow",
+          "title": "Custom transformer exercise with an estimator oracle",
+          "url": "https://github.com/ageron/handson-mlp/blob/main/02_end_to_end_machine_learning_project.ipynb",
+          "locator": "Chapter 2 notebook, Exercise 6: StandardScalerClone from scratch with inverse_transform and feature-name support, checked by check_estimator plus the allclose assertions (centered, uncentered with_mean False, round trip) and feature-name assertions"
         }
       ],
       "focus": [
-        "TODO"
+        "Fit learns state from train only: imputer statistics_, scaler mean_ and scale_, encoder categories_. Transform applies it everywhere. Section 12.1 prices forgetting the second half at about 62.81 versus 0.90.",
+        "Pipelines make the order mechanical: impute, then scale, then encode inside one object fitted once on train, with nested-parameter access for later tuning and ColumnTransformer routing per dtype.",
+        "Unknown categories are a serving fact, not an exception. Default OneHotEncoder raises on unseen values (verified ValueError on <2H OCEAN and ISLAND); handle_unknown ignore emits all-zero rows and get_feature_names_out carries the schema into the model.",
+        "Custom transformers must honor the estimator contract: explicit __init__ parameters, fit accepting y, learned state in trailing-underscore attributes, feature names tracked. check_estimator is the conformance oracle."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write a ColumnTransformer pipeline (median-impute plus standardize numerics, most-frequent-impute plus one-hot-ignore-unknowns for categoricals), fit on train only, and state the two oracle numbers: about 62.81 untransformed versus about 0.90 transformed on the pitfalls synthetic set (the docs print 62.80... and 0.90...).",
       "traps": [
-        "TODO"
+        "Calling fit_transform on the full frame before splitting. The convenience call is the classic leak; split first, then fit_transform on train and transform on test.",
+        "Assuming get_dummies generalizes. It silently builds disjoint columns on new categories; only a fitted encoder with a declared unknown policy survives serving.",
+        "Forgetting the sparse default. OneHotEncoder returns sparse output by default (sparse_output True in 1.9); downstream code expecting dense breaks or densifies huge matrices, so declare the flag explicitly."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does the wrong 12.1 run score about 62.81 while the right one scores about 0.90?",
+          "a": "The model trains on scaled features but predicts on unscaled test rows, so the feature space differs. Transforming test with the same scaler, or using a Pipeline, restores about 0.90. Re-run confirms both numbers."
+        },
+        {
+          "q": "Where must SimpleImputer with median strategy be fit, and how do you check it?",
+          "a": "On train numerics only. Check imputer.statistics_ against the train column medians, then transform train and test with the same object."
+        },
+        {
+          "q": "Test holds ISLAND while train held only INLAND and NEAR BAY. What does handle_unknown ignore emit, and why is that the safe default here?",
+          "a": "An all-zero one-hot row, verified by run. The model sees none-of-the-known-categories instead of crashing, and the choice lives in the pipeline rather than ad-hoc code."
+        },
+        {
+          "q": "Your custom transformer takes *args for flexibility. What breaks?",
+          "a": "Grid search and cloning: scikit-learn requires explicit __init__ parameters for get_params and set_params, so check_estimator fails."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On ML Chapter 2, Exercise 6: StandardScalerClone",
+          "url": "https://github.com/ageron/handson-mlp/blob/main/02_end_to_end_machine_learning_project.ipynb",
+          "locator": "Exercise 6 under Exercise solutions: reimplement StandardScalerClone with inverse_transform and feature-name support; oracles are check_estimator plus the four allclose and name assertions",
+          "note": "Implement from a blank file in your own repository, then wrap it in a ColumnTransformer and confirm get_feature_names_out flows through."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "check_estimator passes on your transformer and your pipeline reproduces the 62.81/0.90 pair plus all-zero rows for unknown categories.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pitfalls preprocessing sections with exact wrong/right numbers, the HOML pipeline and categorical cells, Exercise 6 with its estimator oracle, and the compose reference cover the topic at implement depth."
       }
     },
     {
@@ -548,47 +590,78 @@
         "constant-frequency-heuristic-last-value-and-simple-learned-baselines"
       ],
       "outcomes": [
-        "TODO"
+        "Implement at least two naive or heuristic baselines and one simple learned baseline under one fixed evaluation harness.",
+        "Compare baseline performance across relevant slices and state whether model complexity is justified.",
+        "Explain why trivial, heuristic, last-value, frequency, and simple statistical baselines are necessary controls."
       ],
-      "why": "TODO",
+      "why": "Baselines decide whether complexity earns its place. Without the naive rungs, every learned score looks like progress.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "classical-ml/formulation-data-baselines/lineage-pipeline-parity",
+          "note": "Freeze the ladder harness and model artifacts under lineage."
+        },
+        {
+          "unit": "classical-ml/evaluation-uncertainty-shift/error-confusion-metrics",
+          "note": "Carry the fixed-harness discipline into error metrics."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "google-rules-cml",
+          "title": "Heuristics, simple first models, and baseline behavior",
+          "url": "https://developers.google.com/machine-learning/guides/rules-of-ml",
+          "locator": "Rule 1: launch without machine learning (a heuristic covers about half the imagined gain); Rule 3: choose machine learning over a complex heuristic; Rule 4: keep the first model simple and get the infrastructure right, with baseline metrics and neutral first launch; Rule 7: turn heuristics into features",
+          "depth": "Treat Rule 1 fractions as planning lore, not measured constants. Your ladder numbers replace them."
+        },
+        {
+          "resource": "homl-cml-workflow",
+          "title": "Train, cross-validate, and compare pattern",
+          "url": "https://github.com/ageron/handson-mlp/blob/main/02_end_to_end_machine_learning_project.ipynb",
+          "locator": "Chapter 2 notebook, Training and Evaluating on the Training Set (linear predictions versus actuals, train RMSE) and Better Evaluation Using Cross-Validation (cross_val_score with neg_root_mean_squared_error and cv 10 for tree, linear, and forest comparisons, plus the train-versus-validation overfit reading)"
+        },
+        {
+          "resource": "uci-bike-sharing",
+          "title": "Ladder dataset with the target prohibition",
+          "url": "https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset",
+          "locator": "hour.csv as the ladder dataset with the chronological 2011/2012 split; Additional Variable Information for the casual/registered prohibition on cnt prediction"
         }
       ],
       "focus": [
-        "TODO"
+        "Order the ladder by information, not cleverness: train-mean constant (RMSE 227.8), train-median (243.8), train-last constant (291.8), previous-hour (121.6), simple learned linear on 12 cutoff-respecting features (192.3). Each rung must beat the last for its complexity to earn its place. All numbers are RMSE on the 2012 test split with scikit-learn 1.9.1.",
+        "Previous-hour beats the learned linear here (121.6 versus 192.3) because demand is strongly autocorrelated. That is the finding, not a failure: complexity must clear the naive temporal rung.",
+        "The leaking rung (linear on casual plus registered: RMSE 0.0, coefficients [1, 1], intercept 0) is the control proving the harness catches label construction. Keep it in the report as the excluded row.",
+        "Rule 4 sets the attitude: a neutral first launch that prioritizes infrastructure and baseline behavior over fancy models. Rule 7 says what to do with a good heuristic next: keep its raw value as a feature."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, rebuild the ladder on the chronological Bike split and quote the six numbers within a few RMSE points: mean 227.8, median 243.8, train-last 291.8, prev-hour 121.6, legit linear 192.3, leak 0.0 with coefficients [1, 1]. State which rung a new model must beat and why.",
       "traps": [
-        "TODO"
+        "Comparing models across different splits or metrics. One fixed harness (same rows, same RMSE, same prohibition) or the comparison is void; retune nothing between rungs.",
+        "Dropping the naive temporal baseline because it feels dumb. Prev-hour at 121.6 is the strongest rung; skipping it lets a 150-RMSE improvement over the mean look like progress while losing to last hour.",
+        "Keeping the leaking features to see how well we could do. RMSE 0.0 measures label arithmetic, not demand; the only correct action is exclusion plus a regression test."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A new gradient booster scores 180 on the test split. Is the complexity justified?",
+          "a": "Provisionally: it beats the legit linear 192.3 but loses to prev-hour 121.6, so it earns its place only against non-temporal features or with prev-hour as an input. Report both gaps, not just the win."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is median (243.8) worse than mean (227.8) here?",
+          "a": "RMSE penalizes large errors quadratically and the mean minimizes squared error on train; the median optimizes absolute error instead. The metric chooses the constant."
+        },
+        {
+          "q": "What does the leak rung coefficient vector prove?",
+          "a": "That cnt is exactly casual plus registered (coefficients [1, 1], intercept 0, RMSE 0.0): the features are the label addends, so the rung is excluded and fenced by test."
+        },
+        {
+          "q": "Rule 1 suggests heuristics reach half the ML gain, yet prev-hour beats linear regression. Contradiction?",
+          "a": "No. Rule 1 is planning lore and the heuristic here exploits time structure the linear rung lacks. Measured rungs override the adage."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the full baseline ladder under one fixed harness with the verdict on whether complexity is justified.",
+      "stopWhen": "Your ladder script prints all six RMSE numbers matching the card within a few points, and your report states the complexity verdict against prev-hour.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Rules 1 to 4 plus 7 for the heuristic-to-baseline path, the HOML train and cross-validation comparison cells for the harness pattern, and the UCI hour.csv ladder numbers cover the topic at implement and measure depth."
       }
     },
     {
@@ -603,47 +676,89 @@
         "pipeline-serialization-and-training-serving-feature-parity"
       ],
       "outcomes": [
-        "TODO"
+        "Serialize a fitted pipeline and prove reload parity with identical predictions in a fresh process.",
+        "Trace a train/serve feature mismatch to its data contract and add a prevention test.",
+        "Record immutable snapshots, split identities, seeds, and raw-prediction lineage for a full run."
       ],
-      "why": "TODO",
+      "why": "Reproducibility is what makes every earlier claim checkable. Without snapshots and parity tests, fixes cannot be told apart from noise.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "classical-ml/evaluation-uncertainty-shift/ablations-controls-validity",
+          "note": "Use frozen lineage and parity as the base for ablations and controls."
+        },
+        {
+          "unit": "classical-ml/linear-probabilistic-models/least-squares-solvers",
+          "note": "Deepen the legit linear baseline into solvers and diagnostics."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "homl-cml-workflow",
+          "title": "Stable split identities and joblib persistence",
+          "url": "https://github.com/ageron/handson-mlp/blob/main/02_end_to_end_machine_learning_project.ipynb",
+          "locator": "Chapter 2 notebook, Create a Test Set (crc32 id-hash split, longitude/latitude stable-id pattern, random_state 42) and Model persistence using joblib (dump the final model, reload it, predict on new data, with the pickle-versus-joblib note)"
+        },
+        {
+          "resource": "sklearn-pitfalls-pipelines",
+          "title": "Pipeline structure for serialization",
+          "url": "https://scikit-learn.org/stable/modules/compose.html",
+          "locator": "8.1.1 Pipeline: chaining estimators (one object holding transformers plus estimator, with named steps access) through 8.1.1.1 Usage"
+        },
+        {
+          "resource": "google-rules-cml",
+          "title": "Infrastructure tests, freshness, and export gates",
+          "url": "https://developers.google.com/machine-learning/guides/rules-of-ml",
+          "locator": "Rule 5: Test the infrastructure independently from the machine learning (same score in training and serving, fixed model at serving); Rule 8: freshness requirements; Rule 9: pre-export held-out checks"
+        },
+        {
+          "resource": "uci-bike-sharing",
+          "title": "Raw files and dictionary to snapshot",
+          "url": "https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset",
+          "locator": "Dataset Files (hour.csv, day.csv, Readme.txt) with sizes; Variables Table and Additional Variable Information as the dictionary to store beside the raw snapshot"
         }
       ],
       "focus": [
-        "TODO"
+        "Lineage is mechanical: raw snapshot (file, row count, download date) with the data dictionary, immutable split identities (fixed chronological cut at 2012-01-01 with seed 42, reproducing 8645/8734), and per-row raw predictions joined back to instant.",
+        "Serialize the fitted pipeline, not the recipe: joblib dump of the exact object with its learned state, reloaded in a fresh process. Verified probe: StandardScaler plus LinearRegression on temp/atemp/hum/windspeed predicts [101.7, 99.1, 72.7, 58.1, 52.2] on the first five 2012 test rows identically before and after the round trip (scikit-learn 1.9.1).",
+        "Parity is Rule 5: the served model must score identically on the same rows as training. Test the feature path with a fixed model before trusting any learner change, and gate exports with Rule 9 checks.",
+        "Seeds are recorded, not tuned: one integer seed threaded through split and estimator, stored with the snapshot. Re-runs must reproduce split counts and probe predictions exactly."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the lineage record for the Bike run (source URL, hour.csv row count 17379, split rule date from 2012-01-01 to test with seed 42, pipeline steps with scikit-learn 1.9.1) and run the joblib round trip asserting the identical five-row probe predictions.",
       "traps": [
-        "TODO"
+        "Dumping the recipe instead of the fitted object. Unfitted parameters reload but learned state (means, categories, coefficients) is gone; dump the fitted pipeline and verify with predictions, not file existence.",
+        "Reimplementing transforms at serving time. A second implementation of scaling or encoding drifts silently; serve through the same serialized pipeline object and prove it with the Rule 5 same-score test.",
+        "Mutable snapshots. Re-downloading the same file can change rows (the 17379 versus 17389 lesson); never re-derive lineage from a fresh download, keep the stored snapshot and version any refresh separately."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why must split identities be stable rather than reshuffled each run?",
+          "a": "Otherwise test rows migrate into train across runs, voiding every earlier metric and leakage guarantee. Stable ids plus the recorded seed reproduce 8645/8734 exactly."
+        },
+        {
+          "q": "joblib reload predicts identically on the probe rows. What does that prove, and what does it not prove?",
+          "a": "It proves serialization fidelity: same object, same features, same result. It does not prove serving parity: live feature values, types, and missingness can still differ, which needs the separate Rule 5 test."
+        },
+        {
+          "q": "The pipeline is reimplemented at serving for speed. What is the first test to demand?",
+          "a": "The Rule 5 same-score test: fixed model, same rows, train path versus serve path must agree exactly before any learner comparison."
+        },
+        {
+          "q": "A teammate refreshes hour.csv and the row count changes. What breaks, and what is the repair?",
+          "a": "Every lineage claim (splits, metrics, predictions) loses its referent. Restore work to the stored snapshot and record the refresh as a separate versioned snapshot, never an in-place overwrite."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On ML Chapter 2: model persistence with joblib",
+          "url": "https://github.com/ageron/handson-mlp/blob/main/02_end_to_end_machine_learning_project.ipynb",
+          "locator": "Model persistence using joblib: dump the final model, reload it in a fresh session, and predict on new rows",
+          "note": "Do it on your Bike pipeline: assert identical predictions on five held-out rows and record the scikit-learn and Python versions with the artifact."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "A fresh process reloads your artifact, reproduces the five-row probe exactly, and your lineage record pins source, rows, split rule, seed, and library versions.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "HOML id-hash and joblib cells, the compose Pipeline reference, Rules 5/8/9, and the UCI file and dictionary locators cover snapshots, lineage, serialization, and parity at implement depth."
       }
     }
   ]
