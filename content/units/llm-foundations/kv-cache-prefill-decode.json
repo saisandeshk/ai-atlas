@@ -6,10 +6,7 @@
       "id": "why-cache",
       "title": "Why cache: recomputation in autoregressive decoding",
       "hours": 2,
-      "target": [
-        "explain",
-        "derive"
-      ],
+      "target": ["explain", "derive"],
       "topics": [
         "autoregressive-dependency-and-naive-prefix-recomputation",
         "cached-keys-and-values-versus-token-specific-queries"
@@ -73,7 +70,7 @@
         },
         {
           "q": "microkv.py asserts the cached and uncached token lists are identical. Does the cache change the sampling distribution?",
-          "a": "No. It is exact memoization of the same math, so any mismatch is a bug in positions, masking or stale state, not sampling noise."
+          "a": "No. It memoizes the same math, so greedy tokens must match exactly. Logits can differ in the last bits because the cached path multiplies differently shaped tensors, so compare them with a small tolerance; a larger mismatch is a bug in positions, masking or stale state."
         },
         {
           "q": "In the Modern 21 demo with d_model 32 and 4 heads, what is the K cache shape at step 5 and what does each dim mean?",
@@ -98,9 +95,7 @@
       "id": "build-kv-cache",
       "title": "Building a KV cache",
       "hours": 5,
-      "target": [
-        "implement"
-      ],
+      "target": ["implement"],
       "topics": [
         "per-layer-kv-ownership-and-sequence-identity",
         "kv-tensor-shapes-layout-capacity-and-append-state",
@@ -192,9 +187,7 @@
       "id": "prove-cache-correct",
       "title": "Proving the cache correct",
       "hours": 4,
-      "target": [
-        "implement"
-      ],
+      "target": ["implement"],
       "topics": [
         "full-prefix-versus-cached-logit-equivalence",
         "variable-length-batches-and-padding-state",
@@ -239,12 +232,12 @@
         }
       ],
       "focus": [
-        "Equivalence is exact on fixed seeds. Compare full-prefix logits with step-by-step cached logits using torch.equal before trusting any timing.",
+        "Generated tokens must match exactly at a fixed seed; logits must match within a small tolerance, such as 1e-5 in float32, because different matmul shapes round differently. Check both before trusting any timing.",
         "Variable lengths need per-row lengths and padding masks. Reading the padded tail as real tokens breaks both equivalence and the batch.",
         "Finished sequences need compaction: free or clear their rows, compact the batch, and stop them at EOS plus a length cap. Reused slots must be cleared first.",
         "Truncation, forks and reuse without reset are stale-cache hazards. Chunked prefill and windowed caches must preserve order and positions."
       ],
-      "reproduce": "Write the equivalence harness: full-prefix versus token-by-token cached logits with torch.equal, plus the chunked-prefill case (4-token window over 10 tokens) and the position-overflow assert case.",
+      "reproduce": "Write the equivalence harness: exact token match and per-step logits within tolerance for full-prefix versus token-by-token cached decoding, plus the chunked-prefill case (4-token window over 10 tokens) and the position-overflow assert case.",
       "traps": [
         "Testing equivalence on one prompt length and head count. Offset, GQA grouping and batch bugs hide until adversarial shapes and longer contexts.",
         "Freeing a finished row without clearing it. The next request inherits old K and V and attends to another sequence, which looks like a model bug.",
@@ -276,7 +269,7 @@
           "note": "Then extend in your own repository to variable-length batches with padding masks, EOS compaction and a stale-cache reuse test. The mini-project checks the full matrix across MHA and GQA."
         }
       ],
-      "stopWhen": "Your harness shows torch.equal on adversarial MHA and GQA shapes with offsets, and your chunking, overflow and slot-reuse tests all pass.",
+      "stopWhen": "Your harness shows identical tokens and per-step logits within tolerance on adversarial MHA and GQA shapes with offsets, and your chunking, overflow and slot-reuse tests all pass.",
       "fit": {
         "verdict": "kept",
         "note": "Raschka chunking and overflow tests plus CS336 selective batching and JAX ragged reads cover equivalence, truncation and variable-length vocabulary, with the mini-project checking the full batch, EOS and stale matrix."
@@ -286,9 +279,7 @@
       "id": "kv-memory-arithmetic",
       "title": "KV memory arithmetic",
       "hours": 2,
-      "target": [
-        "derive"
-      ],
+      "target": ["derive"],
       "topics": [
         "kv-bytes-per-token-sequence-layer-and-batch",
         "cache-dtype-and-quantized-cache-vocabulary",
@@ -332,7 +323,7 @@
       ],
       "focus": [
         "Bytes equal batch x seq_len x layers x n_kv_heads x head_dim x 2 for K and V x bytes per element. Every term is load-bearing.",
-        "MHA sets n_kv_heads to n_heads. GQA divides it by the group count and MQA sets it to 1, so savings equal the head ratio.",
+        "MHA stores n_heads KV heads, MQA stores one, and GQA stores something in between, so the saving is n_heads / n_kv_heads. In the Raschka estimator, --n_kv_groups is the number of query heads per KV head: 32 heads with --n_kv_groups 4 store 8 KV heads.",
         "Dtype scales the total directly: FP16 2 bytes, INT8 1 byte, INT4 half a byte. Quantized cache is lossy while head sharing is structural.",
         "The estimator divides by 1000 cubed (GB) and the notebooks by 1024 cubed (GiB). Same bytes, different labels."
       ],
@@ -345,7 +336,7 @@
       "selfTest": [
         {
           "q": "With 32 heads and head dim 128 in FP16, what are the K plus V elements and bytes per token per layer?",
-          "a": "8192 elements (32 x 128 x 2) and 16384 bytes (x 2 bytes), which is 16 KB."
+          "a": "8192 elements (32 x 128 x 2) and 16384 bytes (x 2 bytes), which is 16 KiB."
         },
         {
           "q": "Same model with 32 layers at 16384 tokens FP16. What is the total cache?",
@@ -356,7 +347,7 @@
           "a": "Both. The bytes are 17179869184 either way; the estimator divides by 1000 cubed (GB) and the notebook by 1024 cubed (GiB). State the units."
         },
         {
-          "q": "GQA with 4 groups on 32 heads at bf16, then INT8 cache. What are the savings?",
+          "q": "32 heads at bf16 with the estimator's --n_kv_groups 4, which stores 8 KV heads, then an INT8 cache. What are the savings?",
           "a": "Head sharing gives 32/8 = 4x (MHA 17.18 GB to GQA 4.29 GB decimal, as run). INT8 halves it again to about 2.15 GB, for 8x versus FP16 MHA at a small quality risk."
         }
       ],
@@ -384,10 +375,7 @@
       "id": "prefill-vs-decode",
       "title": "Two regimes: prefill and decode",
       "hours": 3,
-      "target": [
-        "explain",
-        "derive"
-      ],
+      "target": ["explain", "derive"],
       "topics": [
         "prefill-parallelism-and-prompt-length-scaling",
         "decode-serialization-and-per-token-work",
@@ -440,7 +428,7 @@
       "traps": [
         "Expecting bigger batches to fix decode attention. Batching helps MLP reuse of weights, but per-sequence KV keeps attention bandwidth-bound.",
         "Calling decode compute-bound because FLOPs look small. Small FLOPs with large streaming reads is the definition of bandwidth-bound.",
-        "Ignoring launch overhead at small sizes. A 32-token prefill with B times T of 32 sits far below the 240-token critical batch, so launches dominate."
+        "Treating every small step as compute-bound. A 32-token prefill sits far below the roughly 240-token critical batch, so streaming the weights bounds it; for a tiny model, kernel-launch overhead can dominate even that."
       ],
       "selfTest": [
         {
@@ -478,9 +466,7 @@
       "id": "measure-ttft-itl",
       "title": "Measuring time to first token and inter-token latency",
       "hours": 4,
-      "target": [
-        "measure"
-      ],
+      "target": ["measure"],
       "topics": [
         "time-to-first-token-and-prefill-latency",
         "inter-token-latency-and-decode-throughput",
@@ -572,9 +558,7 @@
       "id": "beyond-one-cache",
       "title": "Beyond one cache: prefix sharing, paging and speculation",
       "hours": 2,
-      "target": [
-        "explain"
-      ],
+      "target": ["explain"],
       "topics": [
         "prefix-sharing-and-paged-cache-vocabulary",
         "speculative-decoding-promise-and-exactness-contract",
@@ -613,8 +597,8 @@
           "resource": "modern-llm-cache-inference",
           "title": "Modern LLM Notebook 23 Sections 2 and 3: acceptance and exactness",
           "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/23-speculative-decoding.ipynb",
-          "locator": "Section 2 (draft guesses K tokens, target verifies in one pass) and Section 3 (accept_prob as min(1, p_target over p_draft)) with Exercise 1 (0.5 versus 0.8 giving 1.0) and Exercise 3 (K=4 with perfect 5 and moderate 1.875)",
-          "depth": "Do Sections 2 and 3 with Exercises 1 and 3 only. Skip Exercise 2: its assert expects 4.096 while its own hint formula gives 3.36. Skip draft-model training and variants; they belong to the later tracks."
+          "locator": "Section 2 (draft guesses K tokens, target verifies in one pass) and Section 3 (accept_prob as min(1, p_target over p_draft)) with Exercise 1 (0.5 versus 0.8 giving 1.0)",
+          "depth": "Do Sections 2 and 3 and Exercise 1 only. Skip Exercises 2 and 3: their expected-token formula drops the extra token the target always contributes, so their numbers disagree with the K + 1 ceiling. Skip draft-model training and variants; they belong to later tracks."
         }
       ],
       "focus": [
@@ -639,8 +623,8 @@
           "a": "min(1, 0.8/0.5) = 1.0, so always accept."
         },
         {
-          "q": "With K=4, compare a perfect draft match with a 0.5 match under the notebook formula. What are the expected tokens per target pass?",
-          "a": "5 (K+1) for the perfect match and (1-0.5^4)/0.5 = 1.875 for the moderate one. Draft quality drives speedup, and a poor draft can run slower than no speculation."
+          "q": "A draft proposes K = 4 tokens and each is accepted with probability 0.5, independently. How many tokens does one target pass yield on average, and what is the ceiling?",
+          "a": "(1 - 0.5^5) / (1 - 0.5) = 1.94, counting the token the target always adds after the last accepted draft token. A perfect draft gives K + 1 = 5. Notebook 23's exercises use 1 - alpha^K and drop that token, so trust the K + 1 form."
         },
         {
           "q": "Does speculative decoding change the output distribution?",
@@ -649,16 +633,16 @@
       ],
       "practice": [
         {
-          "name": "Modern LLM Notebook 23 Exercises 1 and 3: acceptance and draft quality",
+          "name": "Modern LLM Notebook 23 Exercise 1: acceptance probability",
           "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/23-speculative-decoding.ipynb",
-          "locator": "Exercise 1 (acceptance probability 0.5 versus 0.8 asserting 1.0) and Exercise 3 (K=4 perfect match 5 and moderate match 1.875 asserts)",
-          "note": "Skip Exercise 2: its assert expects 4.096 while the hint formula (1-0.8^5)/(1-0.8) gives 3.36. Then draw the 8-token shared-prefix diagram from the reproduce step."
+          "locator": "Exercise 1 (acceptance probability for draft 0.5 versus target 0.8, asserting 1.0)",
+          "note": "Skip Exercises 2 and 3, whose expected-token formula is off by one token. Then compute the expected tokens per pass for K = 4 at acceptance 0.5 and 0.8 with the K + 1 form, and draw the 8-token shared-prefix diagram from the reproduce step."
         }
       ],
-      "stopWhen": "Both exercise asserts pass and your diagram shows shared blocks plus the copy-on-write step with the exactness contract stated.",
+      "stopWhen": "Exercise 1 passes, your expected-token numbers use the K + 1 form, and your diagram shows shared blocks plus the copy-on-write step with the exactness contract stated.",
       "fit": {
         "verdict": "kept",
-        "note": "CS336 paging plus speculation, Modern 21 Section 7 and Modern 23 Sections 2 and 3 with Exercises 1 and 3 cover sharing vocabulary and the exactness contract at explain depth, with Exercise 2 skipped for a wrong assert."
+        "note": "CS336 paging plus speculation, Modern 21 Section 7 and Modern 23 Sections 2 and 3 with Exercise 1 cover sharing vocabulary and the exactness contract at explain depth; Exercises 2 and 3 are skipped for a wrong formula."
       }
     }
   ]
