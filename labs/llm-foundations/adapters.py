@@ -8,7 +8,7 @@ import torch
 class LabConfig:
     """Bias-free pre-norm RMSNorm/RoPE/GQA/SwiGLU decoder configuration.
 
-    d_model divides n_heads evenly, head width is even, and n_heads is
+    n_heads divides d_model evenly, head width is even, and n_heads is
     divisible by n_kv_heads. Tying shares one Parameter. RMSNorm eps is 1e-5.
     """
     vocab_size: int = 64
