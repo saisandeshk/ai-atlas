@@ -1,0 +1,644 @@
+{
+  "section": "distributed-state-streams",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "partial-failure-clocks",
+      "title": "Partial failure, clocks and event ordering",
+      "hours": 5,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "partial-failure-and-unreliable-timing-assumptions",
+        "physical-clocks-logical-clocks-and-event-ordering"
+      ],
+      "outcomes": [
+        "Explain why a timeout cannot distinguish a lost request, a paused node and a lost reply.",
+        "Assign physical and logical timestamps to a message history and identify causal and concurrent events.",
+        "Choose a local clock for elapsed time without treating it as a cross-machine ordering oracle."
+      ],
+      "why": "Assume Programming's cancellation-timeouts-retries unit. Here the question is what the caller can know after a timeout, and which event orders remain defensible when clocks disagree.",
+      "next": [
+        {
+          "unit": "systems/distributed-state-streams/replication-quorums",
+          "note": "Apply uncertain failure detection to replication and failover."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: uncertain outcomes and physical clocks",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 9, Faults and Partial Failures and Unreliable Networks through Timeouts and Unbounded Delays, pp. 346 to 354; Unreliable Clocks through Timestamps for ordering events, pp. 358 to 364"
+        },
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: causal order and logical clocks",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 6, The happens-before relation and concurrency, pp. 238 to 239, and Version vectors, p. 242; Chapter 10, Logical Clocks, pp. 420 to 422"
+        }
+      ],
+      "focus": [
+        "A timeout is an observation of silence, not proof of non-execution. Preserve an unknown outcome in the history.",
+        "Use monotonic time for local durations. Wall-clock readings can disagree across nodes; local monotonic readings have no shared epoch.",
+        "Happens-before follows process order, send-to-receive edges and transitivity. A smaller Lamport timestamp does not prove a causal dependency.",
+        "Distinguish scalar clocks that order events from vectors that can expose concurrency. Neither provides consensus or elapsed seconds."
+      ],
+      "reproduce": "Closed-book, trace five events in this order: A sends m to B; C performs an unrelated local event; B receives m; B sends a reply to A; A receives it. Start all counters at zero, increment on each local/send event, and set a receive counter to max(local, received)+1. Get counters 1, 1, 2, 3, 4. Label the A-to-B-to-A chain and C's concurrent event. Use (counter, node ID) to break ties, but do not infer causality from that tie-break. Then draw two executions with the same caller history: P invokes write(x,1) and times out; in one the request is dropped, in the other S applies it and the reply is dropped. Check the clocks and indistinguishability by hand; the numbers are logical counters, not measured time.",
+      "traps": [
+        "Comparing monotonic clock values from two hosts as if they were UTC timestamps.",
+        "Treating timestamp order as a proof of causality or as evidence that an acknowledged write is durable.",
+        "Interpreting a timeout as permission to repeat an externally visible effect without checking its identity."
+      ],
+      "selfTest": [
+        {
+          "q": "Can the caller tell a dropped request from a dropped reply after a timeout?",
+          "a": "Not from silence alone. The operation may have executed, so its outcome is unknown."
+        },
+        {
+          "q": "If L(a) < L(b), must a happen before b?",
+          "a": "No. Causal order implies increasing Lamport counters, but unrelated events can also have different counters."
+        },
+        {
+          "q": "What do vectors (2,1) and (1,2) tell you?",
+          "a": "Neither dominates the other componentwise. Under the vector algorithm's causal tracking assumptions, the represented events are concurrent."
+        },
+        {
+          "q": "Does a monotonic clock make an expired lease safe?",
+          "a": "No. A process can pause or a request can be delayed after a lease check. The receiving resource must enforce ownership."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Gossip Glomers Challenge 1: Echo",
+          "url": "https://fly.io/dist-sys/1/",
+          "locator": "Specification; Installing Maelstrom; Running our node in Maelstrom with the one-node echo workload",
+          "note": "First build the JSON-line node harness and correlate replies with in_reply_to; Unique ID Generation and Broadcast reuse it. It is protocol setup, not a new socket-framing exercise. Maelstrom needs OpenJDK, Graphviz and gnuplot, and the challenges were tested against Maelstrom 0.2.3; a JDK container such as eclipse-temurin:21 avoids a host Java install. Nodes can be written in Python; the tutorial's Go code needs a Go toolchain."
+        },
+        {
+          "name": "Gossip Glomers Challenge 2: Unique ID Generation",
+          "url": "https://fly.io/dist-sys/2/",
+          "locator": "Specification, RPC generate, and Evaluation with the unique-ids workload",
+          "note": "After Echo, implement IDs without assuming synchronized clocks, with the same Maelstrom setup. Explain why (node ID, counter) needs persistent counters or fresh incarnation IDs if restarts are added; the challenge does not crash nodes. Its workload tests uniqueness and total availability under partitions, not monotonicity or fencing."
+        }
+      ],
+      "stopWhen": "You recover the five counters without the source, distinguish the two timeout executions, and defend your ID scheme's uniqueness and restart assumptions.",
+      "fit": {
+        "verdict": "kept",
+        "note": "DDIA supplies uncertainty and clock mechanisms at derive depth; Unique ID Generation tests the distinction between uniqueness and time order."
+      }
+    },
+    {
+      "id": "replication-quorums",
+      "title": "Replication, quorums and consensus vocabulary",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "replication-leaders-followers-lag-and-failover-vocabulary",
+        "quorums-intersection-assumptions-and-stale-membership-counterexamples",
+        "consensus-and-failure-detector-vocabulary"
+      ],
+      "outcomes": [
+        "Trace replication lag and acknowledged-write loss during asynchronous failover.",
+        "Derive quorum intersection and construct a stale-membership counterexample.",
+        "Separate consensus safety properties from termination assumptions and failure-detector suspicions."
+      ],
+      "why": "Copies alone do not define which writes survive or which reads are fresh. Quorum arithmetic becomes useful only when membership, persisted acknowledgements and version comparison are explicit.",
+      "next": [
+        {
+          "unit": "systems/distributed-state-streams/consistency-models-conflicts",
+          "note": "Name the histories that an intersecting replica set still does not rule out."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: leaders, lag and quorum limits",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 6, Single-Leader Replication and Synchronous Versus Asynchronous Replication, pp. 198 to 201; Handling Node Outages, pp. 204 to 206; Problems with Replication Lag, p. 209; Leaderless Replication through Understanding the limitations of quorum consistency, pp. 229 to 234"
+        },
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: failure detection and consensus contract",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 9, Fault Detection and Timeouts and Unbounded Delays, pp. 351 to 354; Chapter 10, Consensus, pp. 425 to 429, through the single-value consensus properties",
+          "depth": "Stop before Compare-and-set as consensus. Learn agreement, integrity, validity and conditional termination, not a Raft implementation. Timeouts alone do not guarantee termination in a fully asynchronous execution; practical progress needs additional assumptions such as eventual synchrony."
+        }
+      ],
+      "focus": [
+        "State whether an acknowledgement means receipt, persistence or application at each replica. Asynchronous failover can discard acknowledged writes that never reached the promoted follower.",
+        "For a fixed replica universe of size n, |W intersect R| is at least w+r-n. This proves overlap, not a complete linearizability protocol.",
+        "Membership changes, forgotten acknowledged data, concurrent writes and faulty timestamp resolution can break the freshness argument.",
+        "Consensus agreement, integrity and validity are safety properties. Progress requires the protocol's fault and timing assumptions; a timeout supplies suspicion, not knowledge."
+      ],
+      "reproduce": "By hand derive |W intersect R| >= w+r-n from |W union R| <= n. In Python 3.14, enumerate all size-three subsets of ABCDE and all 100 write/read pairs; the minimum intersection is one. Now construct this explicit history with initial x=0 everywhere: event 1, P invokes write(x,1) using old membership ABC; event 2, A and B persist 1 and P receives OK; event 3, Q invokes read(x) using new membership CDE, before state transfer; event 4, D and E reply 0 and Q returns 0. Both configurations have n=3,w=2,r=2, but W={A,B} and R={D,E} do not intersect. Check by hand that this violates linearizability: the completed write precedes the stale read. State why a coordinated membership transition is missing.",
+      "traps": [
+        "Adding quorum sizes across different membership views as though they were subsets of one universe.",
+        "Calling a majority vote consensus without a protocol that preserves earlier decisions across leaders and restarts.",
+        "Calling leader receipt durable on a follower, or assuming replication replaces a backup."
+      ],
+      "selfTest": [
+        {
+          "q": "For n=5,w=3,r=3, what overlap is guaranteed?",
+          "a": "At least one replica, provided both sets belong to the same five-member configuration."
+        },
+        {
+          "q": "Does w+r>n alone prove linearizability?",
+          "a": "No. It proves set intersection. Version ordering, concurrent operations, read behavior, persistence and membership transitions still need a correct protocol."
+        },
+        {
+          "q": "What happens if an asynchronous leader acknowledges a write, dies, and a follower without it is promoted?",
+          "a": "The acknowledged write can be lost from the surviving history. Local persistence on the old leader does not guarantee survival of that failover."
+        },
+        {
+          "q": "Must a consensus group keep deciding during a permanent partition?",
+          "a": "Not unconditionally. Safety must be preserved, while termination depends on reachable participants and the protocol's timing assumptions."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: replica lag, persisted acknowledgements, node loss and a stale-membership history, with configuration IDs recorded in every operation.",
+      "stopWhen": "You derive the intersection bound and explain exactly why the two-majority history violates linearizability without contradicting the bound.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The selected DDIA sections cover leader failure, quorum derivation and consensus vocabulary; the mini-project supplies failure practice without implementing consensus."
+      }
+    },
+    {
+      "id": "consistency-models-conflicts",
+      "title": "Consistency models and conflict resolution",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "strong-eventual-causal-and-session-consistency-vocabulary",
+        "linearizability-versus-serializability-vocabulary",
+        "conflicts-last-write-wins-limits-and-application-resolution"
+      ],
+      "outcomes": [
+        "Classify explicit histories under linearizable, causal, eventual and session contracts.",
+        "Distinguish serializable transactions from real-time ordered single-object operations.",
+        "Explain what last-write-wins discards and choose an application merge that preserves the required intent."
+      ],
+      "why": "Assume Programming's transactions-isolation unit. This unit moves from database transaction interleavings to client-visible replica histories, where convergence and freshness are different contracts.",
+      "next": [
+        {
+          "unit": "systems/distributed-state-streams/distributed-histories-simulation",
+          "note": "Turn the stated model into an independent history checker."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: consistency definitions and conflict intent",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 6, Problems with Replication Lag, pp. 209 to 214; Dealing with Conflicting Writes, pp. 222 to 228; Chapter 10, Linearizability and What Makes a System Linearizable?, pp. 402 to 408, including Linearizability Versus Serializability"
+        },
+        {
+          "resource": "algomaster-system-design-distributed",
+          "title": "Consistency Models: bounded definition review",
+          "url": "https://algomaster.io/learn/system-design/consistency-models",
+          "locator": "Sections 3.1 Linearizability, 3.3 Serializability and Strict Serializability, 4.1 Eventual Consistency, 4.2 Causal Consistency, and 5 Client-Centric Consistency Models",
+          "depth": "Use after DDIA to label your histories. Skip the product-choice tables and quiz; do not treat the consistency spectrum as a total ordering of all guarantees."
+        }
+      ],
+      "focus": [
+        "A linearization is a legal sequential object history that respects response-before-invocation order. Overlapping operations need not follow invocation order.",
+        "Serializability orders whole transactions but does not by itself require real-time order. Strict serializability adds it; per-object linearizability alone does not make a multi-object transaction atomic.",
+        "Eventual convergence needs propagation and a resolution policy. Read-your-writes and monotonic reads are session guarantees; causal consistency also preserves dependencies across clients.",
+        "LWW converges with a deterministic total timestamp order, but discards acknowledged updates. Sibling merge must preserve application meaning, especially deletion."
+      ],
+      "reproduce": "Closed-book, check these register histories by hand, initially x=0 with no other writes. H1: P1 invokes write(x,1) at event 1 and receives OK at 2; P2 invokes read(x) at 3 and receives 0 at 4. It is not linearizable; if each operation is its own transaction, serializability alone permits the order read, write. H2: P1 invokes write(x,1) at 1 and receives OK at 4; P2 invokes read(x) at 2 and receives 0 at 3. It is linearizable in the order read, write. Separately, simulate two concurrent writes (timestamp=100,node=A,value=red) and (90,B,blue), comparing (timestamp,node): both arrival orders converge to red and discard blue. Merge cart siblings {book} and {dvd} by union after each device removed the other item from {book,dvd}; both deleted items reappear. Explain why convergence is not preservation of intent. Event numbers and timestamps are synthetic, not elapsed-time measurements.",
+      "traps": [
+        "Using the phrase strong consistency without specifying the object, operations and real-time requirement.",
+        "Claiming eventual convergence bounds lag or guarantees durability.",
+        "Assuming set union correctly handles removals, or that LWW's greatest timestamp identifies the physically latest write."
+      ],
+      "selfTest": [
+        {
+          "q": "May a read overlapping a write return the old value?",
+          "a": "Yes, if a legal linearization places it before the write. Other completed observations can constrain that order."
+        },
+        {
+          "q": "While write(1) is pending, read A returns 1; after A completes, read B returns 0. Is that linearizable if no other write exists?",
+          "a": "No. A forces the write before A, real time forces A before B, and then B must read 1."
+        },
+        {
+          "q": "Does read-your-writes imply all users see the newest value?",
+          "a": "No. It constrains the writer's session, not arbitrary readers."
+        },
+        {
+          "q": "P writes a post; Q reads it and writes a reply; R sees the reply but not the post. Which model rejects this?",
+          "a": "Causal consistency rejects visibility of the dependent reply without its causal predecessor. Eventual consistency alone does not reject a temporary lagging view."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: classify permitted and rejected histories, reproduce LWW data loss, and test an application conflict policy including removals.",
+      "stopWhen": "You give legal orders for H2 and the merely serializable H1, reject H1 under linearizability, and explain a convergent merge that still violates application intent.",
+      "fit": {
+        "verdict": "kept",
+        "note": "DDIA defines the guarantees and conflict mechanisms; the pool's AlgoMaster review gives explicit causal and session vocabulary, with histories practised in the mini-project."
+      }
+    },
+    {
+      "id": "partitioning-rebalancing",
+      "title": "Partitioning, hot keys, rebalancing and stale writers",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "partition-keys-hashing-ranges-hot-keys-and-skew",
+        "rebalancing-ownership-epochs-and-stale-writers"
+      ],
+      "outcomes": [
+        "Explain how range and hash partition keys trade scan locality against load distribution.",
+        "Derive key movement and request skew for an explicit partition change.",
+        "Trace a stale-owner write and explain what resource-enforced epochs do and do not prevent."
+      ],
+      "why": "Moving bytes does not transfer exclusive ownership by itself. Partition placement, request routing and stale-writer rejection must agree before a rebalanced shard can safely accept effects.",
+      "next": [
+        {
+          "unit": "systems/distributed-state-streams/logs-delivery-semantics",
+          "note": "Apply ownership epochs to consumers that resume a partition after failover."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: partition placement and routing",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Sharding by Key Range through Operations: Automatic Versus Manual Rebalancing, pp. 256 to 265; Request Routing, pp. 265 to 267"
+        },
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: enforcing ownership at the resource",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 9, Distributed Locks and Leases, including Fencing off zombies and delayed requests and Fencing with multiple replicas, pp. 373 to 376"
+        }
+      ],
+      "focus": [
+        "A partition key determines colocation. Range partitioning supports nearby-key scans but can concentrate timestamp writes; hashing spreads distinct keys, not repeated requests for one key.",
+        "Separate keys-to-shards from shards-to-nodes. Fixed virtual shards avoid remapping every key when the node count changes.",
+        "Routing metadata can be stale during transfer. Record an ownership epoch and decide when the new owner and receiving resource have installed it.",
+        "A resource that remembers the greatest accepted fencing token rejects lower tokens only after learning the newer one. Persist that fence with the protected mutation; equal-token retries still need operation deduplication."
+      ],
+      "reproduce": "By hand or in Python 3.14, use integer keys 0 through 11 and the toy hash h(k)=k. Changing node assignment from k%3 to k%4 moves nine keys. Instead keep 12 fixed shards, initially owned by shard%3, and move only shards 3,7,11 to new node 3: three keys move and each node owns three keys. For a separate workload of 90 requests for key 0 and one for each key 1 through 11, k%3 gives request counts [93,4,4]. Then trace writes at one shared resource with initial maximum token 7: A writes (token 7,x=old) and receives OK; B installs token 8 and writes x=new; delayed A writes (7,x=old) and is rejected. Remove the token check and A overwrites new. Also test A arriving before the resource sees token 8: a greatest-seen-token check still accepts 7. Check these counts and orders directly, not as a benchmark; issuance of token 8 elsewhere is not instantaneous revocation at this resource.",
+      "traps": [
+        "Using Python's process-randomized string hash as a persistent partition function.",
+        "Assuming balanced key counts imply balanced request load or that hashing can split a single hot key.",
+        "Checking a lease only at the sender. Pauses and delayed requests can outlive that check; fencing is resource enforcement, not a clock trick or an exactly-once mechanism."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does adding nodes not fix one overloaded partition key?",
+          "a": "If all requests for that key remain on one shard, its load stays concentrated. Splitting the logical key requires application aggregation or another workload-specific design."
+        },
+        {
+          "q": "What is stable when a fixed shard is moved to a new node?",
+          "a": "The key-to-shard mapping. Shard-to-node placement and routing metadata change."
+        },
+        {
+          "q": "Has issuing token 8 revoked token 7 at every resource?",
+          "a": "No. A greatest-seen-token resource must first install or observe 8, and all protected resources must enforce the fence."
+        },
+        {
+          "q": "Can token 8 be used for two duplicate increments?",
+          "a": "Yes, if equal tokens are accepted. Fencing blocks stale owners, not duplicate operations from the current owner. Deduplication needs an operation identity and atomic effect boundary."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: partition movement and hot-key counts, ownership transfer, persistent resource-side fencing, and delayed stale writes before and after the new epoch is installed.",
+      "stopWhen": "You reproduce both movement counts and the skew, then explain why the stale write is rejected only after the receiving resource installs the new fence.",
+      "fit": {
+        "verdict": "kept",
+        "note": "DDIA's sharding and fencing sections cover placement, transfer and stale-owner limits at explain depth; the mini-project supplies ownership-change tests."
+      }
+    },
+    {
+      "id": "logs-delivery-semantics",
+      "title": "Durable logs, delivery guarantees and idempotent consumers",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "durable-logs-offsets-acknowledgements-and-replay",
+        "at-most-once-at-least-once-and-scoped-effectively-once-effects",
+        "idempotent-consumers-and-transactional-effect-boundaries"
+      ],
+      "outcomes": [
+        "Trace append, acknowledgement, effect and offset boundaries under consumer failure.",
+        "Implement a replaying consumer with an atomic database effect-and-offset boundary.",
+        "State an effectively-once effect contract without extending it to external systems."
+      ],
+      "why": "Assume Programming's http-apis-idempotency and transactions-isolation units. Here the mechanism is a retained log and a consumer checkpoint: deduplicating a request is not enough if its effect and progress can disagree after a crash.",
+      "next": [
+        {
+          "unit": "systems/distributed-state-streams/stream-lag-watermarks-state",
+          "note": "Add retention, poison records and state reconstruction to replay."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: retained logs and consumer recovery",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log-Based Message Brokers through Consumer offsets, pp. 495 to 498; Fault Tolerance, including Atomic commit revisited and Idempotence, pp. 526 to 528"
+        },
+        {
+          "resource": "kafka-design",
+          "title": "Kafka 4.3 design: delivery and transaction scope",
+          "url": "https://kafka.apache.org/43/design/design/#message-delivery-semantics",
+          "locator": "Persistence; The Consumer > Consumer Position; Message Delivery Semantics; Using Transactions",
+          "depth": "Use Persistence for the append-to-page-cache mechanism, not its hardware-specific performance numbers. Use classic consumer groups for this model, not share groups. Do not install Kafka for this unit."
+        }
+      ],
+      "focus": [
+        "Define the checkpoint as the next offset to process, scoped by consumer group and partition. Reading does not delete a retained log record; replay is limited by retention.",
+        "Offset-before-effect can skip work after a crash; effect-before-offset can repeat it. A transport acknowledgement, append acknowledgement and consumer progress commit are different boundaries.",
+        "For a single in-order consumer, store effect and next offset atomically in the same database. Concurrent owners require fencing or transactional serialization as well.",
+        "Kafka transactions can couple Kafka output records with input offsets. External email, payments or another database do not join that transaction merely because the producer is idempotent."
+      ],
+      "reproduce": "Write a small program with Python 3.14's sqlite3 module; Kafka is not needed. Model one retained input partition as the immutable record (offset 0, delta +5), with database tables effect(total=0) and progress(pos=0), where pos is the next offset. Use a fresh on-disk database per case, journal_mode=DELETE and synchronous=FULL. In a child process, inject os._exit(9) after committing pos=1 but before the effect; reopening gives (total,pos)=(0,1), so restart skips the effect. Inject exit after committing the increment but before pos: reopening gives (5,0), and normal replay gives (10,1). Finally put both updates in BEGIN IMMEDIATE/COMMIT: exit before COMMIT reopens at (0,0), exit after COMMIT at (5,1), and restart from the stored pos ends at (5,1) in both cases. Close and reopen connections, replay only offset >= pos, and assert all four outcomes. These are process-exit tests with CPython 3.14.4 and SQLite 3.46.1, not a power-loss durability claim. Extend the model to two independent groups with separate progress; neither group advances the other's checkpoint.",
+      "traps": [
+        "Recording deduplication metadata separately from the protected effect. A crash between them can lose or duplicate work.",
+        "Committing past a failed record when later records finish first. A single offset represents a contiguous processed prefix, not an arbitrary set of completed tasks.",
+        "Equating append into the page cache with stable storage, or a process-exit test with proof against power failure."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does effect-before-offset produce a duplicate after a crash?",
+          "a": "The durable effect survives, but the old checkpoint instructs the replacement consumer to repeat the same record."
+        },
+        {
+          "q": "Is setting a value always an idempotent substitute for incrementing?",
+          "a": "Not generally. Replaying an older set can overwrite newer state. Ordering, version checks or transactional deduplication must protect the intended effect."
+        },
+        {
+          "q": "What identifies one consumed record in a partitioned log?",
+          "a": "The log or topic identity, partition and offset. Offset alone is not globally unique, and effect deduplication must also have the right consumer/application scope."
+        },
+        {
+          "q": "Does atomic database effect-and-offset commit make an email exactly once?",
+          "a": "No. The email service is outside that transaction. It needs a cooperating idempotency boundary or another explicit delivery contract."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a checksummed retained log, independent group/partition checkpoints, replay after each crash boundary, and atomic effect-plus-progress or deduplication metadata. Keep external effects outside the claimed transaction scope.",
+      "stopWhen": "Your child-process tests reproduce the skip and duplicate, both transactional cases recover to total 5, and your contract names the effect store, offset scope and excluded external effects.",
+      "fit": {
+        "verdict": "kept",
+        "note": "DDIA and the pool's Kafka design reference cover retained logs and current transaction boundaries; the mini-project supplies durable-log practice while SQLite makes the effect boundary runnable without a broker."
+      }
+    },
+    {
+      "id": "stream-lag-watermarks-state",
+      "title": "Consumer lag, watermarks and state rebuild",
+      "hours": 5,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "consumer-lag-backlogs-dead-letters-and-poison-records",
+        "event-time-processing-time-watermarks-and-late-data",
+        "snapshots-compaction-and-state-rebuild-from-a-log"
+      ],
+      "outcomes": [
+        "Diagnose offset lag, retention gaps and poison-record stalls without confusing them with event-time lateness.",
+        "Implement a window policy with explicit watermark and late-data rules.",
+        "Rebuild state from a matching snapshot and log suffix, and explain when compaction preserves state but loses history."
+      ],
+      "why": "Assume Programming's backpressure-graceful-shutdown unit. This unit moves beyond queue admission to persisted backlog and event-time state, where replay must recover the right data rather than merely restart a worker.",
+      "next": [
+        {
+          "unit": "systems/distributed-state-streams/distributed-histories-simulation",
+          "note": "Inject gaps, duplicates and node loss into your state rebuild contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: backlog, snapshots and event time",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, dead letter queues on p. 495; Consumer offsets through When consumers cannot keep up with producers, pp. 498 to 499; Initial snapshot and Log compaction, pp. 504 to 506; CDC versus event sourcing, pp. 507 to 508; Reasoning About Time, pp. 518 to 522; Microbatching and checkpointing, p. 527"
+        },
+        {
+          "resource": "kafka-design",
+          "title": "Kafka 4.3 design: what compaction retains",
+          "url": "https://kafka.apache.org/43/design/design/#log-compaction",
+          "locator": "Log Compaction Basics and What guarantees does log compaction provide?",
+          "depth": "Read offset stability, holes and tombstone retention. Skip cleaner tuning and the diagrams' throughput claims; model compaction in Python instead of deploying Kafka."
+        }
+      ],
+      "focus": [
+        "For a dense toy log, offset lag is end-next-offset minus the consumer's next offset. Compaction holes mean that distance is not generally a count of remaining records; neither metric is event-time lateness.",
+        "A poison record can block a partition indefinitely. A durable dead-letter handoff must preserve identity, reason and replay policy; advancing progress changes the main stream's completeness contract.",
+        "A watermark is a progress claim or estimate with assumptions, not proof that no delayed event exists. State the input scope, idle-input policy and handling of events below it.",
+        "A snapshot needs the exact log position that its state represents. Latest-value compaction works for replacement updates, not arbitrary increment events; tombstone expiry can invalidate rebuilding an old nonempty snapshot."
+      ],
+      "reproduce": "In Python 3.14, feed event timestamps [2,12,4] in that arrival order, using width-10 half-open tumbling windows, initial watermark -infinity, and watermark=max timestamp seen minus 3 after each arrival. Before updating the watermark, send any timestamp strictly below the previous watermark to a late side output. Get one event in [0,10), one in [10,20), late output [4], and final watermark 9. This is a declared toy lateness policy, not a measured clock bound. Separately replay replacement records (offset,key,value): (0,a,1),(1,b,2),(2,a,3),(3,b,null),(4,c,4), where null deletes. Snapshot after offset 2 is {a:3,b:2} with next offset 3; snapshot plus suffix and full replay both yield {a:3,c:4}. Compact by retaining the highest-offset record per key, including b's tombstone and original offsets, and rebuild the same final state from empty. Use exact dictionary assertions. Explain why deleting b's tombstone before replaying into the old snapshot leaves b incorrectly present, and why latest-only compaction of two increment(+1) events loses one increment.",
+      "traps": [
+        "Publishing a watermark from the fastest input while ignoring a slower active input. A multi-input policy must account for each input's progress and explicitly handle idleness.",
+        "Skipping a poison record without durably recording the dead-letter decision, or claiming the main output is still complete after the skip.",
+        "Renumbering compacted offsets, replaying from the snapshot's last applied offset instead of its next offset, or rebuilding old state after its required log suffix was deleted."
+      ],
+      "selfTest": [
+        {
+          "q": "In a dense log with end-next-offset 100 and committed next offset 70, what is offset lag?",
+          "a": "30 offset positions. It is not 30 seconds, and in a compacted log it need not mean 30 retained records."
+        },
+        {
+          "q": "Does watermark 9 mean an event timestamped 4 cannot arrive?",
+          "a": "No. The toy policy predicts progress from observed timestamps; a delayed event may still arrive and must follow the declared late-data rule."
+        },
+        {
+          "q": "When should replay start for the snapshot after offset 2?",
+          "a": "At next offset 3. Reapplying offset 2 could duplicate a non-idempotent effect even if this replacement-only example masks the mistake."
+        },
+        {
+          "q": "Can latest-value compaction preserve both a balance and its transaction audit history?",
+          "a": "It can preserve the current balance if records replace the full value. Discarded earlier records cannot supply the full audit history; increment-only events also cannot be compacted that way."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: offset and event-time progress, bounded retry and durable dead-letter handling, late-data tests, consistent snapshot positions, retained tombstones and rebuild equivalence after node loss.",
+      "stopWhen": "Your window and rebuild assertions pass, and you can give separate counterexamples for an unsafe watermark, an expired tombstone and compaction of increment events.",
+      "fit": {
+        "verdict": "kept",
+        "note": "DDIA covers backlog, dead letters, event time and snapshots; Kafka's compaction guarantees make offset holes and tombstone expiry explicit. The mini-project supplies runnable stream-state practice."
+      }
+    },
+    {
+      "id": "distributed-histories-simulation",
+      "title": "Distributed histories and deterministic failure simulation",
+      "hours": 6,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "distributed-histories-safety-violations-and-liveness-stalls",
+        "deterministic-network-and-node-failure-simulation"
+      ],
+      "outcomes": [
+        "Implement a deterministic scheduler for delayed, dropped and duplicate messages and crash-recovery transitions.",
+        "Check a small register history against an independent sequential specification.",
+        "Count stale responses and progress events under controlled faults, preserving a repeatable counterexample trace.",
+        "Distinguish a finite liveness stall from a demonstrated safety violation."
+      ],
+      "why": "Assume Programming's debugging-hypotheses and synchronization-hazards units. Here the scheduler controls network and persistence boundaries rather than local thread races, and the evidence is a client history checked against a named distributed contract.",
+      "next": [
+        {
+          "unit": "systems/observability-reliability-design/failure-domains-safe-rollout",
+          "note": "Use correctness histories alongside availability signals during faults."
+        },
+        {
+          "route": "distributed-systems",
+          "note": "Take consensus implementation and broader verification models later."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: models, safety and controlled failures",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 9, System Model and Reality, pp. 380 to 383; Formal Methods and Randomized Testing through Deterministic simulation testing, pp. 384 to 387; Chapter 10, What Makes a System Linearizable?, pp. 404 to 408",
+          "depth": "Use application-level deterministic scheduling and a tiny exhaustive checker. Stop before runtime-level simulation; full model checking and consensus proofs are later work."
+        },
+        {
+          "resource": "gossip-glomers-foundation",
+          "title": "Gossip Glomers: broadcast contracts",
+          "url": "https://fly.io/dist-sys/3a/",
+          "locator": "Challenge 3a, Specification for broadcast, read and topology; Evaluation",
+          "depth": "Read the protocol contract before coding. Challenge 3a is single-node; its success says nothing about partitions or process-crash durability."
+        }
+      ],
+      "focus": [
+        "Record process, operation ID, object, input, result and ordered invocation/response events. Internal logs alone do not specify what clients observed.",
+        "A register checker enumerates legal sequential orders constrained by completed-before-invoked edges. Treat pending timed-out writes as potentially executed, not automatically absent.",
+        "Control scheduling, clock reads, randomness, iteration order and I/O completions. A random seed alone does not make an uncontrolled concurrent program deterministic.",
+        "Separate durable state from volatile state on restart. A bad completed read is a finite safety witness; no progress during a bounded observation interval is a stall, not proof of permanent nontermination."
+      ],
+      "reproduce": "Write a Python 3.14 event scheduler with explicit integer ticks, a stable insertion-order tie-break, durable registers L=F=0, and a partition that initially drops L-to-F replication. Run this schedule: tick 1 P1 invokes write(x,1), L persists 1; 2 P1 receives OK; 3 P2 invokes a read served by F; 4 P2 receives 0; 5 F crashes, losing only volatile state; 6 F restarts with durable 0; 7 heal the link; 8 deliver a repair assigning F=1; 9 deliver that repair again; 10 P2 invokes another read from F; 11 it returns 1. Preserve the client events as JSON. A closed-book checker enumerating complete-operation permutations, enforcing response-before-invocation edges and the register rule, must reject the first read under linearizability. Fix this specific schedule by routing reads to the reachable, unchanged L; responses become [1,1] rather than [0,1]. Repeat each version three times and assert byte-identical traces within each version. Count stale responses, not wall-clock latency. These are synthetic logical ticks, not network timings. Add a pending read that waits during a partition, then completes after repair; report the bounded wait as a liveness stall, not a safety violation or proof of nontermination.",
+      "traps": [
+        "Checking replicas against one another instead of checking the observed history against an independent object specification.",
+        "Dropping timed-out operations from a safety history. Their effects may be visible to later completed reads.",
+        "Calling an in-memory model a crash-durability test, or claiming a single passing fault schedule proves all executions correct."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is the first read a safety violation rather than just a slow follower?",
+          "a": "The write completed before the read began. With no intervening write, returning 0 cannot fit a real-time-respecting register order, regardless of why the follower lagged."
+        },
+        {
+          "q": "If a read has not completed by tick 100, is linearizability violated?",
+          "a": "Not by that fact alone. It shows a bounded progress stall. Linearizability is a safety property and does not require operations to complete."
+        },
+        {
+          "q": "A write times out, then a read returns its value. Must the history be rejected?",
+          "a": "No. The pending write may have taken effect. A checker must consider a completion or placement of it consistent with the observed completed operations."
+        },
+        {
+          "q": "Does Challenge 3b test network partitions?",
+          "a": "No. It uses multiple nodes without partitions. A partition-resilience claim needs separate failure evidence; 3a and 3b also do not intentionally crash node processes."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Gossip Glomers Challenge 3a: Single-Node Broadcast",
+          "url": "https://fly.io/dist-sys/3a/",
+          "locator": "Implement broadcast, read and topology; use the Evaluation command's one-node broadcast workload",
+          "note": "Reuse the Echo protocol harness and Maelstrom setup from Challenge 1, not a copied broadcast solution. Preserve protocol histories. The section mini-project adds explicit process-loss and persistence tests outside Maelstrom's failure model."
+        },
+        {
+          "name": "Gossip Glomers Challenge 3b: Multi-Node Broadcast (optional extension)",
+          "url": "https://fly.io/dist-sys/3b/",
+          "locator": "Specification and Evaluation with five nodes, no network partitions",
+          "note": "Attempt only after writing delivery, duplicate and partition assumptions and passing 3a. Stop at 3b; do not infer partition tolerance from this workload or continue into the later challenges as foundation work."
+        }
+      ],
+      "stopWhen": "The checker rejects the stale-read trace and accepts the reachable-leader repair, repeated schedules have identical traces, and your dossier separates the synthetic safety witness, the bounded progress stall and your broadcast challenge results.",
+      "fit": {
+        "verdict": "kept",
+        "note": "DDIA provides models, safety definitions and deterministic testing; the named broadcast challenges test protocol handling while the mini-project supplies crash-recovery evidence absent from Maelstrom."
+      }
+    },
+    {
+      "id": "mapreduce-execution",
+      "title": "MapReduce execution and data-local scheduling",
+      "hours": 2,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "mapreduce-execution-and-data-local-scheduling"
+      ],
+      "outcomes": [
+        "Trace map, partition, shuffle, group and reduce stages for a small batch job.",
+        "Explain local-input scheduling, lost intermediate output and retried task attempts.",
+        "Separate duplicate computation from duplicate publication of output."
+      ],
+      "why": "This optional unit connects local process and RPC mechanisms to a distributed batch execution model. It is a scheduling and failure vocabulary bridge, not an invitation to implement Raft or a production batch engine.",
+      "next": [
+        {
+          "route": "distributed-training",
+          "note": "Recognize locality, stragglers and coordinated work before studying distributed training."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ddia-distributed-streams",
+          "title": "DDIA, 2nd edition: batch scheduling and MapReduce",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 11, DFS data-local execution on p. 461; Distributed Job Orchestration through Handling faults, pp. 461 to 466; MapReduce, pp. 466 to 467; Shuffling Data, pp. 469 to 470",
+          "depth": "Skip resource-allocation algorithm derivations and Dataflow Engines. Stop after Figure 11-1's task/shard explanation on p. 470; joins and full batch-framework implementation are outside this gate."
+        }
+      ],
+      "focus": [
+        "Map tasks read input shards. The shuffle routes equal keys to one reducer and groups their values; it is not a random permutation.",
+        "Locality means scheduling computation near a replica of its input in a colocated storage/compute design. Object-store separation and resource availability can make remote execution appropriate.",
+        "Retries may run the same logical task more than once. Attempt outputs must remain private until one successful attempt is selected for publication.",
+        "Lost local intermediate files require recomputation or another surviving copy. Deterministic tasks over immutable inputs support replay; arbitrary external side effects do not become safe automatically."
+      ],
+      "reproduce": "Closed-book, trace word count for two input shards, 'a b a' and 'b c'. Emit (word,1), route a and c to reducer 0 and b to reducer 1, group by word and sum: a=2,b=2,c=1. Place each map on a node holding its input replica, then fail the first map's node after it produces private intermediate output but before publication. Retry from an unchanged surviving input replica and publish only the accepted attempt for each logical map task. A Python Counter oracle gives the same counts. If you instead publish both first-map attempts, the wrong result is a=4,b=3,c=1. Label which bytes are input replicas, local intermediate output and published final output. This is a trace and counter model, not a measured locality speedup.",
+      "traps": [
+        "Publishing every successful attempt as new logical work. Retrying a task does not authorize double-counting its output.",
+        "Treating shuffle as randomization or assuming map placement eliminates the reducer's network traffic.",
+        "Claiming data-local scheduling is always faster without accounting for load, storage architecture and a measured workload."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must equal keys meet at the same reducer?",
+          "a": "That reducer needs the full group to compute the job's per-key result. Partitioning by a different identity can split the group and produce incomplete results."
+        },
+        {
+          "q": "Does a map retry violate effectively-once output?",
+          "a": "Not if only one successful attempt's output is published for each logical task. Computation can repeat while visible output remains equivalent to one execution."
+        },
+        {
+          "q": "Can the scheduler prefer a nonlocal node?",
+          "a": "Yes. A local node may be unavailable or overloaded, and disaggregated object storage may not offer colocated compute at all."
+        },
+        {
+          "q": "What breaks replay if a mapper sends an email for every input record?",
+          "a": "Attempt-output selection cannot retract an external email. Retrying may send it again unless that external effect has its own cooperating idempotency boundary."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: an optional two-map batch trace over the retained log, a failed attempt with private output, and a retry checked against a sequential word-count oracle. No distributed batch engine is required.",
+      "stopWhen": "You trace both reducers, explain the retry's correct and double-published counts, and identify when locality is available without claiming a speedup.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The bounded DDIA scheduling and MapReduce sections cover this optional explain-level bridge; the mini-project's optional attempt-publication trace gives practice without requiring Go or the full MIT lab."
+      }
+    }
+  ]
+}
