@@ -106,7 +106,7 @@
       ],
       "reproduce": "Closed-book, predict a, c and d after a = [[0]]; b = a; c = copy.copy(a); d = copy.deepcopy(a); b[0].append(1). Then quote the measured copy costs: shallow about 3 us and deep about 1.4 ms per copy of a 2000 by 10 nested list on CPython 3.14.4 default build, 12th Gen Intel Core i9-12900K, timeit.repeat best of 5.",
       "traps": [
-        "Comparing values with is. Constant folding can make 257 is 257 true inside one compilation unit, so is proves nothing about equality.",
+        "Comparing values with is. Constant folding makes 257 is 257 true inside one compilation unit, and CPython warns (SyntaxWarning) on is with a literal, so is proves nothing about equality.",
         "dict.fromkeys(keys, []) shares one list across all keys; appending through one key shows up under every key.",
         "Reading d[float('nan')] after storing under another NaN. Lookup needs equality with the stored key, and NaN never equals NaN."
       ],
@@ -528,7 +528,7 @@
           "resource": "algomaster-python",
           "title": "functools Module",
           "url": "https://algomaster.io/learn/python/functools-module",
-          "locator": "The functools Module lesson and its exercise; compare wraps, lru_cache and partial behavior"
+          "locator": "The functools Module lesson: compare wraps, lru_cache and partial behavior after the cookbook pass"
         }
       ],
       "focus": [
@@ -540,7 +540,7 @@
       "reproduce": "Closed-book, write retry(times) that preserves __name__ and reruns on ValueError, and show three attempts ending in success plus lru_cache raising TypeError on a list argument (both verified on CPython 3.14.4).",
       "traps": [
         "Forgetting @wraps on a wrapper. Test ids and help show wrapper and failures get harder to trace.",
-        "Writing @retry without the factory level. The times argument lands where the function belongs and the first call fails confusingly.",
+        "Writing @retry without the factory call. The function lands in the times parameter, the name is bound to the inner decorator, and the first call wraps its argument instead of running.",
         "Caching a function of large or unhashable inputs. Memory grows silently or the first call raises TypeError."
       ],
       "selfTest": [
@@ -566,13 +566,7 @@
           "name": "AlgoMaster Python: Exercise: Decorators",
           "url": "https://algomaster.io/learn/python/decorators-exercise",
           "locator": "The Decorators exercise set",
-          "note": "Implement the retry factory in your own file first."
-        },
-        {
-          "name": "AlgoMaster Python: Exercise: functools Module",
-          "url": "https://algomaster.io/learn/python/functools-module-exercise",
-          "locator": "The functools Module exercise set",
-          "note": "Redo one answer with lru_cache and state its key policy."
+          "note": "Implement the retry factory in your own file first, then add an lru_cache variant of one answer and state its key policy."
         }
       ],
       "stopWhen": "Your retry wrapper preserves metadata, retries the seeded failure, and you can name the cache key policy for any wrapper.",
@@ -769,7 +763,7 @@
       ],
       "reproduce": "Closed-book, type a generic first() plus a small Protocol and a narrowing function over int | str; run mypy 2.4.0 clean. Show that def f(x: 1/0) defines without error on 3.14 and raises only on annotation access.",
       "traps": [
-        "Annotating with isinstance(x, list[int]). Parameterized generics are not valid isinstance targets.",
+        "Checking with isinstance(x, list[int]). Parameterized generics are not valid isinstance targets.",
         "Treating a runtime_checkable Protocol as a full interface check. It verifies member presence, never signatures or semantics.",
         "Assuming annotations run at def time. On 3.14 a ZeroDivisionError inside an annotation waits until someone reads it, which delays import-time failures."
       ],
@@ -973,7 +967,8 @@
           "resource": "gc-docs",
           "title": "The cycle collector",
           "url": "https://docs.python.org/3/library/gc.html#gc.collect",
-          "locator": "collect, get_count, garbage and disable/enable; generations and thresholds"
+          "locator": "collect, get_count, get_threshold, garbage and disable/enable",
+          "depth": "The generations changed within 3.14: 3.14.0 to 3.14.4 run an incremental collector (gc.get_threshold() reads (2000, 10, 0) on 3.14.4), and the docs record that 3.14.5 restores the three 3.13 generations. Read gc.get_threshold() on your interpreter before reasoning about generations."
         },
         {
           "resource": "weakref-docs",
@@ -990,11 +985,11 @@
       ],
       "focus": [
         "CPython frees by refcount immediately and collects cycles later. A self-referencing object with __del__ is still collected since Python 3.4 by PEP 442.",
-        "sys.getrefcount includes the argument itself; a fresh object reads 2, not 1. Compare readings, never assert absolutes.",
-        "weakref.ref fails on list, dict and set instances and on slotted classes without __weakref__. Caches want WeakValueDictionary, not manual callback books.",
+        "sys.getrefcount counts its own argument, and CPython 3.14 borrows references when it loads locals, so one fresh object reads 2 at module level and 1 inside a function. The docs promise nothing beyond 0 or 1; compare readings taken in one context, never absolutes.",
+        "weakref.ref fails on list and dict instances (subclasses can opt in), on tuple and int, and on slotted classes without __weakref__; sets and frozensets support it. Caches want WeakValueDictionary, not manual callback books.",
         "gc.garbage holds objects the collector refused; an empty list after gc.collect() proves the run happened, not that nothing leaked."
       ],
-      "reproduce": "Closed-book, build a two-object cycle with a __del__ method, delete both names, and show gc.collect() frees them while a weakref callback fires. Quote getrefcount 2 for a fresh object on CPython 3.14.4 default build.",
+      "reproduce": "Closed-book, build a two-object cycle with a __del__ method and a weakref callback, delete both names, and, with gc.disable() first, show that nothing runs until gc.collect(), which fires the callback and both __del__ methods. Then show sys.getrefcount on a fresh object reads 2 at module level and 1 inside a function on CPython 3.14.4.",
       "traps": [
         "Depending on __del__ timing. Collection order is unspecified, so close resources explicitly.",
         "Caching instances in a plain dict. The cache owns them forever; WeakValueDictionary or explicit eviction bounds it.",
@@ -1006,12 +1001,12 @@
           "a": "At the next cycle collection, not at del. Refcounts stay positive through the cycle; gc.collect() reclaims both."
         },
         {
-          "q": "Why does sys.getrefcount(x) print 2 for a brand-new object?",
-          "a": "The call itself holds a reference through its argument. Deltas are meaningful; absolutes are not."
+          "q": "sys.getrefcount(x) reads 2 for a fresh object at module level but 1 inside a function. Why?",
+          "a": "The argument adds a temporary reference, but 3.14 loads locals as borrowed references, so the function call adds none. Only deltas taken in the same context mean anything."
         },
         {
           "q": "weakref.ref([1, 2, 3]) raises TypeError. Why?",
-          "a": "list does not support weak references. Hold weakref-able objects instead, or use WeakValueDictionary for caches."
+          "a": "list does not support weak references (a subclass of list does). Hold weakref-able objects instead, or use WeakValueDictionary for caches."
         },
         {
           "q": "A slotted class cannot be weak-referenced. What is missing?",
