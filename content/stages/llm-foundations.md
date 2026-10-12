@@ -449,7 +449,7 @@ Filter and mixture choices determine which text the model repeatedly sees. A rep
 5. Remove exact and near duplicates while keeping cluster lineage, and simulate a hash collision to show that your byte comparison catches it. Plant three evaluation passages in training documents, make your contamination probe find them, and review its false matches.
 6. Apply a reason-coded filter table with quality rules and synthetic PII and toxicity examples, and report document, byte and token yields per source.
 7. Pack the training split with EOS boundaries, a loss mask and per-token document IDs. Write ordered, checksummed shards and a manifest, and show that an interrupted run produces byte-identical shards.
-8. Connect the atlas lab adapters for section 1 and pass tests/test_s1_data.py.
+8. Write tests against small hand-worked examples: the loss mask drops the prediction from one document's EOS to the next document's first token, the document attention mask blocks attention across documents and to future positions, exact deduplication treats NFC-equivalent strings as equal, near-duplicate scores equal exact Jaccard similarity of word-shingle sets, and the 13-gram contamination fraction of a planted passage is what you computed by hand.
 
 **Deliverables**
 
@@ -461,7 +461,6 @@ Filter and mixture choices determine which text the model repeatedly sees. A rep
 **Checks**
 
 - external-tests: [CS336 tests/test_train_bpe.py and tests/test_tokenizer.py](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_train_bpe.py tests/test_tokenizer.py`. Run in your clone of the assignment with tests/adapters.py calling your package. test_encode_memory_usage is expected to fail.
-- harness: [Atlas lab, section 1: packing, masks, deduplication and contamination](https://github.com/saisandeshk/ai-atlas/tree/main/labs/llm-foundations). Run `uv run pytest tests/test_s1_data.py`. Run in labs/llm-foundations of an ai-atlas clone after you connect adapters.py to your package. It checks the cross-document loss-mask rule, the document attention mask, NFC-aware exact deduplication, exact Jaccard near-duplicates and the 13-gram contamination fraction.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
@@ -469,7 +468,7 @@ Filter and mixture choices determine which text the model repeatedly sees. A rep
 | Tokenizer correctness | Both CS336 tokenizer test files pass with no unexpected failures. | Your own property tests also cover every two-chunk split of multilingual strings and partial special-token prefixes, and a reloaded artifact gives identical IDs. |
 | Tokenizer identity | Loading rejects a changed merge list or special-token set. | The hash covers a canonical serialization of vocabulary bytes, merges, special tokens, regex and normalization policy, and the error names what changed. |
 | Splits and lineage | Splits are assigned before tokenizer fitting and packing, and every packed token maps to a document ID. | Duplicate clusters that span splits are quarantined or reassigned, and the report counts them. |
-| Packing and masks | The section 1 lab tests pass. | You also check your masks against a hand-derived example and explain which predictions the attention mask alone would not remove. |
+| Packing and masks | Your mask tests pass on a hand-worked sequence that packs at least two documents. | You explain which predictions the attention mask alone would not remove, and a deliberately wrong mask makes your tests fail. |
 | Deduplication and contamination | The probe finds every planted passage and the report lists its hits. | The report reviews false matches, states what the probe cannot detect, such as paraphrase or translation, and simulates a hash collision. |
 | Reproducibility | Rerunning the pipeline gives the same manifest checksums. | An interrupted run resumed from its saved cursor, RNG and partial pack gives byte-identical shards, and a changed config is rejected on resume. |
 
@@ -926,7 +925,7 @@ Correct components do not automatically make a correct model. Assembly checks ca
 3. Write a slow reference that loops over heads with sliced weights, and compare outputs and gradients in float64 with your batched path for MHA, GQA and MQA.
 4. Assemble the decoder from one config object with optional embedding tying, and pass test_transformer_block, test_transformer_lm and test_transformer_lm_truncated_input.
 5. Derive the parameter count of your config by hand and assert that it equals the count of unique registered parameters, tied and untied.
-6. Connect the atlas lab adapters for section 2 and pass tests/test_s2_decoder.py.
+6. Write property tests: RoPE preserves vector norms, the rotated query-key score depends only on the relative position, and a query offset gives the same result as the matching absolute positions. Changing a future token must leave earlier outputs unchanged, and each batch row must not depend on the others.
 
 **Deliverables**
 
@@ -937,7 +936,6 @@ Correct components do not automatically make a correct model. Assembly checks ca
 **Checks**
 
 - external-tests: [CS336 tests/test_model.py and the softmax test](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_model.py tests/test_nn_utils.py::test_softmax_matches_pytorch`. Use the untied head for the snapshot tests; test tying separately.
-- harness: [Atlas lab, section 2: grouped attention, RoPE offsets and causality](https://github.com/saisandeshk/ai-atlas/tree/main/labs/llm-foundations). Run `uv run pytest tests/test_s2_decoder.py`. Run in labs/llm-foundations of an ai-atlas clone after you connect adapters.py to your package. It checks grouped attention with query offsets against a head loop, RoPE norm, relative and offset properties, causal intervention, batch independence and the parameter count for MHA, GQA, MQA and tied heads.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
@@ -945,7 +943,7 @@ Correct components do not automatically make a correct model. Assembly checks ca
 | Component correctness | All CS336 model tests and the softmax test pass. | Your own tests add fully masked rows, padding plus causal masks and non-contiguous inputs. |
 | Independent oracle | The batched attention matches the head loop on outputs. | Outputs and all projection gradients match in float64 for MHA, GQA and MQA within atol 1e-8. |
 | Causality | Changing a suffix leaves prefix logits unchanged. | Your tests also show that the change does reach the logits at and after the edited position, and they cover batch independence. |
-| Grouped heads and RoPE | The section 2 lab tests pass. | You explain why an interleaved KV expansion differs from the PyTorch grouping convention, and your weights load correctly under yours. |
+| Grouped heads and RoPE | Your batched attention matches the head-loop reference for MHA, GQA and MQA, and the RoPE, causality and batch-independence tests pass. | You explain why an interleaved KV expansion differs from the PyTorch grouping convention, and your weights load correctly under yours. |
 | Accounting | The hand-derived parameter count equals the registered count. | The sheet also gives the dominant forward FLOP terms and predicts how each scales when the sequence length doubles. |
 
 Feeds into: Capstone artifact 2, the tiny decoder stack. Section 3 trains this model, and section 5 adds a cache to it.
@@ -1409,7 +1407,7 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 3. Train on your section 1 split with a fixed seed, logging loss, gradient norm, learning rate and tokens seen, with a validation curve from the held-out split.
 4. Save complete state, including model, optimizer, step, RNG and data cursor, and show that an interrupted run matches an uninterrupted one to a stated level.
 5. Implement greedy, temperature, top-k and top-p sampling with EOS and length stops, and reproduce fixed-seed outputs exactly.
-6. Connect the atlas lab adapters for section 3 and pass tests/test_s3_training.py.
+6. Train on a synthetic Markov chain with a known entropy rate: validation loss should approach that rate, and a loss clearly below it means the labels leak. On CPU, a resumed run should match an uninterrupted one exactly.
 
 **Deliverables**
 
@@ -1421,13 +1419,12 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 **Checks**
 
 - external-tests: [CS336 tests for cross-entropy, clipping, AdamW, the schedule, data loading and checkpointing](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_nn_utils.py tests/test_optimizer.py tests/test_data.py tests/test_serialization.py`.
-- harness: [Atlas lab, section 3: loss threshold, resume equivalence and sampling filters](https://github.com/saisandeshk/ai-atlas/tree/main/labs/llm-foundations). Run `uv run pytest tests/test_s3_training.py`. Run in labs/llm-foundations of an ai-atlas clone after you connect adapters.py to your package. The threshold test trains on a Markov chain with a known entropy rate: validation loss must approach that rate, and a loss below it means the labels leak. Resume must match an uninterrupted run exactly on CPU.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Objective | Your cross-entropy passes the public test, including the overflow case. | You derive one masked loss by hand and match your code, and the shuffled-target control behaves as you predicted. |
-| Training | Validation loss falls on your split and the section 3 lab threshold test passes. | The log shows learning rate, gradient norm and tokens seen, and you explain one anomaly from it. |
+| Training | Validation loss falls on your split, and on the Markov chain it approaches the entropy rate without going clearly below it. | The log shows learning rate, gradient norm and tokens seen, and you explain one anomaly from it. |
 | Resume | An interrupted run continues without a loss jump. | Losses after resume match the uninterrupted run exactly on CPU, and your stated GPU tolerance is justified. |
 | Decoding | Each policy runs and stops on EOS or the length cap. | Fixed-seed outputs reproduce exactly, and you show by hand how temperature followed by top-p changes the kept set at one step. |
 
@@ -1892,7 +1889,7 @@ Analytical math sets the budget, but allocators, graphs and kernels decide what 
 4. Expose one evaluator failure on purpose, such as a parser that accepts a wrong format or a judge that prefers longer answers, and show the fix.
 5. Run exact and n-gram contamination checks between the evaluation set and your training split, report full and clean scores side by side, and state what the checks cannot rule out.
 6. Write a worksheet of parameters, forward FLOPs, activation memory and AdamW memory for your model, and reconcile each with a measurement: FlopCounterMode, tensor sizes or peak memory.
-7. Connect the atlas lab adapters for section 4 and pass tests/test_s4_eval_arithmetic.py.
+7. Test the arithmetic and statistics code: parameter and matmul-FLOP counts equal exact counts from a reference module, a fixed seed gives identical bootstrap intervals, and on simulated data with a known mean roughly 95 percent of your 95 percent intervals cover it.
 
 **Deliverables**
 
@@ -1903,7 +1900,6 @@ Analytical math sets the budget, but allocators, graphs and kernels decide what 
 
 **Checks**
 
-- harness: [Atlas lab, section 4: counts, memory and bootstrap intervals](https://github.com/saisandeshk/ai-atlas/tree/main/labs/llm-foundations). Run `uv run pytest tests/test_s4_eval_arithmetic.py`. Run in labs/llm-foundations of an ai-atlas clone after you connect adapters.py to your package. It checks parameter and matmul-FLOP counts against exact counts of a reference module, AdamW memory, bootstrap determinism and coverage, and the paired bootstrap.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
@@ -1912,7 +1908,7 @@ Analytical math sets the budget, but allocators, graphs and kernels decide what 
 | Uncertainty | Every headline number has a bootstrap interval. | The comparison uses a paired bootstrap, and the report states which claim the interval supports and which it does not. |
 | Evaluator failure | One failure is shown with its fix. | You found the failure by reading raw outputs, and a regression test now covers it. |
 | Contamination | The probe runs between evaluation and training data and its result is reported. | The report separates overlap from memorization and lists what the probe cannot detect. |
-| Arithmetic | The section 4 lab tests pass and every estimate is within 10 percent of its measurement. | Every gap above 2 percent is explained, for example by elementwise ops, buffers or allocator overhead. |
+| Arithmetic | Your counting and bootstrap tests pass, and every estimate is within 10 percent of its measurement. | Every gap above 2 percent is explained, for example by elementwise ops, buffers or allocator overhead. |
 
 Feeds into: Capstone artifact 3, the evaluation and arithmetic half of the dossier. Section 5 extends the memory worksheet with the KV cache.
 
@@ -2368,7 +2364,7 @@ Single-request caching stops at the serving door. Shared prefixes, paged blocks 
 3. Derive the KV-cache bytes for your config and for one published model config, and check the formula against the real tensor sizes of your cache.
 4. Measure time to first token and inter-token latency on a CPU or a free GPU across two context lengths and two batch sizes, with warm-up, device synchronization and repeated trials.
 5. Explain the measurements: which phase is compute-bound, which is memory-bound, and how the cache changes the cost of each decode step.
-6. Connect the atlas lab adapters for section 5 and pass tests/test_s5_kv_cache.py.
+6. Add a test that fails if a decode step recomputes the prefix, for example by counting the tokens that reach the K and V projections at each step.
 
 **Deliverables**
 
@@ -2378,12 +2374,11 @@ Single-request caching stops at the serving door. Shared prefixes, paged blocks 
 
 **Checks**
 
-- harness: [Atlas lab, section 5: cache equivalence, cache size and decode cost](https://github.com/saisandeshk/ai-atlas/tree/main/labs/llm-foundations). Run `uv run pytest tests/test_s5_kv_cache.py`. Run in labs/llm-foundations of an ai-atlas clone after you connect adapters.py to your package. It compares cached and uncached logits and tokens across head layouts, offsets and chunked prefill, checks the cache-size formula against your cache, and fails a decode step that recomputes the prefix.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Equivalence | Cached and uncached greedy tokens match on the lab cases. | Per-step logits also match within 1e-5 on your own adversarial cases, and a deliberately wrong RoPE offset makes your tests fail. |
+| Equivalence | Cached and uncached greedy tokens match on every case in your equivalence tests. | Per-step logits also match within 1e-5 on your own adversarial cases, and a deliberately wrong RoPE offset makes your tests fail. |
 | Memory | The KV formula matches the measured cache size. | The sheet scales the formula to a published model at long context and large batch, and names what dominates memory there. |
 | Timing method | Prefill and decode are timed separately with warm-up and repeated trials. | The report gives medians with spread, synchronizes the device and states what the timings exclude. |
 | Explanation | Each trend is explained in a sentence. | The explanation uses arithmetic intensity from section 4 and predicts one result before measuring it. |
@@ -2428,7 +2423,7 @@ Keep one small corpus, tokenizer identity, model configuration and evaluation ma
 | --- | --- | --- |
 | One identity across artifacts | All three artifacts use one tokenizer hash, one model config and one evaluation manifest. | One command checks the hashes and fails if any artifact uses a different one. |
 | Tokenizer and corpus audit pack | The section 1 mini-project meets Pass on every criterion. | It meets Strong on at least half its criteria, including reproducibility. |
-| Tiny decoder stack | The section 2 and 3 mini-projects meet Pass, and their CS336 and atlas lab tests pass in one run. | Resume is exact on CPU, and the attention oracle compares gradients in float64. |
+| Tiny decoder stack | The section 2 and 3 mini-projects meet Pass, and their CS336 tests and your own tests pass in one run. | Resume is exact on CPU, and the attention oracle compares gradients in float64. |
 | Evaluation, arithmetic and cached-generation dossier | The section 4 and 5 mini-projects meet Pass. | Every estimate sits next to a measurement, and cache equivalence covers MHA, GQA and MQA. |
 | Rebuild from a clean clone | A README lists the commands that rebuild each artifact. | One script rebuilds every reported number from a fresh clone on a CPU in under an hour. |
 | Honest limits | The dossier states what the tiny model and small corpus cannot show. | Each limit names the later track that addresses it. |

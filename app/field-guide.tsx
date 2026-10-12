@@ -303,7 +303,6 @@ function ResourceCardBody({ resource }: { resource: Resource }) {
             {priorityLabel}
           </span>
         )}
-        <span className="access-tag">{resource.access}</span>
       </div>
       <h3>{resource.name}</h3>
       <p className="provider">{resource.provider}</p>
