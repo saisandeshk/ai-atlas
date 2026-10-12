@@ -17,7 +17,7 @@ This contract keeps AI Atlas finite as it grows. It applies to every core stage 
 - Use `reference` for derivation or API lookup, `support` for distinct practice or application, `optional` for prerequisite repair or intuition, and `depth` for work outside the exit gate.
 - Keep several excellent resources when they perform different jobs. Remove resources that repeat the same job in the same modality.
 - Name exact chapters, lectures, exercises, notebooks, or documentation pages in `use`. Never leave “take this course” as the assignment.
-- Prefer official course pages, author-hosted books, primary papers, and framework documentation. Record useful local access without duplicating an existing official resource family.
+- Prefer official course pages, author-hosted books, primary papers, and framework documentation. Paid books and subscriptions the learner owns are valid sources: link a book to its official page, cite chapters and sections, and never say where a copy is stored.
 
 ## Resource intake and mapping
 
@@ -27,7 +27,7 @@ This contract keeps AI Atlas finite as it grows. It applies to every core stage 
 - Assign a practice platform only through named problems, collections, study plans, or projects. Never ask the learner to “do Deep-ML,” “finish AlgoMaster,” or clear an entire problem bank.
 - Select practice by competency and gate. Prefer a small ordered set that exercises the exact implementation, debugging, explanation, or performance behavior being tested.
 - Keep multiple high-quality resources when they serve distinct jobs such as theory, structured course, implementation practice, reference, or assessment. Do not keep two resources only because both score highly.
-- Record access accurately as free, paid, mixed, account-required, or unverified. If important content needs authentication, inspect it with the user's active session before assigning it as required.
+- Record access accurately as free, paid, mixed, account-required, or unverified. The value is curation data; the site does not display it. If important content needs authentication, inspect it with the user's active session before assigning it as required.
 - Treat survey scores as evidence about resource quality, not as an automatic selection rule. A lower-ranked focused resource may be the best checkpoint tool for one competency.
 
 ## Authoring cadence
@@ -76,7 +76,7 @@ Resource-Survey scores resource quality. The fit check asks whether the located 
 2. **Depth:** the located material does not reach the unit's target, for example a blog summary for a `derive` unit.
 3. **Practice:** neither the unit nor the mini-project gives a named way to practise.
 4. **Currency:** a fast-moving topic is taught with material that misses current practice.
-5. **Access:** the material is not public, or not on an official host.
+5. **Access:** the material cannot be reached, for example behind an institutional login, or it is not on an official host. A paid book or subscription the learner owns passes.
 6. **Time fit:** the located part is far longer than the unit needs, with no narrower locator.
 
 Search for new material only after a failure, with a budget of one search pass and a few candidates. A candidate must beat the current material on the failing criterion, be opened to confirm its locator, and enter the section's `addedResources` with a role, priority, access value, and use note. Record the outcome in the unit's `fit`. "Could be slightly better" is not a failure.
@@ -88,7 +88,7 @@ Every unit file is reviewed before it merges: locators are spot-checked against 
 ### Mini-projects and capstones
 
 - Each section with units ends with a mini-project of an evening to a weekend. It exercises the section's units in the learner's own repository, and its pieces feed the route capstone.
-- `checks` lists how the work is checked: an existing autograded suite such as a course's public tests, an atlas lab harness in `labs/`, or the rubric alone.
+- `checks` lists how the work is checked: an existing autograded suite such as a course's public tests, or the rubric alone. Atlas labs are deferred, so where no public suite exists a step asks for the learner's own tests.
 - Every mini-project and capstone has a rubric: each criterion states what passing looks like and what strong work looks like. A rubric asks for the learner's own tests against an independent oracle where that applies.
 
 ## Publishing a content change
