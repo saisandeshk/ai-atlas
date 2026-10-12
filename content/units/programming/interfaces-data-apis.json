@@ -260,7 +260,7 @@
     {
       "id": "schema-evolution-migrations",
       "title": "Schema versions, compatibility and migrations",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain",
         "implement"
@@ -270,53 +270,89 @@
         "migration-rollback"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the valid states of a versioned record across validation, quarantine, normalization and persistence.",
+        "Design a backward-compatible schema change with explicit mixed-version behavior and a tested rollback.",
+        "Classify DDL changes as compatible or breaking, and run a paired upgrade and downgrade on a scratch database."
       ],
-      "why": "TODO",
+      "why": "Schemas change while old readers are still running. An additive field with a default keeps both directions working, while a rename without a transition breaks one side silently. Version policy plus a tested downgrade makes evolution boring.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/interfaces-data-apis/relational-sql-queries",
+          "note": "Apply constraints and normalization to the versioned schema."
+        },
+        {
+          "unit": "programming/interfaces-data-apis/service-boundaries-cli",
+          "note": "Keep version checks at the service edge, not in handlers."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "typed-service-official-path",
+          "title": "Pydantic configuration: extra behavior for additive evolution",
+          "url": "https://docs.pydantic.dev/latest/concepts/config/",
+          "locator": "Configuration on Pydantic models via model_config; Extra data handling (ignore, forbid, allow): old payloads validate against new models with defaults filling new fields, and old readers treat new fields per the extra policy"
+        },
+        {
+          "resource": "alembic-docs",
+          "title": "Tutorial: migration scripts, running migrations, downgrading",
+          "url": "https://alembic.sqlalchemy.org/en/latest/tutorial.html",
+          "locator": "Create a Migration Script (revision, down_revision, upgrade, downgrade); Running our First Migration and Running our Second Migration (upgrade head); Getting Information (history --verbose); Downgrading (downgrade base)"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "Creating and Modifying Tables",
+          "url": "https://algomaster.io/learn/sql-interview/creating-and-modifying-tables",
+          "locator": "Constraints in DDL (primary and foreign keys, UNIQUE, CHECK, DEFAULT); ALTER TABLE (adding and dropping columns, changing types, adding constraints); DROP TABLE, TRUNCATE and DELETE"
         }
       ],
       "focus": [
-        "TODO"
+        "Additive changes (a new optional field, a new table) keep old readers working. Renames, type narrows and new required fields break one direction until every reader upgrades.",
+        "Every migration ships upgrade and downgrade together, and downgrade is executed, not just written. An empty downgrade makes rollback untested.",
+        "Alembic orders by down_revision chains, not file names. history --verbose shows the chain and current shows where the database stands.",
+        "Old payloads must validate against new models with defaults filling new fields, and new payloads must not crash old readers; the extra policy decides whether unknowns drop, stay or raise."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, evolve a v1 record model to v2 with one optional field: validate a v1 payload against v2 and a v2 payload against v1, stating what fills and what drops. Then write one Alembic revision with upgrade and downgrade and run upgrade head, downgrade base, upgrade head on a scratch database.",
       "traps": [
-        "TODO"
+        "extra forbid on a versioned reader. It rejects payloads from newer writers on unknown fields; versioned boundaries usually ignore or allow and stage the unknowns.",
+        "A new required field with existing rows. Old writers cannot supply it, and bulk backfill needs a default or a two-step migration.",
+        "Renaming a column while mixed versions read it. Old readers query the old name, so expand (add new, dual-write, migrate readers) before contracting (drop old)."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A v2 model adds nickname with a default. Does a v1 payload validate, and does a v1 model accept a v2 payload under default settings?",
+          "a": "Yes to both: the default fills nickname, and default extra ignore drops it on the old reader. Verified on Pydantic 2.14."
+        },
+        {
+          "q": "What orders two Alembic revisions, and how do you inspect the chain?",
+          "a": "down_revision links order them, not filenames. history --verbose shows parents and current shows the database position."
+        },
+        {
+          "q": "Name one DDL change that is safe under mixed versions and one that must wait.",
+          "a": "Adding a nullable column is safe. Renaming or dropping a column in use must wait until all readers upgrade."
+        },
+        {
+          "q": "Why run downgrade base and then upgrade head when testing?",
+          "a": "It executes the rollback path and proves re-upgrade reaches the same schema. An unwritten or unrun downgrade is an untested promise."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Alembic tutorial: first migration, second migration, downgrade round trip",
+          "url": "https://alembic.sqlalchemy.org/en/latest/tutorial.html",
+          "locator": "Running our First Migration; Running our Second Migration; Downgrading",
+          "note": "Run on a scratch PostgreSQL database at the section DSN. Assert alembic current and history --verbose show a clean chain, and that reads succeed after each step."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both validation directions pass with stated fill and drop behavior, three DDL changes are classified with reasons, and head to base to head succeeds on a scratch database.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for migration authoring and rollback: no pool resource writes paired upgrade and downgrade scripts, so the Alembic tutorial joins Pydantic config and the AlgoMaster DDL lesson."
       }
     },
     {
       "id": "relational-sql-queries",
       "title": "Relational modeling, joins, aggregation and window functions",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -325,47 +361,95 @@
         "sql-querying"
       ],
       "outcomes": [
-        "TODO"
+        "Design a normalized schema with primary, foreign, unique and check constraints, and state which anomaly each normalization move fixes.",
+        "Predict row counts and duplicate behavior of multi-join queries before executing, including LEFT JOIN with WHERE and junction fan-out.",
+        "Write aggregation with HAVING, CTEs and window functions, and distinguish window row identity from GROUP BY collapsing."
       ],
-      "why": "TODO",
+      "why": "ML features and labels come from joins and aggregations. A misplaced WHERE turns an outer join inner, and a GROUP BY at the wrong grain duplicates or drops rows. Predicting counts before running is the skill that prevents silent training-data corruption.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/interfaces-data-apis/transactions-isolation",
+          "note": "Guard the new schema with transactions and a retry policy."
+        },
+        {
+          "unit": "programming/interfaces-data-apis/indexes-query-plans",
+          "note": "Diagnose the slow joins with plans and selectivity."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-sql",
+          "title": "The Relational Model plus Keys and Constraints",
+          "url": "https://algomaster.io/learn/sql-interview/relational-model",
+          "locator": "NULL and three-valued logic; Relationships (one-to-many, many-to-many, self-referencing). Companion Keys and Constraints at the keys-and-constraints URL: primary keys, natural vs surrogate, foreign keys with ON DELETE, composite keys, UNIQUE, NOT NULL, CHECK, DEFAULT"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "Normalization plus Entity-Relationship Modeling",
+          "url": "https://algomaster.io/learn/sql-interview/normalization",
+          "locator": "Update, insert and delete anomalies; 1NF to 3NF practical test and BCNF. Companion Entity-Relationship Modeling at the entity-relationship-modeling URL: many-to-many junction tables, junction attributes, ER to schema steps"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "Joins plus Aggregation",
+          "url": "https://algomaster.io/learn/sql-interview/introduction-to-joins",
+          "locator": "Join Types Overview. Companions: INNER JOIN (ON vs WHERE filtering), LEFT JOIN (ON vs WHERE critical difference, counting with zeros), GROUP BY and HAVING (SELECT rule, WHERE vs HAVING, execution order) at their lesson URLs. Reference PostgreSQL 2.6 Joins Between Tables and 2.7 Aggregate Functions"
+        },
+        {
+          "resource": "algomaster-sql",
+          "title": "CTEs plus Window Functions",
+          "url": "https://algomaster.io/learn/sql-interview/common-table-expressions",
+          "locator": "CTE syntax and materialization behavior. Companions: Introduction to Window Functions (PARTITION BY, frames) and ROW_NUMBER (dedup, top-N per group) at their lesson URLs. Reference PostgreSQL 7.8 WITH Queries and 3.5 Window Functions"
         }
       ],
       "focus": [
-        "TODO"
+        "NULL never equals anything, not even NULL. Use IS NULL and IS NOT NULL; COUNT(column) skips nulls while COUNT(*) does not.",
+        "ON filters before the outer join adds its nulls, WHERE filters after. A WHERE condition on the right table silently converts LEFT JOIN to INNER JOIN.",
+        "GROUP BY grain decides counts: aggregate at the wrong grain and rows duplicate or vanish. HAVING filters groups after aggregation, WHERE filters rows before.",
+        "Window functions keep row identity while GROUP BY collapses rows. ROW_NUMBER with PARTITION BY gives top-N per group without losing the row."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, on artists, tracks and streams tables: return every track with its stream count including zeros, per-artist totals with HAVING, and the top track per artist with ROW_NUMBER. Predict each row count before running.",
       "traps": [
-        "TODO"
+        "SELECT with non-grouped columns under GROUP BY. Postgres rejects them and other databases pick arbitrary values; list exactly the grain.",
+        "A surrogate primary key preventing logical duplicates. It does not; only a UNIQUE constraint on the natural key does.",
+        "COUNT(*) when you mean COUNT(column). The first counts null-extended outer-join rows, the second skips the nulls."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Tracks LEFT JOIN streams with WHERE streams.played_at > X. Which tracks survive?",
+          "a": "Only streamed tracks matching the filter: the WHERE removes null-extended rows and the join behaves inner. Move the filter to ON to keep all tracks."
+        },
+        {
+          "q": "5 artists and 12 tracks, each track with one artist. How many rows does the inner join return, and what changes with a junction table?",
+          "a": "12 rows. A many-to-many junction fans out: one track on two playlists yields two rows. Verified on PostgreSQL 18 with these sizes."
+        },
+        {
+          "q": "When do you use HAVING instead of WHERE?",
+          "a": "To filter on aggregates after grouping, for example COUNT(*) > 2. WHERE cannot see aggregates."
+        },
+        {
+          "q": "How does ROW_NUMBER top-1 per group differ from GROUP BY with max?",
+          "a": "ROW_NUMBER keeps the whole row including title and other columns. GROUP BY with max returns only the grouped columns plus the maximum."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster Exercise - LEFT JOIN",
+          "url": "https://algomaster.io/learn/sql-interview/left-join-exercise",
+          "locator": "Exercise 1: every track title with stream count, zeros included, ordered by stream_count then title",
+          "note": "Predict the zero-count rows before running."
+        },
+        {
+          "name": "AlgoMaster Exercise - GROUP BY and HAVING",
+          "url": "https://algomaster.io/learn/sql-interview/group-by-and-having-exercise",
+          "locator": "Exercise 2: one row per album_id with track_count and total_seconds",
+          "note": "Add a HAVING variant that keeps only albums with more than two tracks."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your schema rejects a duplicate-email insert and a negative amount, and your join, HAVING and ROW_NUMBER queries return the predicted counts including zeros.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AlgoMaster SQL route covers modeling, keys, normalization, joins, aggregation, CTEs and windows with named exercises, and the PostgreSQL tutorial pages back each clause; no gap needed a new resource."
       }
     },
     {
