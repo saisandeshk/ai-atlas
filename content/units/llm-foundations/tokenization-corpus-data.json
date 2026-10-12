@@ -300,7 +300,7 @@
     {
       "id": "tokenizer-identity-streaming",
       "title": "A tokenizer you can trust: round trips, identity and streaming",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -309,47 +309,91 @@
         "streaming-inputs-and-chunk-boundary-invariance"
       ],
       "outcomes": [
-        "TODO"
+        "Implement encode, decode and reload from a byte vocabulary and ordered merges without changing token IDs.",
+        "Test multilingual text, whitespace, controls, overlapping specials and malformed decoded byte sequences against a stated contract.",
+        "Preserve one-shot token IDs across streaming splits, retaining unfinished text until a safe boundary is known.",
+        "Reject tokenizer artifacts whose vocabulary, merge ranks or preprocessing policy differs from the expected identity."
       ],
-      "why": "TODO",
+      "why": "A round trip can succeed even when token IDs differ from the model's training IDs. Serialization and streaming must preserve the exact encoding, not just readable text.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/tokenization-corpus-data/packing-and-loss-masks",
+          "note": "Build training examples from a stable token stream."
+        },
+        {
+          "unit": "llm-foundations/causal-training-generation/checkpoints-and-resume",
+          "note": "Make tokenizer compatibility part of checkpoint loading."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a1-tokenizer-contract",
+          "title": "Encoding, decoding and iterable input",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 2.6, including Example (bpe_encoding), Memory considerations, Section 2.6.2 and Problem (tokenizer) (pp. 10 to 12)"
+        },
+        {
+          "resource": "raschka-llm-tokenization",
+          "title": "Saving, loading and reference tokenizer files",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/05_bpe-from-scratch/bpe-from-scratch.ipynb",
+          "locator": "Sections 3.2, Saving and loading the tokenizer, and 3.3, Loading the original GPT-2 BPE tokenizer from OpenAI",
+          "depth": "Use the save/reload examples as a workflow, not a byte-correctness oracle. Keep the CS336 bytes-based representation and test against tiktoken through the public suite."
+        },
+        {
+          "resource": "cs336-a1-tokenizer-contract",
+          "title": "Public tokenizer acceptance cases",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_tokenizer.py",
+          "locator": "test_roundtrip_unicode_string, test_overlapping_special_tokens, the two test_encode_special_token_* cases, and test_encode_iterable_tinystories_matches_tiktoken; test_encode_iterable_memory_usage"
+        },
+        {
+          "resource": "tokenizer-corpus-project-spec",
+          "title": "Tokenizer identity and adversarial boundaries",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#correctness-requirements",
+          "locator": "Correctness requirements: supported round trip and deterministic versioned merges/IDs; Failure-injection requirements: malformed encoding, corrupt model and stale tokenizer"
         }
       ],
       "focus": [
-        "TODO"
+        "Match exact IDs as well as decoded text. Two vocabularies can reconstruct the same bytes while indexing different embedding rows.",
+        "Persist the ID-to-bytes map, ordered merges, special IDs, regex and normalization/error policies. Encode bytes losslessly in the artifact and hash a canonical serialization.",
+        "A transport chunk is not a pre-token. Retain unfinished pre-tokens, whitespace lookahead and special-token prefixes; use an incremental UTF-8 decoder if the input arrives as bytes.",
+        "CS336's iterable tests use file lines. Add every split point of short strings and splits inside special literals; the public suite alone does not prove arbitrary chunk invariance."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, load your byte vocabulary and merge ranks, encode and decode a string, then serialize and reload. For a short multilingual string containing spaces and a configured special token, assert that every two-chunk split yields the same IDs as one-shot encoding under the same special-token policy.",
       "traps": [
-        "TODO"
+        "Encoding every incoming chunk independently. A split inside a pre-token or special literal changes IDs even when concatenated decoded text is unchanged.",
+        "Serializing vocabulary bytes as decoded Unicode. Partial UTF-8 token bytes can fail decoding or collide under replacement.",
+        "Claiming a fixed memory bound while buffering an arbitrarily long unfinished pre-token. State the maximum-document/pre-token policy and never silently truncate it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is decode(encode(text)) == text insufficient to establish tokenizer compatibility?",
+          "a": "Different ID assignments or segmentations can decode to the same text. Compatibility also requires identical IDs for the same input and identical preprocessing and special-token policies."
+        },
+        {
+          "q": "An input chunk ends with '<|endo'. Can you emit its ordinary-text IDs immediately?",
+          "a": "Not if special recognition is enabled: the next chunk may complete '<|endoftext|>'. Retain the possible special-token prefix until it is resolved."
+        },
+        {
+          "q": "A token ends with byte 0xC3 and the next begins with 0xA9. How should the decoder handle them?",
+          "a": "Concatenate their bytes first. Together they encode 'é'; decoding each token separately can raise or insert replacement characters."
+        },
+        {
+          "q": "Can a decoder with errors='replace' promise a round trip for arbitrary raw bytes?",
+          "a": "No. It can round-trip supported valid text, but malformed raw bytes are changed. Preserve them with a separate byte decoder if the byte contract requires it."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: tokenizer",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_tokenizer.py",
+          "locator": "Problem (tokenizer), Section 2.6; connect your implementation to get_tokenizer in tests/adapters.py and run tests/test_tokenizer.py",
+          "note": "Implement in your own repository. The encode memory test is expected to fail; the iterable memory test is Linux-only. Add reload identity, arbitrary chunk-split and malformed-byte properties beyond the public cases."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The public tokenizer suite has no unexpected failures, and your own reload and every-split-point tests preserve exact IDs while a changed tokenizer identity is rejected.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies the implementation contract and checked practice; the notebook supplies reload examples and the project supplies identity and failure cases missing from the line-based tests."
       }
     },
     {
@@ -366,47 +410,80 @@
         "split-before-fit-and-split-before-pack-discipline"
       ],
       "outcomes": [
-        "TODO"
+        "Derive shifted inputs, targets and valid-loss positions for packed documents, including EOS and padding.",
+        "Implement packing with document lineage, a declared truncation/tail policy and separate attention and loss masks.",
+        "Keep split ownership fixed before fitting a tokenizer or packing, so evaluation text cannot become training context."
       ],
-      "why": "TODO",
+      "why": "Packing changes which tokens become context and which predictions enter the loss. An EOS token marks a boundary, but it does not enforce attention isolation or remove an unwanted target.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/causal-training-generation/next-token-objective",
+          "note": "Use the valid-target mask in the next-token loss."
+        },
+        {
+          "unit": "llm-foundations/decoder-transformer-mechanics/attention-from-scratch",
+          "note": "Enforce causal and document visibility in attention."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "raschka-llm-tokenization",
+          "title": "Shifted targets and sliding windows",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/01_main-chapter-code/ch02.ipynb",
+          "locator": "Section 2.4: EOS between independent sources; Section 2.6, Data sampling with a sliding window: GPTDatasetV1 and stride/context-length examples",
+          "depth": "Stop before Section 2.7. The single-text loader is a baseline; it does not supply document isolation or split-safe corpus construction."
+        },
+        {
+          "resource": "raschka-llm-tokenization",
+          "title": "Data loader intuition with integers",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/04_bonus_dataloader-intuition/dataloader-intuition.ipynb",
+          "locator": "Data sampling with a sliding window with number data: GPTDatasetV1, then max_length=4 with stride=1 and stride=4",
+          "depth": "Stop before Finally, a data loader with shuffling. Track indices and the last omitted tail rather than running the full number file."
+        },
+        {
+          "resource": "tokenizer-corpus-project-spec",
+          "title": "Split ownership and packed boundary contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#core-requirements",
+          "locator": "Core requirements: split assignment before leakage-causing transforms and deterministic sample/pack construction with document-boundary/loss-mask policy; Architecture constraints: evaluation data cannot influence vocabulary/filters/mixture; Correctness requirements: fixed split ownership and packed masks",
+          "depth": "Apply these requirements to a few local documents. Do not implement the full project or distributed corpus processing."
         }
       ],
       "focus": [
-        "TODO"
+        "Declare whether packed documents may attend to earlier documents. Continuous-stream training and isolated-document training are different objectives; neither policy is created by EOS alone.",
+        "For isolated documents, attention allows j <= i only within the same document. The loss mask separately excludes padding targets and cross-document next-token transitions.",
+        "Attach EOS to the document it ends. Predicting that EOS is valid; predicting the next document's first token from that EOS is masked under the isolated policy.",
+        "Split raw documents or duplicate groups before fitting and packing. Record token spans back to document IDs, and account for every retained, padded or deliberately dropped tail token."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, pack A=[11,12] and B=[21,22] with EOS=9 into z=[11,12,9,21,22,9]. For x=z[:-1] and y=z[1:], derive y=[12,9,21,22,9] and isolated-document loss mask [1,1,0,1,1]. Build the lower-triangular same-document attention mask for x and explain which prediction it does not remove by itself.",
       "traps": [
-        "TODO"
+        "Masking EOS as if it were padding. The last content token should usually learn to predict its own document's EOS.",
+        "Using only a block-diagonal attention mask. The shifted label after one document's EOS can still be the next document's first token unless loss is masked too.",
+        "Splitting after packing or overlapping-window construction. The same document can enter both splits, even when their packed rows differ."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "In Reproduce, which target is excluded and why?",
+          "a": "Target 21 at x position 2 is excluded: its context token is A's EOS, but 21 belongs to B. Predictions of either document's EOS remain valid."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does masking a loss position stop that token from being used as context?",
+          "a": "No. Loss masking removes a prediction from the objective. Attention masking controls which input tokens can influence later representations."
+        },
+        {
+          "q": "With ten tokens, context length four and stride four, how many complete shifted windows does the notebook loader produce?",
+          "a": "Two, starting at 0 and 4. Each needs five stream tokens to make four input-target pairs; the remaining suffix cannot form another complete window."
+        },
+        {
+          "q": "Why split before fitting the tokenizer if no evaluation examples enter model training?",
+          "a": "Fitting on evaluation text still uses held-out distribution information to choose the representation. Fit on training data unless a separate, declared evaluation protocol permits otherwise."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: split-before-fit and split-before-pack, document-span lineage, EOS/tail handling, and independently checked shifted loss and attention masks.",
+      "stopWhen": "Your packer matches the hand-derived inputs, targets and both masks on two documents, padding and an overlength document, with no document ID shared across splits.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Raschka supplies shifted-window implementation and index examples; the reduced project contract supplies split and boundary requirements, with packing practice assigned to the section mini-project."
       }
     },
     {
