@@ -10,6 +10,16 @@
       "access": "Free",
       "use": "Read Point-in-time joins and Retrieving features as of the event time. Separate event-time eligibility from actual feature availability; implement the predicates in SQL, not a Feast installation.",
       "url": "https://docs.feast.dev/getting-started/concepts/point-in-time-joins"
+    },
+    {
+      "id": "cmu-15445-timestamp-ordering",
+      "role": "course",
+      "priority": "reference",
+      "name": "CMU Lecture 19: Timestamp Ordering Concurrency Control",
+      "provider": "Carnegie Mellon Database Group",
+      "access": "Free",
+      "use": "Section 1 only, p. 1: timestamp order as a chosen serialization order. The section pool omits Lecture 19; this fills the timestamp-ordering vocabulary gap without assigning all of OCC.",
+      "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/19-timestampordering.pdf"
     }
   ],
   "units": [
@@ -418,7 +428,7 @@
     {
       "id": "acid-isolation-anomalies",
       "title": "Transactions and isolation anomalies",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain"
       ],
@@ -427,53 +437,74 @@
         "dirty-reads-nonrepeatable-reads-phantoms-and-write-skew"
       ],
       "outcomes": [
-        "TODO"
+        "Separate atomicity, application invariants, isolation and stable-storage durability.",
+        "Classify dirty reads, nonrepeatable reads, phantoms and write skew by transaction histories.",
+        "Explain why PostgreSQL SERIALIZABLE prevents a write-skew commit history and why aborted work must not escape."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's transactions-isolation unit and its REPEATABLE READ update-conflict retry. Here disjoint writes violate a shared invariant, and the engine must track read/write dependencies rather than merely conflicting row updates.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/databases-durable-storage/concurrency-control-mvcc",
+          "note": "Explain the locks, snapshots and dependency graph underneath this history."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-transactions",
+          "title": "DDIA, second edition: ACID and write skew",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 8, The Meaning of ACID, printed pp. 279-283; Write Skew and Phantoms, pp. 303-308"
+        },
+        {
+          "resource": "postgresql-query-transaction-lab",
+          "title": "PostgreSQL 18: Transaction Isolation",
+          "url": "https://www.postgresql.org/docs/18/transaction-iso.html",
+          "locator": "Table 13.1 and sections 13.2.1-13.2.3, particularly the Serializable example, read/write dependencies and SQLSTATE 40001",
+          "depth": "Use the level definitions and SSI mechanism. Do not repeat Programming's concurrent-update REPEATABLE READ lab."
         }
       ],
       "focus": [
-        "TODO"
+        "Consistency in ACID means preserving specified invariants. It is not the same term as replica consistency, and the engine cannot invent the application's business rule.",
+        "Write skew needs no common written row: decisions can depend on rows another transaction changes. A stable snapshot alone does not rule it out.",
+        "PostgreSQL maps READ UNCOMMITTED to READ COMMITTED and prevents phantoms at REPEATABLE READ, but only SERIALIZABLE rules out serialization anomalies.",
+        "SSI tracks read/write dependencies using nonblocking predicate locks. It may abort at a statement or commit; do not publish effects before a successful commit."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use two interactive psql sessions in the section PostgreSQL container, adding -v VERBOSITY=verbose to the psql command. Create duty(id int PRIMARY KEY,on_call boolean NOT NULL); insert (1,true),(2,true). The rule is at least one doctor remains on call; an application may leave only after reading a count greater than 1. In A and B: BEGIN ISOLATION LEVEL SERIALIZABLE; SELECT count(*) FROM duty WHERE on_call; both must read 2 before either writes. A executes UPDATE duty SET on_call=false WHERE id=1; B executes the same for id=2. Commit A, then B. In the tested PostgreSQL 18.6 schedule, A committed and B's COMMIT reported 40001, leaving count 1. Record the actual failing operation; do not assume the same victim for a different schedule. Restart the failed transaction from BEGIN, re-read the count and decline the leave request at 1. On paper, allowing both original writes to commit gives count 0; neither serial order could permit both requests.",
       "traps": [
-        "TODO"
+        "Protecting each doctor row separately and assuming the cross-row invariant is protected.",
+        "Calling a 40001 an engine failure. Aborting an unsafe history is the promised isolation behavior.",
+        "Retrying only COMMIT or sending an external success message before commit. Neither preserves the transaction's decision boundary."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is this not a lost update?",
+          "a": "The transactions update different rows. Neither overwrites the other's update; their decisions conflict through the shared count."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What would the second request see in either serial order?",
+          "a": "One doctor remains, so it must refuse to leave. This is why two successful leave requests cannot be serialized."
+        },
+        {
+          "q": "Would a row CHECK constraint enforce at least one doctor on call?",
+          "a": "No. That rule spans rows; ordinary PostgreSQL CHECK constraints are not a cross-row concurrency protocol."
+        },
+        {
+          "q": "Does SSI predicate locking block the other reader or writer?",
+          "a": "Its SIRead locks track dependencies rather than blocking. Ordinary write locks can still block independently."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a barrier-driven SERIALIZABLE write-skew test, full-transaction restart with invariant recheck, and evidence that aborted effects do not escape.",
+      "stopWhen": "Your recorded schedule has only one successful leave, includes the 40001 and failing operation, and explains why a fresh recheck rejects the other request.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA's cross-row history and PostgreSQL 18's SSI contract meet explain depth; four hours includes the deterministic schedule and invariant recheck."
       }
     },
     {
       "id": "concurrency-control-mvcc",
       "title": "Two-phase locking, timestamp ordering and MVCC",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "explain",
         "derive"
@@ -484,47 +515,89 @@
         "serializable-isolation-proofs"
       ],
       "outcomes": [
-        "TODO"
+        "Derive a conflict graph and distinguish it from a waits-for graph.",
+        "Explain growing/shrinking lock phases, strict locking, predicate protection and deadlock handling.",
+        "Trace PostgreSQL tuple versions using xmin, xmax, transaction status and snapshots without treating XIDs as timestamps.",
+        "Explain timestamp ordering as an enforced serialization order, separate from MVCC storage."
       ],
-      "why": "TODO",
+      "why": "Assume Programming's transactions-isolation and synchronization-hazards units. The new job is proving histories and tracing tuple visibility, not another barrier lost update or application lock-order deadlock.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "systems/databases-durable-storage/wal-recovery-durability",
+          "note": "Separate version visibility and commit status from persistence."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cmu-15445-storage-transactions",
+          "title": "Lectures 17, 18 and 20: histories, locks and versions",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/schedule.html",
+          "locator": "Lecture 17 notes, section 6, Conflict Serializability, p. 4; Lecture 18 notes, sections 1-4, pp. 1-4; Lecture 20 notes, sections 1-3, pp. 1-3",
+          "depth": "In Lecture 18 section 2, skip the sentence claiming strict 2PL reintroduces dirty reads and cascading aborts. Holding exclusive locks to commit prevents both; rigorous 2PL also holds shared locks. The fixed-object conflict-graph theorem needs predicate protection when rows can be inserted."
+        },
+        {
+          "resource": "cmu-15445-timestamp-ordering",
+          "title": "Lecture 19: Timestamp Ordering Concurrency Control",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/19-timestampordering.pdf",
+          "locator": "Section 1, Timestamp Ordering Concurrency Control, p. 1",
+          "depth": "Stop before the OCC validation algorithm; only timestamp-ordering vocabulary is required here."
+        },
+        {
+          "resource": "ddia-storage-transactions",
+          "title": "DDIA, second edition: predicate protection and SSI",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 8, Two-Phase Locking through Serializable Snapshot Isolation, printed pp. 313-322",
+          "depth": "Use the mechanism comparison. SSI does not abort on every stale read; it detects dangerous dependency combinations, and ordinary write locks remain."
+        },
+        {
+          "resource": "postgresql-query-transaction-lab",
+          "title": "PostgreSQL 18: System Columns",
+          "url": "https://www.postgresql.org/docs/18/ddl-system-columns.html",
+          "locator": "Section 5.6: xmin, xmax and ctid"
+        },
+        {
+          "resource": "postgresql-query-transaction-lab",
+          "title": "PostgreSQL 18: Snapshot functions",
+          "url": "https://www.postgresql.org/docs/18/functions-info.html",
+          "locator": "Section 9.27.8, Transaction ID and Snapshot Information Functions: pg_current_snapshot and the xmin:xmax:xip_list snapshot representation"
         }
       ],
       "focus": [
-        "TODO"
+        "Basic 2PL acquires no new locks after its first release. Strict 2PL retains exclusive locks until commit/abort; rigorous 2PL retains shared locks too. Locking existing rows alone does not protect absent matches.",
+        "A precedence graph orders conflicting operations on fixed objects; a waits-for graph records blocked lock requests. A serializable history can still encounter a lock deadlock.",
+        "MVCC is version storage plus visibility rules, not an isolation level. Tuple xmin/xmax need transaction status, snapshot membership and special-case handling; a nonzero xmax does not prove a row is invisible.",
+        "Timestamp ordering enforces a chosen serial order, often using a logical counter. PostgreSQL XIDs are neither wall-clock times nor commit-order counters; long-lived snapshots can prevent reclamation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the fixed-object schedule R1(A),R2(B),W1(B),W2(A): R2(B) precedes W1(B), giving T2->T1; R1(A) precedes W2(A), giving T1->T2. The cycle rules out conflict serializability. If a timestamp protocol chose TS(T1)<TS(T2), it could not accept the T2->T1 dependency. Then use the section PostgreSQL setup: create visibility(id int PRIMARY KEY,v int), insert (1,10). Session A: BEGIN; UPDATE visibility SET v=20 WHERE id=1; leave it uncommitted. Session B, in default READ COMMITTED: SELECT v,xmin,xmax,ctid FROM visibility; SELECT pg_current_snapshot(); it sees the old value 10 although its xmax is nonzero in this simple update. Record A's in-progress XID and explain the snapshot bounds; equality of the snapshot's xmin and xmax bounds is possible. Commit A, then rerun B's SELECT: value 20 comes from a new tuple version with a different xmin and ctid. Exact XIDs and offsets are not targets. Draw visibility before and after commit without relying on numeric XID comparison alone.",
       "traps": [
-        "TODO"
+        "Calling two-phase locking two-phase commit. One is a concurrency protocol; the other coordinates atomic commit across participants.",
+        "Assuming strict 2PL is deadlock-free, or applying a fixed-item graph proof to a predicate without accounting for inserts.",
+        "Using xmin or ctid as a durable application identity. XIDs wrap and physical row locations can change."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is the old value visible in B while A updates it?",
+          "a": "A's replacement version is uncommitted. B's statement snapshot still sees the committed old version; the old version's deletion by A is not yet effective for B."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can basic 2PL permit dirty reads?",
+          "a": "Yes. Releasing an exclusive lock before commit can expose an uncommitted write. Strict 2PL holds that lock until commit or abort."
+        },
+        {
+          "q": "Why must a serializable lock protocol protect gaps or predicates?",
+          "a": "New matching rows can change a read's result even though none of its existing rows was overwritten."
+        },
+        {
+          "q": "Does the graph cycle prove every MVCC history is invalid?",
+          "a": "No. The fixed-object single-version conflict graph theorem has stated assumptions. MVCC serialization analysis must account for which versions were read and their dependencies."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: annotate the anomaly's dependency graph, trace committed and uncommitted tuple visibility, and distinguish transaction waits from buffer latches in the evidence dossier.",
+      "stopWhen": "You derive both graph edges and explain the two observed tuple versions, including why a nonzero xmax did not hide the old row.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The pool omits Lecture 19 and its timestamp-ordering locator. Adding section 1 fills that gap; CMU, DDIA and PostgreSQL 18 cover locking, proofs and visibility at five-hour depth."
       }
     },
     {
