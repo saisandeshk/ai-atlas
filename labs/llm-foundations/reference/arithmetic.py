@@ -14,7 +14,10 @@ def count_parameters(config):
 
 
 def forward_matmul_flops(config, batch, seq_len):
-    """Count full attention and linear FLOPs; one multiply-add is two FLOPs."""
+    """Count 2mnk per matmul, full T*T attention, and no elementwise work.
+
+    Causal masking does not reduce the dense attention matmul count.
+    """
     d = config.d_model
     kv = d // config.n_heads * config.n_kv_heads
     linear = config.n_layers * (2 * d * d + 2 * d * kv + 3 * d * config.d_ff)
@@ -24,8 +27,11 @@ def forward_matmul_flops(config, batch, seq_len):
 
 
 def adamw_training_bytes(config, param_bytes=4):
-    """Bytes for parameters, gradients, and two same-dtype AdamW moments."""
-    return 4 * param_bytes * count_parameters(config)
+    """Return integer byte counts for weights, gradients, moments, and total."""
+    size = int(param_bytes * count_parameters(config))
+    result = {name: size for name in ("params", "grads", "adam_m", "adam_v")}
+    result["total"] = sum(result.values())
+    return result
 
 
 def _scores(scores):

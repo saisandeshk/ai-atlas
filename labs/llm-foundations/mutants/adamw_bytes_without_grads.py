@@ -1,8 +1,11 @@
 """Bug: budgets parameters and moments but forgets gradients."""
 
 from reference import *
-from reference.arithmetic import count_parameters
+from reference.arithmetic import adamw_training_bytes as _correct
 
 
 def adamw_training_bytes(config, param_bytes=4):
-    return 3 * param_bytes * count_parameters(config)
+    result = _correct(config, param_bytes)
+    result["total"] -= result["grads"]
+    result["grads"] = 0
+    return result

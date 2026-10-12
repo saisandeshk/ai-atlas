@@ -1,4 +1,8 @@
-"""Independent architecture and statistical checks for the S4 adapter."""
+"""Independent architecture and statistical checks for the S4 adapter.
+
+Counter convention: 2mnk FLOPs per matmul, full T*T attention with no causal
+savings, and elementwise work excluded (norms, activations, softmax, and RoPE).
+"""
 
 import math
 
@@ -96,6 +100,7 @@ def make_config(overrides):
 
 @pytest.mark.parametrize("overrides", CONFIGS)
 def test_parameter_count_matches_independent_module(lab, overrides):
+    """Count real trainable tensors independently, including MQA/MHA and ties."""
     torch.manual_seed(41)
     config = make_config(overrides)
     expected = sum(parameter.numel() for parameter in AccountingModel(config).parameters())
@@ -105,6 +110,7 @@ def test_parameter_count_matches_independent_module(lab, overrides):
 @pytest.mark.parametrize("overrides", CONFIGS)
 @pytest.mark.parametrize("batch,seq_len", [(1, 3), (2, 7)])
 def test_forward_flops_match_torch_counter(lab, overrides, batch, seq_len):
+    """Match 2mnk dense linear and full T*T attention FLOPs, not elementwise ops."""
     torch.manual_seed(42)
     config = make_config(overrides)
     model = AccountingModel(config)
@@ -119,15 +125,27 @@ def test_forward_flops_match_torch_counter(lab, overrides, batch, seq_len):
 @pytest.mark.parametrize("param_bytes", [2, 4, 8])
 @pytest.mark.parametrize("overrides", CONFIGS)
 def test_adamw_bytes_exact(lab, overrides, param_bytes):
+    """Check every integer byte-count bucket and their total, including defaults."""
     config = make_config(overrides)
     parameters = sum(p.numel() for p in AccountingModel(config).parameters())
-    assert lab.adamw_training_bytes(config, param_bytes) == parameters * param_bytes * 4, (
-        "AdamW stores parameters, gradients, first moments, and second moments"
+    size = parameters * param_bytes
+    expected = {name: size for name in ("params", "grads", "adam_m", "adam_v")}
+    expected["total"] = 4 * size
+    actual = lab.adamw_training_bytes(config, param_bytes)
+    assert isinstance(actual, dict), "Return named byte-count buckets, not a scalar total"
+    assert actual == expected, (
+        "Each AdamW bucket stores one scalar per parameter; total includes all four buckets"
     )
-    assert lab.adamw_training_bytes(config) == parameters * 16, "Default scalar storage is four bytes"
+    assert all(type(value) is int for value in actual.values()), "Byte counts must be integers"
+    default = {name: parameters * 4 for name in ("params", "grads", "adam_m", "adam_v")}
+    default["total"] = parameters * 16
+    assert lab.adamw_training_bytes(config) == default, (
+        "Default scalar storage is four bytes in each of the four AdamW buckets"
+    )
 
 
 def test_bootstrap_deterministic_and_centered_on_mean(lab):
+    """Seeded percentile intervals target the mean and collapse for constant data."""
     scores = np.random.default_rng(51).normal(3, 1, 200)
     first = lab.bootstrap_ci(scores, confidence=0.95, n_resamples=1500, seed=52)
     assert first == lab.bootstrap_ci(scores, confidence=0.95, n_resamples=1500, seed=52), (
@@ -135,11 +153,16 @@ def test_bootstrap_deterministic_and_centered_on_mean(lab):
     )
     lower, upper = first
     assert lower < scores.mean() < upper, "Bootstrap the mean, not individual score quantiles"
-    assert abs((lower + upper) / 2 - scores.mean()) < 0.04
-    assert lab.bootstrap_ci([7] * 20, 0.95, 300, 53) == (7, 7)
+    assert abs((lower + upper) / 2 - scores.mean()) < 0.04, (
+        "For symmetric scores the mean interval should be centered near the observed mean"
+    )
+    assert lab.bootstrap_ci([7] * 20, 0.95, 300, 53) == (7, 7), (
+        "Constant scores have no resampling uncertainty, so both endpoints must equal seven"
+    )
 
 
 def test_bootstrap_width_scales_with_sample_count(lab):
+    """Holding the empirical distribution fixed isolates the 1/sqrt(n) scaling."""
     rng = np.random.default_rng(54)
     small = rng.normal(size=200)
     large = np.tile(small, 4)
@@ -150,6 +173,7 @@ def test_bootstrap_width_scales_with_sample_count(lab):
 
 
 def test_bootstrap_bernoulli_coverage(lab):
+    """Check nominal 95% coverage over 300 seeded Bernoulli datasets of size 200."""
     rng = np.random.default_rng(57)
     covered = 0
     for trial in range(300):
@@ -161,6 +185,7 @@ def test_bootstrap_bernoulli_coverage(lab):
 
 
 def test_paired_bootstrap_preserves_pairing(lab):
+    """Pairing detects a constant gain that an independent bootstrap obscures."""
     # Shared example difficulty is huge, but every paired improvement is exactly 0.25.
     a = np.linspace(-100, 100, 100) + 0.25
     b = np.linspace(-100, 100, 100)
@@ -168,10 +193,20 @@ def test_paired_bootstrap_preserves_pairing(lab):
     assert np.allclose(interval, (0.25, 0.25), atol=1e-12), (
         "Resample the same indices for a and b; independent resampling destroys pairing"
     )
-    assert interval == lab.paired_bootstrap_diff(a, b, 0.95, 1000, 61)
+    assert interval == lab.paired_bootstrap_diff(a, b, 0.95, 1000, 61), (
+        "The paired interval must also be exactly reproducible with the same seed"
+    )
+    rng = np.random.default_rng(61)
+    a_means = a[rng.integers(0, len(a), (1000, len(a)))].mean(axis=1)
+    b_means = b[rng.integers(0, len(b), (1000, len(b)))].mean(axis=1)
+    unpaired = np.quantile(a_means - b_means, [0.025, 0.975])
+    assert unpaired[0] < 0 < unpaired[1], (
+        "Independent resampling must include zero here despite the strictly positive paired gain"
+    )
 
 
 def test_paired_bootstrap_matches_bootstrap_of_differences(lab):
+    """Shared resampling is exactly a mean bootstrap over per-example differences."""
     rng = np.random.default_rng(62)
     b = rng.normal(0, 10, 200)
     a = b + rng.normal(0.3, 0.2, 200)
