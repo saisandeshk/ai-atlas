@@ -1,15 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ArrowRight,
   ArrowUpRight,
   BookOpen,
+  Check,
   CheckCircle2,
   ChevronRight,
   CircleDot,
   Clock,
+  Copy,
   CornerDownRight,
+  Download,
   Flag,
   FlaskConical,
   Hammer,
@@ -20,15 +29,19 @@ import {
   Play,
   Repeat2,
   Route,
-  Search,
   Sparkles,
   Target,
   TriangleAlert,
+  Upload,
 } from 'lucide-react';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+import { GlobalSearch, type SearchEntry } from './global-search';
+import { PalettePreview } from './palette-preview';
+import { ThemeToggle } from './theme-toggle';
 
 type Scope = 'required' | 'optional' | 'depth' | 'later';
 type ProgressStep = 'learned' | 'practised' | 'passed';
@@ -152,7 +165,10 @@ export type Curriculum = {
   }>;
   advancedTracks: AdvancedTrack[];
 };
+// The progress key keeps its old name so saved progress survives the rename.
 const storageKey = 'field-guide-progress-v1';
+const placeStorageKey = 'ai-atlas-place-v1';
+const lastUnitStorageKey = 'ai-atlas-last-unit-v1';
 
 const scopeLabels: Record<Scope, string> = {
   required: 'Required',
@@ -161,10 +177,14 @@ const scopeLabels: Record<Scope, string> = {
   later: 'Later',
 };
 
-const progressLabels: Array<{ key: ProgressStep; label: string }> = [
-  { key: 'learned', label: 'Learned' },
-  { key: 'practised', label: 'Practised' },
-  { key: 'passed', label: 'Passed' },
+const progressLabels: Array<{
+  key: ProgressStep;
+  label: string;
+  short: string;
+}> = [
+  { key: 'learned', label: 'Learned', short: 'Learn' },
+  { key: 'practised', label: 'Practised', short: 'Practice' },
+  { key: 'passed', label: 'Passed', short: 'Pass' },
 ];
 
 function topicKey(sectionId: string, topicId: string) {
@@ -301,6 +321,8 @@ function ResourceCardBody({ resource }: { resource: Resource }) {
   );
 }
 
+// A real table on wide containers; each row stacks into a card when the
+// container is too narrow for three readable columns.
 function RubricTable({ rubric }: { rubric: RubricItem[] }) {
   return (
     <div className="rubric-wrap">
@@ -316,12 +338,51 @@ function RubricTable({ rubric }: { rubric: RubricItem[] }) {
           {rubric.map((item) => (
             <tr key={item.criterion}>
               <th scope="row">{item.criterion}</th>
-              <td>{item.pass}</td>
-              <td>{item.strong}</td>
+              <td>
+                <span className="rubric-tag" aria-hidden="true">
+                  Pass
+                </span>
+                {item.pass}
+              </td>
+              <td>
+                <span className="rubric-tag" aria-hidden="true">
+                  Strong
+                </span>
+                {item.strong}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function CopyCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const task = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(task);
+  }, [copied]);
+
+  return (
+    <div className="check-command">
+      <code>{command}</code>
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard?.writeText(command).then(
+            () => setCopied(true),
+            () => undefined,
+          );
+        }}
+        aria-label={copied ? 'Copied' : `Copy command: ${command}`}
+        title={copied ? 'Copied' : 'Copy'}
+      >
+        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      </button>
     </div>
   );
 }
@@ -337,7 +398,7 @@ function ProgressChecks({
 }) {
   return (
     <div className="topic-checks">
-      {progressLabels.map(({ key: step, label: stepLabel }) => (
+      {progressLabels.map(({ key: step, label: stepLabel, short }) => (
         <label key={step} title={stepLabel}>
           <span className="sr-only">
             {stepLabel}: {label}
@@ -347,6 +408,9 @@ function ProgressChecks({
             onCheckedChange={(checked) => onChange(step, checked)}
             aria-label={`${stepLabel}: ${label}`}
           />
+          <span className="check-tag" aria-hidden="true">
+            {short}
+          </span>
         </label>
       ))}
     </div>
@@ -593,11 +657,13 @@ function UnitCard({
 }
 
 function MiniProjectCard({
+  sectionId,
   mini,
   units,
   done,
   onDone,
 }: {
+  sectionId: string;
   mini: MiniProject;
   units: Unit[];
   done: boolean;
@@ -606,7 +672,10 @@ function MiniProjectCard({
   const numberOf = (unitId: string) =>
     units.findIndex((unit) => unit.id === unitId) + 1;
   return (
-    <article className={`mini-project${done ? ' done' : ''}`}>
+    <article
+      id={`mini-${sectionId}`}
+      className={`mini-project${done ? ' done' : ''}`}
+    >
       <header>
         <div className="checkpoint-icon">
           <Hammer aria-hidden="true" />
@@ -660,9 +729,7 @@ function MiniProjectCard({
                 ) : (
                   check.name
                 )}
-                {check.command && (
-                  <code className="check-command">{check.command}</code>
-                )}
+                {check.command && <CopyCommand command={check.command} />}
                 {check.note && <p>{check.note}</p>}
               </li>
             ))}
@@ -704,6 +771,153 @@ function countProgress(
   );
 }
 
+type UnitRef = { route: Stage; section: Section; unit: Unit; key: string };
+
+function unitRefs(routes: Stage[]): UnitRef[] {
+  return routes.flatMap((route) =>
+    route.sections.flatMap((section) =>
+      (section.units ?? []).map((unit) => ({
+        route,
+        section,
+        unit,
+        key: unitKey(route.id, section.id, unit.id),
+      })),
+    ),
+  );
+}
+
+// "1.2" for the second unit of section 01.
+function unitLabel(section: Section, unit: Unit) {
+  const sectionNumber = section.index.replace(/^0+(?=\d)/, '');
+  return `${sectionNumber}.${(section.units ?? []).indexOf(unit) + 1}`;
+}
+
+// The unit to work on next: the last one touched if it is not passed yet,
+// otherwise the next unpassed unit in the same route, otherwise the first
+// unpassed unit in the list.
+function pickNextUnit(
+  refs: UnitRef[],
+  lastKey: string | null,
+  progress: ProgressState,
+) {
+  const isOpen = (ref: UnitRef) => !progressFor(progress, ref.key).passed;
+  const lastIndex = lastKey ? refs.findIndex((ref) => ref.key === lastKey) : -1;
+  if (lastIndex >= 0) {
+    const routeId = refs[lastIndex].route.id;
+    const inRoute = (ref: UnitRef) => ref.route.id === routeId && isOpen(ref);
+    const next =
+      refs.slice(lastIndex).find(inRoute) ??
+      refs.slice(0, lastIndex).find(inRoute);
+    if (next) return next;
+  }
+  return refs.find(isOpen);
+}
+
+// Two link forms: #unit-<id> opens a unit, #/<route>/<section> opens a section.
+function parseHash(hash: string): {
+  unitId?: string;
+  routeId?: string;
+  sectionId?: string;
+} {
+  const unit = /^#unit-(.+)$/.exec(hash);
+  if (unit) return { unitId: decodeURIComponent(unit[1]) };
+  const place = /^#\/([^/]+)(?:\/([^/]+))?$/.exec(hash);
+  if (place)
+    return {
+      routeId: decodeURIComponent(place[1]),
+      sectionId: place[2] ? decodeURIComponent(place[2]) : undefined,
+    };
+  return {};
+}
+
+// Scroll a target into view and briefly highlight it.
+function revealAnchor(id: string, block: ScrollLogicalPosition = 'center') {
+  window.setTimeout(() => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.scrollIntoView({ behavior: preferredScrollBehavior(), block });
+    element.classList.add('flash');
+    window.setTimeout(() => element.classList.remove('flash'), 1800);
+  }, 0);
+}
+
+function ProjectPath({
+  stage,
+  progress,
+  onSection,
+  onCapstone,
+}: {
+  stage: Stage;
+  progress: ProgressState;
+  onSection: (sectionId: string) => void;
+  onCapstone: () => void;
+}) {
+  const steps = stage.sections.flatMap((section) =>
+    section.miniProject ? [{ section, mini: section.miniProject }] : [],
+  );
+  if (!steps.length) return null;
+  const capstoneDone = progressFor(progress, capstoneKey(stage.id)).passed;
+
+  return (
+    <nav className="project-path" aria-label="Project path">
+      <p className="rail-label">Project path</p>
+      <ol>
+        {steps.map(({ section, mini }) => {
+          const units = section.units ?? [];
+          const passed = units.filter(
+            (unit) =>
+              progressFor(progress, unitKey(stage.id, section.id, unit.id))
+                .passed,
+          ).length;
+          const done = progressFor(progress, miniKey(stage.id, section.id))
+            .passed;
+          return (
+            <li
+              key={section.id}
+              className={done ? 'done' : passed ? 'started' : undefined}
+            >
+              <button type="button" onClick={() => onSection(section.id)}>
+                <span className="path-marker">
+                  {done ? <Check aria-hidden="true" /> : section.index}
+                </span>
+                <span className="path-copy">
+                  <strong>{mini.title}</strong>
+                  <small>
+                    {done
+                      ? 'Done'
+                      : `${passed}/${units.length} units passed`}
+                  </small>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+        {stage.capstone && (
+          <li className={`path-final${capstoneDone ? ' done' : ''}`}>
+            <button type="button" onClick={onCapstone}>
+              <span className="path-marker">
+                {capstoneDone ? (
+                  <Check aria-hidden="true" />
+                ) : (
+                  <FlaskConical aria-hidden="true" />
+                )}
+              </span>
+              <span className="path-copy">
+                <strong>{stage.milestone.title}</strong>
+                <small>
+                  {capstoneDone
+                    ? 'Done'
+                    : `Final project · about ${stage.capstone.hours} h`}
+                </small>
+              </span>
+            </button>
+          </li>
+        )}
+      </ol>
+    </nav>
+  );
+}
+
 export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
   const initialStage = curriculum.stages[0];
   const authoredTracks = useMemo(
@@ -738,60 +952,135 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
       ),
     [learningRoutes],
   );
+  const allUnitRefs = useMemo(() => unitRefs(learningRoutes), [learningRoutes]);
+  const searchEntries = useMemo(() => {
+    const entries: SearchEntry[] = [];
+    const add = (
+      entry: Omit<SearchEntry, 'titleText' | 'text'>,
+      extra = '',
+    ) => {
+      const titleText = entry.title.toLowerCase();
+      entries.push({
+        ...entry,
+        titleText,
+        text: `${titleText} ${extra.toLowerCase()}`,
+      });
+    };
+    const trackIds = new Set(authoredTracks.map((track) => track.id));
+    for (const route of learningRoutes) {
+      const routeLabel = `${trackIds.has(route.id) ? 'Track' : 'Stage'} ${route.index} ${route.title}`;
+      for (const section of route.sections) {
+        const sectionContext = `${routeLabel} · ${section.title}`;
+        const units = section.units ?? [];
+        const unitForTopic = new globalThis.Map<string, Unit>();
+        for (const unit of units)
+          for (const topicId of unit.topics)
+            if (!unitForTopic.has(topicId)) unitForTopic.set(topicId, unit);
+        const topicTitle = new globalThis.Map(
+          section.topics.map((topic) => [topic.id, topic.title]),
+        );
+
+        add({
+          id: `section:${route.id}/${section.id}`,
+          kind: 'section',
+          title: section.title,
+          context: routeLabel,
+          target: { routeId: route.id, sectionId: section.id },
+        });
+        for (const unit of units)
+          add(
+            {
+              id: unitKey(route.id, section.id, unit.id),
+              kind: 'unit',
+              title: unit.title,
+              context: `Unit ${unitLabel(section, unit)} · ${sectionContext}`,
+              target: {
+                routeId: route.id,
+                sectionId: section.id,
+                unitId: unit.id,
+              },
+            },
+            unit.topics.map((topicId) => topicTitle.get(topicId)).join(' '),
+          );
+        if (section.miniProject)
+          add({
+            id: miniKey(route.id, section.id),
+            kind: 'project',
+            title: section.miniProject.title,
+            context: `Mini-project · ${sectionContext}`,
+            target: {
+              routeId: route.id,
+              sectionId: section.id,
+              anchor: `mini-${section.id}`,
+            },
+          });
+        for (const topic of section.topics) {
+          const unit = unitForTopic.get(topic.id);
+          add({
+            id: `topic:${route.id}/${section.id}/${topic.id}`,
+            kind: 'topic',
+            title: topic.title,
+            context: unit
+              ? `In unit ${unitLabel(section, unit)} ${unit.title} · ${routeLabel}`
+              : sectionContext,
+            target: unit
+              ? { routeId: route.id, sectionId: section.id, unitId: unit.id }
+              : {
+                  routeId: route.id,
+                  sectionId: section.id,
+                  anchor: `topic-${section.id}-${topic.id}`,
+                },
+          });
+        }
+        for (const resource of section.resources)
+          add(
+            {
+              id: `resource:${route.id}/${section.id}/${resource.id}`,
+              kind: 'resource',
+              title: resource.name,
+              context: `${resource.provider} · ${sectionContext}`,
+              target: {
+                routeId: route.id,
+                sectionId: section.id,
+                anchor: `res-${section.id}-${resource.id}`,
+              },
+            },
+            resource.provider,
+          );
+      }
+      add({
+        id: `milestone:${route.id}`,
+        kind: 'project',
+        title: route.milestone.title,
+        context: `Final project · ${routeLabel}`,
+        target: { routeId: route.id, anchor: 'milestone' },
+      });
+    }
+    return entries;
+  }, [authoredTracks, learningRoutes]);
+
   const [selectedStageId, setSelectedStageId] = useState(initialStage.id);
   const [selectedSectionId, setSelectedSectionId] = useState(
     initialStage.sections[0].id,
   );
   const [activeView, setActiveView] = useState('route');
-  const [query, setQuery] = useState('');
   const [progress, setProgress] = useState<ProgressState>({});
+  const [lastUnitKey, setLastUnitKey] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [expandedUnits, setExpandedUnits] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [backupMessage, setBackupMessage] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
 
   const stage =
     learningRoutes.find((entry) => entry.id === selectedStageId) ??
     initialStage;
   const isTrack = authoredTracks.some((entry) => entry.id === stage.id);
-
-  useEffect(() => {
-    const hydrationTask = window.setTimeout(() => {
-      try {
-        const saved = window.localStorage.getItem(storageKey);
-        if (saved)
-          setProgress(sanitizeProgress(JSON.parse(saved), validTopicKeys));
-      } catch {
-        // A corrupt local value should never block the guide itself.
-      } finally {
-        setHydrated(true);
-      }
-    }, 0);
-    return () => window.clearTimeout(hydrationTask);
-  }, [validTopicKeys]);
-
-  // A link to #unit-<id> opens that unit, so a card can be shared or bookmarked.
-  useEffect(() => {
-    const match = /^#unit-(.+)$/.exec(window.location.hash);
-    if (!match) return;
-    const unitId = decodeURIComponent(match[1]);
-    for (const route of learningRoutes) {
-      const section = route.sections.find((entry) =>
-        entry.units?.some((unit) => unit.id === unitId),
-      );
-      if (!section) continue;
-      const task = window.setTimeout(() => {
-        setSelectedStageId(route.id);
-        setSelectedSectionId(section.id);
-        setExpandedUnits((previous) =>
-          new Set(previous).add(unitKey(route.id, section.id, unitId)),
-        );
-        scrollToUnit(unitId);
-      }, 0);
-      return () => window.clearTimeout(task);
-    }
-  }, [learningRoutes]);
+  const selectedSection =
+    stage.sections.find((section) => section.id === selectedSectionId) ??
+    stage.sections[0];
 
   useEffect(() => {
     if (!hydrated) return;
@@ -801,6 +1090,27 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
       // Progress remains usable for this session when storage is unavailable.
     }
   }, [progress, hydrated]);
+
+  // Keep the address bar and the saved place on the open section, unless the
+  // address already names a unit in it.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(
+        placeStorageKey,
+        JSON.stringify({ routeId: stage.id, sectionId: selectedSection.id }),
+      );
+    } catch {
+      // The place is only a convenience.
+    }
+    const { unitId } = parseHash(window.location.hash);
+    const unitIsHere = selectedSection.units?.some(
+      (unit) => unit.id === unitId,
+    );
+    const hash = `#/${stage.id}/${selectedSection.id}`;
+    if (!unitIsHere && window.location.hash !== hash)
+      window.history.replaceState(null, '', hash);
+  }, [hydrated, stage.id, selectedSection]);
 
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
@@ -819,7 +1129,6 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
       }
 
       event.preventDefault();
-      setActiveView('route');
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     }
@@ -828,46 +1137,24 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
     return () => window.removeEventListener('keydown', focusSearch);
   }, []);
 
-  const selectedSection =
-    stage.sections.find((section) => section.id === selectedSectionId) ??
-    stage.sections[0];
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleTopics = normalizedQuery
-    ? selectedSection.topics.filter((topic) =>
-        topic.title.toLowerCase().includes(normalizedQuery),
-      )
-    : selectedSection.topics;
-
   const stageUsesUnits = routeHasUnits(stage);
   const sectionUnits = selectedSection.units ?? [];
-  const visibleUnits = normalizedQuery
-    ? sectionUnits.filter(
-        (unit) =>
-          unit.title.toLowerCase().includes(normalizedQuery) ||
-          unit.topics.some((topicId) =>
-            selectedSection.topics
-              .find((topic) => topic.id === topicId)
-              ?.title.toLowerCase()
-              .includes(normalizedQuery),
-          ),
-      )
-    : sectionUnits;
   const sectionHours = sectionUnits.reduce((sum, unit) => sum + unit.hours, 0);
-  const stageUnits = stage.sections.flatMap((section) =>
-    (section.units ?? []).map((unit) => ({ section, unit })),
+  const stageUnitRefs = allUnitRefs.filter((ref) => ref.route.id === stage.id);
+  const stageHours = stageUnitRefs.reduce(
+    (sum, { unit }) => sum + unit.hours,
+    0,
   );
-  const stageHours = stageUnits.reduce((sum, { unit }) => sum + unit.hours, 0);
-  const nextUnit = stageUnits.find(
-    ({ section, unit }) =>
-      !progressFor(progress, unitKey(stage.id, section.id, unit.id)).passed,
-  );
+  const nextUnit = pickNextUnit(stageUnitRefs, lastUnitKey, progress);
+  const continueUnit = hydrated
+    ? pickNextUnit(allUnitRefs, lastUnitKey, progress)
+    : undefined;
 
   const totalTopics = stage.sections.reduce(
     (total, section) => total + section.topics.length,
     0,
   );
-  const progressTotal = stageUsesUnits ? stageUnits.length : totalTopics;
+  const progressTotal = stageUsesUnits ? stageUnitRefs.length : totalTopics;
   const requiredTopics = stage.sections.reduce(
     (total, section) =>
       total +
@@ -875,7 +1162,17 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
     0,
   );
 
+  function rememberUnit(key: string) {
+    setLastUnitKey(key);
+    try {
+      window.localStorage.setItem(lastUnitStorageKey, key);
+    } catch {
+      // Continue falls back to the first unit not yet passed.
+    }
+  }
+
   function updateProgress(key: string, step: ProgressStep, checked: boolean) {
+    if (key.startsWith('unit:')) rememberUnit(key);
     setProgress((previous) => {
       const next = { ...progressFor(previous, key), [step]: checked };
 
@@ -907,27 +1204,62 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
     });
   }
 
-  function toggleUnit(key: string) {
+  function toggleUnit(key: string, unitId: string) {
+    const opening = !expandedUnits.has(key);
     setExpandedUnits((previous) => {
       const next = new Set(previous);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+    if (opening) {
+      rememberUnit(key);
+      window.history.replaceState(null, '', `#unit-${unitId}`);
+    }
+  }
+
+  // Select a route and section without scrolling, keeping the guided view.
+  function goTo(routeId: string, sectionId?: string) {
+    const route = learningRoutes.find((entry) => entry.id === routeId);
+    if (!route) return false;
+    const section =
+      route.sections.find((entry) => entry.id === sectionId) ??
+      route.sections[0];
+    setSelectedStageId(route.id);
+    setSelectedSectionId(section.id);
+    setActiveView('route');
+    return true;
   }
 
   function openUnit(routeId: string, sectionId: string, unitId: string) {
-    const route = learningRoutes.find((entry) => entry.id === routeId);
-    const section = route?.sections.find((entry) => entry.id === sectionId);
-    if (!route || !section) return;
-    setSelectedStageId(route.id);
-    setSelectedSectionId(section.id);
-    setQuery('');
-    setActiveView('route');
-    setExpandedUnits((previous) =>
-      new Set(previous).add(unitKey(route.id, section.id, unitId)),
-    );
+    if (!goTo(routeId, sectionId)) return;
+    const key = unitKey(routeId, sectionId, unitId);
+    setExpandedUnits((previous) => new Set(previous).add(key));
+    rememberUnit(key);
+    window.history.replaceState(null, '', `#unit-${unitId}`);
     scrollToUnit(unitId);
+  }
+
+  function applyHash(hash: string) {
+    const { unitId, routeId, sectionId } = parseHash(hash);
+    if (unitId) {
+      const ref = allUnitRefs.find((entry) => entry.unit.id === unitId);
+      if (!ref) return false;
+      openUnit(ref.route.id, ref.section.id, unitId);
+      return true;
+    }
+    return routeId ? goTo(routeId, sectionId) : false;
+  }
+
+  function goToSearchHit(entry: SearchEntry) {
+    const { routeId, sectionId, unitId, anchor } = entry.target;
+    if (unitId && sectionId) {
+      openUnit(routeId, sectionId, unitId);
+      return;
+    }
+    if (!goTo(routeId, sectionId)) return;
+    if (anchor) revealAnchor(anchor);
+    else revealAnchor('section-title', 'start');
   }
 
   function followLink(link: Unit['next'][number]) {
@@ -940,25 +1272,117 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
   }
 
   function selectStage(stageId: string) {
-    const nextStage = learningRoutes.find((entry) => entry.id === stageId);
-    if (!nextStage) return;
-    setSelectedStageId(nextStage.id);
-    setSelectedSectionId(nextStage.sections[0].id);
-    setQuery('');
-    setActiveView('route');
+    if (!goTo(stageId)) return;
     window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
   }
 
   function selectSection(sectionId: string) {
     setSelectedSectionId(sectionId);
-    setQuery('');
-    window.setTimeout(() => {
-      document.getElementById('section-title')?.scrollIntoView({
-        behavior: preferredScrollBehavior(),
-        block: 'start',
-      });
-    }, 0);
+    revealAnchor('section-title', 'start');
   }
+
+  function exportProgress() {
+    const payload = {
+      app: 'ai-atlas',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      progress,
+      lastUnit: lastUnitKey,
+    };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json',
+      }),
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ai-atlas-progress-${payload.exportedAt.slice(0, 10)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    const count = Object.keys(progress).length;
+    setBackupMessage(
+      `Saved ${count} ${count === 1 ? 'entry' : 'entries'} to a file.`,
+    );
+  }
+
+  async function restoreProgress(file: File) {
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const record =
+        parsed && typeof parsed === 'object'
+          ? (parsed as Record<string, unknown>)
+          : {};
+      const restored = sanitizeProgress(
+        'progress' in record ? record.progress : parsed,
+        validTopicKeys,
+      );
+      const count = Object.keys(restored).length;
+      if (!count) {
+        setBackupMessage('That file has no AI Atlas progress in it.');
+        return;
+      }
+      if (
+        !window.confirm(
+          `Replace the progress in this browser with the ${count} entries in this file?`,
+        )
+      )
+        return;
+      setProgress(restored);
+      if (
+        typeof record.lastUnit === 'string' &&
+        validTopicKeys.has(record.lastUnit)
+      )
+        rememberUnit(record.lastUnit);
+      setBackupMessage(
+        `Restored ${count} ${count === 1 ? 'entry' : 'entries'}.`,
+      );
+    } catch {
+      setBackupMessage('That file could not be read as AI Atlas progress.');
+    }
+  }
+
+  // Restore progress, then the place: a link in the address bar wins over
+  // the place saved from the last visit.
+  const restoreSession = useEffectEvent(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved)
+        setProgress(sanitizeProgress(JSON.parse(saved), validTopicKeys));
+      const lastUnit = window.localStorage.getItem(lastUnitStorageKey);
+      if (lastUnit && validTopicKeys.has(lastUnit)) setLastUnitKey(lastUnit);
+    } catch {
+      // A corrupt local value should never block the guide itself.
+    }
+    if (!applyHash(window.location.hash)) {
+      try {
+        const place: unknown = JSON.parse(
+          window.localStorage.getItem(placeStorageKey) ?? 'null',
+        );
+        if (place && typeof place === 'object') {
+          const { routeId, sectionId } = place as Record<string, unknown>;
+          if (typeof routeId === 'string')
+            goTo(routeId, typeof sectionId === 'string' ? sectionId : undefined);
+        }
+      } catch {
+        // Start from the first stage.
+      }
+    }
+    setHydrated(true);
+  });
+  const followHash = useEffectEvent(() => {
+    applyHash(window.location.hash);
+  });
+
+  useEffect(() => {
+    const hydrationTask = window.setTimeout(() => restoreSession(), 0);
+    return () => window.clearTimeout(hydrationTask);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => followHash();
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const passedCount = countProgress(stage, progress, 'passed');
   const routeIds = new Set(learningRoutes.map((route) => route.id));
@@ -969,42 +1393,52 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
         <a
           className="brand"
           href="#top"
-          aria-label="ML/AI Field Guide home"
-          onClick={() => selectStage(initialStage.id)}
+          aria-label="AI Atlas home"
+          onClick={(event) => {
+            event.preventDefault();
+            selectStage(initialStage.id);
+          }}
         >
           <span className="brand-mark">
             <Route aria-hidden="true" />
           </span>
           <span>
-            <strong>ML/AI Field Guide</strong>
-            <small>Roadmap companion</small>
+            <strong>AI Atlas</strong>
+            <small>Study route for ML and AI</small>
           </span>
         </a>
 
-        <label className="global-search">
-          <Search aria-hidden="true" />
-          <span className="sr-only">Search the selected section</span>
-          <input
-            ref={searchInputRef}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onFocus={() => setActiveView('route')}
-            placeholder={`Search ${selectedSection.title}`}
-            aria-keyshortcuts="/"
-          />
-          <kbd>/</kbd>
-        </label>
+        <GlobalSearch
+          entries={searchEntries}
+          onSelect={goToSearchHit}
+          inputRef={searchInputRef}
+        />
 
-        <div className="review-status">
-          <span className="status-dot" aria-hidden="true" />
-          <span>
-            <strong>
-              {curriculum.stages.length} stages · {authoredTracks.length}{' '}
-              {authoredTracks.length === 1 ? 'track' : 'tracks'}
-            </strong>{' '}
-            fully mapped
-          </span>
+        <div className="topbar-actions">
+          <ThemeToggle />
+          {continueUnit && (
+            <button
+              type="button"
+              className="continue-button"
+              onClick={() =>
+                openUnit(
+                  continueUnit.route.id,
+                  continueUnit.section.id,
+                  continueUnit.unit.id,
+                )
+              }
+              title={`Continue: ${continueUnit.unit.title}`}
+            >
+              <Play aria-hidden="true" />
+              <span>
+                <small>
+                  Continue · {continueUnit.route.index}{' '}
+                  {continueUnit.route.title}
+                </small>
+                <strong>{continueUnit.unit.title}</strong>
+              </span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -1054,13 +1488,11 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     type="button"
                     disabled={!isAuthored}
                     className={isCurrent ? 'current' : undefined}
+                    aria-current={isCurrent ? 'page' : undefined}
                     onClick={() => selectStage(mapStage.id)}
                   >
                     <span>{mapStage.index}</span>
                     <strong>{mapStage.title}</strong>
-                    <small>
-                      {isCurrent ? 'Open' : isAuthored ? 'Ready' : 'Planned'}
-                    </small>
                   </button>
                 );
               })}
@@ -1071,7 +1503,11 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
             <div className="stage-number">{stage.index}</div>
             <div className="stage-copy">
               <span className="eyebrow">
-                {isTrack ? 'Advanced track' : `${stage.level} · Core route`}
+                {isTrack
+                  ? 'Advanced track'
+                  : stage.level.toLowerCase() === 'core'
+                    ? 'Core route'
+                    : `${stage.level} · Core route`}
               </span>
               <h1 id="stage-title">{stage.title}</h1>
               <p>{stage.summary}</p>
@@ -1082,7 +1518,8 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                 </span>
                 {stageUsesUnits && (
                   <span>
-                    {stageUnits.length} study units · about {stageHours} hours
+                    {stageUnitRefs.length} study units · about {stageHours}{' '}
+                    hours
                   </span>
                 )}
                 <span>{requiredTopics} required topics</span>
@@ -1103,13 +1540,11 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   <Play aria-hidden="true" />
                   {nextUnit ? (
                     <span>
-                      <small>Next up</small>
-                      <strong>
-                        {nextUnit.section.index}.
-                        {(nextUnit.section.units ?? []).indexOf(nextUnit.unit) +
-                          1}{' '}
-                        {nextUnit.unit.title}
-                      </strong>
+                      <small>
+                        Next up · unit{' '}
+                        {unitLabel(nextUnit.section, nextUnit.unit)}
+                      </small>
+                      <strong>{nextUnit.unit.title}</strong>
                     </span>
                   ) : (
                     <span>
@@ -1141,7 +1576,43 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   </span>
                 ))}
               </div>
+              <div className="progress-backup">
+                <span>Saved in this browser only.</span>
+                <button type="button" onClick={exportProgress}>
+                  <Download aria-hidden="true" /> Back up
+                </button>
+                <button
+                  type="button"
+                  onClick={() => restoreInputRef.current?.click()}
+                >
+                  <Upload aria-hidden="true" /> Restore
+                </button>
+                <input
+                  ref={restoreInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  hidden
+                  aria-label="Progress file to restore"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) void restoreProgress(file);
+                  }}
+                />
+              </div>
+              <output className="backup-message">{backupMessage}</output>
             </div>
+            {stageUsesUnits && (
+              <ProjectPath
+                stage={stage}
+                progress={progress}
+                onSection={(sectionId) => {
+                  goTo(stage.id, sectionId);
+                  revealAnchor(`mini-${sectionId}`, 'start');
+                }}
+                onCapstone={() => revealAnchor('milestone', 'start')}
+              />
+            )}
           </section>
 
           <div className="stage-workbench">
@@ -1230,9 +1701,8 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     <div>
                       <p className="rail-label">Study units, in order</p>
                       <p>
-                        {visibleUnits.length} of {sectionUnits.length} units ·
-                        about {sectionHours} hours · covers{' '}
-                        {selectedSection.topics.length} topics
+                        {sectionUnits.length} units · about {sectionHours}{' '}
+                        hours · covers {selectedSection.topics.length} topics
                       </p>
                     </div>
                     <div className="progress-column-labels" aria-hidden="true">
@@ -1250,7 +1720,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   </p>
 
                   <ol className="unit-list">
-                    {visibleUnits.map((unit) => {
+                    {sectionUnits.map((unit, index) => {
                       const key = unitKey(
                         stage.id,
                         selectedSection.id,
@@ -1260,14 +1730,14 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                         <UnitCard
                           key={unit.id}
                           unit={unit}
-                          number={sectionUnits.indexOf(unit) + 1}
+                          number={index + 1}
                           section={selectedSection}
                           progress={progressFor(progress, key)}
                           onStep={(step, checked) =>
                             updateProgress(key, step, checked)
                           }
                           expanded={expandedUnits.has(key)}
-                          onToggle={() => toggleUnit(key)}
+                          onToggle={() => toggleUnit(key, unit.id)}
                           onFollow={followLink}
                           canFollow={(link) =>
                             link.unit
@@ -1279,15 +1749,9 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     })}
                   </ol>
 
-                  {visibleUnits.length === 0 && (
-                    <div className="empty-search">
-                      <Search aria-hidden="true" />
-                      <p>No unit or topic matches “{query}” in this section.</p>
-                    </div>
-                  )}
-
                   {selectedSection.miniProject && (
                     <MiniProjectCard
+                      sectionId={selectedSection.id}
                       mini={selectedSection.miniProject}
                       units={sectionUnits}
                       done={
@@ -1307,10 +1771,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   <div className="topics-header">
                     <div>
                       <p className="rail-label">Learn this much</p>
-                      <p>
-                        {visibleTopics.length} of{' '}
-                        {selectedSection.topics.length} topics shown
-                      </p>
+                      <p>{selectedSection.topics.length} topics</p>
                     </div>
                     <div className="progress-column-labels" aria-hidden="true">
                       <span>Learn</span>
@@ -1320,20 +1781,18 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   </div>
 
                   <ol className="topic-list">
-                    {visibleTopics.map((topic) => {
+                    {selectedSection.topics.map((topic, index) => {
                       const key = topicKey(selectedSection.id, topic.id);
-                      const topicProgress = progressFor(progress, key);
                       return (
                         <li
                           key={topic.id}
+                          id={`topic-${selectedSection.id}-${topic.id}`}
                           className={
                             topic.scope === 'later' ? 'deferred' : undefined
                           }
                         >
                           <span className="topic-number">
-                            {(selectedSection.topics.indexOf(topic) + 1)
-                              .toString()
-                              .padStart(2, '0')}
+                            {(index + 1).toString().padStart(2, '0')}
                           </span>
                           <div className="topic-copy">
                             <span>{topic.title}</span>
@@ -1342,33 +1801,17 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                               {scopeLabels[topic.scope as Scope]}
                             </small>
                           </div>
-                          <div className="topic-checks">
-                            {progressLabels.map(({ key: step, label }) => (
-                              <label key={step} title={label}>
-                                <span className="sr-only">
-                                  {label}: {topic.title}
-                                </span>
-                                <Checkbox
-                                  checked={topicProgress[step]}
-                                  onCheckedChange={(checked) =>
-                                    updateProgress(key, step, checked)
-                                  }
-                                  aria-label={`${label}: ${topic.title}`}
-                                />
-                              </label>
-                            ))}
-                          </div>
+                          <ProgressChecks
+                            label={topic.title}
+                            value={progressFor(progress, key)}
+                            onChange={(step, checked) =>
+                              updateProgress(key, step, checked)
+                            }
+                          />
                         </li>
                       );
                     })}
                   </ol>
-
-                  {visibleTopics.length === 0 && (
-                    <div className="empty-search">
-                      <Search aria-hidden="true" />
-                      <p>No topic matches “{query}” in this section.</p>
-                    </div>
-                  )}
                 </>
               )}
 
@@ -1418,6 +1861,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   resource.url ? (
                     <a
                       key={resource.id}
+                      id={`res-${selectedSection.id}-${resource.id}`}
                       className="resource-card"
                       href={resource.url}
                       target="_blank"
@@ -1428,6 +1872,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   ) : (
                     <article
                       key={resource.id}
+                      id={`res-${selectedSection.id}-${resource.id}`}
                       className="resource-card local-resource"
                     >
                       <ResourceCardBody resource={resource} />
@@ -1438,7 +1883,11 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
             </aside>
           </div>
 
-          <section className="milestone" aria-labelledby="milestone-title">
+          <section
+            className="milestone"
+            id="milestone"
+            aria-labelledby="milestone-title"
+          >
             <div className="milestone-icon">
               <FlaskConical aria-hidden="true" />
             </div>
@@ -1597,9 +2046,18 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
       <footer>
         <BookOpen aria-hidden="true" />
         <span>
-          Local-first progress · curriculum source lives beside the roadmap
+          Progress is saved in this browser only. Back it up from the progress
+          panel. ·{' '}
+          <a
+            href="https://github.com/saisandeshk/ai-atlas"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Source on GitHub
+          </a>
         </span>
       </footer>
+      <PalettePreview />
     </main>
   );
 }
