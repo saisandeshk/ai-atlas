@@ -30,7 +30,7 @@ Each section must contain:
 
 See [`content/AUTHORING.md`](content/AUTHORING.md) for the rules that keep later stages consistent.
 
-Study units live beside the curriculum in [`content/units`](content/units): one file per section, plus a mini-project file per section and a `_route.json` capstone rubric. The build merges them into the site and the reading copies, and `content:check` validates them. The pytest lab that checks the Stage 07 mini-projects lives in [`labs/llm-foundations`](labs/llm-foundations).
+Study units live beside the curriculum in [`content/units`](content/units): one file per section, plus a mini-project file per section and a `_route.json` capstone rubric. The build merges them into the site and the reading copies, and `content:check` validates them. Atlas labs are deferred: the Stage 07 pytest lab in [`labs/llm-foundations`](labs/llm-foundations) is kept for later work, and the site does not link it.
 
 ## Work locally
 
