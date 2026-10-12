@@ -15,47 +15,83 @@
         "cached-keys-and-values-versus-token-specific-queries"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why cached keys and values remove repeated projection and attention work while queries stay token-specific.",
+        "Derive naive versus cached attention work across generated tokens and name the terms that remain.",
+        "Compute the repeated-prefix share for a generation length from the triangular sum."
       ],
-      "why": "TODO",
+      "why": "Serial generation reprocesses its own prefix at every step, so cost grows faster than length. The cache is the one idea that removes that repeated work, and every later unit builds on it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/kv-cache-prefill-decode/build-kv-cache",
+          "note": "Build the cache you just motivated."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/prefill-vs-decode",
+          "note": "See how the two phases stress hardware differently."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modern-llm-cache-inference",
+          "title": "Modern LLM Notebook 21: why generation is slow",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb",
+          "locator": "Section 1 (naive_generation_cost table for 10 to 2000 tokens with 99.8 percent repeated work at 1000 tokens, plus the O(N squared) versus O(N) plot)"
+        },
+        {
+          "resource": "raschka-kv-gqa",
+          "title": "Raschka ch04/03_kv-cache README: how it works",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/README.md",
+          "locator": "How it works (Time flies then Time flies fast figures with identical keys and values for the first two tokens) and KV cache advantages and disadvantages (per-step work O(n squared) versus O(n), memory grows linearly)"
+        },
+        {
+          "resource": "modern-llm-cache-inference",
+          "title": "Modern LLM Notebook 21 Section 2: KV cache saves K and V only",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb",
+          "locator": "Section 2 through the AttentionWithKVCache class and the 5-token equivalence check (max diff 2e, cache shapes [1,4,1,8] growing to [1,4,5,8])"
         }
       ],
       "focus": [
-        "TODO"
+        "Each new token depends on all past tokens, so naive generation reruns the full prefix. The triangular sum 1 to n is the proxy for that repeated work.",
+        "Past tokens never change, so their K and V projections stay valid. The new token still needs a fresh Q to score against cached K.",
+        "The cache removes K and V recomputation and past hidden-state work. It does not remove the new Q projection or the read of cached K and V.",
+        "Cached and uncached runs compute the same function. Identical outputs are the correctness check, not a coincidence."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the triangular naive cost n(n+1)/2 for n tokens, the cached per-step new-token cost, and the 99.8 percent repeated-work share at n equal to 1000.",
       "traps": [
-        "TODO"
+        "Thinking the cache skips attention. It skips recomputing past K and V, but each step still reads the full cache to score the new query.",
+        "Caching the query. Queries are token-specific, so caching them across steps is wrong; only K and V persist.",
+        "Reading speedup from multiply counts as GPU time. Counts prove the scaling change; wall time needs warmup and synchronization, which belong to the measurement unit."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why are K and V reusable across steps but Q is not?",
+          "a": "Past tokens never change, so their K and V projections stay valid. The new token needs a fresh Q to score against the cached K, so Q work remains each step."
+        },
+        {
+          "q": "Under the triangular proxy, what share of work is repeated prefix processing when generating 1000 tokens?",
+          "a": "99.8 percent. Total proxy cost is 500500, new-token work is 1000, so 499500 of 500500 is avoidable recomputation."
+        },
+        {
+          "q": "microkv.py asserts the cached and uncached token lists are identical. Does the cache change the sampling distribution?",
+          "a": "No. It is exact memoization of the same math, so any mismatch is a bug in positions, masking or stale state, not sampling noise."
+        },
+        {
+          "q": "In the Modern 21 demo with d_model 32 and 4 heads, what is the K cache shape at step 5 and what does each dim mean?",
+          "a": "[1,4,5,8]: batch 1, 4 heads, 5 cached tokens, head dim 8. Step i holds i tokens and each step computes K and V for 1 new token only."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "No Magic microkv.py: no-cache versus cached multiply comparison",
+          "url": "https://github.com/no-magic-ai/no-magic/blob/main/03-systems/microkv.py",
+          "locator": "generate_no_cache versus generate_with_cache with GEN_LEN 16, the assert that both token lists match, the per-step multiply table and the linear memory-growth table",
+          "note": "CPU multiply counts only. Do not present wall time as GPU or serving evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the triangular share by hand and your microkv.py run shows identical tokens with per-step multiplies falling from growing to flat.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Modern 21 Sections 1 and 2 plus the Raschka README cover naive cost and cached queries at explain and derive depth, and microkv.py gives counted practice."
       }
     },
     {
@@ -72,47 +108,84 @@
         "mha-mqa-and-gqa-kv-head-mapping"
       ],
       "outcomes": [
-        "TODO"
+        "Implement per-layer KV allocation, append and single-token cached decode with absolute position offsets for the tiny transformer.",
+        "Explain MHA, MQA and GQA head mappings and the repeat_interleave rule for shared KV heads.",
+        "Explain KV tensor shapes and why each layer owns its cache for its own sequence."
       ],
-      "why": "TODO",
+      "why": "A cache that shares layers, mixes sequences or misplaces positions returns fluent garbage with matching shapes. Ownership, layout and offsets are what make it correct.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/kv-cache-prefill-decode/prove-cache-correct",
+          "note": "Prove the cache matches full-prefix logits."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/kv-memory-arithmetic",
+          "note": "Size the cache you built across dtypes and head schemes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "raschka-kv-gqa",
+          "title": "Raschka gpt_with_kv_cache.py: per-layer cache with positions",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py",
+          "locator": "MultiHeadAttention (cache_k and cache_v buffers, use_cache append by torch.cat on dim 1, ptr_current_pos mask slice, reset_cache), GPTModel (current_pos with pos_ids arange, ModuleList loop, reset_kv_cache) and generate_text_simple_cached (full-prompt prefill then single-token loop)"
+        },
+        {
+          "resource": "raschka-kv-gqa",
+          "title": "Raschka ch04/04_gqa: GQA head mapping and memory",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/04_gqa/gpt_with_kv_gqa.py",
+          "locator": "GroupedQueryAttention (num_kv_groups with group_size, K and V cache on dim 2, repeat_interleave mapping with the repeat versus repeat_interleave comment, q_positions versus k_positions mask) plus the README bytes formula with n_kv_heads and the 4096/32/32/32768 example"
+        },
+        {
+          "resource": "modern-llm-cache-inference",
+          "title": "Modern LLM Notebook 21 Sections 2 and 4: shapes and head sharing",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb",
+          "locator": "Section 2 shape evolution ([batch, num_heads, cached_seq_len, d_k] from [1,4,1,8] to [1,4,5,8]) and Section 4 MHA/MQA/GQA (32 Q heads with 32, 8 and 1 KV heads at 8K, the 8 Q with 2 KV repeat_interleave demo, savings ratio 32/8 = 4x)",
+          "depth": "Skip Sections 5 to 8 and 10 (quantization, GGUF, PagedAttention, FlashAttention, batching) until their own units."
         }
       ],
       "focus": [
-        "TODO"
+        "Each layer owns its K and V tensors and each batch row owns its positions. Sharing a cache across layers or sequences mixes unrelated spaces.",
+        "Append grows the sequence dim by the new chunk only. Prefill appends the whole prompt at once, decode appends one token per step.",
+        "Positions are absolute. pos_ids and the mask pointer advance by the chunk length, so decode step k uses position current_pos plus k.",
+        "GQA stores fewer KV heads and expands them with repeat_interleave. With 8 Q heads and 2 KV heads, heads 0 to 3 share KV head 0."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write the cache-owning attention forward from scratch: buffers, append, pointer-based mask slice, absolute pos_ids, reset, and the GQA repeat_interleave mapping for 8 Q heads with 2 KV heads.",
       "traps": [
-        "TODO"
+        "Forgetting reset_kv_cache between independent generations. Stale K, V and pointers leak the old sequence into the new one.",
+        "Using repeat instead of repeat_interleave for grouped heads. Tiling maps the wrong KV head to each query group while shapes still match.",
+        "Restarting positions at 0 on every decode step. Absolute embeddings repeat and RoPE rotations reuse early angles, so logits diverge from the full prefix."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "After a 4-token prefill, the first decode step feeds 1 token. What are the Q and K lengths and which mask row applies?",
+          "a": "Q has 1 token and K has 5 (4 cached plus 1 new). The pointer is 4, so the slice is row 4 over 5 columns, which lets the new query attend to all 5 positions."
+        },
+        {
+          "q": "With 32 Q heads and 8 KV heads, which Q heads share KV head 0, and why repeat_interleave?",
+          "a": "Q heads 0 to 3 share KV head 0 in contiguous groups of 4. repeat_interleave gives [K1,K1,K2,K2], while repeat would tile as [K1,K2,K1,K2] and map the wrong heads."
+        },
+        {
+          "q": "Why must decode pos_ids use current_pos, and what breaks for RoPE if they restart at 0?",
+          "a": "Positions are absolute. Restarting at 0 reuses early embeddings and early RoPE angles for late tokens, so relative distances are wrong and logits diverge from the full prefix."
+        },
+        {
+          "q": "Two layers share one cache object to save memory. What fails?",
+          "a": "Each layer has its own projections, so its K and V live in different spaces. Sharing mixes them and equivalence fails; each layer needs its own cache just as each sequence needs its own rows."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Raschka ch04/03_kv-cache tests: cached equivalence",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py",
+          "locator": "test_gpt_model_equivalence_cached and test_gpt_model_equivalence_not_cached (30 new tokens from Hello, I am across base, cached and optimized models with torch.equal)",
+          "note": "Run against the reference files, then re-run against your own per-layer cache in your own repository."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your own cache passes both equivalence tests with torch.equal and you can state the cache shape after each step.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Raschka cache and GQA files plus Modern 21 Sections 2 and 4 cover ownership, shapes, offsets and head mapping at implement depth with equivalence tests as practice."
       }
     },
     {
@@ -129,47 +202,84 @@
         "cancellation-cleanup-truncation-forks-and-stale-cache-hazards"
       ],
       "outcomes": [
-        "TODO"
+        "Write equivalence tests comparing full-sequence logits with token-by-token cached logits across MHA and GQA, batch sizes and position offsets.",
+        "Handle variable lengths with padding masks, EOS compaction and cache cleanup without breaking equivalence.",
+        "Diagnose truncation, fork and stale-cache failures from a failing equivalence test."
       ],
-      "why": "TODO",
+      "why": "A cache that is fast but subtly wrong poisons every measurement after it. Equivalence across shapes, offsets and messy batches is what lets you trust the rest of the section.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/kv-cache-prefill-decode/kv-memory-arithmetic",
+          "note": "Derive capacity for the cases you proved."
+        },
+        {
+          "unit": "llm-foundations/kv-cache-prefill-decode/measure-ttft-itl",
+          "note": "Time prefill and decode separately once equivalence holds."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "raschka-kv-gqa",
+          "title": "Raschka tests.py and optimized cache: equivalence, chunking and overflow",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py",
+          "locator": "test_gpt_model_equivalence_cached and not_cached (30 tokens with torch.equal), test_prefill_chunking_basic (kv_window_size 4 over 10 tokens in 3 chunks, 12 total with input preserved) and test_context_overflow_bug (context_length 10 with 5 plus 10 tokens hitting the position-embedding assert)"
+        },
+        {
+          "resource": "cs336-inference-lecture",
+          "title": "CS336 Lecture 10: selective batching and paged sharing",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_10",
+          "locator": "continuous_batching (ragged lengths [3,9,5] with attention per sequence and non-attention concatenated) and paged_attention (blocks, sharing the system prompt and parallel samples, copy-on-write at block level)",
+          "depth": "Read the two functions only. Keep kernels, distributed serving and expensive performance experiments for the later tracks."
+        },
+        {
+          "resource": "jax-scaling-inference-depth",
+          "title": "JAX scaling book inference: ragged reads and the EOS loop",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Tricks section (ragged HBM reads and Paged Attention that read only the non-padding part) and The Basics (Generation repeats until EOS or a maximum length)"
         }
       ],
       "focus": [
-        "TODO"
+        "Equivalence is exact on fixed seeds. Compare full-prefix logits with step-by-step cached logits using torch.equal before trusting any timing.",
+        "Variable lengths need per-row lengths and padding masks. Reading the padded tail as real tokens breaks both equivalence and the batch.",
+        "Finished sequences need compaction: free or clear their rows, compact the batch, and stop them at EOS plus a length cap. Reused slots must be cleared first.",
+        "Truncation, forks and reuse without reset are stale-cache hazards. Chunked prefill and windowed caches must preserve order and positions."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write the equivalence harness: full-prefix versus token-by-token cached logits with torch.equal, plus the chunked-prefill case (4-token window over 10 tokens) and the position-overflow assert case.",
       "traps": [
-        "TODO"
+        "Testing equivalence on one prompt length and head count. Offset, GQA grouping and batch bugs hide until adversarial shapes and longer contexts.",
+        "Freeing a finished row without clearing it. The next request inherits old K and V and attends to another sequence, which looks like a model bug.",
+        "Truncating the cache but keeping old position ids. Tokens shift left while positions stay high, so RoPE and absolute embeddings disagree with the full prefix."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Cached and full-prefix logits differ from position 0 onward. What class of bug is it?",
+          "a": "A systematic one: wrong weights, a different prompt, a stale cache from a prior run, or a wrong mask or position base. Late-only divergence would point at windows or truncation instead."
+        },
+        {
+          "q": "With kv_window_size 4, a 10-token prompt prefills in 3 chunks and generates 2 tokens. What total length and input check must hold?",
+          "a": "12 total tokens. The first 10 must equal the input, as the chunking test asserts with shape 12 and input preservation."
+        },
+        {
+          "q": "Batch lengths are [3,9,5]. Why does CS336 run attention per sequence but concatenate to [17,H] for the MLP?",
+          "a": "MLP weights are shared, so concatenated tokens batch well. Attention KV differs per sequence, so scores must stay per sequence; padding all to 9 wastes compute."
+        },
+        {
+          "q": "A finished sequence is freed without clearing and a new request reuses the slot. What hazard and what fix?",
+          "a": "A stale-cache hazard: the new request attends to old K and V, possibly leaking another sequence. Clear or reset slots on finish, compact the batch, and test slot reuse against the full prefix."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Raschka ch04/03_kv-cache tests: chunking and overflow",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py",
+          "locator": "test_prefill_chunking_basic and test_context_overflow_bug (windowed chunking with input preservation, plus the position-embedding overflow assert)",
+          "note": "Then extend in your own repository to variable-length batches with padding masks, EOS compaction and a stale-cache reuse test. The mini-project checks the full matrix across MHA and GQA."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your harness shows torch.equal on adversarial MHA and GQA shapes with offsets, and your chunking, overflow and slot-reuse tests all pass.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Raschka chunking and overflow tests plus CS336 selective batching and JAX ragged reads cover equivalence, truncation and variable-length vocabulary, with the mini-project checking the full batch, EOS and stale matrix."
       }
     },
     {
