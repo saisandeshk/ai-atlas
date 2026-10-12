@@ -49,7 +49,7 @@ def test_rope_norm_relative_dot_and_absolute_slice(lab):
 @pytest.mark.parametrize("kv_heads", [4, 2, 1])
 @pytest.mark.parametrize("tied", [False, True])
 def test_model_parameter_count_shape_causality_batch_and_seed(lab, kv_heads, tied):
-    """Decoder is causal, batch-independent, seeded, and has contracted weights."""
+    """Interventions affect current and later logits, never earlier positions or other rows."""
     c = replace(LabConfig(), n_kv_heads=kv_heads, tie_embeddings=tied)
     model = lab.make_model(c, 19)
     d, kv = c.d_model, c.n_kv_heads * (c.d_model // c.n_heads)
@@ -67,7 +67,8 @@ def test_model_parameter_count_shape_causality_batch_and_seed(lab, kv_heads, tie
         changed[0, 4] = (changed[0, 4] + 1) % c.vocab_size
         intervention = lab.model_logits(model, changed)
         assert torch.equal(original[0, :4], intervention[0, :4]), "Future tokens must not affect earlier logits"
-        assert not torch.equal(original[0, 4:], intervention[0, 4:]), "Token intervention must change current/later logits"
+        assert not torch.equal(original[0, 4], intervention[0, 4]), "Token intervention must change logits at the edited position"
+        assert not torch.equal(original[0, 5:], intervention[0, 5:]), "Token intervention must propagate to strictly later logits, not only the edited position"
         assert torch.equal(original[1:], intervention[1:]), "Changing one batch row must not affect other rows"
         again = lab.model_logits(lab.make_model(c, 19), tokens)
         assert torch.equal(original, again), "Fixed model seed must reproduce exact CPU logits"

@@ -59,6 +59,23 @@ def test_sampling_greedy_and_exact_nucleus_boundaries(lab, temperature, k, p):
                                msg="Nucleus is the smallest set reaching p, not only tokens strictly below p")
 
 
+@pytest.mark.parametrize("batched", [False, True], ids=["vector", "batch"])
+@pytest.mark.parametrize("k,p", [(1, .1), (4, .8), (20, 1.), (None, None)])
+def test_sampling_zero_temperature_is_argmax_with_filters(lab, batched, k, p):
+    """Greedy sampling returns exact per-row argmax one-hots even with filters enabled."""
+    generator = torch.Generator().manual_seed(81)
+    logits = torch.randn(3, 11, generator=generator, dtype=torch.float64)
+    if not batched:
+        logits = logits[0]
+    expected = torch.zeros_like(logits)
+    expected.scatter_(-1, logits.argmax(-1, keepdim=True), 1.)
+    actual = lab.filter_probs(logits, 0., k, p)
+    assert actual.shape == logits.shape, "Greedy probabilities must preserve [V] or [B,V] shape"
+    assert actual.dtype == logits.dtype, "Greedy probabilities must preserve the logits dtype"
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0,
+                               msg="Temperature zero must return exact argmax one-hots regardless of top-k/top-p")
+
+
 def markov_corpus(seed, length, vocab=64):
     """Doubly stochastic transitions give known uniform stationary distribution."""
     transition = np.full((vocab, vocab), .05 / vocab)
