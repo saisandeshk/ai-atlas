@@ -249,7 +249,7 @@
           "note": "Validate dtype, shape and byte strides at the extension boundary."
         },
         {
-          "unit": "gpu",
+          "route": "gpu",
           "note": "Carry layout reasoning into kernel memory access."
         }
       ],
@@ -439,7 +439,7 @@
           "note": "Recognize invalidated-handle bugs before investigating a crash."
         },
         {
-          "unit": "algorithms",
+          "route": "algorithms",
           "note": "Choose containers from the operations an algorithm requires."
         }
       ],
@@ -619,7 +619,7 @@
     {
       "id": "native-threads-atomics",
       "title": "Threads, data races, memory ordering and atomics",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain"
       ],
@@ -627,53 +627,92 @@
         "threads-atomics"
       ],
       "outcomes": [
-        "TODO"
+        "Identify a data race and distinguish it from a race-free but incorrect sequence of atomic operations.",
+        "Explain how mutexes, atomic read-modify-write and release/acquire publication provide different guarantees.",
+        "Trace thread ownership and the lifetime of captured data through joining and detachment."
       ],
-      "why": "TODO",
+      "why": "Native threads can access the same storage without Python's protections. Atomicity, visibility and thread lifetime must be explicit before a compute loop can safely run concurrently.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/native-systems-literacy/python-native-boundaries",
+          "note": "Reason about native shared state when the GIL is released or absent."
+        },
+        {
+          "unit": "programming/concurrency-profiling-operations/synchronization-hazards",
+          "note": "Relate native synchronization to the route's broader concurrency contracts."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-cpp",
+          "title": "Threads Basics",
+          "url": "https://algomaster.io/learn/cpp/threads",
+          "locator": "What std::thread Actually Is; Four Ways to Construct a Thread; Passing Arguments: By Value, By Reference, By Move; A Word on Destroying a Live Thread",
+          "depth": "Skip overhead estimates and timed-task examples. Correct the lesson's shorthand: a completed but unjoined std::thread is still joinable, and its destructor still terminates the process."
+        },
+        {
+          "resource": "algomaster-cpp",
+          "title": "Atomic Operations",
+          "url": "https://algomaster.io/learn/cpp/atomic-operations",
+          "locator": "Why a Plain int Isn't Safe; Enter std::atomic<T>; Core Operations; Atomic vs Mutex: When to Use Which",
+          "depth": "Use the race example only to identify undefined behavior, not to predict lost updates or instruction counts. Skip CAS algorithms, lock-free reclamation, timing estimates and assembly claims. Atomics can use internal locks; an uncontended mutex need not make a system call."
+        },
+        {
+          "resource": "cppreference",
+          "title": "Memory ordering",
+          "url": "https://en.cppreference.com/w/cpp/atomic/memory_order.html#Explanation",
+          "locator": "Constants; Explanation: Relaxed ordering, Release-Acquire ordering, Sequentially-consistent ordering and Relationship with volatile",
+          "depth": "Read the C++20 rules and the publication example. Skip consume ordering and the full formal model."
+        },
+        {
+          "resource": "cpp-core-guidelines",
+          "title": "Avoid data races",
+          "url": "https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#rconc-races",
+          "locator": "CP.2: Avoid data races, including concurrent mutation of the same buffer"
         }
       ],
       "focus": [
-        "TODO"
+        "Conflicting accesses in different threads, at least one non-atomic and with no happens-before ordering, can form a data race. A data race is undefined behavior, not a promise of a particular wrong count.",
+        "Atomic load followed by atomic store is not one atomic increment. Use fetch_add for that operation; use a mutex to protect a multi-field invariant.",
+        "Relaxed atomic operations preserve atomicity and per-object modification order, not publication of unrelated data. A release store read by an acquire load can publish preceding writes.",
+        "join waits for completion and establishes synchronization with that completion. Detachment removes the join handle; it does not extend the lifetime of referenced objects."
       ],
-      "reproduce": "TODO",
+      "reproduce": "With g++ 15.2 -std=c++20 -O0 -g -pthread, start two threads, each performing 1,000 fetch_add(1, memory_order_relaxed) operations on atomic<int>{0}; join both and check the final count is 2,000. Explain why joining makes the final read appropriate even with relaxed increments. Separately initialize int payload = 0 and atomic<bool> ready{false}; one writer sets payload = 42 then stores ready = true with release, and one reader spins on an acquire load until true before reading payload. Check it reads 42, and draw the synchronizes-with and happens-before chain. Keep it a one-shot protocol with one writer. Do not run a relaxed-flag version to infer a result: the unprotected payload access would have undefined behavior and no particular output is guaranteed.",
       "traps": [
-        "TODO"
+        "volatile is not inter-thread synchronization and does not turn ++ into an atomic operation.",
+        "Separate atomic fields do not automatically preserve a relationship between those fields.",
+        "Sleep is not a substitute for join or publication. Elapsed time establishes no happens-before relationship."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Two threads use counter.store(counter.load() + 1). Is that equivalent to fetch_add(1)?",
+          "a": "No. The load and store are separate atomic operations, so both threads can read the same old value and overwrite each other's update. This is a logical race without a data race on the atomic itself."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "When does an acquire load publish the writer's earlier payload writes to the reader?",
+          "a": "When it reads the value from the corresponding release operation, or an applicable release sequence. Merely choosing acquire is not enough."
+        },
+        {
+          "q": "The worker has returned, but its std::thread has not been joined or detached. Can you destroy that thread object?",
+          "a": "Its destructor calls std::terminate because it is still joinable. Completion alone does not clear joinability."
+        },
+        {
+          "q": "Why not use relaxed publication for a non-atomic payload?",
+          "a": "The relaxed flag does not order the payload write before the reader's access. Without another synchronization edge, the conflicting accesses form a data race."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: audit native shared state and thread ownership, and verify a small atomic counter and one-shot publication path before allowing concurrent calls.",
+      "stopWhen": "You reproduce the counter and one-shot publication checks, draw the payload's happens-before chain, and distinguish data races from incorrect but atomic update sequences.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool covers thread ownership, data races and memory ordering at literacy depth; source timing and joinability overstatements are excluded, and mini-project review supplies practice."
       }
     },
     {
       "id": "python-native-boundaries",
       "title": "Python and native code: dtype, stride, ownership and GIL contracts",
-      "hours": 3,
+      "hours": 5,
       "target": [
         "explain"
       ],
@@ -681,53 +720,104 @@
         "python-native-boundary"
       ],
       "outcomes": [
-        "TODO"
+        "Explain a native function's dtype, byte order, rank, shape, stride and alignment requirements.",
+        "Distinguish copying input or output from borrowing storage, and identify which object keeps borrowed storage alive.",
+        "Explain exception translation and which parts of a call may run without the GIL on default CPython."
       ],
-      "why": "TODO",
+      "why": "An array's Python type does not specify its memory contract. The extension must agree with Python about representation, lifetime and errors before it can safely compute on raw storage.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/native-systems-literacy/cmake-builds",
+          "note": "Build and test the binding against the intended interpreter."
+        },
+        {
+          "route": "inference",
+          "note": "Carry explicit buffer contracts into runtime integration."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pybind11",
+          "title": "First steps",
+          "url": "https://pybind11.readthedocs.io/en/stable/basics.html",
+          "locator": "Header and namespace conventions; Creating bindings for a simple function; Compiling the test cases; Keyword arguments",
+          "depth": "Use pybind11 3.1 and your Python 3.14 development headers; skip exporting variables and unrelated C++11 syntax repair."
+        },
+        {
+          "resource": "pybind11",
+          "title": "NumPy and buffer contracts",
+          "url": "https://pybind11.readthedocs.io/en/stable/advanced/pycpp/numpy.html",
+          "locator": "Buffer protocol; Arrays; Direct access; Memory view",
+          "depth": "Skip Eigen and vectorizing functions. Do not copy the Matrix ownership sketch or the add_arrays raw-pointer loop unchanged: Matrix omits cleanup, and add_arrays accepts strided input but indexes it as contiguous. Use RAII storage and either validated contiguous input or stride-aware access."
+        },
+        {
+          "resource": "pybind11",
+          "title": "Conversion and return policies",
+          "url": "https://pybind11.readthedocs.io/en/stable/advanced/functions.html#return-value-policies",
+          "locator": "Return value policies; Additional call policies: Keep alive; Non-converting arguments",
+          "depth": "Read ownership policies, not the crash wording as a guaranteed outcome of undefined behavior."
+        },
+        {
+          "resource": "pybind11",
+          "title": "GIL and free-threading contracts",
+          "url": "https://pybind11.readthedocs.io/en/stable/advanced/misc.html#global-interpreter-lock-gil",
+          "locator": "Global Interpreter Lock (GIL); Common Sources Of Global Interpreter Lock Errors; Free-threading support",
+          "depth": "Apply GIL-held wording to the default build. Free-threaded Python was introduced in 3.13 and became supported in 3.14; the page's experimental wording is not the current CPython 3.14 status. Stop before sub-interpreter implementation."
+        },
+        {
+          "resource": "pybind11",
+          "title": "Exception translation",
+          "url": "https://pybind11.readthedocs.io/en/stable/advanced/exceptions.html#built-in-c-to-python-exception-translation",
+          "locator": "Built-in C++ to Python exception translation table; Handling exceptions from Python in C++",
+          "depth": "Skip custom translators and unraisable exceptions for this first binding."
         }
       ],
       "focus": [
-        "TODO"
+        "py::array_t<double> permits conversion by default; it does not mean no-copy or contiguous. For a strict 1-D native-endian float64 contract, use py::array_t<double, py::array::c_style> with py::arg(...).noconvert(), check rank and alignment, and reject unsupported input explicitly.",
+        "Buffer strides are signed byte distances. A reversed view can have a negative stride; pointer indexing is valid only when the accepted layout supports it. unchecked<N> handles strides but trusts your index bounds and the storage's continued validity.",
+        "Returning newly allocated NumPy-owned storage makes ownership explicit. A borrowed pointer instead needs an owner that stays alive and a no-reallocation contract; a reference return policy alone does not make dangling memory safe.",
+        "On default CPython 3.14, pybind11 does not implicitly release the GIL. Validate and acquire views while holding it, release only around native work, and reacquire before Python operations or reference-count changes. mod_gil_not_used promises thread safety; it does not provide it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Against default CPython 3.14.4, NumPy 2.5.4 and pybind11 3.1, with g++ 15.2 -std=c++20 -O0 -g, bind a 1-D float64 sum using py::array_t<double, py::array::c_style> and .noconvert(). Reject ndim != 1 with py::value_error and a data pointer not aligned to alignof(double) with py::value_error; obtain unchecked<1>() before a scoped GIL release around the sum loop. Keep the input object alive and require no concurrent mutation. np.arange(6, dtype=np.float64) returns 15.0 and empty float64 input returns 0.0. float32 input, a list, a[::2] and a[::-1] raise TypeError; a.reshape(2,3) raises ValueError. Return a separately allocated py::array_t<double> copy in a second function, and test that it does not share memory with the input and survives deletion of the input. Also reject an unaligned contiguous float64 array constructed over a byte buffer with offset 1. Explain the owner and GIL state at each point rather than claiming a speedup.",
       "traps": [
-        "TODO"
+        "Releasing the GIL does not prevent another caller from mutating the same NumPy storage. Require exclusive access or copy before release.",
+        "A C-contiguous array is not necessarily aligned. Check alignment before dereferencing it as double storage.",
+        "C++ exceptions can translate to Python exceptions; memory corruption and undefined behavior cannot reliably be contained that way."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does py::array_t<double> by itself guarantee a zero-copy contiguous float64 argument?",
+          "a": "No. Its default forcecast can convert input, and it permits strided arrays. Specify and test the layout and conversion policy."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is a[::2] unsafe for an unchecked raw double* loop using ptr[i]?",
+          "a": "The logical stride skips storage elements, but ptr[i] advances by one double. Use actual strides or reject that layout."
+        },
+        {
+          "q": "What keeps a returned borrowed view valid?",
+          "a": "A live owner of the backing allocation and a contract that prevents its deletion, resizing or reallocation while the view is used. A raw address alone provides neither."
+        },
+        {
+          "q": "May a gil_scoped_release region create or destroy Python wrapper objects on the default build?",
+          "a": "Not safely without reacquiring the GIL for those operations. Their constructors, destructors or copies can access Python state and reference counts."
+        },
+        {
+          "q": "What does declaring mod_gil_not_used mean for a free-threaded build?",
+          "a": "The extension promises that its code is thread-safe without the GIL. It must be built for that interpreter; the tag supplies no synchronization for shared user data."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: expose the native function with dtype, shape, stride, alignment, ownership, GIL and exception contracts, and test accepted and rejected arrays plus output lifetime.",
+      "stopWhen": "Your strict-binding and independent-output tests pass, and you can explain each accepted or rejected input, the live storage owner and every GIL transition.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's pybind11 pages cover every boundary contract with mini-project tests; the card routes around incomplete ownership, strided raw-pointer access and outdated free-threading wording."
       }
     },
     {
       "id": "cmake-builds",
       "title": "Repeatable CMake builds and test targets",
-      "hours": 2,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -735,47 +825,98 @@
         "cmake"
       ],
       "outcomes": [
-        "TODO"
+        "Describe a library, executable and native test as CMake targets with explicit usage requirements.",
+        "Configure independent debug, optimized and sanitizer builds and inspect their actual compile and link commands.",
+        "Run registered tests from a fresh build tree and install the intended artifact without installing test executables."
       ],
-      "why": "TODO",
+      "why": "A safe native change must survive a clean build, not just a working terminal session. Target-based builds keep dependencies and diagnostic options attached to the code that needs them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/testing-debugging-reproducibility/locks-manifests-quality-gates",
+          "note": "Capture the compiler, interpreter and test configuration as reproducible evidence."
+        },
+        {
+          "route": "systems",
+          "note": "Build larger native components from explicit dependency contracts."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cmake-tutorial",
+          "title": "Targets, libraries and linking",
+          "url": "https://cmake.org/cmake/help/v4.2/guide/tutorial/Getting%20Started%20with%20CMake.html",
+          "locator": "Step 1: Background; Exercise 1 - Building an Executable; Exercise 2 - Building a Library; Exercise 3 - Linking Together Libraries and Executables",
+          "depth": "Use the tutorial source archive linked from the v4.2 tutorial index. Stop before Exercise 4 if your project does not need subdirectories."
+        },
+        {
+          "resource": "cmake-tutorial",
+          "title": "Target features, warnings and link options",
+          "url": "https://cmake.org/cmake/help/v4.2/guide/tutorial/In-Depth%20CMake%20Target%20Commands.html",
+          "locator": "Step 4: Background; Exercise 1 - Features and Definitions; Exercise 2 - Compile and Link Options",
+          "depth": "Read the scoped-command examples. Skip vendor-library import and precompiled headers; apply the commands to your own targets rather than completing all preceding steps."
+        },
+        {
+          "resource": "cmake-tutorial",
+          "title": "Testing and CTest",
+          "url": "https://cmake.org/cmake/help/v4.2/guide/tutorial/Testing%20and%20CTest.html#exercise-1-adding-tests",
+          "locator": "Step 8: Background and Exercise 1 - Adding Tests, all seven completion markers, including TestMathFunctions and the four registered operations"
+        },
+        {
+          "resource": "cmake-tutorial",
+          "title": "Install the intended artifacts",
+          "url": "https://cmake.org/cmake/help/v4.2/guide/tutorial/Installation%20Commands%20and%20Concepts.html#exercise-1-installing-artifacts",
+          "locator": "Step 9: Background and Exercise 1 - Installing Artifacts",
+          "depth": "Use install(TARGETS) and a local install prefix. Stop before exporting targets and version files."
         }
       ],
       "focus": [
-        "TODO"
+        "Model dependencies with target_link_libraries and target-scoped sources, includes and features. PRIVATE affects the target, INTERFACE its consumers, and PUBLIC both.",
+        "target_compile_features(... cxx_std_20) specifies at least C++20, not necessarily an exact -std=c++20 flag. Record verbose build commands and disable language extensions when strict standard mode is intended.",
+        "For single-config generators such as Unix Makefiles, configure CMAKE_BUILD_TYPE in separate trees. For multi-config generators, choose --config at build time and -C for CTest.",
+        "CTest runs registered commands; it does not automatically build them. Sanitizer instrumentation needs compile options and runtime linkage on the executable, and release tests must not disappear under NDEBUG."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Using CMake 4.2 with the Unix Makefiles generator, create a small library target, an executable linked to it and a separate test executable returning nonzero on failed checks. Set a C++20 requirement and register the test with enable_testing() and add_test(NAME native COMMAND native_tests). Configure with cmake -S . -B build-debug -G 'Unix Makefiles' -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug, build with cmake --build build-debug --verbose, and run ctest --test-dir build-debug --output-on-failure. Repeat in a new build-release tree with Release. Inspect the commands for g++ 15.2, language mode and optimization rather than assuming exact preset flags. Add an opt-in sanitizer configuration that applies -fsanitize=address,undefined to compilation and final linking, plus -fno-sanitize-recover=undefined and -fno-omit-frame-pointer to compilation; verify it in a new clang++ 21.1 build tree. Finally use install(TARGETS) for the executable and cmake --install build-release --prefix install-stage, and check that tests are not installed. A deliberately false test condition must make CTest fail in both Debug and Release.",
       "traps": [
-        "TODO"
+        "Changing the compiler inside an existing cached tree is not equivalent to a fresh configure. Use a new build directory for a different toolchain.",
+        "Passing sanitizer flags only when compiling can leave the final link without its runtime libraries.",
+        "No tests found is not evidence that tests passed. Check discovery and use explicit failure checks that survive optimized builds."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A library's public header uses std::span. Should its C++20 requirement be PRIVATE or PUBLIC?",
+          "a": "PUBLIC, because both the library and consumers compiling that header need the feature."
+        },
+        {
+          "q": "Why can CTest fail to run a newly registered executable?",
+          "a": "The target may not have been built. Configure registers the test; build creates its executable; CTest runs it."
+        },
+        {
+          "q": "Does CMAKE_BUILD_TYPE=Release select the configuration for every generator?",
+          "a": "No. Multi-config generators select it with --config when building and -C when running CTest."
+        },
+        {
+          "q": "Why can an assert-only regression pass in Release despite a defect?",
+          "a": "NDEBUG can remove the assertions entirely. Use test checks that report failure independently of assert."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CMake Tutorial: Building and linking targets",
+          "url": "https://cmake.org/cmake/help/v4.2/guide/tutorial/Getting%20Started%20with%20CMake.html",
+          "locator": "Step 1, Exercises 1 through 3: Building an Executable, Building a Library, Linking Together Libraries and Executables",
+          "note": "Complete the target declarations and link the provided program. Then carry the same target structure into the section mini-project."
+        },
+        {
+          "name": "CMake Tutorial: Adding Tests",
+          "url": "https://cmake.org/cmake/help/v4.2/guide/tutorial/Testing%20and%20CTest.html#exercise-1-adding-tests",
+          "locator": "Step 8, Exercise 1, all seven completion markers; register TestMathFunctions for add, mul, sqrt and sub",
+          "note": "Start from the supplied Step8 directory, which includes earlier solutions. Its public executable checks one fixed example per operation and reports failure via its exit code; it is not a broad numerical test suite. Run all four with CTest, then add your own boundary cases in the mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The named tutorial targets and four tests work, your own clean debug, release and sanitizer trees run the registered regression, an injected test failure is detected in Debug and Release, and installation excludes tests.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's tutorial has narrow target, testing and installation exercises with public source; pinned v4.2 locators match the installed toolchain and avoid requiring the whole course."
       }
     }
   ]
