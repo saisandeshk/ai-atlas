@@ -1,6 +1,17 @@
 {
   "section": "pytorch-foundations",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-amp-saving-resuming",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch Automatic Mixed Precision recipe - Saving/Resuming",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read the Saving/Resuming section: save scaler.state_dict() with the model and optimizer state, at the start of an iteration or after scaler.update(), and how to resume with or without AMP.",
+      "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html#saving-resuming"
+    }
+  ],
   "units": [
     {
       "id": "pytorch-tensors-storage",
@@ -46,7 +57,7 @@
         }
       ],
       "focus": [
-        "dtype is inferred at creation and device defaults to CPU. Assign the result of .to(); it is not in place.",
+        "dtype is inferred at creation and the device is CPU unless you choose one. Tensor.to() returns a tensor (the same one when nothing changes), so assign the result. Module.to() is the exception: it converts the module in place.",
         "Element offset is storage_offset plus the sum over dims of index times stride. Transpose and slicing change stride and offset, not storage.",
         "Basic indexing gives views. .numpy() and torch.from_numpy() share one CPU allocation, so in-place edits leak across the boundary.",
         "contiguous() returns the same tensor when already contiguous and copies otherwise. Never branch on reshape returning a view."
@@ -55,7 +66,7 @@
       "traps": [
         "Reading transpose or permute as a copy. They return views, so writing through them changes the base.",
         "Trusting reshape to return a view. It may copy; check data_ptr instead of assuming.",
-        "Calling x.to(device) and then using x. The call returns the moved tensor; the original stays where it was."
+        "Calling x.to(device) on a tensor and then using x. The call returns the moved tensor; x stays where it was. (model.to(device) does move the module in place, which is why the habit forms.)"
       ],
       "selfTest": [
         {
@@ -80,13 +91,7 @@
           "name": "Learn PyTorch 00: tensor creation, matmul, seeds and squeeze (tasks 2 to 10)",
           "url": "https://www.learnpytorch.io/00_pytorch_fundamentals",
           "locator": "Exercises, tasks 2 to 10: (7, 7) and (2, 3) creation, matmul with transpose, manual_seed replays, GPU seed lookup, argmax and argmin, squeeze of (1, 1, 1, 10)",
-          "note": "Write the tasks in your own script, not in the solutions notebook. Task 1 is background reading; tasks 2 to 10 are the checked work."
-        },
-        {
-          "name": "TensorTonic PyTorch Sheet: Tensor Factory, Tensor Operations, Tensor Shape Manipulation",
-          "url": "https://www.tensortonic.com/study-plans/pytorch-basics",
-          "locator": "Foundations section: pytorch-tensor-creation, pytorch-tensor-arithmetic, pytorch-tensor-reshape",
-          "note": "Pro-gated. Use only if available; the Learn PyTorch tasks above are the required practice."
+          "note": "Write the tasks in your own script, not in the solutions notebook. Task 1 is background reading; tasks 2 to 10 are the checked work. Run the GPU tasks on whatever device you have and say which one you used."
         }
       ],
       "stopWhen": "Your written shape, stride and offset table for x, x.t() and x[::2] matches data_ptr and is_contiguous checks, and tasks 2 to 10 run without the solutions notebook.",
@@ -160,11 +165,11 @@
         "Inference-mode tensors cannot re-enter grad-mode computation; no-grad tensors can. Use inference mode only for pure evaluation paths.",
         "An in-place bump of a saved tensor raises a version-counter error at backward. Clone before the saving op or move the mutation earlier; do not catch and ignore."
       ],
-      "reproduce": "Closed-book, write a script where y = (x**2).sum() with x requiring grad, mutate x in place after the forward, and read the version-counter error on backward. Repair it by cloning before the power, and check .grad against 2x.",
+      "reproduce": "Closed-book, write x = torch.randn(4, requires_grad=True) and y = (x ** 2).sum(). Show that x.add_(1) fails at once because x is a leaf that requires grad. Then do the same update under torch.no_grad() and read the version-counter error that y.backward() raises, because pow saved x. Repair it by computing y from z = x.clone(), and check that x.grad equals 2 times the value x had during the forward.",
       "traps": [
         "Treating detach() as a copy. It shares storage, so an in-place edit through either side is visible to both.",
         "Reading .grad on a non-leaf. It stays None unless retain_grad() was called; only leaves accumulate.",
-        "Reusing inference-mode tensors in later training code. Recreate them outside inference mode, or stay in no-grad."
+        "Updating a leaf that requires grad in place outside torch.no_grad(). PyTorch refuses at once (\"a leaf Variable that requires grad is being used in an in-place operation\"); manual parameter updates belong under no_grad."
       ],
       "selfTest": [
         {
@@ -176,27 +181,21 @@
           "a": "No. reshape may return a view or a copy, so never rely on aliasing through it."
         },
         {
-          "q": "One backward call runs twice over the same graph with no zeroing. How does x.grad after the second call relate to the first?",
-          "a": "It is twice the first call. backward() accumulates into .grad; the autogradqs Jacobian-product section shows exactly this doubling."
+          "q": "You call out.backward(torch.ones_like(out), retain_graph=True) twice without zeroing. How does inp.grad after the second call relate to the first?",
+          "a": "It is twice the first. backward() adds into .grad; the autogradqs Jacobian-product section shows this doubling, and zeroing inp.grad resets it."
         },
         {
           "q": "What is the practical difference between no-grad and inference mode for tensors you keep?",
           "a": "Both skip graph recording, but inference-mode tensors cannot be used in later grad-mode computation while no-grad tensors can."
         }
       ],
-      "practice": [
-        {
-          "name": "TensorTonic PyTorch Sheet: Basic Autograd",
-          "url": "https://www.tensortonic.com/study-plans/pytorch-basics",
-          "locator": "Foundations section: pytorch-basic-autograd",
-          "note": "Pro-gated. Use only if available. The Reproduce version-counter repair plus the section checkpoint failure repair are the required checks."
-        }
-      ],
+      "practice": [],
       "stopWhen": "You classify ten ops as view, copy or ambiguous without the list, and your version-counter script fails before the fix and passes after.",
       "fit": {
         "verdict": "kept",
         "note": "Tensor Views plus Autograd mechanics plus the autogradqs accumulation demo cover views, leaves, accumulation and in-place errors; the section checkpoint supplies the failure-repair practice."
-      }
+      },
+      "practiceNote": "The section mini-project covers this: reduce one view or in-place autograd failure to a minimal script, repair it, and keep it as a regression test."
     },
     {
       "id": "modules-parameters-init",
@@ -279,8 +278,8 @@
           "a": "In persistent buffers. They are saved in state_dict and moved by .to(), but never given to the optimizer."
         },
         {
-          "q": "What does module.apply(init_weights) do that a loop over named_parameters does not?",
-          "a": "It recurses through the module tree, so each submodule initializes itself with its own type check. The note example applies xavier only to Linear layers and zeros their biases."
+          "q": "What does module.apply(init_weights) give you that a loop over named_parameters does not?",
+          "a": "apply calls the function on every submodule and then on the module itself, so one function with an isinstance check can initialize each layer type its own way. A named_parameters loop sees only names and tensors, not the layer each one belongs to."
         }
       ],
       "practice": [
@@ -289,12 +288,6 @@
           "url": "https://www.learnpytorch.io/01_pytorch_workflow",
           "locator": "Exercises, task 2 (nn.Module subclass with nn.Parameter weight and bias, state_dict check) and task 5 (save state_dict, reload into a new instance, verify predictions match)",
           "note": "Implement in your own script. The prediction check must compare outputs, not just file existence."
-        },
-        {
-          "name": "TensorTonic PyTorch Sheet: Custom Linear Layer",
-          "url": "https://www.tensortonic.com/study-plans/pytorch-basics",
-          "locator": "Building Blocks section: pytorch-custom-linear-layer",
-          "note": "Pro-gated. Use only if available; the Learn PyTorch tasks above are the required practice."
         }
       ],
       "stopWhen": "Your predicted key list matches the printed state_dict before you print it, and the reloaded instance reproduces predictions exactly.",
@@ -388,8 +381,8 @@
           "a": "Central differences with eps=1e-6 need precision far above float32 rounding. In float32 the numerical Jacobian is usually too noisy for the tolerances."
         },
         {
-          "q": "Evaluation gives odd results although loss falls in training. Name two one-line suspects involving this unit.",
-          "a": "The loop never called model.eval(), so Dropout and BatchNorm stayed in training behavior. Or evaluation ran without no_grad, wasting memory and risking graph retention."
+          "q": "Two evaluation passes over the same test set with the same weights give different accuracies. Which call is missing, and which layers cause the difference?",
+          "a": "model.eval(). In training mode Dropout drops random units on every pass, and BatchNorm normalizes with the current batch statistics and keeps updating its running buffers."
         }
       ],
       "practice": [
@@ -456,14 +449,14 @@
         }
       ],
       "focus": [
-        "forward() receives plain tensors with history stripped; setup_context() owns ctx writes; backward() receives one grad per output and returns one grad per input.",
-        "Save tensors with save_for_backward so the engine can free them after backward. Raw ctx attributes stay alive with the graph and break checkpointing hooks.",
+        "forward() runs with grad recording off, so nothing inside it is tracked. setup_context() owns the ctx writes. backward() receives one grad per output and returns one grad per forward input.",
+        "Save tensors with save_for_backward. The Extending note gives the reasons: the engine frees them when this backward finishes, it avoids reference cycles when you save an output, and saved-tensor hooks (activation checkpointing, offloading) can see them. Saved tensors are also version-checked, so a later in-place edit raises an error instead of corrupting the gradient.",
         "Non-tensor forward args get None grads, and backward must never modify its grad inputs in place. Gate optional work with needs_input_grad.",
         "Derive the linear backward shapes on paper first: grad_input = grad_output mm weight, grad_weight = grad_output.t() mm input, grad_bias = grad_output.sum(0)."
       ],
       "reproduce": "From a blank file, reimplement LinearFunction and MulConstant with separate setup_context, and gradcheck both in float64. Then break the bias grad (return zeros) and quote the gradcheck mismatch before fixing it.",
       "traps": [
-        "Stashing tensors as plain ctx attributes. They outlive the backward and defeat saved-tensor hooks; save_for_backward exists for this.",
+        "Stashing tensors as plain ctx attributes. They stay alive for the whole graph, can form a reference cycle with the output, escape the in-place version check, and are invisible to saved-tensor hooks. Keep ctx attributes for non-tensors.",
         "Writing into grad_output inside backward. Grad inputs are read-only; in-place edits corrupt every other consumer of that graph.",
         "Returning a tensor grad for a non-tensor arg like constant. Those positions must be None, as MulConstant shows."
       ],
@@ -477,8 +470,8 @@
           "a": "backward returns one grad per forward input. constant is not a Tensor, so its position must be None."
         },
         {
-          "q": "Your Function saves an intermediate computed in forward without returning it as output, using separate setup_context. What breaks?",
-          "a": "The save is illegal: with separate setup_context only inputs and outputs are available to save. Either return the intermediate as an output or use the combined forward style."
+          "q": "With separate forward and setup_context, you want to save an intermediate computed in forward that is neither an input nor an output. What do you do?",
+          "a": "setup_context only receives the inputs and the output, so the intermediate is out of reach. Return it as an extra output and save it in setup_context, as the Extending note does with dx, or use the combined forward(ctx, ...) style."
         }
       ],
       "practice": [
@@ -551,8 +544,8 @@
       ],
       "reproduce": "From a blank file, write a CSVDataset over (path, label) rows with a transform arg, wrap it in a DataLoader with batch 8, shuffle and 2 workers, and print one batch's shapes. Then add a worker_init_fn that prints each worker seed and show the seeds differ.",
       "traps": [
-        "Mutating the dataset object in the main process and expecting workers to see it. Workers are forked or spawned subprocesses with their own copies.",
-        "Seeding only torch.manual_seed and calling workers reproducible. NumPy and random inside workers need the worker_init_fn reseeding the note shows.",
+        "Mutating the dataset object in the main process after iteration starts and expecting workers to see it. Workers hold their own copies; non-persistent workers pick up the change only when the next epoch recreates them.",
+        "Creating an RNG object such as np.random.default_rng(0) in the Dataset __init__. Every worker gets an identical copy, so all workers draw the same augmentation stream. The global random, torch and NumPy generators are already reseeded per worker; a private generator must be reseeded in worker_init_fn from torch.initial_seed().",
         "Leaving device transfer implicit. The tutorial batch is CPU [64, 1, 28, 28]; the model page moves inputs explicitly, and .to() must be assigned."
       ],
       "selfTest": [
@@ -561,8 +554,8 @@
           "a": "init (runs once, stores paths, labels, transforms), len (sample count), getitem (loads and returns sample idx as a tensor tuple)."
         },
         {
-          "q": "Two workers load with torch.manual_seed(0) set once in main. Do they draw identical augmentations?",
-          "a": "No. Each worker is reseeded from torch.initial_seed plus its worker id, so their streams differ by design."
+          "q": "A DataLoader with two workers is created after torch.manual_seed(0). Do the workers draw identical augmentations, and does the next run repeat this one?",
+          "a": "The workers differ: each seeds torch and random with base_seed + worker_id and NumPy with a state derived from both. The run repeats: base_seed comes from the main process RNG, or from the generator you pass, which the seed fixes."
         },
         {
           "q": "A batch of variable-length sequences hits the default collate. What happens?",
@@ -578,13 +571,7 @@
           "name": "Learn PyTorch 03: MNIST loading, visualization and DataLoaders (tasks 5 to 13)",
           "url": "https://www.learnpytorch.io/03_pytorch_computer_vision",
           "locator": "Exercises, tasks 5 to 13: load torchvision MNIST train and test, visualize samples, DataLoader with batch_size=32, TinyVGG adaptation, CPU versus GPU timing, predictions, confusion matrix, Conv2d kernel-size probe, FashionMNIST error plots",
-          "note": "Skip tasks 1 to 4 (industry prose and overfitting definitions). The checked work starts at task 5."
-        },
-        {
-          "name": "TensorTonic PyTorch Sheet: Custom Dataset Class and Balanced DataLoader",
-          "url": "https://www.tensortonic.com/study-plans/pytorch-basics",
-          "locator": "Training Infrastructure section: pytorch-custom-dataclass, pytorch-balanced-dataloader",
-          "note": "Pro-gated. Use only if available; the Learn PyTorch tasks above are the required practice."
+          "note": "Skip tasks 1 to 4 (industry prose and overfitting definitions). Tasks 5 to 7 are the loader core; tasks 8 to 13 rehearse the loop of the next unit and can wait for it."
         }
       ],
       "stopWhen": "Your CSVDataset loader prints correct batch shapes with 2 workers, worker seeds differ on purpose, and a ragged input fails loudly until your collate_fn handles it.",
@@ -638,7 +625,7 @@
       "reproduce": "From memory, write train and test loops with sample-weighted loss and accuracy, train the Learn PyTorch 01 workflow model, and reach its task gates. Then show the tutorial test_loop loss and your sample-weighted loss differ on an uneven tail batch.",
       "traps": [
         "Averaging per-batch losses with equal weights and calling it the epoch loss. Short tail batches then count as much as full ones.",
-        "Evaluating without model.eval(). Dropout and BatchNorm stay in training behavior, and a later module edit can silently change old numbers.",
+        "Evaluating without model.eval(). Dropout keeps dropping units, so evaluation becomes random, and BatchNorm normalizes with test-batch statistics while updating its running buffers on test data.",
         "Logging loss.item() but stepping on a different loss. The printed number and the backward graph must come from the same tensor."
       ],
       "selfTest": [
@@ -655,8 +642,8 @@
           "a": "eval() switches Dropout and BatchNorm to evaluation behavior. no_grad() skips graph recording, saving memory and compute."
         },
         {
-          "q": "Accuracy rises but the reported loss uses reduction mean over shrinking batches. What do you check?",
-          "a": "Whether the loss change comes from the metric or the model: recompute with stated sample weighting before claiming improvement."
+          "q": "Your evaluation loop uses CrossEntropyLoss with reduction=\"mean\" per batch. How do you report the exact per-sample mean loss over the test set?",
+          "a": "Accumulate loss.item() times the batch size (or use reduction=\"sum\") and divide the total by the number of samples, not by the number of batches."
         }
       ],
       "practice": [
@@ -717,6 +704,12 @@
           "depth": "Skip Saving an Exported Program, Saving Multiple Models in One File and Warmstarting. The deprecated general-checkpoint recipe redirects to this page."
         },
         {
+          "resource": "pytorch-amp-saving-resuming",
+          "title": "Automatic Mixed Precision recipe: saving and resuming the GradScaler",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html#saving-resuming",
+          "locator": "Saving/Resuming: the scaler state_dict saved beside model and optimizer, when to save it, and resuming across runs with and without AMP"
+        },
+        {
           "resource": "pytorch-autograd-semantics",
           "title": "Reproducibility: randomness control and nondeterminism limits",
           "url": "https://docs.pytorch.org/docs/stable/notes/randomness.html",
@@ -725,7 +718,7 @@
         }
       ],
       "focus": [
-        "A resume checkpoint holds epoch, model state, optimizer state and RNG states. Model weights alone restart the model but not the training.",
+        "A resume checkpoint holds model, optimizer and scheduler state, the GradScaler state when you train with AMP, the epoch and step, and the RNG states. Model weights alone restart the model but not the training.",
         "Config means every number that changes the stream: hyperparameters, data order and position, transform versions, worker count and seeds. Log them with the checkpoint.",
         "Identical seeds do not promise identical results across releases, platforms, or CPU versus GPU. Promise bitwise match only inside one tested configuration.",
         "Deterministic flags trade speed for repeatability and can throw on ops without a deterministic path. cudnn benchmark selection is itself a randomness source."
@@ -733,13 +726,13 @@
       "reproduce": "Interrupt a small training run mid-schedule, restart the process, reload the full checkpoint, and show the next-epoch loss matches an uninterrupted run within your stated tolerance. Then list what your checkpoint deliberately excludes.",
       "traps": [
         "Saving model.state_dict() and calling it a training checkpoint. Without optimizer, scheduler, epoch and RNG state, resume restarts the optimization, not the run.",
-        "Loading a full pickled model with default weights_only=True. The safe default refuses it; and unpickling executes code, so load only files you trust.",
+        "Pickling the whole model and loading it with the default weights_only=True. Since PyTorch 2.6 that default refuses arbitrary pickled objects, and weights_only=False runs pickle, which can execute code. Save state_dicts, and load untrusted files only with weights_only=True.",
         "Claiming GPU determinism from a CPU test. Nondeterministic kernels, benchmark selection and worker seeding each break the claim independently."
       ],
       "selfTest": [
         {
-          "q": "Resume matches loss but the learning curve diverges three epochs later. Name two state items that could be missing.",
-          "a": "Optimizer momentum buffers and the RNG states. Both change future updates without changing the current loss."
+          "q": "The resumed weights give the same validation loss as the uninterrupted run at the checkpoint, yet the training curves split within a few updates. Name three state items that could be missing.",
+          "a": "Optimizer state such as momentum or Adam moments, scheduler state (so the learning rate is wrong), and the RNG and data-order state (different shuffles and dropout masks). None of them changes the loss of the saved weights."
         },
         {
           "q": "Same seed, same code, CPU run matches but GPU run differs in the last decimals. Is anything wrong?",
@@ -770,8 +763,8 @@
       ],
       "stopWhen": "An interrupted and an uninterrupted run agree within your written tolerance, and your config log plus boundary statement say exactly what would break that agreement.",
       "fit": {
-        "verdict": "kept",
-        "note": "The saving and loading page plus the reproducibility note cover full checkpoints, config and worker seeding, with the 01 and 05 exercises as named practice."
+        "verdict": "added",
+        "note": "Coverage failed for scaler state in the checkpoint topic; the official AMP recipe section on saving and resuming fills it. The saving and loading page and the reproducibility note cover the rest."
       }
     }
   ]
