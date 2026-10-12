@@ -1,5 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { loadUnitFiles, validateUnitFiles } from './units.mjs';
 
 const projectRoot = process.cwd();
 const curriculumPath = path.join(projectRoot, 'content', 'curriculum.json');
@@ -182,6 +183,12 @@ function rejectLongDashes(value, label) {
 }
 
 rejectLongDashes(curriculum, 'curriculum');
+
+const unitFiles = await loadUnitFiles(projectRoot);
+for (const file of unitFiles) rejectLongDashes(file.data, file.relative);
+validateUnitFiles(curriculum, unitFiles, errors, {
+  strict: process.argv.includes('--strict'),
+});
 
 async function validateRoute(stage, routeKind, requireCoreMap) {
   const stageLabel = `${routeKind} ${stage.id}`;
@@ -379,6 +386,13 @@ const trackResourceCount = authoredTracks.reduce(
 
 const stageLabel = curriculum.stages.length === 1 ? 'stage' : 'stages';
 const trackLabel = authoredTracks.length === 1 ? 'track' : 'tracks';
+const unitCount = unitFiles.reduce(
+  (total, file) => total + (file.data.units?.length ?? 0),
+  0,
+);
+console.log(
+  `Study units: ${unitCount} units in ${unitFiles.filter((file) => file.name !== '_route' && !file.name.endsWith('.project')).length} sections.`,
+);
 console.log(
   `Content valid: ${curriculum.stages.length} ${stageLabel}, ${sectionCount} sections, ${topicCount} topics, ${resourceCount} resources; ${authoredTracks.length} authored ${trackLabel}, ${trackSectionCount} stages, ${trackTopicCount} topics, ${trackResourceCount} resources.`,
 );

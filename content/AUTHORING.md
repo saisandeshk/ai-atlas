@@ -45,6 +45,52 @@ This contract keeps the Field Guide finite as it grows. It applies to every core
 - Checking Practised also checks Learned. Checking Passed also checks Learned and Practised. Reversing an earlier state clears dependent states.
 - Each section gets one short checkpoint. Each stage gets one small integrated milestone with concrete deliverables.
 
+## Study units
+
+A section with study units replaces "read these resources for these 20 topics" with an ordered list of cards. Each card is one study unit of about 2 to 6 hours. It tells the learner exactly what to open, how far to go, what to focus on, how to test themselves, and when to stop. The atlas still writes no textbook prose: a card points into the best existing material and adds only the guidance around it.
+
+Units live in `content/units/<route-id>/<section-id>.json`, one file per section, so that parallel authors never edit the same file. `content/units/<route-id>/_route.json` holds the route's capstone rubric. `npm run content:generate` rebuilds `content/units/index.ts`, and the site merges the files into the curriculum at build time.
+
+### Unit rules
+
+- **Grouping.** Group related topics into units that form one learning job. Every required and optional topic of the section belongs to exactly one unit. Later and depth topics stay outside units.
+- **Target.** State the depth the unit demands with one or more of `explain`, `derive`, `implement`, and `measure`. They follow the Roadmap-Final mastery levels: explain and derive are M2, implement is M3, and measure covers M4 debugging and measurement.
+- **Outcomes.** List two to four "you can now" statements adapted from the Roadmap-Final competencies of the stage. They define the target concretely.
+- **Hours.** Give an illustrative whole number of focused hours, including the practice. It is a planning hint, not a tracker.
+- **Why and next.** One or two sentences on why the unit matters, and one to three links to the units or later routes that build on it.
+- **Study.** Ordered items, each pointing at a resource in the section pool by `resource` ID, with a deep `url` when one exists (a notebook file, a lecture page, a video timestamp, a documentation anchor) and an exact `locator` (sections, cells, slides, minutes). Add a `depth` note only when the learner should stop partway or skip something; otherwise the locator is the depth.
+- **Focus.** Two to four points that say what to pay attention to in the material.
+- **Reproduce.** The one result to reproduce closed-book: a derivation, an algorithm, or a small program.
+- **Traps.** Two or three misconceptions or bugs that the material does not stress.
+- **Self-test.** Three to five questions with short, correct answers. They test understanding, not recall of wording.
+- **Correct in principle.** Check every focus point, trap, answer and stop condition from first principles, not only against the source. Sources contain errors, and a claim about an experiment or control must say what a correct run would actually show. When a source exercise is wrong, skip it in a `depth` note and say why.
+- **Practice.** Named external items: a problem, an assignment part, a notebook exercise, a lab. Never a whole platform or course. A unit may leave practice empty when the section mini-project covers it, and says so.
+- **Stop when.** One observable condition for leaving the unit.
+- **Fit.** The outcome of the fit check below: `kept`, `added`, or `replaced`, with a one-line note.
+
+### Fit check and resource search
+
+Resource-Survey scores resource quality. The fit check asks whether the located material serves this unit. It fails when:
+
+1. **Coverage:** a required topic of the unit has no locator in the study items.
+2. **Depth:** the located material does not reach the unit's target, for example a blog summary for a `derive` unit.
+3. **Practice:** neither the unit nor the mini-project gives a named way to practise.
+4. **Currency:** a fast-moving topic is taught with material that misses current practice.
+5. **Access:** the material is not public, or not on an official host.
+6. **Time fit:** the located part is far longer than the unit needs, with no narrower locator.
+
+Search for new material only after a failure, with a budget of one search pass and a few candidates. A candidate must beat the current material on the failing criterion, be opened to confirm its locator, and enter the section's `addedResources` with a role, priority, access value, and use note. Record the outcome in the unit's `fit`. "Could be slightly better" is not a failure.
+
+### Review
+
+Every unit file is reviewed before it merges: locators are spot-checked against the sources, every number in a reproduce step or answer is recomputed, and every conceptual claim is checked independently. [`docs/PILOT.md`](../docs/PILOT.md) records what the Stage 07 review found.
+
+### Mini-projects and capstones
+
+- Each section with units ends with a mini-project of an evening to a weekend. It exercises the section's units in the learner's own repository, and its pieces feed the route capstone.
+- `checks` lists how the work is checked: an existing autograded suite such as a course's public tests, an atlas lab harness in `labs/`, or the rubric alone.
+- Every mini-project and capstone has a rubric: each criterion states what passing looks like and what strong work looks like. A rubric asks for the learner's own tests against an independent oracle where that applies.
+
 ## Publishing a content change
 
 1. Edit `content/curriculum.json`.
