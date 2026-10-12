@@ -5,7 +5,7 @@
     {
       "id": "concurrency-models-gil",
       "title": "Work types, threads, processes, async tasks and the GIL",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "explain",
         "measure"
@@ -16,53 +16,80 @@
         "gil"
       ],
       "outcomes": [
-        "TODO"
+        "Choose threads, processes or async tasks from CPU work, I/O waits, shared state and cancellation needs.",
+        "Measure CPU-bound thread scaling on default and free-threaded CPython 3.14 builds without assuming their GIL state.",
+        "Identify a blocking call that prevents other event-loop tasks from progressing."
       ],
-      "why": "TODO",
+      "why": "Concurrency overlaps work; it does not automatically make that work parallel. A workload and build-specific experiment is a better design input than a blanket claim about Python threads.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/synchronization-hazards",
+          "note": "Protect the state your chosen model shares."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-concurrency",
+          "title": "Concurrency models and Python workload choices",
+          "url": "https://algomaster.io/learn/concurrency-interview/concurrency-models",
+          "locator": "Concurrency Models; then Threading vs Multiprocessing, Key Differences and When to Use Threading/Multiprocessing; Asyncio Fundamentals, The Event Loop and Common async/await Mistakes",
+          "depth": "Use the models as a first pass. Check build-specific GIL and process-start claims against the 3.14 references below."
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Free-threaded CPython is a separate build",
+          "url": "https://docs.python.org/3.14/howto/free-threading-python.html",
+          "locator": "Identifying free-threaded Python; The global interpreter lock in free-threaded Python; Thread safety; Performance characteristics"
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Process startup is part of the experiment",
+          "url": "https://docs.python.org/3.14/library/multiprocessing.html#contexts-and-start-methods",
+          "locator": "Contexts and start methods: spawn, fork and forkserver, including the 3.14 default changes and safe importing of the main module"
         }
       ],
       "focus": [
-        "TODO"
+        "Default CPython 3.14 has a GIL. Pure Python CPU loops do not gain multicore parallelism from its threads; I/O waits and native code that releases the GIL are different cases.",
+        "Free-threaded builds can execute Python threads in parallel. Record sys.version, sysconfig.get_config_var('Py_GIL_DISABLED') and sys._is_gil_enabled() after imports; an unsupported extension can re-enable the GIL.",
+        "Async tasks share an event-loop thread and yield cooperatively. A synchronous CPU loop or time.sleep inside a task stalls that loop.",
+        "Processes isolate state but pay startup and serialization costs. In 3.14 fork is no longer the default anywhere; supported POSIX platforms default to forkserver. Select and report the context explicitly."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, sum integers with a Python for-loop for four equal jobs of 5,000,000 iterations. Assert each result equals n*(n-1)//2. Compare serial, four threads and four spawned processes on both CPython 3.14 builds. Use one warm-up and five measured trials per mode, include pool startup and save raw times, CPU, full version and GIL state. A reference run on Intel Core i9-12900K gave median seconds serial/threads/processes of 0.304/0.321/0.153 on 3.14.4 default and 0.315/0.088/0.156 on 3.14.6 free-threaded with GIL disabled. These are observations, not required speedups. Also schedule a heartbeat around a synchronous blocking call, then replace it with an awaited nonblocking operation and explain the missing versus advancing heartbeat.",
       "traps": [
-        "TODO"
+        "Treating a free-threaded executable name as proof that the GIL stayed disabled after imports.",
+        "Replacing the loop with sum(range(n)) and calling it the same pure Python workload, or comparing different total work across worker counts.",
+        "Calling asyncio.to_thread a CPU-parallelism guarantee on the default build. It keeps blocking I/O off the loop but does not remove the GIL."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which model fits many socket waits with little CPU work?",
+          "a": "Async tasks fit when the client APIs are nonblocking. Threads fit blocking clients. Bound either model's in-flight work."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why might processes lose on tiny jobs?",
+          "a": "Startup, serialization and communication can cost more than the CPU work they parallelize."
+        },
+        {
+          "q": "Does no GIL mean no need for locks?",
+          "a": "No. Internal container protection does not make a multi-step application invariant atomic."
+        },
+        {
+          "q": "Do these two build measurements isolate the cost of removing the GIL?",
+          "a": "No. Patch versions and compilers differ too. Compare scaling within each build; do not attribute every cross-build timing difference to the GIL."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: matched-work concurrency comparisons and an event-loop blocking fault in the bounded worker pipeline.",
+      "stopWhen": "You have correctness-checked raw timings from both builds and can justify a model for CPU work, blocking I/O and cancellation-sensitive work without claiming a universal speedup.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept the model first pass and the pool's current Python reference; the latter qualifies default-build GIL claims and supplies 3.14 process-start behavior."
       }
     },
     {
       "id": "synchronization-hazards",
       "title": "Synchronization primitives and concurrency hazards",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "explain",
         "implement"
@@ -72,47 +99,81 @@
         "concurrency-failures"
       ],
       "outcomes": [
-        "TODO"
+        "Protect a compound invariant with a lock and coordinate a bounded queue with condition predicates.",
+        "Reproduce a lost update and a deadlock with controlled interleavings, then remove their causes.",
+        "Distinguish deadlock, livelock, starvation and lost notification from slow useful work."
       ],
-      "why": "TODO",
+      "why": "Correct shared-state code needs both safety and progress. A lucky stress run proves neither; force the interleaving that breaks the invariant.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/backpressure-graceful-shutdown",
+          "note": "Apply bounded coordination to admission and draining."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-concurrency",
+          "title": "Locks, permits and progress failures",
+          "url": "https://algomaster.io/learn/concurrency-interview/mutex",
+          "locator": "Mutex; Semaphores; Condition Variables; Deadlock; Livelock; Starvation; Lost Signal",
+          "depth": "Read the mechanism and failure examples, not every language implementation. Use Python's Condition contract for the implementation."
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Condition predicates under one lock",
+          "url": "https://docs.python.org/3.14/library/threading.html#condition-objects",
+          "locator": "Condition objects: producer-consumer example, wait, wait_for, notify and notify_all; Semaphore objects"
+        },
+        {
+          "resource": "algomaster-concurrency",
+          "title": "Design Thread-Safe Blocking Queue",
+          "url": "https://algomaster.io/learn/concurrency-interview/design-thread-safe-blocking-queue",
+          "locator": "Problem Statement, Required Operations, Concurrency Challenges and Approach 1: Single Lock with Conditions",
+          "depth": "Stop before Approach 2. Python locks do not promise the fair-lock starvation guarantee shown in the analysis table."
         }
       ],
       "focus": [
-        "TODO"
+        "A lock protects an invariant across all its reads and writes. A semaphore counts admission permits; it does not by itself protect the buffer mutation.",
+        "Check the predicate under the condition's lock and wait in a loop. wait releases that lock while sleeping and reacquires it before returning; notify does not release it.",
+        "Remove circular lock acquisition with a global lock order. Livelock changes state without useful progress; starvation denies one participant progress while others advance.",
+        "Use barriers and events to control test schedules. A timeout detects a stuck test; it does not identify the underlying wait cycle."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Force two threads to read the same counter before either writes using a Barrier(2) between read and write. After both join, assert 1 instead of the intended 2 on both default and free-threaded builds. Remove that barrier from the critical section, lock the full read-modify-write and assert 2. In a separate test, give two threads opposite first locks, synchronize them at a barrier and use timed second acquisitions to demonstrate the wait cycle without leaving hung threads. Then use one global lock order and assert both finish.",
       "traps": [
-        "TODO"
+        "Waiting while holding an unrelated lock needed by the notifier. Condition.wait releases only its own lock.",
+        "Putting the test barrier inside the repaired critical section. The first thread then waits for a second thread that cannot enter.",
+        "Assuming mutex or condition wakeups are FIFO. Python gives no general starvation-freedom guarantee."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why use while rather than if around Condition.wait?",
+          "a": "A wakeup does not reserve the resource. Another participant may consume it before this thread reacquires the lock."
+        },
+        {
+          "q": "Does notify preserve a message for a future waiter?",
+          "a": "No. Persistent state is the predicate; check and update it under the same lock used by wait."
+        },
+        {
+          "q": "When can empty and full semaphore counts sum to less than capacity?",
+          "a": "After a producer or consumer acquires a permit but before it releases the opposite permit. Reserved in-flight permits are missing from that sum."
+        },
+        {
+          "q": "What does a fixed lock order prevent, and what does it not promise?",
+          "a": "It prevents a circular wait among those locks if all paths obey it. It does not guarantee fairness, bounded latency or freedom from other waits."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Design Thread-Safe Blocking Queue",
+          "url": "https://algomaster.io/learn/concurrency-interview/design-thread-safe-blocking-queue",
+          "locator": "Problem Statement: put, take, offer, poll, peek and size; Approach 1: Single Lock with Conditions",
+          "note": "Implement the single-lock design in Python. Test capacity one, blocked producer and consumer, FIFO order and unique item delivery with events rather than sleeps. Do not claim Java-style thread interruption or fair-lock guarantees for Python."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your controlled tests expose the lost update and wait cycle, the repairs pass, and the blocking queue preserves its capacity and delivery invariants with multiple producers and consumers.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept the pool's primitives, hazards and named blocking-queue design. Restricted the Java-oriented solution to one lock and checked its Python semantics against threading."
       }
     },
     {
