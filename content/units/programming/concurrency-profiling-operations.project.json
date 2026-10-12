@@ -1,0 +1,66 @@
+{
+  "miniProject": {
+    "title": "Bounded async worker pipeline with overload, cancellation, telemetry and a container runbook",
+    "hours": "12 to 16",
+    "brief": "Give taskrunner an execution engine: a bounded async pipeline whose workers run tasks under deadlines and retry budgets, reject excess work and shut down cleanly. Profile it, make its failures visible through telemetry, and run it in a limited non-root container with a runbook another reader can follow.",
+    "units": [
+      "concurrency-models-gil",
+      "synchronization-hazards",
+      "cancellation-timeouts-retries",
+      "backpressure-graceful-shutdown",
+      "profiling-benchmarking",
+      "logs-metrics-traces",
+      "health-containers-runbooks"
+    ],
+    "steps": [
+      "Choose executors from evidence. Run four equal Python-loop sums of 5,000,000 iterations, each checked against n*(n-1)//2, serially, on four threads and on four processes, on CPython 3.14.4 and on free-threaded 3.14.6 with the GIL disabled: one warm-up and five measured trials per mode, raw times saved with CPU, version and GIL state. Then show the event-loop blocking fault: a heartbeat stalls while a coroutine calls time.sleep and keeps ticking once the call moves to asyncio.to_thread.",
+      "Build the pipeline: an asyncio.Queue(maxsize=2) fed with put_nowait, so excess submissions are rejected, and two workers created in a TaskGroup. Event-gate the workers to show four admitted runs (two held, two queued) and a fifth rejected with QueueFull. On shutdown, call queue.shutdown() so new work is refused, drain and join, and assert every accepted run id has a terminal outcome; with shutdown(immediate=True) or an expired drain deadline, report the abandoned ids instead of success. Guard counters shared with the thread executor with one lock.",
+      "Run each task under a monotonic deadline with asyncio.timeout_at and a classified retry policy: retry transient errors only, at most three attempts, with full-jitter delays drawn from [0, min(cap, base * 2**k)]. Inject random and sleep so tests check the delay bounds without wall-clock waits. Against a fake dependency that fails twice then succeeds, assert three attempts; also test permanent failure, an exhausted budget, an expired deadline and cancellation during backoff, each with no later attempt and cleanup run.",
+      "Profile a batch of 10,000 runs with cProfile and name the hottest function from its output. Take tracemalloc snapshots before and after the batch and find what still holds memory once it is done, such as a results dict that keeps every payload. Fix it, then benchmark one optimization before and after without the profiler (one warm-up, five trials, raw times, CPU and Python build), keep it only if the gain holds at two batch sizes, and record one optimization you rejected with its numbers.",
+      "Instrument with the OpenTelemetry SDK and in-memory exporters: a span per run with the queue wait and each attempt as children, the producer's context carried with each queued item, JSON logs with run id, trace id and span id, and counters for completed, failed, rejected and retried runs plus a duration histogram labelled only by task name and outcome. Pass a dummy API token through the config and assert it appears in no exported log, span or metric. Seed one dependency failure among 100 runs and find that run from the signals alone.",
+      "Add a health surface: liveness answers while the event loop runs; readiness requires a validated configuration and a reachable PostgreSQL. Build a container from a pinned base image digest with a non-root USER and an exec-form CMD, run it with --cpus=1 --memory=128m --memory-swap=128m, and read the limits back from docker inspect and the cgroup files inside the container.",
+      "Exercise failure. Stop PostgreSQL: readiness fails while liveness stays healthy, and readiness returns without a restart once it is back. Send SIGTERM with runs in flight: readiness drops, new submissions are rejected and accepted runs drain before the stop timeout. Force a nonzero exit under --restart on-failure:3 and record the exit status and restart count.",
+      "Write the runbook: symptoms, the signal that confirms each hypothesis, commands and a recovery gate. Have someone else, or yourself from a clean clone a day later, follow it through the PostgreSQL outage, and fix every step they found unclear."
+    ],
+    "deliverables": [
+      "The pipeline with its overload, shutdown, deadline, retry and cancellation tests, and the raw executor timings from both builds.",
+      "A profiling note: the cProfile hot spot, the tracemalloc retention diff, the before and after benchmark and the rejected optimization.",
+      "Telemetry tests: span parentage across the queue, bounded metric attribute sets, secret absence and the located seeded failure.",
+      "The Dockerfile, the container transcripts (limits, outage, SIGTERM drain, restart count) and the exercised runbook."
+    ],
+    "checks": [
+      {
+        "kind": "rubric",
+        "name": "Self-grade with the rubric below"
+      }
+    ],
+    "rubric": [
+      {
+        "criterion": "Bounded concurrency",
+        "pass": "The overload test admits four and rejects the fifth, and every accepted id ends with a recorded outcome or is reported abandoned.",
+        "strong": "Executor choices cite the raw timings from both builds, and the blocking fault shows the stalled and the advancing heartbeat."
+      },
+      {
+        "criterion": "Failure handling",
+        "pass": "No retry follows a permanent failure, an exhausted budget, an expired deadline or cancellation, and no worker outlives the TaskGroup.",
+        "strong": "Backoff bounds are tested without wall-clock waits, and an idempotency policy says what happens when a retried run already took effect."
+      },
+      {
+        "criterion": "Performance evidence",
+        "pass": "The hot spot and the retention site come from profiler output, and the kept optimization has raw unprofiled trials.",
+        "strong": "The note states the workload region where the gain holds and why the rejected optimization lost."
+      },
+      {
+        "criterion": "Telemetry",
+        "pass": "Parent and trace ids agree across the queue, metrics carry only bounded labels, and the dummy secret is absent from every signal.",
+        "strong": "The seeded failure is traced from a metric to a span to a log line with no new print statements."
+      },
+      {
+        "criterion": "Operations",
+        "pass": "The container runs non-root under the stated limits, survives the PostgreSQL outage without a restart, drains on SIGTERM and stops restarting at its bound.",
+        "strong": "A second reader followed the runbook to recovery, and the steps they found unclear were fixed."
+      }
+    ],
+    "feedsInto": "Capstone failure and operations: the bounded pipeline with backpressure, cancellation and telemetry, the injected PostgreSQL outage and the clean-checkout runbook."
+  }
+}
