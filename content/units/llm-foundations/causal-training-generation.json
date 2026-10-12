@@ -160,7 +160,7 @@
         "Each row draws its own random start in [0, n - m), so a start never runs past the end of the token array.",
         "Inputs and targets share the same device as the model. The handout CPU tip names cpu and mps explicitly.",
         "Linear, embedding and norm layers get different initial scales because they play different roles in the first forward pass.",
-        "The two controls answer different questions: overfitting one batch proves the pipeline works, failing on shuffled labels proves learning reads the real signal."
+        "The two controls answer different questions. Driving one tiny batch to near-zero loss proves the model and optimizer can fit at all. Training on shuffled targets should leave validation loss near the unigram baseline; doing much better means the answer leaks in, for example through a broken causal mask or a missing shift."
       ],
       "reproduce": "Write get_batch from scratch: memory-mapped load, uniform random starts, and (B, m) input and target tensors with targets offset by one.",
       "traps": [
@@ -174,8 +174,8 @@
           "a": "0 through 92, which is 93 values. The window needs m tokens plus one target, so the last start is n - m - 1 = 92."
         },
         {
-          "q": "Why must the sampled batch sit on the same device string as the model?",
-          "a": "PyTorch ops across devices raise an error, and silent host-device copies would stall the loop. The handout tip says to pass cpu or mps for both data and model on non-CUDA machines."
+          "q": "You train on shuffled targets and validation loss falls almost as fast as with the real targets. What does that tell you?",
+          "a": "The model is reading the answer through a leak, such as a causal mask that lets position i see position i+1, or inputs and targets taken from the same unshifted window. Shuffled targets carry no signal beyond token frequencies, so validation loss should stall near the unigram baseline."
         },
         {
           "q": "Overfit-one-batch stalls at high loss. What does that verdict mean?",
@@ -194,7 +194,7 @@
           "note": "The test draws 1000 batches from arange(100) and checks shapes, the offset-by-one relation and uniform start coverage. Implement it in your own repository."
         }
       ],
-      "stopWhen": "Your sampler passes test_get_batch, and your loop overfits one tiny batch to near zero while failing the same test on shuffled labels.",
+      "stopWhen": "Your sampler passes test_get_batch, your loop drives one tiny batch to near-zero loss, and a run on shuffled targets leaves validation loss near the unigram baseline.",
       "fit": {
         "verdict": "kept",
         "note": "The CS336 handout covers loading, the per-module init recipe and both controls at implement depth, and the public data test gives checked practice."
@@ -259,7 +259,7 @@
         "Weight decay sits outside the gradient in AdamW: parameters shrink by alpha times lambda directly, not through the moments.",
         "The schedule is a pure function of t, so resuming needs t itself rather than a schedule object.",
         "Global tokens per optimizer step equal sequences times length times accumulation times data-parallel width.",
-        "Warmup length scales with total steps, not as a fixed constant, which is why Appendix D states it as a fraction."
+        "Appendix D sizes warmup as a fraction of total steps, typically 0.1 to 20 percent; many runs fix a step count instead. Either way, the warmup length belongs in the config."
       ],
       "reproduce": "Derive one scalar AdamW update from Algorithm 1, the learning rate at a step inside each of the three schedule phases, and the step count for a 327.68M-token budget.",
       "traps": [
@@ -488,8 +488,8 @@
           "a": "It restores the schedule position. Without it the learning rate restarts at the wrong phase, for example back at the warmup peak, and the run diverges from the original."
         },
         {
-          "q": "What does the CS336 test_checkpointing test actually compare?",
-          "a": "That the loaded iteration equals the saved one, that model state dicts match key by key, and that optimizer state dicts match including param groups and moment tensors."
+          "q": "Your resume test matches the uninterrupted run exactly for five steps on CPU, but on a GPU the losses drift apart by about 1e-6 per step. Is resume broken?",
+          "a": "Not necessarily. Nondeterministic kernels and reduction order give tiny float differences that compound, so state the equivalence level: exact on CPU with deterministic algorithms, a tolerance band on GPU. A sudden jump at the resume step, by contrast, means missing state."
         },
         {
           "q": "Resumed loss diverges from the uninterrupted run within a few steps. Name two suspects.",
@@ -704,7 +704,7 @@
         },
         {
           "q": "A run uses temperature 0.6, top_p 0.9, top_k 50 and repetition penalty 1.1. In what order do they apply?",
-          "a": "Penalty first, then temperature, then top-k and top-p truncation, then sampling, then the EOS check. The notebook summary fixes this order so reruns agree."
+          "a": "Penalty first, then temperature, then top-k and top-p truncation, then sampling, then the EOS check, as the notebook summary lists. The order matters: temperature changes the probabilities, so applying it before or after top-p changes which tokens the nucleus keeps. Record the order in the config."
         }
       ],
       "practice": [
