@@ -1,6 +1,17 @@
 {
   "section": "causal-training-generation",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-amp",
+      "role": "reference",
+      "priority": "support",
+      "name": "PyTorch Automatic Mixed Precision recipe",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Use the autocast, GradScaler, unscale-before-clip, scaler checkpointing and inf-NaN troubleshooting sections to add mixed precision to the blank-file loop. Keep the CS336 clipping contract as the authority for the clipping rule.",
+      "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html"
+    }
+  ],
   "units": [
     {
       "id": "next-token-objective",
@@ -312,47 +323,89 @@
         "mixed-precision-vocabulary-scaling-and-overflow-signals"
       ],
       "outcomes": [
-        "TODO"
+        "Explain the clipping rule, where it sits in the step order, and how it changes with a gradient scaler.",
+        "Explain autocast dtype choice and how GradScaler protects small gradients from underflow.",
+        "Log gradient norms, loss scale and skipped steps, and read overflow signals from the log."
       ],
-      "why": "TODO",
+      "why": "One bad batch can end a run, and mixed precision makes bad batches likelier. Clipping, scaling and logging turn a crash into a diagnosed event with a known remedy.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/causal-training-generation/checkpoints-and-resume",
+          "note": "Add the scaler state to the checkpoint so protection survives a restart."
+        },
+        {
+          "unit": "llm-foundations/evaluation-model-arithmetic/uncertainty-and-claims",
+          "note": "Treat seed and run variability as uncertainty instead of noise to ignore."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a1-training-contract",
+          "title": "CS336 Assignment 1 handout: gradient clipping",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 4.5, Gradient clipping (p. 34): the global norm rule with max M and eps 1e-6, applied in place after the backward pass"
+        },
+        {
+          "resource": "pytorch-amp",
+          "title": "PyTorch AMP recipe: autocast, GradScaler and clipping order",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html",
+          "locator": "Sections Adding torch.autocast (forward under autocast, never backward), Adding GradScaler (scale, backward, conditional step, update) and Inspecting/modifying gradients (unscale_ before clipping), plus Troubleshooting for inf and NaN loss"
+        },
+        {
+          "resource": "raschka-training-generation",
+          "title": "LLMs from Scratch Appendix D: worked clipping example",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/appendix-D/01_main-chapter-code/appendix-D.ipynb",
+          "locator": "Section D.3 (L2 norm worked example on the gradient matrix G, before-and-after clipping comparison) and Section D.4 (clipping inside the modified training function)"
         }
       ],
       "focus": [
-        "TODO"
+        "Clipping rescales the whole gradient vector when its global norm passes M. Direction is preserved; only the step length is capped.",
+        "Under a scaler, gradients are scaled by s, so unscale_ must run before the norm check or the threshold tests the wrong numbers.",
+        "Autocast keeps compute-heavy ops in float16 but reductions and the loss in float32, because they need the dynamic range.",
+        "A skipped optimizer step is protection working, not a bug. The log should show the skip, the shrunken scale and the recovery."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write the clip-then-step order for a plain loop and an AMP loop, including unscale_, the skip-on-inf rule and the per-step values to log.",
       "traps": [
-        "TODO"
+        "Clipping the scaled gradients. The norm test then uses a threshold meant for unscaled values and either never fires or always fires.",
+        "Running backward under autocast. Backward ops must run in the dtype chosen for the forward ops, outside the context.",
+        "Retrying a diverged run with the same seed and settings. The overflow recurs; lower the scale policy, the clip threshold or the learning rate first."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "The global gradient norm is 5 and M is 1. What does clipping do?",
+          "a": "It multiplies every gradient by about 1/5, the factor M / (norm + eps). The resulting norm sits just under 1 and the update direction is unchanged."
+        },
+        {
+          "q": "Why must scaler.unscale_ run before gradient clipping?",
+          "a": "Backward under a scaler leaves gradients multiplied by the scale s. Clipping tests the norm against M, so on scaled values the comparison is wrong by a factor of s and corrupts the step."
+        },
+        {
+          "q": "The scaler finds inf gradients and skips optimizer.step. What must still run, and what happens to the batch?",
+          "a": "scaler.update() still runs so the scale shrinks for the next step. The batch contributes no update; its gradients are discarded."
+        },
+        {
+          "q": "Under autocast, linear layers run in float16 but the loss stays in float32. Why?",
+          "a": "Linears are compute-heavy and safe in half precision, while the loss is a reduction that needs float32 dynamic range. The recipe asserts output is float16 and loss is float32."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: gradient_clipping",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py",
+          "locator": "Problem (gradient_clipping) in Section 4.5; connect your function to run_gradient_clipping in tests/adapters.py and pass test_gradient_clipping in tests/test_nn_utils.py",
+          "note": "The test compares against clip_grad_norm_ with a frozen parameter and max_norm 1e-2. Implement it in your own repository."
+        },
+        {
+          "name": "PyTorch AMP recipe: add autocast and GradScaler to the default-precision loop",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html",
+          "locator": "Sections Adding torch.autocast through All together: run the default-precision loop, convert it, and keep the output-dtype and loss-dtype asserts green",
+          "note": "Run on any CUDA machine you can access; on CPU, read the scale and skip logic and wire the same order into your own loop without claiming speedups."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your clipping matches the reference in test_gradient_clipping, and your AMP loop holds the recipe dtype asserts while you explain each skip from your own log.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The pool covered clipping but not mixed precision (Coverage). One search pass found the PyTorch AMP recipe, which beat candidates with verified autocast, GradScaler and unscale-then-clip locators."
       }
     },
     {
@@ -369,47 +422,96 @@
         "interrupted-versus-uninterrupted-resume-equivalence"
       ],
       "outcomes": [
-        "TODO"
+        "Save and load complete training state: model, optimizer, schedule step, scaler, RNG and data order.",
+        "Bind tokenizer, data and configuration identity to each checkpoint so mismatches fail loudly.",
+        "Prove interrupted training matches uninterrupted training to a stated equivalence level."
       ],
-      "why": "TODO",
+      "why": "A weights-only checkpoint restarts training but not the run: learning rate, moments and data order all jump. Equivalence tests turn resume from a hope into a measured fact.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-foundations/causal-training-generation/decoding-policies",
+          "note": "Generate from resumed weights with owned sampling policies."
+        },
+        {
+          "unit": "llm-foundations/causal-training-generation/stopping-and-reproducibility",
+          "note": "Extend determinism from training into generation."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a1-training-contract",
+          "title": "CS336 Assignment 1 handout: checkpointing and the training loop",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 5.2, Checkpointing (p. 35): model and optimizer state_dict plus iteration through torch.save and torch.load; then Section 5.3, Training loop (p. 36): configurable hyperparameters, memmap datasets, checkpoint paths and step plus wall-clock logging"
+        },
+        {
+          "resource": "raschka-training-generation",
+          "title": "LLMs from Scratch ch05: saving and loading weights",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb",
+          "locator": "Section 5.4 (torch.save on state_dict, load_state_dict into a fresh model, and why adaptive optimizers need their state saved too)"
+        },
+        {
+          "resource": "pytorch-checkpoint-repro",
+          "title": "PyTorch saving and loading: general checkpoint plus RNG control",
+          "url": "https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html",
+          "locator": "Saving and Loading a General Checkpoint for Inference and/or Resuming Training (Save and Load: model plus optimizer state dicts with the epoch or step)"
+        },
+        {
+          "resource": "pytorch-checkpoint-repro",
+          "title": "PyTorch reproducibility notes: RNG and DataLoader state",
+          "url": "https://docs.pytorch.org/docs/stable/notes/randomness.html",
+          "locator": "Controlling sources of randomness (torch, Python and other libraries) and DataLoader (generator seeds for worker shuffling), plus Avoiding nondeterministic algorithms",
+          "depth": "Read for the checklist of what counts as state; skip CUDA kernel backend options until GPU work needs them."
+        },
+        {
+          "resource": "modern-llm-training-generation",
+          "title": "Modern LLM Notebook 09-model-config: repository and config identity",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/09-model-config.ipynb",
+          "locator": "Repository File Map (config, tokenizer_config and generation_config roles) and the tokenizer_config section (special tokens, max length, truncation and padding sides)"
         }
       ],
       "focus": [
-        "TODO"
+        "The iteration number restores the schedule exactly, the optimizer state restores the moments, and the scaler state restores the loss scale.",
+        "RNG seeds and data-loader order are training state. A fresh shuffle on resume silently starts a different run.",
+        "Equivalence needs a stated level: exact loss match for a few steps on fixed hardware, then tolerance bands beyond that.",
+        "Tokenizer and config versions pin the meaning of every saved tensor. A changed vocabulary or width redefines all IDs and shapes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write save and load for model, optimizer, iteration, scaler and RNG seeds, then an interrupted-versus-uninterrupted equivalence test over fixed steps.",
       "traps": [
-        "TODO"
+        "Saving weights only. The resumed run restarts the schedule and moments, so loss jumps even though the model is identical.",
+        "Recreating the DataLoader without its generator state. Batches arrive in a new order and the run diverges from the uninterrupted reference.",
+        "Loading weights into an edited config. Shapes may still match while token IDs or widths mean something new, and nothing raises an error."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "The checkpoint holds model, optimizer and iteration. Why is the iteration number needed?",
+          "a": "It restores the schedule position. Without it the learning rate restarts at the wrong phase, for example back at the warmup peak, and the run diverges from the original."
+        },
+        {
+          "q": "What does the CS336 test_checkpointing test actually compare?",
+          "a": "That the loaded iteration equals the saved one, that model state dicts match key by key, and that optimizer state dicts match including param groups and moment tensors."
+        },
+        {
+          "q": "Resumed loss diverges from the uninterrupted run within a few steps. Name two suspects.",
+          "a": "Unrestored RNG or DataLoader order, which feeds different batches, and missing scaler or optimizer moment state, which changes the update itself."
+        },
+        {
+          "q": "Why pin tokenizer_config and config versions alongside the checkpoint?",
+          "a": "Token IDs and tensor shapes are config-relative. A changed vocabulary or width silently redefines what every saved number means, so the binding must fail loudly on mismatch."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: checkpointing",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_serialization.py",
+          "locator": "Problem (checkpointing) in Section 5.2; connect save and load to run_save_checkpoint and run_load_checkpoint in tests/adapters.py and pass test_checkpointing in tests/test_serialization.py",
+          "note": "The test trains 10 AdamW steps, round-trips through a file and compares model and optimizer states exactly. Then extend it in your own repository with scaler, RNG and DataLoader order plus a resume-equivalence check."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your checkpoint round-trips through test_checkpointing, and your own resume test matches the uninterrupted loss to your stated tolerance.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 contract, Raschka 5.4, the PyTorch saving and randomness notes and notebook 09 cover full state, identity and equivalence with checked practice."
       }
     },
     {
