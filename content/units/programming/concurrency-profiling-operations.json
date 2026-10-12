@@ -1,6 +1,27 @@
 {
   "section": "concurrency-profiling-operations",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "aws-retry-policy",
+      "role": "operations",
+      "priority": "required",
+      "name": "Timeouts, retries, and backoff with jitter",
+      "provider": "AWS Builders' Library, Marc Brooker",
+      "access": "Free",
+      "use": "Read Timeouts, Retries and backoff, and Jitter for deadline scope, idempotency, one retry owner and bounded retry load. Interpret the five-layer example as three total attempts per layer, not three retries plus the initial attempt.",
+      "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
+    },
+    {
+      "id": "google-sre-operations",
+      "role": "operations",
+      "priority": "required",
+      "name": "Site Reliability Engineering - overload and troubleshooting",
+      "provider": "Google",
+      "access": "Free",
+      "use": "Read Chapter 21, The Pitfalls of Queries per Second, Client-Side Throttling, Utilization Signals, Handling Overload Errors and Conclusions. Read Chapter 12, Triage, Examine, Diagnose, Test and Treat, and Making Troubleshooting Easier for a service runbook. Skip datacenter load-balancing implementation details.",
+      "url": "https://sre.google/sre-book/handling-overload/"
+    }
+  ],
   "units": [
     {
       "id": "concurrency-models-gil",
@@ -179,7 +200,7 @@
     {
       "id": "cancellation-timeouts-retries",
       "title": "Task ownership, cancellation, timeouts and retries",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -188,53 +209,81 @@
         "timeouts-retries"
       ],
       "outcomes": [
-        "TODO"
+        "Own related tasks with TaskGroup and propagate cancellation after bounded cleanup.",
+        "Implement a monotonic end-to-end deadline with classified failures, capped backoff, jitter and a retry budget.",
+        "Reject unsafe retries when a timeout leaves a side effect's outcome unknown."
       ],
-      "why": "TODO",
+      "why": "A task that outlives its caller still consumes capacity. A retry that ignores ownership, deadlines or side effects can turn one transient failure into overload or duplicate work.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/backpressure-graceful-shutdown",
+          "note": "Make retries and cancellation obey the pipeline's admission and drain policy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-concurrency",
+          "title": "Async task lifecycle first pass",
+          "url": "https://algomaster.io/learn/concurrency-interview/python-asyncio-fundamentals",
+          "locator": "Error Handling: TaskGroup for Structured Concurrency (Python 3.11+); Cancellation; Timeout with asyncio.timeout (Python 3.11+)",
+          "depth": "Use the 3.14 reference below for exact failure and cancellation semantics, not older gather-based ownership patterns."
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "CPython 3.14 task ownership and deadlines",
+          "url": "https://docs.python.org/3.14/library/asyncio-task.html#task-groups",
+          "locator": "Task cancellation; Task groups and version-change notes; Timeouts: timeout and timeout_at; Running in threads: to_thread"
+        },
+        {
+          "resource": "aws-retry-policy",
+          "title": "Retries are additional load",
+          "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+          "locator": "Timeouts; Retries and backoff; Jitter",
+          "depth": "The five-layer example's 243 is 3^5 total attempts. Its phrase 'three retries' is inconsistent with that arithmetic; four attempts per layer would give 4^5 = 1024."
         }
       ],
       "focus": [
-        "TODO"
+        "TaskGroup awaits owned children on exit. A non-cancellation child failure cancels siblings and groups ordinary errors; one child's CancelledError alone does not fail the group. Clean up in finally and normally re-raise cancellation.",
+        "TaskGroup and timeout arrived in 3.11. In 3.13 TaskGroup improved simultaneous cancellation/count handling and closes coroutines submitted while inactive; in 3.14 create_task forwards all kwargs, including eager_start. Do not depend on accidental task-start ordering.",
+        "Set one deadline with loop.time() and timeout_at. Queue waits, attempts and backoff spend the same budget. Catch TimeoutError outside the timeout context; cancellation is cooperative, not a hard real-time stop.",
+        "Retry only classified transient failures and idempotent operations. Pick one retry owner, cap total attempts and aggregate retry load, and inject clock, random and sleep functions for deterministic policy tests."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Build an event-gated TaskGroup: one child waits indefinitely with a finally marker, another waits for it to start then raises ValueError. Assert the sibling is cancelled, cleanup ran and except* ValueError receives the failure. Separately assert a child raising CancelledError leaves a successful sibling intact, and an expired timeout around an await becomes TimeoutError outside the context. Add a fake dependency that fails twice then succeeds: three total attempts and full-jitter delays in [0, min(cap, base*2**k)]. Inject random and sleep to check the bounds without wall-clock assertions. Test permanent failure, exhausted budget, expired deadline and cancellation during backoff with no later attempt.",
       "traps": [
-        "TODO"
+        "Catching BaseException in a retry loop and thereby retrying CancelledError. Cancellation is not a transient dependency failure.",
+        "Giving every attempt a fresh end-to-end timeout. This silently lets retries exceed the caller's deadline.",
+        "Assuming cancellation of a to_thread await stops an already-running thread or rolls back a remote side effect. Use cooperative worker stop signals and an explicit unknown-outcome policy."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What differs between TaskGroup and gather on an ordinary child failure?",
+          "a": "TaskGroup cancels and awaits siblings before reporting grouped errors. Default gather propagates the first error without automatically cancelling its other awaitables."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Where do you catch asyncio.timeout's TimeoutError?",
+          "a": "Outside its async with block. Inside, expiry is delivered through cancellation of the current task."
+        },
+        {
+          "q": "Three total attempts at each of five retrying layers yield what worst-case leaf load?",
+          "a": "3^5 = 243 leaf attempts for one original request. Three retries plus the initial attempt would instead yield 4^5 = 1024."
+        },
+        {
+          "q": "Does a timed-out write prove the server did not commit it?",
+          "a": "No. Its outcome may be unknown. Retry only with a valid idempotency contract or reconcile the result first."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: TaskGroup-owned workers, request deadlines, classified retry budgets, jitter and cancellation cleanup against a fault-injected dependency.",
+      "stopWhen": "Your tests show no child left running after group exit and no retry after cancellation, permanent failure, exhausted budget or deadline expiry; duplicate delivery has an explicit idempotency policy.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for operational retry policy, idempotency and jitter. AWS fills that gap; the pool's Python 3.14 reference supplies current TaskGroup and timeout behavior."
       }
     },
     {
       "id": "backpressure-graceful-shutdown",
       "title": "Backpressure, load shedding and graceful shutdown",
-      "hours": 3,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -243,53 +292,93 @@
         "graceful-shutdown"
       ],
       "outcomes": [
-        "TODO"
+        "Implement bounded admission with an explicit wait, reject or shed policy under overload.",
+        "Account for queued, executing and externally waiting work when setting memory and downstream budgets.",
+        "Stop admission, drain accepted work within a deadline and report unfinished work on forced shutdown."
       ],
-      "why": "TODO",
+      "why": "A queue turns a capacity mismatch into waiting and memory use. Bounding only the queue is not enough if unlimited producers or retry tasks accumulate outside it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/logs-metrics-traces",
+          "note": "Expose queue growth, rejection and recovery instead of hiding overload."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-concurrency",
+          "title": "Bounded Buffer",
+          "url": "https://algomaster.io/learn/concurrency-interview/bounded-buffer",
+          "locator": "Problem Statement; Synchronization Challenges; Solution 2: Semaphore-Based Solution; Solution 3: Monitor-Based Solution (Condition Variables)",
+          "depth": "Skip the Key Insight assertion that empty.count + full.count always equals capacity. It omits permits reserved by in-flight producers and consumers. Do not copy starvation-free claims into Python."
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Bounded queues and drain accounting",
+          "url": "https://docs.python.org/3.14/library/asyncio-queue.html#asyncio.Queue",
+          "locator": "Queue: maxsize, put, put_nowait, get, task_done, join and shutdown, including immediate shutdown warning and QueueShutDown"
+        },
+        {
+          "resource": "google-sre-operations",
+          "title": "Protect useful capacity during overload",
+          "url": "https://sre.google/sre-book/handling-overload/",
+          "locator": "The Pitfalls of Queries per Second; Client-Side Throttling; Utilization Signals; Handling Overload Errors, Deciding to Retry; Conclusions",
+          "depth": "Use the local admission and retry-budget principles. Skip Google-specific datacenter balancing and quota infrastructure."
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Deliver termination to the event loop",
+          "url": "https://docs.python.org/3.14/library/asyncio-eventloop.html#unix-signals",
+          "locator": "Unix signals: loop.add_signal_handler and loop.remove_signal_handler; main-thread requirement"
         }
       ],
       "focus": [
-        "TODO"
+        "For W workers taking one item each and queue capacity Q, admitted unfinished items are at most W + Q only if there are no extra prefetches, detached retries or unbounded admission waiters. Bound payload bytes as well as item count.",
+        "If arrival rate exceeds service rate, excess work must wait elsewhere or be rejected. A semaphore limits simultaneous work, not starts per second; rate limits and retry budgets protect a different constraint.",
+        "Queue.shutdown arrived in 3.13. Graceful shutdown rejects puts, wakes blocked putters and lets existing items drain. Call task_done once per successful get after recording the item's outcome; join tracks unfinished accounting, not business success.",
+        "On SIGTERM stop admission first, drain within a monotonic deadline, then cancel and await workers and report unfinished IDs. Immediate shutdown discards queued items; it is an abort policy, not a successful drain."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Make a two-worker pipeline with Queue(maxsize=2), event-gated consumers and put_nowait admission. Hold two items in workers and two in the queue, assert four admitted unfinished items and reject the fifth with QueueFull. Stop admission using shutdown(), release consumers, await join and assert all four accepted IDs have recorded terminal outcomes. Verify a blocked putter wakes with QueueShutDown. Repeat with shutdown(immediate=True): queued items are discarded and join can return without those items being processed. Add a drain deadline and report abandoned IDs rather than labelling that run successful.",
       "traps": [
-        "TODO"
+        "Creating one producer task per arrival before awaiting a bounded put. The queue is bounded but waiting tasks and their payloads are not.",
+        "Calling task_done before recording success, failure or abandonment. join can then hide silent loss.",
+        "Treating immediate shutdown as proof of completed work. In-flight items still need accounting, and discarded queued items were not processed."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What changes when lambda exceeds mu for a sustained interval?",
+          "a": "Without rejection, backlog grows roughly at lambda - mu items per second while capacity stays fixed. A bounded queue moves that pressure to admission."
+        },
+        {
+          "q": "Is Queue(maxsize=0) a zero-capacity rendezvous?",
+          "a": "No. In asyncio it is unbounded. Use a positive capacity and a separate admission policy."
+        },
+        {
+          "q": "Does join prove every accepted item succeeded?",
+          "a": "No. It proves the unfinished-item count reached zero. Your outcome ledger must distinguish success, failure and abandonment."
+        },
+        {
+          "q": "Can a concurrency semaphore enforce ten calls per second?",
+          "a": "No. Fast calls can reuse permits many times per second. A time-based rate limiter controls starts; a semaphore controls simultaneous calls."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Bounded Buffer",
+          "url": "https://algomaster.io/learn/concurrency-interview/bounded-buffer",
+          "locator": "Problem Statement, The Rules and The Goal; Solution 3: Monitor-Based Solution (Condition Variables)",
+          "note": "Solve the bounded producer-consumer contract before reading the solution. Then adapt it to the async mini-project and add overload rejection, outcome accounting and shutdown tests. The semaphore-count shortcut noted above is not an invariant during operations."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your event-gated overload test respects the four-item bound, rejects excess work, drains accepted IDs with explicit outcomes, and distinguishes forced abandonment from successful completion.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for load shedding and recovery policy beyond blocking producers. Google SRE adds local overload protection beside the pool's bounded-buffer problem and current queue shutdown API."
       }
     },
     {
       "id": "profiling-benchmarking",
       "title": "Profiling CPU and memory, and benchmarking honestly",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "measure"
       ],
@@ -299,47 +388,74 @@
         "benchmark-design"
       ],
       "outcomes": [
-        "TODO"
+        "Choose sampling, call instrumentation or allocation tracing to test a concrete bottleneck hypothesis.",
+        "Distinguish CPU cost, transient allocation peaks and retained Python memory from waiting and process RSS.",
+        "Build a correctness-checked benchmark with warm-up, repeated trials and raw results, then justify one optimization and a regime where it does not help."
       ],
-      "why": "TODO",
+      "why": "Profiles locate expensive work; benchmarks test whether changing it helps. Mixing the two can turn profiler overhead, hidden queueing or a changed workload into an apparent improvement.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "programming/concurrency-profiling-operations/logs-metrics-traces",
+          "note": "Combine profiles with request-level evidence to separate CPU work from dependency waits."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "high-performance-python",
+          "title": "High Performance Python, 3rd edition: targeted profiling",
+          "url": "https://www.oreilly.com/library/view/high-performance-python/9781098165956/",
+          "locator": "Chapter 2: Profiling Efficiently (pp. 28-29), Using the cProfile Module (pp. 41-45), Using memory_profiler to Diagnose Memory Usage (pp. 53-60), Introspecting an Existing Process with PySpy (pp. 63-64), Unit Testing During Optimization to Maintain Correctness (pp. 73-76), Strategies to Profile Your Code Successfully (p. 77)",
+          "depth": "Learn tool selection and output interpretation. Do not install every profiler or assume the book's tool versions support both 3.14 builds; execute the stdlib reproduction below."
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Call profiles are not benchmarks",
+          "url": "https://docs.python.org/3.14/library/profile.html",
+          "locator": "Introduction to the profilers; Instant User's Manual: tottime and cumtime; What Is Deterministic Profiling?"
+        },
+        {
+          "resource": "python-concurrency-docs",
+          "title": "Temporary peaks versus retained allocations",
+          "url": "https://docs.python.org/3.14/library/tracemalloc.html",
+          "locator": "Examples: Compute differences; Record the current and peak size of all traced memory blocks; API: get_traced_memory, reset_peak and Snapshot.compare_to"
         }
       ],
       "focus": [
-        "TODO"
+        "Sampling estimates where observed stacks spend time and can miss short events. Instrumentation records calls but perturbs execution. Choose a supported tool and timer for the hypothesis, not the prettiest report.",
+        "cProfile tottime excludes callees; cumtime includes them. Suspended async work and worker processes need separate interpretation; a request's wall time is not its CPU time.",
+        "tracemalloc sees traced Python allocations, not all native buffers or RSS. Compare snapshots after the same lifecycle stage for retention; reset the peak for transient allocations and record process memory separately.",
+        "Benchmark without profilers under matched input and offered load. Save correctness checks, hardware, Python build, worker count, start method, warm-up, all trials, throughput, latency distribution, rejection rate and queue depth. Include queue wait in end-to-end latency."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write sum(list(range(n))) and sum(range(n)) for n=100,000 and check both against n*(n-1)//2. Profile the materialized version with cProfile, then measure traced current and peak memory for each in fresh tracing sessions. The list version should have a larger temporary peak; do not require particular bytes or speedups. Retain 1,000 bytearray(1024) objects, compare snapshots before and after, clear the retaining list, collect garbage and compare again. Then benchmark both sum variants without tracing at small and larger n, with one warm-up and five trials each, saving CPU and full Python version/build with raw times. Explain an optimization's supported workload region rather than extrapolating to a service.",
       "traps": [
-        "TODO"
+        "Timing task creation instead of awaiting completion, or hiding admission delay by starting the latency clock only after enqueue.",
+        "Calling high RSS a Python-object leak. Allocator retention and native memory can keep RSS high after traced allocations fall.",
+        "Reporting the fastest trial, changing total work, or benchmarking with cProfile or tracemalloc enabled."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What does a high cumtime but low tottime suggest?",
+          "a": "The function's callees account for much of its observed cost. Inspect those callees before rewriting the wrapper."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can a snapshot after a function returns reveal its freed temporary list?",
+          "a": "Not as a live allocation. Use peak tracing during the function for temporary memory and snapshots for allocations still retained."
+        },
+        {
+          "q": "Why can low CPU usage coexist with high request latency?",
+          "a": "The request may wait in a queue, on a lock, for I/O or for a downstream service. CPU profiles alone do not distinguish all those waits."
+        },
+        {
+          "q": "Why keep failures and rejections in a concurrency benchmark?",
+          "a": "A design can appear faster by dropping slow work. Compare completed throughput, end-to-end latency and failure rate at the same offered load."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: CPU and retention diagnosis plus a controlled before/after pipeline benchmark with one justified improvement and one rejected optimization.",
+      "stopWhen": "You can identify the materialization peak and retention site from evidence, preserve the result oracle, and present raw unprofiled trials with a workload-limited conclusion rather than a single best time.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept the book's bounded profiling selections and used the pool's Python documentation family for current stdlib profiling and allocation APIs; the mini-project supplies service-scale measurement."
       }
     },
     {
