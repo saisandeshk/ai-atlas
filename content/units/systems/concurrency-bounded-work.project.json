@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "Bounded admission and clean shutdown for the service slice, with forced schedules",
     "hours": "10 to 14",
-    "brief": "Port the closable bounded queue and the `OPEN`, `CLOSING`, `CLOSED` drain into the Python worker pool that will run the service slice. Force one safety failure and one liveness failure with deterministic schedule shims, repair both, then drive the pool through saturation and show that held work stays bounded, expired work never starts and the pool recovers.",
+    "brief": "Port a closable bounded queue and drain states into the Python worker pool that will serve later requests. Force schedule-driven safety and liveness failures, repair them, then prove admission stays bounded and shutdown stays clean under overload.",
     "units": [
       "interleavings-memory-consistency",
       "locks-condition-variables",
@@ -15,20 +15,18 @@
       "event-loops-work-stealing"
     ],
     "steps": [
-      "Keep the C programs from the units in `lab/concurrency`: the racy and ThreadSanitizer-clean counters, the lost-wakeup demo, the deadlock and its ordered repair, the closable bounded queue (2 producers of 5000 items and 2 consumers drain exactly 10000, `put` after close and `take` after drain return `-1`) and the drain demo (`done=3` `pending=0` `state=2`, `admit-after-close=0`). `make check` rebuilds them with and without `-fsanitize=thread` and asserts their outputs.",
-      "In `kv/pool.py` write the Python equivalent on `threading.Condition`: a `ClosableQueue(capacity)` whose `put` never blocks and returns `False` when full or closed, whose `take` waits in a while loop and returns `None` once closed and drained, and a `WorkerPool` with states `OPEN`, `CLOSING` and `CLOSED`. `close()` stops admission, lets workers finish admitted jobs within a drain deadline, then cancels what is left and reports the counts. Port the C queue's cases as tests: capacity 4, 2 x 5000 puts retried until accepted, every item taken exactly once, puts after close rejected.",
-      "Give every job a request ID and an absolute deadline on `time.monotonic()`. A worker checks the deadline when it takes a job and drops an expired job without starting its effect, counting it as cancelled; a running job checks a cancellation flag between steps. Test that a job whose deadline passes while it is queued never runs.",
-      "Force a safety failure with a shim. The handler deduplicates by request ID with check-then-act (`if rid not in done:` apply, then `done.add(rid)`). Put a `threading.Barrier(2)` between the check and the effect and submit the same request twice: both threads pass the check and a +5 credit applies twice (10 on CPython 3.14.4). Repair it by claiming the ID under a lock before the effect (`IN_PROGRESS`, then `DONE`), keep the shim in the test, and assert the effect applies once.",
-      "Force a liveness failure the same way: one path takes the index lock then the log lock, the other takes them in the opposite order, with a barrier after each first acquisition; both threads are still alive after a 2 s join timeout. Repair it with one global order (index before log) and give the barrier a timeout: after the fix the forced schedule is unreachable, so the barrier breaks instead of the test hanging, and both threads finish. Run each forced test 20 times, then add a seeded stress test with random sleeps and an exact oracle (final credits and the number of applied request IDs).",
-      "Predict capacity as workers divided by service time, then drive the pool past it: for example 4 workers that sleep 10 ms per job (about 400 jobs per second) at offered rates of 200, 400 and 800 per second. Record offered, accepted, rejected, cancelled and completed counts, queue length sampled every 10 ms and latency percentiles from raw samples. Queue length never exceeds capacity, so held jobs stay bounded by capacity plus workers at every rate, and accepted plus rejected equals offered. After the flood stops, show the queue draining and latency returning to its idle value.",
-      "Close the pool in the middle of a flood: admission stops at once, and admitted jobs finish within the drain deadline or are cancelled and counted, so admitted equals done plus cancelled. Wire `close()` to `SIGTERM` in a small server process started by `lab/supervise.py` and test the signal path end to end.",
-      "Compare one contention choice in Python: a single lock around the dedup state against a per-key lock table, pinned to physical cores with `taskset`, one warm-up and five repeats, exact totals asserted on every run. Name the Python build: in the default build the GIL lets only one thread run Python bytecode at a time, so the comparison measures lock handoff and waiting, not parallel speedup."
+      "Keep the C programs from the units in `lab/concurrency`: racy and clean counters, lost wakeup, deadlock and repair, closable queue and drain demo, rebuilt and asserted by `make check` with and without ThreadSanitizer.",
+      "Write `kv/pool.py` with `ClosableQueue` and a `WorkerPool` owning `OPEN`, `CLOSING` and `CLOSED`, where close stops admission, drains admitted jobs within a deadline, then cancels and reports the remainder, tested against the ported C queue cases.",
+      "Give every job a request identity and an absolute deadline on `time.monotonic()`, drop expired jobs before their effect while counting them, and let running jobs observe cancellation between steps, with tests for both.",
+      "Force a double-apply failure by interleaving duplicate requests through check-then-act with a schedule shim, then claim each identity under a lock before its effect and keep the shim as a regression test.",
+      "Force a lock-order deadlock with a shim that stages opposite acquisitions, repair it with one global order, and add a randomized stress test that compares final state against an exact oracle.",
+      "Predict capacity from workers over service time, drive the pool past it across rising offered rates, and show held work stays bounded, offered work is accounted for, and latency recovers after the flood.",
+      "Close the pool mid-flood so admission stops and admitted jobs finish or cancel within the deadline, wire `close()` to `SIGTERM` through `lab/supervise.py`, and compare one lock-granularity choice with pinned repeats, naming what the interpreter lock permits the test to show."
     ],
     "deliverables": [
-      "`kv/pool.py` and its tests: exactly-once `take`, rejection when full or closed, deadline cancellation and drain counts.",
-      "The two forced-schedule tests (double effect, lock-order deadlock), each failing on the seeded code and passing after the repair, plus the seeded stress test and its oracle.",
-      "The saturation table at three offered rates and after recovery, with the capacity prediction, and the SIGTERM drain report.",
-      "The C programs in `lab/concurrency`, rebuilt and asserted by `make check` with and without ThreadSanitizer."
+      "`kv/pool.py` with bounded admission, deadline cancellation and drain accounting, plus tests ported from the C queue cases.",
+      "The two forced-schedule regressions with their repairs, plus a randomized stress test against an exact oracle.",
+      "Saturation, shutdown and contention reports with predictions, raw samples and recovery evidence, and the C programs under `make check`."
     ],
     "checks": [
       {
@@ -39,25 +37,20 @@
     "rubric": [
       {
         "criterion": "Forced failures",
-        "pass": "Each shim reproduces its failure in all 20 runs, and each repair passes 20 runs with the shim still in place.",
-        "strong": "The write-up says why the stress test alone might miss each failure, with its seed count and observed miss rate."
+        "pass": "Each shim reproduces its failure before the repair and passes after, with the shim kept as a regression test.",
+        "strong": "The write-up explains why randomized stress alone could miss each failure, and kept runs show the miss."
       },
       {
         "criterion": "Bounded work",
-        "pass": "Queue length never exceeds capacity, `put` never blocks the caller, and accepted plus rejected equals offered at every rate.",
-        "strong": "The capacity prediction is written before the sweep, and the measured knee is explained against it."
+        "pass": "Held work stays bounded at every offered rate, every offered job is accounted for, and expired jobs never start.",
+        "strong": "The capacity prediction precedes the sweep, and the measured knee is explained against it."
       },
       {
-        "criterion": "Cancellation and shutdown",
-        "pass": "Expired jobs never start, `close()` stops admission at once, and admitted equals done plus cancelled after `SIGTERM`.",
-        "strong": "A job that raises halfway is counted, and its effect is shown to be either complete or absent, never half applied."
-      },
-      {
-        "criterion": "Evidence",
-        "pass": "Every timing names the Python build, CPU, pinning, warm-up and repeats, and the C programs pass under ThreadSanitizer.",
-        "strong": "The contention comparison states what the GIL build can and cannot show and keeps raw times."
+        "criterion": "Shutdown and evidence",
+        "pass": "Close stops admission at once with admitted work finished or counted, and the signal path works end to end.",
+        "strong": "The contention comparison states what the interpreter lock can show, and raw times with pinning are kept."
       }
     ],
-    "feedsInto": "Capstone service slice: the pool is its bounded admission, cancellation and shutdown path. Mechanisms laboratory: the C programs and forced schedules are its controlled concurrency failure and bounded queue."
+    "feedsInto": "Capstone service slice: the pool gives bounded admission, cancellation and shutdown. The C queue and forced schedules join the mechanisms laboratory."
   }
 }
