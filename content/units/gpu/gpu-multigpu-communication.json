@@ -1,6 +1,27 @@
 {
   "section": "gpu-multigpu-communication",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "splitwise-gpu9",
+      "role": "paper",
+      "priority": "support",
+      "name": "Splitwise: Efficient Generative LLM Inference Using Phase Splitting",
+      "provider": "Microsoft Research",
+      "access": "Free",
+      "use": "Read arXiv:2311.18677v2 (ISCA 2024) for the phase characterization and the homogeneous and heterogeneous cluster designs. Test the throughput, cost and power claims as hardware-specific results, and compare its placement with DistServe on your workload.",
+      "url": "https://www.microsoft.com/en-us/research/publication/splitwise-efficient-generative-llm-inference-using-phase-splitting/"
+    },
+    {
+      "id": "mooncake-gpu9",
+      "role": "paper",
+      "priority": "support",
+      "name": "Mooncake: Trading More Storage for Less Computation",
+      "provider": "USENIX FAST 25",
+      "access": "Free",
+      "use": "Study the KVCache-centric disaggregated architecture, the global cache with its transfer engine, and the prefill scheduling with early rejection. Test the effective-capacity claims as trace-specific results.",
+      "url": "https://www.usenix.org/conference/fast25/presentation/qin"
+    }
+  ],
   "units": [
     {
       "id": "interconnect-topology",
@@ -16,47 +37,89 @@
         "link-bandwidth-latency"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how PCIe, NVLink and NVSwitch paths differ in bandwidth, latency and CPU involvement, and where RDMA removes the CPU from the path.",
+        "Predict which hop bounds a stated exchange from a topology dump, and state the directional bandwidth assumption behind the prediction.",
+        "Detect a silent fallback from GPUDirect RDMA to TCP sockets from logs and module checks."
       ],
-      "why": "TODO",
+      "why": "Every collective time in this section is bytes divided by the slowest link on its path plus latency. A wrong topology picture makes every later model wrong.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/collective-contracts-alpha-beta",
+          "note": "Feed link bandwidth and latency into the latency-bandwidth cost model."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/nccl-algorithms-placement",
+          "note": "Use the topology map to constrain algorithm and placement choices."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Scale-up fabric: NVLink and NVSwitch",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 2, NVLink and NVSwitch"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "RDMA, NICs and multinode connectivity",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, High-Speed, Low-Overhead Data Transfers with RDMA; Tuning Multinode Connectivity; Multinode Communication Pitfalls"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Topology detection and peer access",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/troubleshooting/gpu_troubleshooting.html#topology-detection",
+          "locator": "Topology detection and GPU-to-GPU communication: confirm peer access before trusting any bandwidth number"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Recording the topology NCCL saw",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/env.html#nccl-topo-dump-file",
+          "locator": "NCCL_TOPO_DUMP_FILE and NCCL_TOPO_FILE: dump the detected graph with every measurement"
         }
       ],
       "focus": [
-        "TODO"
+        "Bandwidth numbers are directional unless stated otherwise. An 800 Gb/s NIC is 100 GB/s of line rate in one direction before headers and congestion, and a Gen4 x16 link is about 32 GB/s per direction from lane arithmetic.",
+        "The book's hierarchy example (two NVLink pairs joined by PCIe) reduces on the fast pairs first so the slow link carries only a fraction of the data. Sketch which exchange crosses PCIe before running anything.",
+        "GPUDirect RDMA lets the NIC read and write GPU memory without CPU copies. A container without InfiniBand devices or with mismatched GIDs silently falls back to TCP sockets, which run far below the RDMA rate on the same fabric. Confirm `NET/IB` rather than sockets in the log before quoting any rate.",
+        "A Blackwell GPU advertises about 1.8 TB/s of NVLink aggregate across 18 links, which is bidirectional aggregate or 900 GB/s per direction. Per-direction phrasing of 100 GB/s per link contradicts that aggregate; use the aggregate and halve it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank page, sketch the four-GPU hierarchy example (GPUs 0-1 on one NVLink pair, 2-3 on another, PCIe between pairs) and state which exchange crosses the slow link and why it carries only a fraction of the data. Then capture `nvidia-smi topo -m` on your hardware and label each GPU pair with its path.",
       "traps": [
-        "TODO"
+        "Quoting 1.8 TB/s as per-direction NVLink bandwidth. It is bidirectional aggregate; per-direction peaks are half that, and sustained rates are lower under imbalance.",
+        "Assuming x16 width. A link negotiated at x8 has half the bandwidth of the same generation at x16, and links drop to a lower generation when idle. Read both under load with `nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.width.current --format=csv`; an RTX 3050 6 GB desktop board reported Gen4 x8 under a copy load and Gen1 when idle.",
+        "Trusting a bandwidth number while the path fell back to TCP. Check `NCCL_DEBUG=INFO` for `NET/IB` versus sockets and `lsmod | grep nvidia_peermem` for the peer-memory module."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "GPUs 0-1 share NVLink, 2-3 share NVLink, and only PCIe joins the pairs. Where does a hierarchical all-reduce put most bytes?",
+          "a": "On the two NVLink pairs first, then one exchange across PCIe per pair, then redistribution inside each pair. The slow link handles a fraction of the data rather than every byte."
+        },
+        {
+          "q": "What line rate in GB/s does an 800 Gb/s link imply, and why is it not a measurement?",
+          "a": "800 divided by 8 is 100 GB/s of line rate. Headers, encoding, congestion and software overheads sit below it, so sustained goodput needs a measurement."
+        },
+        {
+          "q": "Which two checks expose a silent RDMA-to-TCP fallback?",
+          "a": "`NCCL_DEBUG=INFO` showing socket transport instead of `NET/IB` paths, and a missing peer-memory module under `lsmod | grep nvidia_peermem`. Either one invalidates the RDMA bandwidth assumption."
+        },
+        {
+          "q": "A Gen4 x16 link is quoted at 64 GB/s. Is that per direction?",
+          "a": "No. Lane arithmetic gives about 32 GB/s per direction (16 lanes at 16 GT/s with 128b/130b encoding). 64 GB/s is the bidirectional sum."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code ch04: PCIe staging and topology bring-up probes",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/baseline_pcie_staging.py",
+          "locator": "Run `baseline_pcie_staging.py` with its optimized pair plus `nccl_benchmark.py` on compatible single-host paths; record `nvidia-smi topo -m` and `NCCL_TOPO_DUMP_FILE`",
+          "note": "Mark NVLink-only and multi-GPU-only paths as explicit blockers with the dump attached; do not report fallback timings as link rates."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your sketch predicts the slow hop before you run, the dump confirms the path, and you can state every quoted rate as per-direction or bidirectional with its assumption.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapters 2 and 4, NCCL topology docs and the ch04 bring-up probes cover links, RDMA and topology evidence at explain and measure depth."
       }
     },
     {
@@ -71,53 +134,97 @@
         "alpha-beta-cost"
       ],
       "outcomes": [
-        "TODO"
+        "State the NCCL contract for each collective: same count and datatype on every rank, rank-ordered outputs, and root as a rank rather than a device.",
+        "Derive per-rank volume and \\(\\alpha\\)-\\(\\beta\\) time for all-gather, reduce-scatter and ring all-reduce, and predict the latency-bandwidth crossover for a stated size."
       ],
-      "why": "TODO",
+      "why": "Volume tells you the bytes on the wire and latency tells you the floor for small messages. Without both terms you cannot say whether a collective is latency-bound or bandwidth-bound.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/ring-tree-collectives",
+          "note": "Apply volumes and the crossover to ring and tree designs."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/comm-measurement-simulation",
+          "note": "Fit the model against a sweep and predict one held-out size."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nccl-gpu9",
+          "title": "Collective contracts",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/usage/collectives.html",
+          "locator": "AllReduce, AllGather, ReduceScatter and AlltoAll: every rank passes the same count and datatype; AllGather orders output by rank; Reduce followed by Broadcast equals AllReduce; ReduceScatter followed by AllGather equals AllReduce"
+        },
+        {
+          "resource": "cs336-a2-comm-analysis-gpu9",
+          "title": "Volume reasoning without latency",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.1 Communication Primitives (pp. 40 to 41): ring all-gather and ring reduce-scatter at \\((N-1)/N \\times S/W\\) seconds, ring all-reduce as their sum, and Problem (`alternate_ring_all_reduce`)"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Size-dependent selection knobs",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/env.html#nccl-algo",
+          "locator": "NCCL_ALGO with Ring, Tree, CollNet variants, NVLS, NVLSTree and PAT plus per-collective syntax; NCCL_PROTO with LL, LL128 and Simple; the tuner picks the small-versus-large crossover by size and topology (the old `NCCL_LL_THRESHOLD` and `NCCL_TREE_THRESHOLD` were removed in NCCL 2.5)"
         }
       ],
       "focus": [
-        "TODO"
+        "The contract is strict: mismatched counts, datatypes or call order across ranks is undefined behaviour including hangs, not a checked error. Root arguments name ranks, so a remapped rank-to-device layout changes which device is root.",
+        "CS336 sizes its model with per-device egress \\(W\\) and no latency term, so \\((N-1)/N \\times S/W\\) is exact only for large messages. Add the latency term for small ones: \\(T(n) = \\alpha + \\beta n\\) with \\(\\beta = 1/B\\).",
+        "The crossover \\(n^* = \\alpha B\\) separates the regimes. With \\(\\alpha = 10\\) microseconds and \\(B = 100\\) GB/s the crossover sits at 1 MB: below it startup dominates, above it bytes dominate.",
+        "Small messages favour low-latency protocols (LL, LL128) and, at larger rank counts, tree; large messages favour ring with Simple. NCCL's tuner chooses per size and topology because one setting cannot win at both ends."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive ring all-reduce time as reduce-scatter plus all-gather: \\(T = 2(N-1)\\alpha + 2S(N-1)/(NB)\\). Then compute the crossover size where the latency and bandwidth terms are equal for a stated \\(\\alpha\\) and \\(B\\).",
       "traps": [
-        "TODO"
+        "Reading the CS336 volume as a complete time model. It drops \\(\\alpha\\), so it underpredicts small messages by orders of magnitude; that gap is exactly what LL/LL128 and tree selection address.",
+        "Assuming the alternate ring algorithm from the CS336 problem is competitive. It sends full \\(S\\) per step for \\((N-1)S/W\\) seconds, a factor of about \\(N/2\\) worse than the chunked ring; chunking is what buys the saving.",
+        "Treating bus bandwidth and algorithm bandwidth as the same number. The fit must use bytes on the wire per rank, not \\(S\\), or the fitted \\(\\beta\\) is wrong by the volume factor."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What does the alternate ring all-reduce cost, and why?",
+          "a": "\\((N-1)S/W\\) seconds. Each of the \\(N-1\\) steps transmits a full size-\\(S\\) buffer instead of a size-\\(S/N\\) chunk, so no \\(1/N\\) factor appears."
+        },
+        {
+          "q": "With \\(\\alpha = 10\\) microseconds and \\(B = 100\\) GB/s, where is the crossover?",
+          "a": "\\(n^* = \\alpha B = 10^{-5} \\times 10^{11} = 10^6\\) bytes, or 1 MB. Messages far below 1 MB are latency-bound; far above are bandwidth-bound."
+        },
+        {
+          "q": "Why must every rank pass the same count and datatype?",
+          "a": "The collective is one matched operation across ranks. A mismatch breaks the pairing the implementation assumes, which the NCCL page defines as undefined behaviour including hangs and data corruption."
+        },
+        {
+          "q": "All-gather output differs across two runs with identical inputs. What changed?",
+          "a": "The rank-to-device mapping. AllGather orders output by rank index, so remapping ranks permutes which device's block lands where."
+        },
+        {
+          "q": "Which algorithm and protocol should a 16 KB and a 400 MB all-reduce end up with, and why?",
+          "a": "A low-latency protocol (LL or LL128), with tree at larger rank counts, for 16 KB, because startup dominates; ring with Simple for 400 MB, because balanced links dominate. The tuner makes this choice per size, so override it only with a measured reason."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Simulate Distributed Collectives",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-simulate-collectives",
+          "locator": "Implement `simulate_collectives` for `all_gather`, `all_reduce`, `reduce_scatter` and `all_to_all` over rank-ordered tensors: rank-ordered concatenation, elementwise sums, equal contiguous chunks and source-ordered blocks"
+        },
+        {
+          "name": "TensorTonic: Calculate Collective Effective Bandwidth",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-collective-bandwidth",
+          "locator": "Implement `collective_bandwidth`: modeled bytes per rank \\(A = cS(R-1)/R\\) with \\(c = 2\\) for all-reduce and 1 otherwise, divided by the duration",
+          "note": "The problem calls the ring wire bytes `algorithm_bytes`. nccl-tests reserves algorithm bandwidth for \\(S/t\\) and calls the wire-corrected rate bus bandwidth, so name the convention whenever you compare the two."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the ring all-reduce time and the crossover without notes, and both TensorTonic problems agree with your hand computation.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "NCCL contracts, CS336 Section 8.1 volumes and NCCL size knobs cover contracts and the crossover at derive depth, with two TensorTonic problems as checked practice."
       }
     },
     {
       "id": "ring-tree-collectives",
       "title": "Ring and tree all-reduce, all-gather and reduce-scatter volume",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -127,47 +234,103 @@
         "allgather-reducescatter"
       ],
       "outcomes": [
-        "TODO"
+        "Derive step counts and per-rank bytes for ring and tree all-reduce, all-gather and reduce-scatter, and state which regime each algorithm wins.",
+        "Implement all-reduce and all-to-all from point-to-point calls with correctness and timing checks against the library versions.",
+        "Decompose tensor-parallel forward and backward communication into all-gather, all-reduce and reduce-scatter pieces."
       ],
-      "why": "TODO",
+      "why": "Data-parallel sync and tensor-parallel shards are these three collectives in different orders. The volume derivation decides the design; the MPI build makes the steps concrete without needing eight GPUs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/nccl-algorithms-placement",
+          "note": "Map ring, tree and all-to-all volumes onto NCCL algorithm selection."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/comm-compute-overlap",
+          "note": "Use per-rank bytes to predict exposed communication."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a2-comm-analysis-gpu9",
+          "title": "Ring constructions and the alternate algorithm",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.1 Communication Primitives (pp. 40 to 41): ring all-gather chunk passing, ring reduce-scatter with partial sums, all-reduce as their composition, and Problem (`alternate_ring_all_reduce`)"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "NCCL ring, tree, CollNet and PAT",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, NCCL Communication Algorithms: Ring bandwidth-optimality at \\(2 \\times\\) data size over ranks per link, Tree in \\(O(\\log N)\\) steps for small messages, CollNet leader hierarchy, PAT hybrid"
+        },
+        {
+          "resource": "cse291a-pa2-comm-gpu9",
+          "title": "Collectives from point-to-point MPI",
+          "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
+          "locator": "Sections 2.0 and 2.1: `mpi-test.py` `allreduce`, `allgather`, `reduce_scatter` and `split` cases, then `myAllreduce` and `myAlltoall` in `mpi_wrapper/comm.py` from `Send`, `Recv` and `Sendrecv` only"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Point-to-point building blocks",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/usage/p2p.html",
+          "locator": "Two-sided communication: `ncclSend` and `ncclRecv` pairs compose ring steps; ordering across ranks follows the same matched-call discipline as collectives"
         }
       ],
       "focus": [
-        "TODO"
+        "Ring all-reduce moves \\(2S(N-1)/N\\) bytes per rank in \\(2(N-1)\\) steps: bandwidth-optimal because every link carries the same share. Tree all-reduce finishes in \\(O(\\log N)\\) steps but leaves leaf links idle, so it wins small messages and loses large ones.",
+        "All-to-all is personalized, not a reduction: each rank sends a distinct chunk to every other rank. Reusing an all-reduce where an all-to-all belongs silently sums data that should stay separate.",
+        "Reduce-scatter followed by all-gather equals all-reduce, and each half costs \\(S(N-1)/N\\) per rank. Read any tensor-parallel layer as one of these halves: gather shards before shared compute, reduce partial outputs after sharded compute.",
+        "The PA2 restriction (no library collectives inside myAllreduce and myAlltoall) is the point: ring steps from Send and Recv expose the \\(N-1\\) round structure that the volume formulas summarize."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive per-rank bytes and step counts for ring all-gather, ring reduce-scatter, ring all-reduce and the alternate algorithm for general \\(N\\) and \\(S\\), then evaluate each at \\(N = 4\\) and \\(S = 1\\) GB and state the winner and its margin.",
       "traps": [
-        "TODO"
+        "Counting steps instead of bytes for large messages. Ring takes more steps than tree yet wins large transfers because balanced links dominate; step count alone picks tree everywhere.",
+        "Assuming tree links share load like ring links. Leaves send once upward and then wait, so quoting ring volume for a tree run overstates the link rate the measurement should show.",
+        "Calling `myAlltoall` with a reduction operator. All-to-all permutes blocks between ranks; applying `MIN`, `SUM` or `MAX` semantics to it corrupts every expert or shard assignment downstream."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "At \\(N = 4\\) and \\(S = 1\\) GB, what does each rank send in ring all-reduce versus the alternate algorithm?",
+          "a": "Ring: \\(2 \\times 1 \\times 3/4 = 1.5\\) GB per rank. Alternate: \\((4-1) \\times 1 = 3\\) GB per rank, twice as much, because it ships full buffers instead of chunks."
+        },
+        {
+          "q": "Why does tree all-reduce beat ring at 16 KB but lose at 400 MB?",
+          "a": "At 16 KB the \\(O(\\log N)\\) steps against \\(O(N)\\) dominate and tree starts fewer transfers. At 400 MB bytes dominate and ring keeps every link busy while tree leaves sit idle."
+        },
+        {
+          "q": "A tensor-parallel row needs full input on each rank from shards. Which collective, and what does each rank hold after?",
+          "a": "All-gather: each rank starts with its input slice and ends with the full tensor ordered by rank, matching the PA2 `naive_collect_forward_input` exercise."
+        },
+        {
+          "q": "Each rank holds a same-shaped partial output that must be summed everywhere. Which collective?",
+          "a": "All-reduce with SUM, matching `naive_collect_forward_output` over the `fc_o` input-dimension shards."
+        },
+        {
+          "q": "When is CollNet the right answer rather than plain ring or tree?",
+          "a": "Across groups joined by slower links with reduction-capable fabric: ring or tree inside each fast group, then leader ranks exchange across groups so the slow fabric carries fewer rounds."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "UCSD CSE 291A PA2 Part 2: Tensor Parallel Communication, Sections 2.1 to 2.5",
+          "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
+          "locator": "Section 2.1 `myAllreduce` and `myAlltoall` in `mpi_wrapper/comm.py` checked by `mpirun -n 8 python mpi-test.py --test_case myallreduce` and `mpirun -n 8 python mpi-test.py --test_case myalltoall`; Sections 2.2 to 2.5 `split_data`, `get_info` and naive forward/backward collects checked by `tests/test_data_split.py`, `tests/test_get_info.py`, `tests/test_transformer_forward.py` and `tests/test_transformer_backward.py`",
+          "note": "CPU-only with Open MPI and mpi4py in a throwaway venv; record the discussion2-1.txt timing comparison against the library versions. The remote grader needs a course token, so the local cases are the gate."
+        },
+        {
+          "name": "TensorTonic: Synchronize Data-Parallel Gradients",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-data-parallel-gradient-sync",
+          "locator": "Implement `data_parallel_gradient_sync`: average each parameter's gradient across ranks (a missing gradient counts as zero) and apply one SGD step to every replica; then state the ring all-reduce volume that sync moves"
+        },
+        {
+          "name": "TensorTonic: Reconstruct a Column-Parallel MLP Layer",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-column-parallel-mlp",
+          "locator": "Implement `column_parallel_mlp`: each rank computes \\(XW_r + b_r\\) on its column shard and the outputs concatenate in rank order, the step an all-gather performs; then state where a following row-parallel layer needs an all-reduce"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand volumes match the PA2 timing ratios up to the expected constant, the local MPI cases pass, and you can place each PA2 collect call as a ring half without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 constructions, the book algorithm survey, PA2 Sections 2.1 to 2.5 with local MPI cases and two TensorTonic problems cover ring, tree and personalized collectives at derive and implement depth."
       }
     },
     {
@@ -183,47 +346,88 @@
         "topology-aware-placement"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how NCCL picks Ring, Tree, NVLS, NVLSTree, CollNet and PAT by message size and topology, and what LL, LL128 and Simple change about a transfer.",
+        "Select algorithm, protocol and channel settings for a stated workload, and place ranks and shards so fast links carry the most bytes."
       ],
-      "why": "TODO",
+      "why": "NCCL usually picks well, but small-message stalls and cross-socket surprises come from its defaults meeting your topology. This unit teaches when to trust auto-selection and which knob fixes each failure.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/comm-compute-overlap",
+          "note": "Measure the selected algorithm under overlap."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/rank-timelines-interference",
+          "note": "Diagnose selection mistakes from rank timelines."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nccl-gpu9",
+          "title": "Algorithm and protocol selection",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/env.html#nccl-algo",
+          "locator": "`NCCL_ALGO` with Ring, Tree, CollNet variants, NVLS, NVLSTree and PAT plus per-collective syntax; `NCCL_PROTO` with LL, LL128 and Simple; set before communicator creation"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Topology-aware selection in practice",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, Topology Awareness in NCCL; NCCL Communication Algorithms: messages in the tens of MB favour tree, large messages favour ring, NVLSTree enables NVLink SHARP offload"
+        },
+        {
+          "resource": "gpu-mode-collectives-gpu9",
+          "title": "How NCCL works under the hood",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_017",
+          "locator": "Lecture 17, GPU Collective Communication (NCCL): what NCCL is, why data-parallel training needs it, and how it moves data; `ddp_simple.py` and `ddp_example.py`"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Topology bring-up benchmark",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/nccl_benchmark.py",
+          "locator": "`nccl_benchmark.py` with `baseline_nvlink_topology_aware.py`: naive versus topology-aware placement on the same collective"
         }
       ],
       "focus": [
-        "TODO"
+        "Channels split one collective across parallel rings, one CUDA block per channel. Size them with `NCCL_MIN_CTAS` and `NCCL_MAX_CTAS` from the versioned env page for your NCCL; older guides name NCHANNELS variables that your version may not read.",
+        "Protocols trade startup against throughput: LL and LL128 cut small-message latency while Simple wins large transfers. Pair them with the algorithm (a low-latency protocol, with tree at larger rank counts, for small messages; ring with Simple for large) rather than setting one knob.",
+        "Overrides apply before `ncclCommInitRank` and read as research or troubleshooting tools, not production defaults. Quote the NCCL version with every override because algorithm and default changes land per release.",
+        "Placement keeps tensor-parallel exchanges inside one NVSwitch domain and reduces across fast pairs before touching slow links. Rank order decides AllGather layout and root identity, so placement and mapping are one decision."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, state the selection matrix (small messages to a low-latency protocol (LL or LL128) with Tree at larger rank counts, large messages to Ring with Simple, NVSwitch-local reductions to NVLS or NVLSTree) plus the two rules: overrides precede communicator creation, and rank order fixes output layout and root identity.",
       "traps": [
-        "TODO"
+        "Setting NCCL_ALGO after the communicator exists and concluding selection does nothing. The tuner reads it at init time; a late export only affects the next communicator.",
+        "Copying `NCCL_MIN_NCHANNELS` from an old guide into a new NCCL. Read the env page for the installed version and set the CTAS pair it documents, then confirm with the topology dump that channels changed.",
+        "Forcing Ring with Simple for every size because ring is bandwidth-optimal. Optimality is about bytes per link; at small sizes startup dominates. On two RTX A5000s joined by PCIe, Ring with Simple took 23 us for an 8-byte all-reduce against 8 us for NCCL's default choice."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "An 8-GPU all-reduce of 16 KB is slow under Ring with Simple. What do you change?",
+          "a": "Remove the override first: the tuner picks a low-latency protocol for small sizes. If you must force a setting, try LL or LL128 with Tree; the message is latency-dominated, so startup and step count beat balanced links."
+        },
+        {
+          "q": "What does adding channels do, and what limits it?",
+          "a": "It stripes the collective across parallel rings with one CUDA block per channel, raising link use. Limits are SM occupancy for those blocks and the CTAS bounds for the installed NCCL version."
+        },
+        {
+          "q": "Where do NVLS and NVLSTree apply?",
+          "a": "Inside an NVSwitch domain, where NVLink SHARP can offload the reduction instead of circulating every byte through SMs. Outside such a domain they do not apply."
+        },
+        {
+          "q": "Two runs of the same script place the broadcast root on different GPUs. What changed?",
+          "a": "The rank-to-device mapping. The root argument names a rank, so the same root rank lands on a different device after remapping."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "nccl-tests `all_reduce_perf` algorithm and protocol sweep",
+          "url": "https://github.com/NVIDIA/nccl-tests/tree/afd59abab774a6a4b492eb344bd0c845a0b7bb4d",
+          "locator": "Run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` on the two-GPU workstation under Tree, Ring and default `NCCL_ALGO` with LL128 and Simple protocols",
+          "note": "Record the NCCL version and `NCCL_TOPO_DUMP_FILE` with every number, and predict the winners before running. On two RTX A5000s joined across sockets by PCIe (no NVLink), with NCCL 2.27.5 and CUDA 12.6, an 8-byte all-reduce took about 8 us with LL, 16 to 17 us with LL128 and 23 us with Simple under either algorithm, so with two ranks the protocol mattered and ring against tree did not. At 256 MB, Ring with Simple took 19.9 ms (13.5 GB/s bus bandwidth), the same as the default, against 21.9 ms for Tree with Simple and 30 to 81 ms for the LL protocols. Explain any difference on your hardware."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your predicted winner matches the bounded sweep at both ends of the size range, and every override you keep is version-pinned with a measured reason.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "NCCL ALGO and PROTO docs, the book selection guidance, Lecture 17 and the ch04 benchmark cover algorithms, protocols, channels and placement at explain and measure depth."
       }
     },
     {
@@ -238,47 +442,82 @@
         "stream-event-ordering"
       ],
       "outcomes": [
-        "TODO"
+        "Diagnose serialized or non-overlapping communication from a timeline, naming the dependency that serializes it.",
+        "Measure exposed communication with streams and events, and attribute the remaining tail to bucketing, ordering or hardware."
       ],
-      "why": "TODO",
+      "why": "Overlap is where data-parallel scaling comes from: buckets reduce while later layers still compute. A missing dependency or a stray sync turns it back into serial time.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/rank-timelines-interference",
+          "note": "Attribute exposed communication to stragglers or congestion."
+        },
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/chunked-prefill-long-context",
+          "note": "Contrast gradient overlap with prefill-decode interference trade-offs."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Overlap, streams and bucket tuning",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, Overlapping Communication and Computation (Pipelining); Asynchronous Execution with Streams; Reducing Communication Frequency and Volume; Achieving Maximal Overlap in Practice"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Stream semantics and grouped launches",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/usage/streams.html",
+          "locator": "CUDA Stream Semantics: collectives enqueue asynchronously to the calling stream; order across streams needs events; group calls under `ncclGroupStart` and `ncclGroupEnd`"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Overlapped versus serial data-parallel paths",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/ddp_overlap.py",
+          "locator": "`ddp_overlap.py` against `ddp_no_overlap.py`: bucketed reduction while compute continues, with the exposed tail isolated"
         }
       ],
       "focus": [
-        "TODO"
+        "Overlap needs two things: a dedicated communication stream with correct event dependencies, and ready compute to cover each bucket. Streams alone create no parallelism; backprop order supplies the covering work as each bucket fills.",
+        "Bucket size trades launch count against exposure. The default 25 MB bucket launches reductions as soon as buckets fill, and only the tail (roughly the last bucket) stays exposed when compute covers the rest.",
+        "Larger buckets delay the first launch and enlarge the exposed tail; smaller buckets add launch overhead. Gradient accumulation divides all-reduce frequency by the accumulation count before any overlap tuning matters.",
+        "Host-side sync on the critical path (value reads, prints, logging, device synchronize) forces the very serialization overlap removes. Profile first, then delete the sync, then retune buckets."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive exposed time for \\(B = 4\\) equal buckets with per-bucket communication \\(c\\) and covering compute \\(t\\) where \\(t \\ge c\\): total exposed time is about \\(c\\) (the last bucket), not \\(4c\\). State which dependency the proof assumes.",
       "traps": [
-        "TODO"
+        "Launching communication and compute on two streams with no dependency and calling it overlap. Without event ordering the consumer can read a buffer the collective has not finished, and without covering work the timeline just shows two serial kernels.",
+        "Tuning bucket size while a logging `.item()` sits in the loop. The sync dominates the exposed time, so every bucket measurement is really a measurement of the logging.",
+        "Expecting overlap to help when communication dwarfs compute. Overlap hides the smaller side; a bandwidth-bound collective with tiny covering compute stays exposed almost in full."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which stream runs an NCCL collective, and how do other streams wait for it?",
+          "a": "The calling stream the collective was enqueued to. Other streams wait through recorded events, not through host synchronization."
+        },
+        {
+          "q": "Why does only the last bucket stay exposed when compute covers communication?",
+          "a": "Each earlier bucket reduces while later layers still compute. The last bucket has no later compute left to hide behind, so its communication time remains."
+        },
+        {
+          "q": "What timeline pattern proves overlap rather than fast kernels?",
+          "a": "Communication and compute ranges concurrent on different streams with end-to-end time below their sum, plus identical outputs to the serial run."
+        },
+        {
+          "q": "Gradient accumulation over 4 minibatches changes what before overlap is tuned?",
+          "a": "It cuts all-reduce frequency by 4x, shrinking total communication first. Overlap tuning then applies to a smaller remaining cost."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code ch04: overlapped versus non-overlapped DDP",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/ddp_overlap.py",
+          "locator": "Run `ddp_overlap.py` against `ddp_no_overlap.py` with `torchrun` on the two-GPU workstation and attribute the difference with a rank timeline",
+          "note": "Targets that fail fast with SKIPPED: on unsupported hosts are blockers, not results; record the topology dump with the run."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your timeline shows concurrent communication and compute with matching outputs, and you can name the bucket or dependency behind every exposed millisecond.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapter 4 overlap sections, NCCL stream semantics and the ch04 overlap pair cover streams, events and exposed communication at measure depth."
       }
     },
     {
@@ -294,47 +533,83 @@
         "fault-timeout-retry"
       ],
       "outcomes": [
-        "TODO"
+        "Attribute a slow collective to a straggler, congestion, CPU affinity or an ordering failure from rank-aligned timeline evidence.",
+        "Apply timeout, abort and retry contracts correctly, and mark the measurements a partial failure invalidates."
       ],
-      "why": "TODO",
+      "why": "Multi-rank runs fail as one unit: the slowest rank sets collective time and one mismatched call hangs all ranks. Aligned timelines are the only evidence that separates a slow peer from a slow fabric.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/comm-measurement-simulation",
+          "note": "Rerun the sweep contract after fixing the fault or placement."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/moe-all-to-all",
+          "note": "Carry timeout and balance discipline into all-to-all dispatch."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "NCCL failure modes and debugging",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, Multinode Communication Pitfalls; NCCL Communicator Lifecycle and Environment Gotchas; Profiling and Debugging NCCL"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Logging and subsystem filters",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/troubleshooting/logging.html",
+          "locator": "Logging levels with NCCL_DEBUG and filtering by subsystem (GRAPH, COLL, NET, TUNING): separate init hangs from network faults from performance issues"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Performance and affinity triage",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/troubleshooting/performance_and_tuning.html",
+          "locator": "Intra-node versus inter-node issues with CPU and memory affinity: pin NIC handling to the NUMA node beside the NIC and GPU before blaming the fabric"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Straggler injection demo",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/barrier_straggler_multigpu.py",
+          "locator": "`barrier_straggler_multigpu.py`: one slow rank stretches the collective; inspect how barrier timings isolate it",
+          "depth": "Inspect on the two-GPU workstation as an illustration. Full straggler statistics need more ranks; the section mini-project runs them."
         }
       ],
       "focus": [
-        "TODO"
+        "Correlate the same collective sequence across ranks: matching start-order with one late rank is a straggler, while all ranks slow together with switch counters rising is congestion. A barrier probe before the collective separates the two.",
+        "Collective mismatch (different counts, datatypes or call order on some rank) hangs rather than errors. Check the matched-call contract before the network whenever all ranks stall at the same call.",
+        "InfiniBand patience has a number: `NCCL_IB_TIMEOUT` 20 means about 4.3 seconds per attempt and 7 retries total about 30 seconds before a network error. Set timeouts from that product, not from habit.",
+        "In NCCL, asynchronous errors surface by polling `ncclCommGetAsyncError`, and recovery goes through `ncclCommAbort` rather than reusing a suspect communicator; PyTorch wraps this behind `TORCH_NCCL_ASYNC_ERROR_HANDLING`. Timings collected across an abort are invalid results, not slow results."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From per-rank collective durations, name the straggler rank and compute the waiting time it imposes on the fastest rank. Then state the barrier experiment that confirms the attribution and the abort procedure that invalidates the run.",
       "traps": [
-        "TODO"
+        "Averaging rank times into one number. The mean hides the straggler that sets collective time; report per-rank durations with the max identified.",
+        "Blaming the fabric for an affinity fault. Unpinned NIC handling on the wrong NUMA node reproduces congestion-like symptoms with healthy links; the tuning page lists affinity before fabric claims.",
+        "Retrying on a suspect communicator after a fault. Abort it and rebuild; a reused communicator can hang the retry and convert one failure into a full-job stall."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Seven ranks finish a collective in 4 ms and one takes 40 ms. Straggler or congestion?",
+          "a": "Straggler. Congestion slows ranks together with fabric counters rising; one late rank with the rest aligned points at that peer, confirmed by a barrier probe that shows the same skew without data movement."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What does `NCCL_DEBUG_SUBSYS=GRAPH` show that `WARN` alone does not?",
+          "a": "The detected topology graph and the ring and tree paths NCCL built. Algorithm and protocol choice is the TUNING subsystem, so enable both: WARN reports the failure, GRAPH and TUNING explain the plan behind it."
+        },
+        {
+          "q": "How long does NCCL wait on InfiniBand before raising a network error at defaults?",
+          "a": "About 30 seconds: timeout 20 gives about 4.3 seconds per attempt times 7 retries. Change either variable deliberately and record both."
+        },
+        {
+          "q": "All ranks hang inside the same all-reduce with healthy links. What do you check first?",
+          "a": "The matched-call contract: same count, datatype and call sequence on every rank. A mismatch hangs all ranks at that call with nothing wrong in the fabric."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: rank-aligned timelines, injected straggler and partial-failure runs, and congestion-versus-affinity attribution.",
+      "stopWhen": "Given any slow-collective timeline you name straggler, congestion, affinity or mismatch with the confirming experiment, and no invalid post-abort timing survives in your results.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Lifecycle and pitfall sections, NCCL logging and tuning docs and the straggler demo cover timelines, congestion and faults; integrated rank-trace practice belongs to the section mini-project."
       }
     },
     {
@@ -350,47 +625,83 @@
         "expert-load-imbalance"
       ],
       "outcomes": [
-        "TODO"
+        "Derive all-to-all dispatch and combine bytes with capacity needs for a stated mixture-of-experts shape.",
+        "Predict hot-expert imbalance effects on step time, and defend replication, capacity or rebalancing against measured per-expert counts."
       ],
-      "why": "TODO",
+      "why": "Expert parallelism replaces one big all-reduce with two all-to-alls per layer whose sizes follow routing, not ranks. Skew, not peak links, usually sets MoE step time.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/disaggregation-kv-transfer",
+          "note": "Reuse dispatch arithmetic for KV transfer sizing."
+        },
+        {
+          "route": "distributed-training",
+          "note": "Hand expert placement and replication to training-parallel design."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Expert parallelism and routing",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Expert Parallelism; Dynamic Routing Strategies for MoE Inference with Expert Communication Optimization and Load Balancing, Capacity Factor, and Expert Replication"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "AlltoAll semantics for dispatch",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/usage/collectives.html#alltoall",
+          "locator": "AlltoAll: each rank sends a distinct block to every rank with no reduction; dispatch and combine each move the full routed activation set"
+        },
+        {
+          "resource": "deepep-gpu9",
+          "title": "Dispatch and combine paths",
+          "url": "https://github.com/deepseek-ai/DeepEP/tree/93eb6eb238127e96c6d7a4a625a6dad158348509",
+          "locator": "README Interfaces and examples with `dispatch` and `combine` through one `EPBuffer`; `do_cpu_sync` `True` for exact training and prefill sizes, `False` for GPU-side decode counts; NVLink inside a node with RDMA and IB between nodes",
+          "depth": "Reading and derivation only. DeepEP needs Hopper GPUs with multi-GPU RDMA; do not run it on Ampere hardware."
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "MoE dispatch and routing benchmarks",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_moe_dispatch.py",
+          "locator": "`baseline_moe_dispatch.py` with `optimized_moe_dispatch.py`; `baseline_moe_routing_topology_aware.py` with its optimized pair"
         }
       ],
       "focus": [
-        "TODO"
+        "One MoE layer pays dispatch plus combine: about \\(2 \\times T \\times k \\times h\\) elements times bytes per element for \\(T\\) tokens, top-\\(k\\) routing and hidden size \\(h\\). Both halves are all-to-all; neither is a reduction.",
+        "Capacity per expert is \\(c \\times T \\times k / E\\) for capacity factor \\(c\\) over \\(E\\) experts. Factors around 1.2 to 1.5 with top-2 gating are the book's starting point; overflow routes to second-choice experts and drops or spills only under a stated policy.",
+        "Uniform routing is a modelling convenience, not a measurement. Hot experts stretch the step while cold ranks wait, so per-expert token counts are mandatory evidence before any placement claim.",
+        "DeepEP V2 unified the low-latency and high-throughput paths into one `EPBuffer` interface switched by `do_cpu_sync`, and V2.5 removed V1 and its NVSHMEM backend. Older guides describing two separate modes no longer match the repository."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive per-layer dispatch and combine bytes for stated \\(T\\), \\(k\\), \\(h\\), dtype and expert count, plus per-expert capacity at a stated factor. Evaluate at \\(T = 4096\\), \\(k = 2\\), \\(h = 4096\\), FP16 and \\(E = 8\\), then show how one expert taking twice its share changes the max.",
       "traps": [
-        "TODO"
+        "Sizing the fabric for average load. The step follows the hottest expert, so average-based provisioning underbuys the link and the buffer the hot rank needs.",
+        "Treating dispatch as an all-reduce. Summing routed activations corrupts every expert input; dispatch permutes blocks and combine returns them, with the routing metadata as part of the contract.",
+        "Running DeepEP paths on the workstation's Ampere GPUs. The kernels assume Hopper with NVLink and RDMA; on other hardware the failure is a wrong-hardware error, not a tuning problem."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What are the dispatch bytes at \\(T = 4096\\), \\(k = 2\\), \\(h = 4096\\) in FP16?",
+          "a": "\\(4096 \\times 2 \\times 4096 \\times 2 = 67{,}108{,}864\\) bytes, about 67 MB decimal or 64 MiB. Combine moves the same amount back."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With \\(E = 8\\) experts and capacity factor 1.25, what is each expert's token cap?",
+          "a": "\\(1.25 \\times 4096 \\times 2 / 8 = 1280\\) tokens. Tokens above the cap follow the overflow policy instead of the assigned expert."
+        },
+        {
+          "q": "One expert receives twice its average share. What happens to step time?",
+          "a": "Its all-to-all peers and its compute stretch while other ranks wait at the next dependency. Step time follows the hot expert, so the fix is replication, rebalancing or a higher cap with measured counts."
+        },
+        {
+          "q": "Combine needs which metadata from dispatch?",
+          "a": "The routing decisions: which token went to which expert. Without them combine cannot return each output to its source token."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: MoE dispatch and combine volume, the capacity-factor policy, and hot-expert measurement with a rebalancing decision.",
+      "stopWhen": "Your hand dispatch, combine and capacity numbers match a worked example, and you can name the hot expert and the fix from per-expert counts alone.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapter 15 parallelism and routing sections, NCCL AlltoAll, read-only DeepEP reconstruction and the ch15 MoE pair cover dispatch, combine and balance at derive depth, with measurement in the mini-project."
       }
     },
     {
@@ -408,47 +719,100 @@
         "distserve-splitwise-mooncake"
       ],
       "outcomes": [
-        "TODO"
+        "Derive KV transfer bytes and transfer time for a stated model and sequence length, and call the disaggregation crossover against colocated interference.",
+        "Contrast DistServe, Splitwise and Mooncake placement, hardware and scheduling choices for a stated TTFT and TPOT SLO.",
+        "Explain the NIXL connector path from memory registration through metadata exchange to transfer completion."
       ],
-      "why": "TODO",
+      "why": "Prefill is compute-bound and decode is memory-bound, so colocation forces one phase to wait for the other. Disaggregation removes the interference at the price of one KV transfer per request.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/comm-measurement-simulation",
+          "note": "Validate the crossover with the sweep and simulation contract."
+        },
+        {
+          "route": "inference",
+          "note": "Hand scheduler and request-identity ownership to serving design."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-gpu9",
+          "title": "Disaggregation, interference and goodput",
+          "url": "https://arxiv.org/html/2401.09670v3",
+          "locator": "Sections 2.3 (prefill-decoding interference and why chunked prefill cannot remove it), 3.1 to 3.3 (phase analysis with the 512-token OPT-66B transfer sizing), and 4.1 to 4.2 (high and low node-affinity placement); read arXiv:2401.09670v3"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Disaggregated pools, KV sizing and hardware split",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 17, Why Prefill-Decode Disaggregation? with Disaggregated Prefill and Decode Cluster Pools; Chapter 18, Fast KV Cache Transfer Between Prefill and Decode with Connector and Data Path Design and Compute-Optimized Versus Memory-Optimized Hardware"
+        },
+        {
+          "resource": "nixl-gpu9",
+          "title": "Transfer API and backends",
+          "url": "https://github.com/ai-dynamo/nixl/tree/ee4bddbbccfc80afe5bcea8e86727055fc908667",
+          "locator": "`docs/nixl.md` Design and Example procedure: `create_agent`, `register_memory`, metadata exchange, then `create_xfer_req`, `post_transfer_request` and `get_xfer_status`; `docs/BackendGuide.md` for the backend side (`registerMem`, `prepXfer`, `postXfer`, `checkXfer`) and how the agent picks a backend by memory type",
+          "depth": "Inspect the API and run only supported single-host transports. Multi-node RDMA paths need hardware you do not have here."
+        },
+        {
+          "resource": "splitwise-gpu9",
+          "title": "Phase-specific machines",
+          "url": "https://www.microsoft.com/en-us/research/publication/splitwise-efficient-generative-llm-inference-using-phase-splitting/",
+          "locator": "arXiv:2311.18677v2 (ISCA 2024): phase characterization with homogeneous and heterogeneous cluster designs: up to 1.4x higher throughput at 20 percent lower cost, or 2.35x more throughput under the same power and cost"
+        },
+        {
+          "resource": "mooncake-gpu9",
+          "title": "KVCache-centric disaggregation",
+          "url": "https://www.usenix.org/conference/fast25/presentation/qin",
+          "locator": "KVCache-centric architecture with the global cache, transfer engine, prefill scheduling and early rejection: 59 to 498 percent higher effective capacity on the paper's traces"
         }
       ],
       "focus": [
-        "TODO"
+        "Goodput is the maximum request rate served within both TTFT and TPOT at a stated attainment such as 90 percent. DistServe reports up to 7.4x more requests and 12.6x tighter SLOs on its workloads; treat both as paper-specific, not portable speedups.",
+        "KV bytes per token are \\(2 \\times L \\times H_{\\text{kv}} \\times d \\times b\\) for \\(L\\) layers, \\(H_{\\text{kv}}\\) key-value heads, head dim \\(d\\) and \\(b\\) bytes per element. The short form without dtype and grouped-query heads undercounts grouped models by the head ratio.",
+        "A 40-layer, 40-head, dim-128 FP16 model holds about 0.82 MB per token, or 3.36 GB decimal for 4096 tokens. At 100 GB/s that transfer takes about 34 ms; disaggregation wins only when the removed interference exceeds it.",
+        "Move KV in slabs, not blocks: coalesce 16-token paged blocks into roughly 128-token payloads per RDMA write, overlap the transfer with decode compute, and keep first-token logits off the transfer path."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute per-token and per-request KV bytes for a stated layer count, key-value heads, head dim, dtype and sequence length, convert to transfer time at two stated link rates, and call whether disaggregation wins given stated TTFT and TPOT slack.",
       "traps": [
-        "TODO"
+        "Quoting the paper's 1.13GB transfer without recomputing. The byte count behind it is about 1.2e9 bytes (1.13 GiB scale) for 512 tokens on OPT-66B; recompute from the formula and label GB versus GiB before sizing any link.",
+        "Trusting a rule of thumb for KV size. Llama-2-70B (80 layers, 8 KV heads, head dim 128) holds about 0.33 MB per token in FP16, or 1.34 GB for 4096 tokens; with all 64 heads as KV it would hold 2.6 MB per token. Size from the formula with the stated heads and dtype, and size the transfer buffer from that result plus headers.",
+        "Believing chunked prefill removes interference. It trades TPOT relief for extra prefill work with quadratic KV reloads across chunks; only separate pools remove the coupling."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the KV bytes for 4096 tokens on a 40-layer, 40-head, dim-128 FP16 model?",
+          "a": "\\(2 \\times 40 \\times 40 \\times 128 \\times 2 = 819{,}200\\) bytes per token, about 0.82 MB, times 4096 is about 3.36 GB decimal. Transfer time is that divided by the effective link rate."
+        },
+        {
+          "q": "At 10 rps with 1.2 GB per request, what link does the transfer need?",
+          "a": "12 GB/s, or about 96 Gbps before overheads. That is why link sizing matters: a 100 Gb/s link saturates while an 800 Gb/s link stays comfortable."
+        },
+        {
+          "q": "What distinguishes Splitwise placement from DistServe placement?",
+          "a": "Splitwise assigns phases to different machine types (compute-optimized prefill, memory-optimized decode, including heterogeneous mixes), while DistServe co-optimizes GPU counts and parallelism per phase for goodput under TTFT and TPOT."
+        },
+        {
+          "q": "What does Mooncake add beyond separating prefill and decode pools?",
+          "a": "A KVCache-centric global cache that reuses stored KV across requests plus SLO-aware scheduling with early rejection when a request cannot meet its objectives."
+        },
+        {
+          "q": "When does NCCL serve the transfer and when does NIXL?",
+          "a": "NCCL for many-to-many synchronized collectives such as gradient or activation reductions; NIXL for one-to-one asynchronous KV moves that are polled for completion. NCCL send and receive can carry KV, but the book notes many deployments prefer NIXL or UCX for lower tail latency and better overlap."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code ch15: single-GPU KV handoff and cache math",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_single_gpu_kv_handoff.py",
+          "locator": "Run `baseline_single_gpu_kv_handoff.py` against `optimized_single_gpu_kv_handoff.py` with `kv_cache_management_math.py`; compute the transfer crossover for your sequence lengths",
+          "note": "Single-host paths only. Multi-GPU disaggregated pairs need two GPUs, so record them as blockers with the topology dump."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand KV sizing matches the math script, your crossover calls the measured handoff correctly, and you can defend the DistServe, Splitwise and Mooncake choice for one stated SLO.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for primary Splitwise and Mooncake trade-offs; the two added papers supply them beside DistServe and Chapters 17 and 18."
       }
     },
     {
@@ -464,47 +828,88 @@
         "single-gpu-simulation"
       ],
       "outcomes": [
-        "TODO"
+        "Run a bandwidth and latency sweep contract with topology, clocks, warmup and raw trials recorded, and fit the latency-bandwidth model to it.",
+        "Build an analytical or CPU simulation of a collective or transfer path, and label exactly what it cannot prove without ranks."
       ],
-      "why": "TODO",
+      "why": "One timed all-reduce proves nothing: clocks drift, fabrics are shared and algorithm bandwidth is not link rate. The contract makes a communication number reproducible; simulation keeps work moving when ranks are missing.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-portability-performance-research/benchmark-audit-parity",
+          "note": "Apply the audit to published multi-GPU claims."
+        },
+        {
+          "route": "inference",
+          "note": "Carry the validated transfer model into serving capacity planning."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nccl-gpu9",
+          "title": "Sweep harness and the two bandwidths",
+          "url": "https://github.com/NVIDIA/nccl/blob/12df1a11afad322be5a204a2db890161cbf8131d/README.md",
+          "locator": "README Tests section: clone nccl-tests and run `build/all_reduce_perf -b 8 -e 256M -f 2 -g <ngpus>`; report algorithm bandwidth beside bus bandwidth with the topology dump"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Bandwidth contract and expectations",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/bandwidth_benchmark_suite_multigpu.py",
+          "locator": "The `bandwidth_benchmark_suite` files with expectations JSON: preflight checks, clock capture, warmup separation and raw-trial storage through the harness"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Tuning and logging discipline",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/troubleshooting/performance_and_tuning.html",
+          "locator": "Intra-node versus inter-node triage with CPU and memory affinity; confirm `NET/IB` paths under `NCCL_DEBUG=INFO` before quoting any rate"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Single-host simulation stand-ins",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/placement_sim.py",
+          "locator": "`placement_sim.py` with `disaggregated_inference_single_common.py`: analytical placement and single-host transfer projection when ranks are unavailable"
         }
       ],
       "focus": [
-        "TODO"
+        "Record the full contract with every sweep: message sizes, ranks, topology dump, NCCL version, clocks with power and thermal state, warmup, interleaved repeated trials with raw samples, and medians. Boost clocks drift with temperature, so one best timing is not evidence.",
+        "Fit \\(\\alpha\\) and \\(\\beta\\) to wire bytes per rank (for ring all-reduce \\(2S(N-1)/N\\)), never to \\(S\\). Predict one held-out size and report the error; a fit that cannot predict is a description, not a model.",
+        "Algorithm bandwidth is \\(S\\) over time; bus bandwidth corrects for the collective's wire factor. Quote both with the factor stated, and never present either as the link rate without the correction.",
+        "Simulation (analytical projection, `placement_sim`, single-host handoff, CPU MPI from the earlier unit) proves indexing, volumes and crossover logic. It cannot prove contention, stragglers, affinity or failure behaviour; label those as unmeasured."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From three sweep points, fit \\(\\alpha\\) and \\(\\beta\\) by hand, predict the time at a fourth held-out size, and state the hardware, toolkit and clock setup the fit depends on.",
       "traps": [
-        "TODO"
+        "Quoting bus bandwidth as achieved link rate. The correction factor runs the other way: back out wire bytes first, then compare against the directional peak with contention noted.",
+        "Benchmarking once at a cold clock and keeping the best run. Interleave repeated trials across configurations and report medians with spread; drift between first and last trial is a finding, not noise to delete.",
+        "Publishing cluster-scale numbers from one workstation. Numbers for hardware without ranks are derivations with stated assumptions or cited vendor peaks for named hardware, never measurements."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A sweep reports algorithm bandwidth 60 GB/s for an 8-rank ring all-reduce. What was the per-rank wire rate?",
+          "a": "Wire bytes per rank are \\(2S \\times 7/8 = 1.75S\\), so the wire rate is \\(1.75 \\times 60 = 105\\) GB/s of bytes on the wire per rank. Compare that, not 60, against the directional peak."
+        },
+        {
+          "q": "Why interleave trials across configurations instead of running each once?",
+          "a": "Clocks, temperature and shared-fabric load drift over minutes. Interleaving spreads the drift across configurations so medians compare states fairly; single runs compare different machines in effect."
+        },
+        {
+          "q": "What does `NCCL_DEBUG=INFO` confirm before a rate is quotable?",
+          "a": "That the intended transport is active: NET/IB paths for RDMA rather than socket fallback, the topology NCCL detected, and the algorithm and protocol selected."
+        },
+        {
+          "q": "What can a single-host analytical simulation establish, and what can it not?",
+          "a": "It establishes volumes, crossover logic, placement feasibility and indexing correctness. It cannot establish contention, straggler tails, affinity effects or failure handling, which need ranks."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "nccl-tests `all_reduce_perf` bounded sweep with latency-bandwidth fit",
+          "url": "https://github.com/NVIDIA/nccl-tests/tree/afd59abab774a6a4b492eb344bd0c845a0b7bb4d",
+          "locator": "Run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` on the two-GPU workstation; record the topology dump, NCCL version and clocks; fit the latency-bandwidth model and predict one held-out size",
+          "note": "Single-GPU hosts run the ch04 single-host bandwidth baseline with the analytical projection instead and label it simulation."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your sweep predicts the held-out size within your stated error with the full contract attached, and every simulated number is labelled with what ranks would change.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "NCCL tuning and logging docs, the ch04 bandwidth contract, nccl-tests and the ch15 placement simulator cover sweep discipline and single-host simulation at implement and measure depth."
       }
     }
   ]
