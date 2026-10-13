@@ -421,7 +421,7 @@
     {
       "id": "async-copy-pipelines",
       "title": "Asynchronous copies, multistage pipelines and warp specialization",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "explain",
         "implement"
@@ -431,47 +431,79 @@
         "warp-specialization"
       ],
       "outcomes": [
-        "TODO"
+        "Implement an Ampere two-stage global-to-shared copy pipeline with a correct prologue and drain.",
+        "Explain completion, visibility and buffer-reuse dependencies independently.",
+        "Describe Hopper producer-consumer warp specialization without applying its hardware-specific instructions to Ampere."
       ],
-      "why": "TODO",
+      "why": "Overlapping future loads with current arithmetic can hide latency only if a stage is complete before consumption and no producer overwrites live data.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-gemm-tensor-low-precision/precision-formats",
+          "note": "Specify what the pipelined instruction actually computes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-gemm-gpu5",
+          "title": "Buffer lifetimes and producer-consumer roles",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 10: Intra-Kernel Pipelining Techniques; Cooperative Tiling and Double-Buffering with the CUDA Pipeline API; Warp Specialization and the Producer-Consumer Model",
+          "depth": "Read for the schedule and ownership. Skip cluster, cooperative-grid and Blackwell mechanisms."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Ampere multistage mainloop",
+          "url": "https://github.com/NVIDIA/cutlass/blob/v4.2.1/examples/cute/tutorial/sgemm_sm80.cu",
+          "locator": "gemm_device: async-copy prefetch, smem_pipe_read/smem_pipe_write, cp_async_fence and cp_async_wait, CUTLASS v4.2.1",
+          "depth": "Trace the three-stage source, then implement a simpler two-stage pipeline in your existing scalar GEMM. Add predicates and zero-fill tails; the tutorial assumes divisible dimensions."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "What an async-copy wait guarantees",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async",
+          "locator": "PTX ISA 9.0: cp.async, cp.async.commit_group and cp.async.wait_group/cp.async.wait_all",
+          "depth": "Read the sm_80 requirement, 4/8/16-byte sizes, source-size zero fill and per-thread group completion."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Ampere schedule versus Hopper specialization",
+          "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture8.pdf",
+          "locator": "Fall 2025 Lecture 8 slides 7-9 and 11-21",
+          "depth": "Skip slide 10's arithmetic-intensity formula. Hopper TMA, WGMMA and register redistribution are explanation-only unless matching hardware is available."
         }
       ],
       "focus": [
-        "TODO"
+        "Model each stage as free, filling, ready, consuming and free again. Completion must precede reads, and the last consumer must finish before reuse.",
+        "A cp.async wait completes the issuing thread's selected groups; a block barrier coordinates cross-thread consumption. A barrier alone is not an async-copy completion operation.",
+        "Two stages double the one-stage shared allocation before padding. Additional stages consume resources and do not guarantee faster execution.",
+        "Warp specialization assigns copy and compute roles to different warps. Separate role-specific readiness and release signals from a barrier requiring all block threads."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw and implement a two-buffer schedule for zero, one, two and five reduction tiles: prefetch tile zero when present, complete the current stage, issue the next tile into the free stage, compute, synchronize before reuse, and drain outstanding copies. Use 4-byte Ampere `cp.async` copies with zero source size for masked FP32 inputs. Test shapes (17,19,1), (17,19,16), (17,19,17) and (17,19,65) with reduction tile 16 against CPU double products of integers cycling -2 to 2. Run memory, race and synchronization sanitizers, then compare synchronous and pipelined event intervals without assuming a speedup.",
       "traps": [
-        "TODO"
+        "Waiting on the wrong group count in the final iteration and consuming an unfinished stage.",
+        "Reusing a buffer after copy completion but before all computation using it has finished.",
+        "Putting a full-block barrier only in producer or consumer code."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why test fewer reduction tiles than pipeline stages?",
+          "a": "The prologue must not load nonexistent tiles, and the drain must wait for the groups actually issued rather than a steady-state assumption."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does cp.async remove shared-memory synchronization?",
+          "a": "No. Completion and cross-thread visibility must still be established, and consumers must release storage before overwrite."
+        },
+        {
+          "q": "Why might three stages lose to two?",
+          "a": "Extra shared memory can reduce resident blocks, while copy latency may already be hidden and extra scheduling can add overhead."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` two-stage Ampere GEMM, short-loop and tail regressions, stage-lifetime diagram and synchronous-versus-async comparison.",
+      "stopWhen": "All stage-count and tail cases pass correctness and sanitizer checks, and every wait and reuse barrier has a stated ownership dependency.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book, pinned CuTe mainloop and MIT architecture slides cover implementation and specialization; the already-added CUDA reference resolves exact copy completion semantics."
       }
     },
     {
