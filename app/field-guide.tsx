@@ -14,7 +14,6 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
-  CircleDot,
   Clock,
   Copy,
   CornerDownRight,
@@ -1137,6 +1136,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
   }, []);
 
   const stageUsesUnits = routeHasUnits(stage);
+  const tracksWithUnits = authoredTracks.filter(routeHasUnits).length;
   const sectionUnits = selectedSection.units ?? [];
   const sectionHours = sectionUnits.reduce((sum, unit) => sum + unit.hours, 0);
   const stageUnitRefs = allUnitRefs.filter((ref) => ref.route.id === stage.id);
@@ -2004,36 +2004,75 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
               <p className="eyebrow">Advanced directions</p>
               <h1>Choose a track after the core</h1>
               <p>
-                All {authoredTracks.length} specialization tracks are fully
-                mapped. Open a ready track for its ordered scope, resources and
-                finish gates.
+                {tracksWithUnits === 0
+                  ? `All ${curriculum.advancedTracks.length} tracks are mapped with ordered stages, resources and finish gates. Study units come one track at a time.`
+                  : `${tracksWithUnits} of ${curriculum.advancedTracks.length} tracks ${tracksWithUnits === 1 ? 'has' : 'have'} study units. The others are mapped with ordered stages, resources and finish gates.`}
               </p>
             </div>
-            <div className="track-grid">
+            <div className="track-list">
               {curriculum.advancedTracks.map((track, index) => {
                 const authoredTrack = authoredTracks.find(
                   (entry) => entry.id === track.id,
                 );
+                const trackUnits = allUnitRefs.filter(
+                  (ref) => ref.route.id === track.id,
+                );
+                const trackHours = trackUnits.reduce(
+                  (sum, { unit }) => sum + unit.hours,
+                  0,
+                );
+                const passed =
+                  authoredTrack && trackUnits.length
+                    ? countProgress(authoredTrack, progress, 'passed')
+                    : 0;
+                const isCurrent = stage.id === track.id;
+                const stageCount = track.sections?.length ?? 0;
                 return (
                   <button
                     key={track.id}
                     type="button"
-                    className={authoredTrack ? 'ready' : 'planned'}
+                    className={`track-card${trackUnits.length ? ' has-units' : ''}${isCurrent ? ' current' : ''}`}
                     disabled={!authoredTrack}
                     onClick={() =>
                       authoredTrack && selectStage(authoredTrack.id)
                     }
                   >
-                    <div className="track-index">
-                      {track.index ?? (index + 1).toString().padStart(2, '0')}
+                    <div className="track-card-top">
+                      <span className="track-number">
+                        {track.index ?? (index + 1).toString().padStart(2, '0')}
+                      </span>
+                      <span className="state-tag">
+                        {isCurrent
+                          ? 'Current'
+                          : trackUnits.length
+                            ? 'Study units'
+                            : authoredTrack
+                              ? 'Mapped'
+                              : 'Planned'}
+                      </span>
                     </div>
-                    <CircleDot aria-hidden="true" />
                     <h2>{tex(track.title)}</h2>
                     <p>{tex(track.summary)}</p>
-                    <span>
-                      {authoredTrack ? 'Open mapped track' : 'Route planned'}{' '}
-                      <ChevronRight aria-hidden="true" />
-                    </span>
+                    {track.milestone && (
+                      <div className="track-final">
+                        <Flag aria-hidden="true" />
+                        <span>Final project</span>
+                        <strong>{tex(track.milestone.title)}</strong>
+                      </div>
+                    )}
+                    <div className="track-card-foot">
+                      <span className="track-facts">
+                        {stageCount} {stageCount === 1 ? 'stage' : 'stages'}
+                        {trackUnits.length > 0 &&
+                          ` · ${trackUnits.length} study units · about ${trackHours} h`}
+                        {passed > 0 && ` · ${passed} passed`}
+                      </span>
+                      {authoredTrack && (
+                        <span className="track-open">
+                          Open track <ChevronRight aria-hidden="true" />
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
