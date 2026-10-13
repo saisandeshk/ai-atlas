@@ -603,47 +603,83 @@
         "expert-load-imbalance"
       ],
       "outcomes": [
-        "TODO"
+        "Derive all-to-all dispatch and combine bytes with capacity needs for a stated mixture-of-experts shape.",
+        "Predict hot-expert imbalance effects on step time, and defend replication, capacity or rebalancing against measured per-expert counts."
       ],
-      "why": "TODO",
+      "why": "Expert parallelism replaces one big all-reduce with two all-to-alls per layer whose sizes follow routing, not ranks. Skew, not peak links, usually sets MoE step time.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/disaggregation-kv-transfer",
+          "note": "Reuse dispatch arithmetic for KV transfer sizing."
+        },
+        {
+          "route": "distributed-training",
+          "note": "Hand expert placement and replication to training-parallel design."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Expert parallelism and routing",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Expert Parallelism; Dynamic Routing Strategies for MoE Inference with Expert Communication Optimization and Load Balancing, Capacity Factor, and Expert Replication"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "AlltoAll semantics for dispatch",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html#alltoall",
+          "locator": "AlltoAll: each rank sends a distinct block to every rank with no reduction; dispatch and combine each move the full routed activation set"
+        },
+        {
+          "resource": "deepep-gpu9",
+          "title": "Dispatch and combine paths",
+          "url": "https://github.com/deepseek-ai/DeepEP",
+          "locator": "README Interfaces and examples with dispatch and combine through one EPBuffer; do_cpu_sync True for exact training and prefill sizes, False for GPU-side decode counts; NVLink inside a node with RDMA and IB between nodes",
+          "depth": "Reading and derivation only. DeepEP needs Hopper GPUs with multi-GPU RDMA; do not run it on Ampere hardware."
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "MoE dispatch and routing benchmarks",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch15/baseline_moe_dispatch.py",
+          "locator": "baseline_moe_dispatch.py with optimized_moe_dispatch.py; baseline_moe_routing_topology_aware.py with its optimized pair"
         }
       ],
       "focus": [
-        "TODO"
+        "One MoE layer pays dispatch plus combine: about \\(2 \\times T \\times k \\times h\\) elements times bytes per element for \\(T\\) tokens, top-\\(k\\) routing and hidden size \\(h\\). Both halves are all-to-all; neither is a reduction.",
+        "Capacity per expert is \\(c \\times T \\times k / E\\) for capacity factor \\(c\\) over \\(E\\) experts. Factors around 1.2 to 1.5 with top-2 gating are the book's starting point; overflow routes to second-choice experts and drops or spills only under a stated policy.",
+        "Uniform routing is a modelling convenience, not a measurement. Hot experts stretch the step while cold ranks wait, so per-expert token counts are mandatory evidence before any placement claim.",
+        "DeepEP v2.5 unifies the old low-latency and high-throughput paths into one EPBuffer switched by do_cpu_sync. Older guides describing two separate mode directories no longer match the repository."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive per-layer dispatch and combine bytes for stated \\(T\\), \\(k\\), \\(h\\), dtype and expert count, plus per-expert capacity at a stated factor. Evaluate at \\(T = 4096\\), \\(k = 2\\), \\(h = 4096\\), FP16 and \\(E = 8\\), then show how one expert taking twice its share changes the max.",
       "traps": [
-        "TODO"
+        "Sizing the fabric for average load. The step follows the hottest expert, so average-based provisioning underbuys the link and the buffer the hot rank needs.",
+        "Treating dispatch as an all-reduce. Summing routed activations corrupts every expert input; dispatch permutes blocks and combine returns them, with the routing metadata as part of the contract.",
+        "Running DeepEP paths on the workstation's Ampere GPUs. The kernels assume Hopper with NVLink and RDMA; on other hardware the failure is a wrong-hardware error, not a tuning problem."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What are the dispatch bytes at \\(T = 4096\\), \\(k = 2\\), \\(h = 4096\\) in FP16?",
+          "a": "\\(4096 \\times 2 \\times 4096 \\times 2 = 67{,}108{,}864\\) bytes, about 67 MB decimal or 64 MiB. Combine moves the same amount back."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With \\(E = 8\\) experts and capacity factor 1.25, what is each expert's token cap?",
+          "a": "\\(1.25 \\times 4096 \\times 2 / 8 = 1280\\) tokens. Tokens above the cap follow the overflow policy instead of the assigned expert."
+        },
+        {
+          "q": "One expert receives twice its average share. What happens to step time?",
+          "a": "Its all-to-all peers and its compute stretch while other ranks wait at the next dependency. Step time follows the hot expert, so the fix is replication, rebalancing or a higher cap with measured counts."
+        },
+        {
+          "q": "Combine needs which metadata from dispatch?",
+          "a": "The routing decisions: which token went to which expert. Without them combine cannot return each output to its source token."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: MoE dispatch and combine volume, the capacity-factor policy, and hot-expert measurement with a rebalancing decision.",
+      "stopWhen": "Your hand dispatch, combine and capacity numbers match a worked example, and you can name the hot expert and the fix from per-expert counts alone.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapter 15 parallelism and routing sections, NCCL AlltoAll, read-only DeepEP reconstruction and the ch15 MoE pair cover dispatch, combine and balance at derive depth, with measurement in the mini-project."
       }
     },
     {
