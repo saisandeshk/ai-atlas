@@ -22,6 +22,23 @@ function renderMath(source: string) {
   return html;
 }
 
+// A code span may wrap between its words but not inside one, so a flag such
+// as -fno-vectorize never splits at its hyphens. A word long enough to
+// overflow a phone screen stays breakable.
+function codeWords(code: string): ReactNode[] {
+  return code
+    .split(/( +)/)
+    .map((part, index) =>
+      part.length > 0 && part.length <= 30 && part.trim() ? (
+        <span key={index} className="code-word">
+          {part}
+        </span>
+      ) : (
+        part
+      ),
+    );
+}
+
 function linkify(text: string, key: number): ReactNode[] {
   const parts: ReactNode[] = [];
   let last = 0;
@@ -65,7 +82,7 @@ function render(text: string | undefined, links: boolean): ReactNode {
         />
       ) : (
         <code key={match.index} className="inline-code">
-          {match[2]}
+          {match[2].includes(' ') || match[2].includes('-') ? codeWords(match[2]) : match[2]}
         </code>
       ),
     );
