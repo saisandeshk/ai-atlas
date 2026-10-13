@@ -16,47 +16,70 @@
         "cuda-events-sync"
       ],
       "outcomes": [
-        "TODO"
+        "Define a timed boundary that separates kernel execution, host dispatch, transfers and setup.",
+        "Measure completed work with stream-ordered events and a synchronized host timer.",
+        "Repair a launch-only timing claim and explain any remaining timer disagreement."
       ],
-      "why": "TODO",
+      "why": "A host call can return before its GPU work finishes. A speedup is meaningful only when both variants time the same completed work.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-measurement-profiling-correctness/warmup-cache-state",
+          "note": "Separate first-use costs from steady-state execution."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a2-profiling-gpu3",
+          "title": "CS336 Assignment 2: end-to-end benchmarking",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3, End-to-End Benchmarking, and Problem (benchmarking_script), parts (a) and (b), pp. 3 to 4"
+        },
+        {
+          "resource": "aisys-code-profiling-gpu3",
+          "title": "Companion code: event-timed coalesced copy",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch07/optimized_copy_uncoalesced_coalesced.cu",
+          "locator": "Commit b57e4c6: `coalesced_stream`, then `main` from allocation through event destruction",
+          "depth": "Read the timing sequence. Do not treat its average over 40 launches as a distribution of individual-call latency."
         }
       ],
       "focus": [
-        "TODO"
+        "Write the benchmark question first: isolated kernel time, completed operator latency, or end-to-end step time. Name every included and excluded cost.",
+        "Record start and stop events on the work's stream, then wait for the stop event before reading elapsed time. Other streams need explicit dependencies.",
+        "For host wall time, complete prior work before starting and included work before stopping. Validation and input generation stay outside a kernel-only interval.",
+        "An event interval can include GPU idle gaps while the host supplies launches. Dividing a batch interval by its launch count measures amortized service time, not a latency percentile."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Allocate two seeded 512 by 512 `torch.float32` CUDA matrices. Warm up 10 matrix multiplies, synchronize, then time 20 multiplies with events and with a host timer spanning the same batch and final synchronization. Validate the last output against a CPU double-precision reference. Explain the two boundaries without assuming equal times or a fixed speedup.",
       "traps": [
-        "TODO"
+        "Timing only the return from `torch.matmul` and calling that kernel duration.",
+        "Recording events on the default stream while the measured work runs on another stream.",
+        "Calling `.item()` inside the loop and accidentally including a device-to-host synchronization."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why synchronize before starting a host timer as well as after the work?",
+          "a": "The first wait excludes queued earlier work. The final wait includes completion of the work being measured."
+        },
+        {
+          "q": "Does waiting for a stop event prove all device work has completed?",
+          "a": "Only work ordered before that event, including explicit dependencies. Unrelated streams can still be running."
+        },
+        {
+          "q": "Why can a batch event interval exceed the sum of kernel durations in a trace?",
+          "a": "The interval includes time between its event timestamps, including launch-supply gaps and interference. Kernel durations alone exclude those gaps."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `benchmarking_script` (a) and (b)",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Problem (benchmarking_script), pp. 3 to 4",
+          "note": "Use batch 1, context 128, width 128, feed-forward width 512, 2 layers, 4 heads and vocabulary 1,024 as a starting configuration for a 6 GB GPU. Reduce further if needed and record all changes. Time forward-only and training separately. These are written deliverables, not public timing tests; add your own correctness checks."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your harness reports both completed host latency and event time with explicit boundaries, validates the output, and rejects an unsynchronized launch-only result as a kernel-time claim.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The assignment explains asynchronous timing; the pinned copy example supplies the event sequence, and the named benchmarking problem provides practice."
       }
     },
     {
@@ -71,47 +94,76 @@
         "allocator-cache-state"
       ],
       "outcomes": [
-        "TODO"
+        "Separate compilation, autotuning and allocator initialization from warm execution.",
+        "Choose and record an application-relevant cache and buffer-reuse policy.",
+        "Use a bounded warmup rule and retain evidence when steady state does not settle."
       ],
-      "why": "TODO",
+      "why": "First-use overhead and repeated-buffer reuse answer different questions from steady-state work on changing inputs. Neither should silently enter the other result.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-measurement-profiling-correctness/machine-state-interference",
+          "note": "Check whether apparent warmup is actually clock or thermal drift."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cutlass-measurement-gpu3",
+          "title": "CUTLASS: warmup and buffer rotation",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/gemm_performance_measurement_methodology_guidelines.html#warm-ups-and-profiling-iterations",
+          "locator": "Documentation updated September 21, 2026: Benchmark Requirements; Warm-ups and Profiling Iterations; Buffer Rotation",
+          "depth": "Do not copy the Blackwell iteration counts. The claim that rotation guarantees DRAM-resident inputs is too strong: replacement, access coverage and persistence affect residency. Treat rotation as an eviction strategy to check, not proof of a cold cache."
+        },
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "Allocator pools versus data caches",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 6, CUDA Programming Refresher: Asynchronous Memory Allocation and Memory Pools"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Harness cold and warm contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#architecture-constraints",
+          "locator": "Architecture constraints; Milestone B - Instrumentation, compilation/autotuning and cold/warm items"
         }
       ],
       "focus": [
-        "TODO"
+        "A warmed allocator, compiled code cache, tuned configuration, L2 cache and application KV cache are different state. Record them separately.",
+        "Warm every evaluated shape, dtype and specialization. A new shape can trigger compilation or tuning after another shape has settled.",
+        "Inspect warmup batches and clock state with a declared stability rule and a time cap. A fixed count is not evidence of convergence.",
+        "Reuse buffers when reuse represents the application. Rotate preallocated buffers when studying streaming traffic; exclude rotation setup and label unverified residency."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a fresh process, record the first call and subsequent batches for the timing unit's matrix multiply. Repeat with preallocated rotating inputs and with the same inputs reused. Keep the warmup samples and declare which state each run preserves. Do not require a difference: a small workload or unchanged execution path may show none.",
       "traps": [
-        "TODO"
+        "Calling `torch.cuda.empty_cache()` between trials and claiming to have flushed L2. It releases unused allocator cache, not a hardware data cache.",
+        "Putting compilation or input allocation in only one variant's timed boundary.",
+        "Running warmup forever to obtain a preferred timing while hiding thermal drift."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does a warm model imply every specialization is compiled?",
+          "a": "No. New shapes, dtypes or guards can create new specializations or trigger tuning."
+        },
+        {
+          "q": "Is repeated-buffer caching always a benchmark defect?",
+          "a": "No. It is legitimate when the target workload reuses those buffers. It is misleading when presented as streaming DRAM performance."
+        },
+        {
+          "q": "Why keep a first-call result even when reporting warm performance?",
+          "a": "It exposes startup, compilation and tuning costs that warm timing deliberately excludes. Deployment may pay them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `benchmarking_script` (c)",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Problem (benchmarking_script), part (c), p. 4",
+          "note": "Reuse the reduced model from the timing unit. Compare zero, one, two and five warmup steps, then test your bounded stability rule. Keep identical timed boundaries and record allocator and specialization state. The section mini-project adds the rotating-buffer cache experiment."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can regenerate separate first-use and warm reports with retained warmup samples, a bounded stability rule, and an explicit allocator and buffer-reuse policy.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CUTLASS, the allocator section and the project contract cover the state distinctions; assignment part (c) gives named warmup practice."
       }
     },
     {
@@ -127,47 +179,64 @@
         "environment-revision-capture"
       ],
       "outcomes": [
-        "TODO"
+        "Capture hardware, software, build and workload identity alongside raw samples.",
+        "Identify power, thermal, clock and background-work changes that weaken a comparison.",
+        "Measure under a documented isolation policy without assuming an idle process list proves isolation."
       ],
-      "why": "TODO",
+      "why": "Laptop clocks and shared-device activity can change during a benchmark. The environment is part of the result, not an optional appendix.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-measurement-profiling-correctness/trial-design-statistics",
+          "note": "Make comparisons robust to remaining time-dependent noise."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cutlass-measurement-gpu3",
+          "title": "CUTLASS: environment and data-dependent power",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/gemm_performance_measurement_methodology_guidelines.html#testing-methodology-overview",
+          "locator": "Documentation updated September 21, 2026: Testing Methodology Overview and Matrix Fill Methodology",
+          "depth": "Read fixed-frequency tests as a controlled methodology, not an instruction to change shared-machine clocks. Zero-filled inputs are not a representative default, even with a frequency setting."
+        },
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Machine and build identity",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#measurement-requirements",
+          "locator": "Core requirements, harness item; Failure-injection requirements, thermal/interference run; Measurement requirements; Rubric, Reproducibility"
         }
       ],
       "focus": [
-        "TODO"
+        "Record GPU identity and compute capability, driver, toolkit, framework and compiler versions, flags, code revision, workload seed and precision settings. Driver-supported CUDA and the installed toolkit are not the same version.",
+        "Save sampled clocks, power and temperature with trial timestamps. Missing or unsupported telemetry must be marked unavailable, not zero.",
+        "On the shared laptop, serialize experiments with the shared lock, keep them short and release allocations on exit. Desktop activity remains outside that lock.",
+        "Compare identical input distributions. Fill patterns can change switching activity and power; a fixed power limit does not imply fixed clocks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Attach a machine/build manifest and timestamped clock, power and temperature observations to one short timing run. Record background processes and whether clocks can be controlled without privileges. Repeat the same run later with interleaved variants; explain any state differences without attributing every fluctuation to a single cause.",
       "traps": [
-        "TODO"
+        "Using `nvidia-smi`'s displayed CUDA support level as the compiler version.",
+        "Assuming the shared lock blocks the desktop or users who do not take the lock.",
+        "Deleting slow samples after seeing a thermal or interference event instead of preserving and labeling the affected run."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does a fixed power limit make two runs use the same clock?",
+          "a": "No. Dynamic voltage and frequency control responds to temperature, workload and power demand. Measure clocks during the run."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is recording only the GPU model insufficient?",
+          "a": "Driver, compiler, libraries, flags, power state and workload can all change the generated work or its runtime."
+        },
+        {
+          "q": "What can you claim when power telemetry is unavailable?",
+          "a": "Timing and the state you actually observed. You cannot infer an energy result or rule out power effects from missing readings."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` environment manifest, timestamped machine-state log and interference/isolation audit.",
+      "stopWhen": "A retained raw run can be matched to its workload, revision, toolchain, machine-state observations and stated isolation limits without relying on memory.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CUTLASS supplies clock, power and fill guidance; the project defines environment capture and the mini-project provides the manifest audit."
       }
     },
     {
