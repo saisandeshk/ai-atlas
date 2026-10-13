@@ -102,3 +102,11 @@ Every unit file is reviewed before it merges: locators are spot-checked against 
 ## Writing style
 
 - Use hyphens. Do not use em dashes or en dashes in authored content or visible interface text.
+- Write mathematical notation as LaTeX between `\(` and `\)`. The site typesets it with KaTeX, the Markdown reading copies turn it into GitHub's `` $`...`$ `` math, and `content:check` rejects a formula KaTeX cannot parse or an unpaired delimiter. Never use `$` as a delimiter: shell variables and prices use it.
+
+### Math
+
+- **What is math.** Variables used as math objects (including a single `\(k\)` or `\(A\)`), Greek letters, formulas, equations and inequalities, subscripts and superscripts, norms, sums, products and integrals, probabilities and expectations, asymptotic bounds such as `\(O(n \log n)\)`, and matrices stated as mathematical objects.
+- **What is not.** Code stays as written: Python, NumPy, PyTorch, SQL and shell expressions, function calls, identifiers such as `np.linalg.svd` or `d_model=512`, file names and paths. So do plain numbers and percentages, units of measure, version numbers, dtypes such as float32, hardware and course names, and section, page or equation numbers in locators.
+- **Conventions.** Transpose `A^\top`; norms `\|x\|_2`; `\mathbb{E}[X]`, `\operatorname{Var}(X)`, `P(A \mid B)`; `\log`, `\exp`, `\max`, `\sqrt{x}`; named operators with `\operatorname{rank}`, `\operatorname{softmax}`, `\operatorname{argmax}`; distributions `\mathcal{N}(\mu, \sigma^2)` and `\operatorname{Beta}(a, b)`; `\hat{x}` and `\bar{x}`; `\times` for dimensions and numeric products; scientific notation inside a formula as `10^{-8}`. Write an inline matrix as `\left[\begin{smallmatrix} a & b \\ c & d \end{smallmatrix}\right]`.
+- **Keep the sentence outside.** Wrap the smallest complete expression, leave words and sentence punctuation outside the delimiters, and use `\text{}` only for a short label inside a formula.

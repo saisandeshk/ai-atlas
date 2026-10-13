@@ -38,6 +38,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { plain, tex } from '@/lib/math';
 
 import { GlobalSearch, type SearchEntry } from './global-search';
 import { ThemeToggle } from './theme-toggle';
@@ -304,9 +305,9 @@ function ResourceCardBody({ resource }: { resource: Resource }) {
           </span>
         )}
       </div>
-      <h3>{resource.name}</h3>
+      <h3>{tex(resource.name)}</h3>
       <p className="provider">{resource.provider}</p>
-      <p>{resource.use}</p>
+      <p>{tex(resource.use)}</p>
       {resource.localPath && (
         <code className="local-path">{resource.localPath}</code>
       )}
@@ -335,18 +336,18 @@ function RubricTable({ rubric }: { rubric: RubricItem[] }) {
         <tbody>
           {rubric.map((item) => (
             <tr key={item.criterion}>
-              <th scope="row">{item.criterion}</th>
+              <th scope="row">{tex(item.criterion)}</th>
               <td>
                 <span className="rubric-tag" aria-hidden="true">
                   Pass
                 </span>
-                {item.pass}
+                {tex(item.pass)}
               </td>
               <td>
                 <span className="rubric-tag" aria-hidden="true">
                   Strong
                 </span>
-                {item.strong}
+                {tex(item.strong)}
               </td>
             </tr>
           ))}
@@ -459,7 +460,7 @@ function UnitCard({
         >
           <span className="unit-number">U{number}</span>
           <span className="unit-heading">
-            <strong>{unit.title}</strong>
+            <strong>{tex(unit.title)}</strong>
             <small>
               <span className="unit-hours">
                 <Clock aria-hidden="true" /> about {unit.hours} h
@@ -473,19 +474,19 @@ function UnitCard({
           </span>
           <ChevronRight className="unit-chevron" aria-hidden="true" />
         </button>
-        <ProgressChecks label={unit.title} value={progress} onChange={onStep} />
+        <ProgressChecks label={plain(unit.title)} value={progress} onChange={onStep} />
       </div>
 
       {expanded && (
         <div className="unit-body" id={bodyId}>
-          <p className="unit-why">{unit.why}</p>
+          <p className="unit-why">{tex(unit.why)}</p>
 
           <div className="unit-columns">
             <section>
               <h4>You can now</h4>
               <ul>
                 {unit.outcomes.map((outcome) => (
-                  <li key={outcome}>{outcome}</li>
+                  <li key={outcome}>{tex(outcome)}</li>
                 ))}
               </ul>
             </section>
@@ -497,7 +498,7 @@ function UnitCard({
                   if (!topic) return null;
                   return (
                     <li key={topicId}>
-                      {topic.title}
+                      {tex(topic.title)}
                       {topic.scope !== 'required' && (
                         <small className={`scope-meta ${topic.scope}`}>
                           <i aria-hidden="true" />
@@ -528,11 +529,11 @@ function UnitCard({
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          {item.title}
+                          {tex(item.title)}
                           <ArrowUpRight aria-hidden="true" />
                         </a>
                       ) : (
-                        <span>{item.title}</span>
+                        <span>{tex(item.title)}</span>
                       )}
                       {resource && (
                         <span className={`priority-tag ${resource.priority}`}>
@@ -541,10 +542,10 @@ function UnitCard({
                         </span>
                       )}
                     </div>
-                    <p>{item.locator}</p>
+                    <p>{tex(item.locator)}</p>
                     {item.depth && (
                       <p className="study-depth">
-                        <strong>Depth:</strong> {item.depth}
+                        <strong>Depth:</strong> {tex(item.depth)}
                       </p>
                     )}
                   </li>
@@ -559,7 +560,7 @@ function UnitCard({
             </h4>
             <ul>
               {unit.focus.map((point) => (
-                <li key={point}>{point}</li>
+                <li key={point}>{tex(point)}</li>
               ))}
             </ul>
           </section>
@@ -568,7 +569,7 @@ function UnitCard({
             <h4>
               <Repeat2 aria-hidden="true" /> Reproduce closed-book
             </h4>
-            <p>{unit.reproduce}</p>
+            <p>{tex(unit.reproduce)}</p>
           </section>
 
           <section className="unit-traps">
@@ -577,7 +578,7 @@ function UnitCard({
             </h4>
             <ul>
               {unit.traps.map((trap) => (
-                <li key={trap}>{trap}</li>
+                <li key={trap}>{tex(trap)}</li>
               ))}
             </ul>
           </section>
@@ -595,16 +596,16 @@ function UnitCard({
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      {item.name}
+                      {tex(item.name)}
                       <ArrowUpRight aria-hidden="true" />
                     </a>
-                    <p>{item.locator}</p>
-                    {item.note && <p className="practice-note">{item.note}</p>}
+                    <p>{tex(item.locator)}</p>
+                    {item.note && <p className="practice-note">{tex(item.note)}</p>}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>{unit.practiceNote}</p>
+              <p>{tex(unit.practiceNote)}</p>
             )}
           </section>
 
@@ -615,10 +616,10 @@ function UnitCard({
             <ol>
               {unit.selfTest.map((item) => (
                 <li key={item.q}>
-                  <p>{item.q}</p>
+                  <p>{tex(item.q)}</p>
                   <details>
                     <summary>Show answer</summary>
-                    <p>{item.a}</p>
+                    <p>{tex(item.a)}</p>
                   </details>
                 </li>
               ))}
@@ -629,7 +630,7 @@ function UnitCard({
             <h4>
               <Flag aria-hidden="true" /> Stop when
             </h4>
-            <p>{unit.stopWhen}</p>
+            <p>{tex(unit.stopWhen)}</p>
           </section>
 
           <section className="unit-next">
@@ -643,7 +644,7 @@ function UnitCard({
                   onClick={() => onFollow(link)}
                 >
                   <ArrowRight aria-hidden="true" />
-                  <span>{link.note}</span>
+                  <span>{tex(link.note)}</span>
                 </button>
               ))}
             </div>
@@ -682,7 +683,7 @@ function MiniProjectCard({
           <p className="eyebrow">
             Section mini-project · about {mini.hours} hours
           </p>
-          <h3>{mini.title}</h3>
+          <h3>{tex(mini.title)}</h3>
           <p className="mini-uses">
             Uses {mini.units.map((unitId) => `U${numberOf(unitId)}`).join(', ')}
           </p>
@@ -692,17 +693,17 @@ function MiniProjectCard({
           <Checkbox
             checked={done}
             onCheckedChange={(checked) => onDone(checked)}
-            aria-label={`Done: ${mini.title}`}
+            aria-label={`Done: ${plain(mini.title)}`}
           />
         </label>
       </header>
-      <p className="mini-brief">{mini.brief}</p>
+      <p className="mini-brief">{tex(mini.brief)}</p>
       <div className="unit-columns">
         <section>
           <h4>Steps</h4>
           <ol>
             {mini.steps.map((step) => (
-              <li key={step}>{step}</li>
+              <li key={step}>{tex(step)}</li>
             ))}
           </ol>
         </section>
@@ -710,7 +711,7 @@ function MiniProjectCard({
           <h4>Deliverables</h4>
           <ul>
             {mini.deliverables.map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item}>{tex(item)}</li>
             ))}
           </ul>
           <h4>How it is checked</h4>
@@ -722,13 +723,13 @@ function MiniProjectCard({
                 </span>{' '}
                 {check.url ? (
                   <a href={check.url} target="_blank" rel="noopener noreferrer">
-                    {check.name}
+                    {tex(check.name)}
                   </a>
                 ) : (
-                  check.name
+                  tex(check.name)
                 )}
                 {check.command && <CopyCommand command={check.command} />}
-                {check.note && <p>{check.note}</p>}
+                {check.note && <p>{tex(check.note)}</p>}
               </li>
             ))}
           </ul>
@@ -737,7 +738,7 @@ function MiniProjectCard({
       <h4>Rubric</h4>
       <RubricTable rubric={mini.rubric} />
       <p className="mini-feeds">
-        <CornerDownRight aria-hidden="true" /> Feeds into: {mini.feedsInto}
+        <CornerDownRight aria-hidden="true" /> Feeds into: {tex(mini.feedsInto)}
       </p>
     </article>
   );
@@ -879,7 +880,7 @@ function ProjectPath({
                   {done ? <Check aria-hidden="true" /> : section.index}
                 </span>
                 <span className="path-copy">
-                  <strong>{mini.title}</strong>
+                  <strong>{tex(mini.title)}</strong>
                   <small>
                     {done
                       ? 'Done'
@@ -901,7 +902,7 @@ function ProjectPath({
                 )}
               </span>
               <span className="path-copy">
-                <strong>{stage.milestone.title}</strong>
+                <strong>{tex(stage.milestone.title)}</strong>
                 <small>
                   {capstoneDone
                     ? 'Done'
@@ -957,11 +958,11 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
       entry: Omit<SearchEntry, 'titleText' | 'text'>,
       extra = '',
     ) => {
-      const titleText = entry.title.toLowerCase();
+      const titleText = plain(entry.title).toLowerCase();
       entries.push({
         ...entry,
         titleText,
-        text: `${titleText} ${extra.toLowerCase()}`,
+        text: `${titleText} ${plain(extra).toLowerCase()}`,
       });
     };
     const trackIds = new Set(authoredTracks.map((track) => track.id));
@@ -1507,8 +1508,8 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     ? 'Core route'
                     : `${stage.level} · Core route`}
               </span>
-              <h1 id="stage-title">{stage.title}</h1>
-              <p>{stage.summary}</p>
+              <h1 id="stage-title">{tex(stage.title)}</h1>
+              <p>{tex(stage.summary)}</p>
               <div className="stage-facts">
                 <span>
                   {stage.sections.length}{' '}
@@ -1654,7 +1655,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     >
                       <span>{section.index}</span>
                       <span className="section-link-copy">
-                        <strong>{section.title}</strong>
+                        <strong>{tex(section.title)}</strong>
                         <small>
                           {sectionPassed}/{sectionTotal}{' '}
                           {sectionUsesUnits ? 'units ' : ''}passed
@@ -1684,13 +1685,13 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   <p className="eyebrow">
                     {isTrack ? 'Current track stage' : 'Current section'}
                   </p>
-                  <h2 id="section-title">{selectedSection.title}</h2>
+                  <h2 id="section-title">{tex(selectedSection.title)}</h2>
                 </div>
               </div>
 
               <div className="why-card">
                 <span>Why</span>
-                <p>{selectedSection.why}</p>
+                <p>{tex(selectedSection.why)}</p>
               </div>
 
               {sectionUnits.length > 0 ? (
@@ -1793,14 +1794,14 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                             {(index + 1).toString().padStart(2, '0')}
                           </span>
                           <div className="topic-copy">
-                            <span>{topic.title}</span>
+                            <span>{tex(topic.title)}</span>
                             <small className={`scope-meta ${topic.scope}`}>
                               <i aria-hidden="true" />
                               {scopeLabels[topic.scope as Scope]}
                             </small>
                           </div>
                           <ProgressChecks
-                            label={topic.title}
+                            label={plain(topic.title)}
                             value={progressFor(progress, key)}
                             onChange={(step, checked) =>
                               updateProgress(key, step, checked)
@@ -1820,7 +1821,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                 <div>
                   <p className="eyebrow">Section checkpoint</p>
                   <h3>Know when to leave</h3>
-                  <p>{selectedSection.checkpoint}</p>
+                  <p>{tex(selectedSection.checkpoint)}</p>
                 </div>
               </article>
 
@@ -1828,7 +1829,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                 <summary>Deliberately left for later</summary>
                 <ul>
                   {selectedSection.leaveForLater.map((item) => (
-                    <li key={item}>{item}</li>
+                    <li key={item}>{tex(item)}</li>
                   ))}
                 </ul>
               </details>
@@ -1893,14 +1894,14 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
               <p className="eyebrow">
                 {isTrack ? 'Track milestone' : 'Stage milestone'}
               </p>
-              <h2 id="milestone-title">{stage.milestone.title}</h2>
-              <p>{stage.milestone.description}</p>
+              <h2 id="milestone-title">{tex(stage.milestone.title)}</h2>
+              <p>{tex(stage.milestone.description)}</p>
             </div>
             <div className="deliverables">
               {stage.milestone.deliverables.map((deliverable, index) => (
                 <span key={deliverable}>
                   <i>{index + 1}</i>
-                  {deliverable}
+                  {tex(deliverable)}
                 </span>
               ))}
             </div>
@@ -1926,7 +1927,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                       onCheckedChange={(checked) =>
                         setDone(capstoneKey(stage.id), checked)
                       }
-                      aria-label={`Done: ${stage.milestone.title}`}
+                      aria-label={`Done: ${plain(stage.milestone.title)}`}
                     />
                   </label>
                 </div>
@@ -1968,7 +1969,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                       <div className="map-card-heading">
                         <div>
                           <span className="level-tag">{mapStage.level}</span>
-                          <h2>{mapStage.title}</h2>
+                          <h2>{tex(mapStage.title)}</h2>
                         </div>
                         <span className="state-tag">
                           {isCurrent
@@ -1978,11 +1979,11 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                               : 'Planned'}
                         </span>
                       </div>
-                      <p>{mapStage.summary}</p>
+                      <p>{tex(mapStage.summary)}</p>
                       {authoredStage && (
                         <div className="map-section-pills">
                           {authoredStage.sections.map((section) => (
-                            <span key={section.id}>{section.title}</span>
+                            <span key={section.id}>{tex(section.title)}</span>
                           ))}
                         </div>
                       )}
@@ -2027,8 +2028,8 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                       {track.index ?? (index + 1).toString().padStart(2, '0')}
                     </div>
                     <CircleDot aria-hidden="true" />
-                    <h2>{track.title}</h2>
-                    <p>{track.summary}</p>
+                    <h2>{tex(track.title)}</h2>
+                    <p>{tex(track.summary)}</p>
                     <span>
                       {authoredTrack ? 'Open mapped track' : 'Route planned'}{' '}
                       <ChevronRight aria-hidden="true" />

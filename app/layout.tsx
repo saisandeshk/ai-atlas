@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Fraunces, JetBrains_Mono, Source_Sans_3 } from 'next/font/google';
+import 'katex/dist/katex.min.css';
 import './globals.css';
 
 const fraunces = Fraunces({ variable: '--font-fraunces', subsets: ['latin'] });
