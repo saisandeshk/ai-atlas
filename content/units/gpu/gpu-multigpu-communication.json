@@ -324,47 +324,88 @@
         "topology-aware-placement"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how NCCL picks Ring, Tree, NVLS, NVLSTree, CollNet and PAT by message size and topology, and what LL, LL128 and Simple change about a transfer.",
+        "Select algorithm, protocol and channel settings for a stated workload, and place ranks and shards so fast links carry the most bytes."
       ],
-      "why": "TODO",
+      "why": "NCCL usually picks well, but small-message stalls and cross-socket surprises come from its defaults meeting your topology. This unit teaches when to trust auto-selection and which knob fixes each failure.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/comm-compute-overlap",
+          "note": "Measure the selected algorithm under overlap."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/rank-timelines-interference",
+          "note": "Diagnose selection mistakes from rank timelines."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nccl-gpu9",
+          "title": "Algorithm and protocol selection",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-algo",
+          "locator": "NCCL_ALGO with Ring, Tree, CollNet variants, NVLS, NVLSTree and PAT plus per-collective syntax; NCCL_PROTO with LL, LL128 and Simple; set before communicator creation"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Topology-aware selection in practice",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, Topology Awareness in NCCL; NCCL Communication Algorithms: messages in the tens of MB favour tree, large messages favour ring, NVLSTree enables NVLink SHARP offload"
+        },
+        {
+          "resource": "gpu-mode-collectives-gpu9",
+          "title": "How NCCL works under the hood",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_017",
+          "locator": "Lecture 17, GPU Collective Communication (NCCL): what NCCL is, why data-parallel training needs it, and how it moves data; ddp_simple.py and ddp_example.py"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Topology bring-up benchmark",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch04/nccl_benchmark.py",
+          "locator": "nccl_benchmark.py with baseline_nvlink_topology_aware.py: naive versus topology-aware placement on the same collective"
         }
       ],
       "focus": [
-        "TODO"
+        "Channels split one collective across parallel rings, one CUDA block per channel. Size them with NCCL_MIN_CTAS and NCCL_MAX_CTAS from the versioned env page for your NCCL; older guides name NCHANNELS variables that your version may not read.",
+        "Protocols trade startup against throughput: LL and LL128 cut small-message latency while Simple wins large transfers. Pair them with the algorithm (tree with LL128 for small, ring with Simple for large) rather than setting one knob.",
+        "Overrides apply before `ncclCommInitRank` and read as research or troubleshooting tools, not production defaults. Quote the NCCL version with every override because algorithm and default changes land per release.",
+        "Placement keeps tensor-parallel exchanges inside one NVSwitch domain and reduces across fast pairs before touching slow links. Rank order decides AllGather layout and root identity, so placement and mapping are one decision."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, state the selection matrix (small messages to Tree with LL128, large messages to Ring with Simple, NVSwitch-local reductions to NVLS or NVLSTree) plus the two rules: overrides precede communicator creation, and rank order fixes output layout and root identity.",
       "traps": [
-        "TODO"
+        "Setting NCCL_ALGO after the communicator exists and concluding selection does nothing. The tuner reads it at init time; a late export only affects the next communicator.",
+        "Copying NCCL_MIN_NCHANNELS from an old guide into a new NCCL. Read the env page for the installed version and set the CTAS pair it documents, then confirm with the topology dump that channels changed.",
+        "Forcing Ring for every size because it is bandwidth-optimal. Optimality is about bytes per link; at small sizes startup dominates and the forced ring loses to the default tree by far more than any link-rate difference."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "An 8-GPU all-reduce of 16 KB is slow under Ring with Simple. What do you change?",
+          "a": "Move to Tree with LL128. The message is latency-dominated, so fewer steps and lower startup beat balanced links."
+        },
+        {
+          "q": "What does adding channels do, and what limits it?",
+          "a": "It stripes the collective across parallel rings with one CUDA block per channel, raising link use. Limits are SM occupancy for those blocks and the CTAS bounds for the installed NCCL version."
+        },
+        {
+          "q": "Where do NVLS and NVLSTree apply?",
+          "a": "Inside an NVSwitch domain, where NVLink SHARP can offload the reduction instead of circulating every byte through SMs. Outside such a domain they do not apply."
+        },
+        {
+          "q": "Two runs of the same script place the broadcast root on different GPUs. What changed?",
+          "a": "The rank-to-device mapping. The root argument names a rank, so the same root rank lands on a different device after remapping."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "nccl-tests all_reduce_perf algorithm and protocol sweep",
+          "url": "https://github.com/NVIDIA/nccl-tests",
+          "locator": "Run build/all_reduce_perf -b 8 -e 256M -f 2 -g 2 on the two-GPU workstation under Tree, Ring and default NCCL_ALGO with LL128 and Simple protocols",
+          "note": "Record the NCCL version and NCCL_TOPO_DUMP_FILE with every number; small sizes should favour tree with LL128 and large sizes ring with Simple, or explain why not."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your predicted winner matches the bounded sweep at both ends of the size range, and every override you keep is version-pinned with a measured reason.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "NCCL ALGO and PROTO docs, the book selection guidance, Lecture 17 and the ch04 benchmark cover algorithms, protocols, channels and placement at explain and measure depth."
       }
     },
     {
