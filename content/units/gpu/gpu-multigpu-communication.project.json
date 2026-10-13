@@ -1,8 +1,8 @@
 {
   "miniProject": {
-    "title": "Two-GPU collectives, overlap and disaggregation on the workstation",
+    "title": "Collectives, overlap and disaggregation across GPUs",
     "hours": "10 to 14",
-    "brief": "Move kernellab onto the workstation with two RTX A5000 24 GB GPUs over PCIe without NVLink: model collectives, sweep message sizes, prove overlap, align rank timelines under injected faults, measure expert skew and test the disaggregation crossover. Single-GPU analytical runs are labeled simulation, never link rates.",
+    "brief": "Model collectives, sweep message sizes and prove overlap with two GPUs, falling back to an analytical model checked against published results with one. Size all work to fit your GPU's memory and build with `-arch=native`.",
     "units": [
       "interconnect-topology",
       "collective-contracts-alpha-beta",
@@ -15,18 +15,18 @@
       "comm-measurement-simulation"
     ],
     "steps": [
-      "Capture `nvidia-smi topo -m` on the workstation and label each GPU pair with its path. Sketch the four-GPU hierarchy example (GPUs 0 and 1 on one NVLink pair, 2 and 3 on another, PCIe between pairs) and state which exchange crosses the slow link and why it carries only a fraction of the data. Run the ch04 PCIe staging pair plus `nccl_benchmark.py` on compatible single-host paths, recording topology dumps; mark NVLink-only and multi-GPU-only paths as explicit blockers with the dump attached rather than reporting fallback timings as link rates.",
-      "Derive ring all-reduce time as reduce-scatter plus all-gather: \\(T = 2(N-1)\\alpha + 2S(N-1)/(NB)\\), with the crossover size where latency and bandwidth terms are equal for stated \\(\\alpha\\) and \\(B\\). Derive per-rank bytes and step counts for ring all-gather, reduce-scatter, all-reduce and the alternate algorithm for general \\(N\\) and \\(S\\), evaluating each at \\(N = 4\\) and \\(S = 1\\) GB with the winner and margin named. Build `myAllreduce` and `myAlltoall` from point-to-point calls and the naive model-parallel forward and backward communication in `mpi_wrapper/comm.py`, checked by `mpirun -n 8 python mpi-test.py --test_case` cases plus the pytest files on CPU with Open MPI and `mpi4py`, with the timing comparison against library versions kept. Solve the TensorTonic collective, bandwidth, gradient-average and column-parallel MLP problems after the matching units.",
-      "Build nccl-tests against the NCCL that PyTorch ships (`make CUDA_HOME=... NCCL_HOME=...`) and run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` on the two A5000 GPUs under Ring, Tree and the default with `NCCL_PROTO` set to LL, LL128 and Simple, recording the NCCL version and topology dump with every number. Predict first, then compare: on two A5000s joined across sockets by PCIe with NCCL 2.27.5, an 8-byte all-reduce took about 8 us with LL, 16 to 17 us with LL128 and 23 us with Simple under either algorithm, and at 256 MB Ring with Simple took 19.9 ms (13.5 GB/s bus bandwidth), the same as the default. State the two rules that overrides precede communicator creation and rank order fixes output layout and root identity.",
-      "Derive exposed time for \\(B = 4\\) equal buckets with per-bucket communication \\(c\\) and covering compute \\(t\\) where \\(t\\) covers \\(c\\): total exposed time near \\(c\\) for the last bucket rather than \\(4c\\), stating the dependency the proof assumes. Run `ddp_overlap.py` against `ddp_no_overlap.py` with `torchrun` on the two A5000 GPUs and attribute the difference with rank-aligned timelines.",
-      "Collect rank-aligned timelines for one collective, name the straggler rank from per-rank durations and compute the waiting time imposed on the fastest rank. Confirm the attribution with a barrier experiment, then inject a straggler and a partial failure, record the abort procedure that invalidates the affected run, and separate congestion against affinity with a placement swap. Use the two A5000 GPUs for every fault run.",
-      "Derive per-layer dispatch and combine bytes for stated \\(T\\), \\(k\\), \\(h\\), dtype and expert count plus per-expert capacity at a stated factor. Evaluate at \\(T = 4096\\), \\(k = 2\\), \\(h = 4096\\), fp16 and \\(E = 8\\), then show how one expert taking twice its share changes the maximum. Measure hot-expert behavior on the two A5000 GPUs, apply the capacity-factor policy, and record the rebalancing decision with its predicted effect.",
-      "Compute per-token and per-request KV bytes for a stated layer count, KV heads, head dim, dtype and sequence length, convert to transfer time at two stated link rates, and call whether disaggregation wins given stated TTFT and TPOT slack. Run the single-GPU KV handoff pair with cache math on compatible paths, recording multi-GPU disaggregated pairs as blockers with topology dumps where hardware blocks execution. Fit \\(\\alpha\\) and \\(\\beta\\) by hand from three `all_reduce_perf` sweep points, predict a fourth held-out size, and state the hardware, toolkit and clock setup the fit depends on."
+      "Capture `nvidia-smi topo -m` and label each GPU pair with its path. With two GPUs run the staging pair and `nccl_benchmark.py`; with one GPU fit an analytical model checked against published nccl-tests results, recording blockers with dumps in both cases.",
+      "Derive bytes and step counts for ring all-gather, reduce-scatter and all-reduce, with the latency-bandwidth crossover, then build `myAllreduce` and `myAlltoall` from point-to-point calls. Check them with the CPU MPI cases plus pytest, and solve the TensorTonic collective, bandwidth, gradient-average and column-parallel MLP problems.",
+      "Build nccl-tests against your PyTorch NCCL and run `all_reduce_perf` with two GPUs across algorithms and protocols, predicting each point first. Record the NCCL version and a topology dump per number, and state the rules that overrides precede communicator creation and rank order fixes layout.",
+      "Derive the exposed time for bucketed overlap under the dependency you state. With two GPUs run `ddp_overlap.py` against `ddp_no_overlap.py` under `torchrun`, attributing the gap from rank-aligned timelines.",
+      "Collect rank-aligned timelines for one collective, name the straggler and its waiting cost, and confirm with a barrier experiment. Inject a straggler and a partial failure with two GPUs, record the abort procedure, and separate congestion from affinity with a placement swap.",
+      "Derive per-layer dispatch and combine bytes with per-expert capacity under a stated factor, and show how one hot expert changes the maximum. Measure hot-expert behavior, apply the capacity policy, and record the rebalancing decision.",
+      "Derive KV transfer time against TTFT and TPOT slack to call the disaggregation crossover. Fit latency and bandwidth terms from sweep points, predict one held-out size, and state the setup the fit depends on."
     ],
     "deliverables": [
-      "Topology dumps with labeled paths, the collective derivations with the crossover, and the CPU MPI checks with library timing comparisons.",
-      "The NCCL sweep with version and dump per number, the overlap attribution with rank-aligned timelines, and the straggler and partial-failure runs with abort records.",
-      "The MoE volume and hot-expert decision, the disaggregation crossover with transfer math, and the latency-bandwidth fit with a held-out prediction."
+      "Topology dumps with labeled paths, collective derivations with the crossover, and CPU MPI checks.",
+      "The NCCL sweep with version and dump per number, overlap attribution and straggler runs with abort records.",
+      "The MoE volume and rebalancing decision, the disaggregation crossover and the held-out fit prediction."
     ],
     "checks": [
       {
@@ -43,18 +43,18 @@
     "rubric": [
       {
         "criterion": "Model before link claims",
-        "pass": "Ring derivations give bytes and steps with the crossover stated, the NCCL sweep names version and topology per number, and single-host analytical runs are labeled simulation.",
-        "strong": "The four-GPU sketch names which exchange crosses the slow link and why."
+        "pass": "Ring derivations give bytes and steps with the crossover stated, the NCCL sweep names version and topology per number, and single-GPU runs are labeled simulation.",
+        "strong": "The hierarchy sketch names which exchange crosses the slow link and why it carries less data."
       },
       {
         "criterion": "Overlap and straggler proof",
-        "pass": "The four-bucket exposed-time derivation states its dependency, DDP overlap is attributed from aligned timelines, and the straggler rank with waiting time is confirmed by a barrier experiment.",
+        "pass": "The exposed-time derivation states its dependency, overlap is attributed from aligned timelines, and the straggler with its waiting cost is confirmed by a barrier experiment.",
         "strong": "The partial-failure run names the abort procedure that invalidates it."
       },
       {
         "criterion": "Skew and crossover decisions",
-        "pass": "MoE dispatch and combine volumes with the capacity policy and hot-expert measurement support the rebalancing decision, and the KV crossover calls disaggregation against stated slack with transfer math.",
-        "strong": "The held-out size prediction is checked against measurement with the setup stated."
+        "pass": "MoE dispatch and combine volumes with the capacity policy support the rebalancing decision, and the crossover calls disaggregation against stated slack with transfer math.",
+        "strong": "The held-out prediction is checked against measurement with the setup stated."
       }
     ],
     "feedsInto": "Capstone communication: the NCCL sweep, overlap proof, straggler analysis, MoE decision and disaggregation crossover. The final report reuses the topology dumps and the fitted model."
