@@ -302,7 +302,7 @@
     {
       "id": "prefill-decode-roofline",
       "title": "Arithmetic intensity, a first roofline and the prefill and decode regimes",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive",
         "measure"
@@ -312,47 +312,88 @@
         "roofline-first-estimate"
       ],
       "outcomes": [
-        "TODO"
+        "Derive arithmetic intensity for a matmul and a decode step, and the batch where each turns compute-bound.",
+        "Place prefill and decode of one model on the same roofline and name the bound on each side.",
+        "Measure a batch crossover on your own GPU with synchronized event timing and reconcile the knee with your measured peak and bandwidth."
       ],
-      "why": "TODO",
+      "why": "The roofline turns counts and bytes into a prediction: which side of the ridge each phase sits on, and how much batch it takes to cross. Without it, prefill and decode tuning is guessing.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/latency-throughput-goodput",
+          "note": "Translate bounds into TTFT, per-token latency and throughput."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/cost-categories-amdahl",
+          "note": "Bound the end-to-end effect of moving either side."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-inference-gpu1",
+          "title": "Roofline, arithmetic intensity and the critical batch",
+          "url": "https://jax-ml.github.io/scaling-book/roofline/",
+          "locator": "Where Does the Time Go?: Visualizing rooflines and Matrix multiplication; A Few Problems to Work, Questions 1 and 2 (int8 and mixed-precision answers)"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Linear and attention bottlenecks: batch 240 and ST/(S+T)",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Linear operations: what bottlenecks us? (the B=240 derivation) and What about attention? (the ST/(S+T) derivation)"
+        },
+        {
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "The 208 ratio and per-stage flop-per-byte limits",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "kv cache: Flops vs Memory Boundedness; batch sizes: the qkv/o/w1/w2 table",
+          "depth": "The article writes the crossover as A_bw/A_f; read it as peak operations per second over bytes per second (312e12/1.5e12 = 208 FLOP/byte). Its 11% comms-latency remark does not reproduce from its own numbers (about 3 ms against 53 ms, near 6%); recompute instead of quoting."
         }
       ],
       "focus": [
-        "TODO"
+        "Intensity is operations over bytes moved (\\(I = F/Q\\)); the ridge is peak operations per second over bytes per second, and the bound is the minimum of the two ceilings.",
+        "A bf16 matmul with batch far below width has intensity near the batch size; the chapter's 240 on TPU v5e and 295 on H100 are the same ratio on different hardware.",
+        "Decode attention sits near \\(I \\approx 1\\) FLOP/byte at one query token, so batch cannot move it; prefill attention sits near \\(I \\approx T/2\\).",
+        "Report the lower (max) and upper (sum) bounds; the gap is the overlap assumption, and profiles decide it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Sweep bf16 [B, 4096] by [4096, 4096] on your GPU with event timing, warmup and interleaved repeats; plot achieved TFLOP/s against B and report the knee and the small-batch floor. Measured on an RTX 3050 Laptop GPU with PyTorch 2.14: plateau about 12 TFLOP/s, achieved copy bandwidth about 151 GB/s (ratio about 78 FLOP/byte), half the plateau near B=64, and one weight pass costing about 0.22 ms (33.6 MB at 151 GB/s). Your numbers will differ; the knee near your own measured ratio is the target.",
       "traps": [
-        "TODO"
+        "Quoting a ridge without naming the precision. int8 weights with bf16 compute halve the critical batch (120 versus 240 on v5e); int8 compute restores it.",
+        "Reading achieved peaks as vendor peaks. Dense H100 bf16 without sparsity is half the headline (9.89e14, not 1.979e15); measure your own plateau.",
+        "Expecting step time to fall with smaller batch below the knee. One full weight pass already costs about 0.22 ms here; batching toward the knee buys throughput, not latency."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "At what batch does a bf16 matmul turn compute-bound on H100, and why half the headline?",
+          "a": "About 295 (9.89e14/3.35e12). The headline 1.979e15 needs structured sparsity, so dense math uses half."
+        },
+        {
+          "q": "What is decode attention intensity at one query token against a long cache, and what follows?",
+          "a": "About 1 FLOP/byte from ST/(S+T); it stays memory-bound at any batch, since each request adds its own cache bytes."
+        },
+        {
+          "q": "On TPU v5e, past what prompt length is prefill attention compute-bound?",
+          "a": "Past about 480 tokens: intensity T/2 must clear the 240 ridge."
+        },
+        {
+          "q": "State the lower and upper runtime bounds for the roofline int8 matmul question.",
+          "a": "Lower \\(\\max(T_{\\text{math}}, T_{\\text{comms}})\\), upper their sum, with \\(T_{\\text{math}} = 2BDF/3.94 \\times 10^{14}\\) and comms bytes over 8.2e11 per second."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Roofline Questions 1, 2 and 5: int8, mixed-precision and H100 critical batch",
+          "url": "https://jax-ml.github.io/scaling-book/roofline/",
+          "locator": "A Few Problems to Work, Questions 1, 2 and 5 (reproduce 240, 120 and 295 before opening the answers)"
+        },
+        {
+          "name": "How to Scale Your Model inference Question 3: parameter-load lower bound",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Worked Problems, Question 3 (reproduce the 1.4 ms bound for 18.4e9 int8 parameters on 16 chips)"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your sweep shows the knee near your measured peak-over-bandwidth ratio, roofline Questions 1, 2 and 5 reproduce their answers, and you state both bounds for one decode step.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The roofline chapter plus the inference chapter's bottleneck derivations cover intensity and regimes at derive and measure depth, with two named problem sets as practice."
       }
     },
     {
@@ -370,47 +411,84 @@
         "goodput-slos"
       ],
       "outcomes": [
-        "TODO"
+        "Define TTFT, TBT, TPOT, normalized latency and capacity, and state what each hides (scheduling delay, jitter, prompt-length spread).",
+        "Compute fluidity-index for a timestamp trace and derive the fluid token generation rate at a stated SLO.",
+        "Show peak token throughput ranking two systems differently from SLO-qualified rate, using the paper's vLLM versus Sarathi-Serve and Groq numbers."
       ],
-      "why": "TODO",
+      "why": "Throughput without a latency SLO ranks systems by their averages and hides the stalls users feel. SLO-qualified thinking is what turns a benchmark into a serving decision.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/workload-distributions-warmup",
+          "note": "SLOs need the workload they hold under."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/claims-manifests-lineage",
+          "note": "Record the SLO before the sweep, not after."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "etalon-gpu1",
+          "title": "TTFT, TBT, TPOT, normalized latency, capacity and their pitfalls",
+          "url": "https://arxiv.org/html/2407.07000",
+          "locator": "Sections 2.2 and 3.1 with Figures 1 to 3 (the vLLM versus Sarathi-Serve arxiv_summarization comparison at 1.5 QPS)"
+        },
+        {
+          "resource": "etalon-gpu1",
+          "title": "fluidity-index, fluid rate and the two evaluation recipes",
+          "url": "https://arxiv.org/html/2407.07000",
+          "locator": "Section 4.1 (Algorithm 1, Figure 4) and Section 4.2 (black-box and capacity recipes); Section 5.1 Figure 5 with Section 5.2 Figure 6",
+          "depth": "The Start Here blurb promises a goodput methodology, but the paper defines no metric named goodput. Its SLO-qualified rates are fluid token generation rate and capacity under a fluidity SLO (99% of requests at 0.9 or higher). The text cross-reference to the algorithm is mistyped; read Algorithm 1 itself."
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Latency-throughput tradeoff and cost per token",
+          "url": "https://jax-ml.github.io/scaling-book/applied-inference/",
+          "locator": "What is the LLaMA Serving Story? through Visualizing the Latency Throughput Tradeoff, including the NumPy roofline snippet (kv_comms_time with attn_time always bandwidth-bound for generate)"
         }
       ],
       "focus": [
-        "TODO"
+        "TTFT mixes scheduling delay with prompt processing and grows with prompt length (Figure 1, Yi-34B on 2 H100); never set it as one static SLO across lengths.",
+        "TPOT and normalized latency divide by decode count, so a 10 s stall over a 228-token median moves them by milliseconds; tail TBT sees the stall but not its timing or frequency.",
+        "fluidity-index banks early slack and resets deadlines after a miss (Algorithm 1, Figure 4); the fluid rate is the inverse of the smallest TBT deadline holding 99% of requests at 0.9 or higher.",
+        "The paper defines no metric named goodput despite the blurbs; cite fluid token generation rate and capacity for SLO-qualified throughput."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, score the Section 4 pair at TBT deadline 100 ms: both traces take one TBT miss in 11, while fluidity-index gives 1.0 to the 10 ms system and 10/11 to the 100 ms system. Derive both from Algorithm 1's slack and reset rules.",
       "traps": [
-        "TODO"
+        "Averaging TBT across requests. Means hide per-request stall timing; request-level deadline accounting exists because the CDFs and means disagreed (the P85 versus P99 flip in Figure 3c).",
+        "Fitting the prefill deadline on the wrong system. Dp comes from the evaluated system's isolated prefill curve (10 repeats), not from a constant or another engine's curve.",
+        "Reading Figure 5d as raw speed. It plots acceptance against TBT target at a fixed 10% miss line; Groq leads there while trailing on prefill in Figure 5c."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What two components make up TTFT, and why can a short request show a large one?",
+          "a": "Scheduling delay plus prompt processing. Queueing behind earlier work inflates TTFT even when the prompt itself is cheap."
+        },
+        {
+          "q": "Why must the prefill deadline Dp be a fitted function of prompt length?",
+          "a": "Prefill grows about quadratically (Figure 1), and the workload spreads 417 median to 1418 p90 tokens; a static target is either slack or impossible."
+        },
+        {
+          "q": "The toy pair has TPOT 22.7 ms versus 104.5 ms, so TPOT separates them. Why is fluidity-index still needed?",
+          "a": "TPOT separates different means but hides stall structure at equal means: vLLM and Sarathi-Serve tie on TPOT while a 10 s stall wrecks one of them. Fluidity credits early slack and penalizes miss timing."
+        },
+        {
+          "q": "How do the three Figure 5a rates rank Groq, and what does each assume?",
+          "a": "TPOT inverse gives about 600 tok/s (ignores stalls), tail-TBT inverse about 4x less (over-penalizes the tail), fluid rate sits between at the rate holding the 99%/0.9 SLO."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Etalon Algorithm 1 on the two Section 4 systems",
+          "url": "https://arxiv.org/html/2407.07000",
+          "locator": "Section 4 motivating example (10 tokens at 10 ms versus 100 ms, 11th at 150 ms) with Algorithm 1 in Section 4.1",
+          "note": "Implement Algorithm 1 in your own repository, score both traces at 100 ms deadline (expect 1.0 versus 10/11 against a tied 1/11 TBT miss rate), then apply it to one real timestamp trace with a fitted Dp."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your implementation returns 1.0 and 10/11 on the two traces, and you can read TPOT, tail-TBT and fluid rates off Figures 3b and 5a with the ranking flip explained.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Etalon covers metric definitions, pitfalls and SLO-qualified methodology at explain, derive and measure depth, with Algorithm 1 as named practice."
       }
     },
     {
@@ -426,47 +504,83 @@
         "cold-warm-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Describe a serving workload by prompt, output, batch, dtype and shape medians plus an arrival note, citing production-style spreads.",
+        "Separate cold cost (compilation, weight load, allocator and autotune warmup) from warm steady state, and state which trials each keeps.",
+        "Record a cold and a warm trace for one workload and show where the section checkpoint's reconciliation starts."
       ],
-      "why": "TODO",
+      "why": "A model reconciled on one shape at steady state says nothing about serving. Distributions set which shapes matter; cold and warm separation decides which trials count.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/claims-manifests-lineage",
+          "note": "File the workload card with the manifest."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/baselines-correctness-contracts",
+          "note": "Reconcile both traces against the baseline."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "etalon-gpu1",
+          "title": "Prompt-length spread and day-long load variation",
+          "url": "https://arxiv.org/html/2407.07000",
+          "locator": "Section 4.1 (LMSys-Chat-1M medians 417 and 1418 prefill tokens) with Figure 1; Section 5.1 (hourly runs over 24 hours for traffic variance)"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Compilation pipeline: what a cold run pays for",
+          "url": "https://jax-ml.github.io/scaling-book/profiling/",
+          "locator": "A Thousand-Foot View of the TPU Software Stack (tracing to StableHLO, HLO, LLO and machine code)",
+          "depth": "Read for the mechanism behind cold cost. The chapter gives no warmup protocol, so pair it with the next item for the measurement rule."
+        },
+        {
+          "resource": "gpu-kernel-project-gpu1",
+          "title": "Cold and warm separation with environment capture",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Architecture constraints (compilation, autotuning, cold and warm results separated); Milestone B (cold, warm and end-to-end invocation recorded separately); Measurement requirements"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Medians, eviction and the prefill-generate ratio",
+          "url": "https://jax-ml.github.io/scaling-book/applied-inference/",
+          "locator": "Median-length examples (prefill 8192 with decode 512 and 4096), the eviction math and the disaggregated prefill to generate ratio"
         }
       ],
       "focus": [
-        "TODO"
+        "Report medians with spread, not points: 417 versus 1418 prefill tokens at median versus p90, 2k to 32k sliders, 24 hourly runs.",
+        "Cold pays tracing plus staged compilation, weight loading, allocator growth and autotuning; none of it belongs in a steady-state median.",
+        "Prefill length spread punishes whole-batch prefill (padding, blocking); eviction math (96 tokens per step at P=8192, G=4096, B=32) turns medians into capacity."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the workload card for P=4096, G=1024, B=16: sequences finishing per step 1/64, tokens evicted per step 80, and the cold trials (first compile, first load, first autotune) you discard before the warm median.",
       "traps": [
-        "TODO"
+        "Sweeping batch at fixed length and calling it a workload. Real prompts spread 256 to 8k with decode medians differing by 8x; fix both axes.",
+        "Warming up with the timed shapes. Autotuning on the benchmark shapes leaks tuning into the measurement; the project schema records autotuning separately from warm trials.",
+        "Keeping the first trial. First compile and allocation can exceed steady state by orders of magnitude; converge warmup first, then record."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which workload spreads does this unit cite, and why medians plus spread?",
+          "a": "LMSys-Chat-1M 417 median with 1418 p90 prefill tokens, 2k to 32k sliders, hourly runs over 24 hours. Points hide the padding, blocking and queueing that spreads cause."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What belongs in cold cost but never in a warm median?",
+          "a": "Tracing and staged compilation, weight loading, allocator growth and autotuning. Warm trials start after these converge."
+        },
+        {
+          "q": "At P=8192, G=4096, B=32, how many tokens leave the cache per step, and why?",
+          "a": "96: B/G sequences finish per step, each evicting P+G tokens, so 32 x 12288/4096."
+        },
+        {
+          "q": "Why did Etalon run public APIs hourly for 24 hours instead of once?",
+          "a": "Traffic and load vary through the day; one run confuses time-of-day effects with system differences."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: warmup-convergence behavior in the benchmark harness with separate cold and warm traces.",
+      "stopWhen": "Your workload card states medians, spread, arrival assumption and the cold-warm split, and two traces filed under it reconcile warm medians with the roofline within stated uncertainty.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Compilation mechanism from the profiler chapter plus cold-warm separation and workload spreads from Etalon, applied inference and the project schema cover both topics; harness practice lives in the mini-project."
       }
     },
     {
