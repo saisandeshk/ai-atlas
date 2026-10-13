@@ -8,7 +8,7 @@
       "name": "MIT 6.S894 Lecture 10 - Domain Languages and Accelerators",
       "provider": "MIT",
       "access": "Free",
-      "use": "Use the Higher-level kernel languages slides comparing Triton, Pallas, Tile IR and the CuTe DSL on mapping, effort and performance for the programming-model comparison. Do not use the TPU lab.",
+      "use": "Use the Higher-level kernel languages slides comparing Triton, Pallas, cuTile (Tile IR) and the CuTe DSL on mapping, effort and performance for the programming-model comparison. Do not use the TPU lab.",
       "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture10.pdf"
     }
   ],
@@ -66,14 +66,14 @@
       ],
       "focus": [
         "One Triton program handles one block. `tl.program_id(axis=0)` selects it and `tl.arange` builds its lane indices.",
-        "`BLOCK_SIZE` is a `tl.constexpr` shape value, and the grid function must read it from `meta` so each value specializes a separate compilation.",
+        "`BLOCK_SIZE` is a `tl.constexpr`, so each value compiles its own specialization. The grid function reads it from `meta` so the launch grid always matches the value in use, including one an autotuner picks.",
         "The mask guards both loads and the store. Masked-out load lanes yield `other` and must never reach the output.",
         "Pointer arithmetic stays in elements (`x_ptr + offsets`), never in bytes."
       ],
       "reproduce": "Closed-book, write `add_kernel` and its grid function for \\(N = 1000\\) with \\(\\text{BLOCK} = 1024\\). State the grid `(1,)` from `triton.cdiv`, and predict a maximum absolute difference of 0.0 against `x + y`, as measured on an RTX 3050 6 GB with CUDA 13.4 and Triton 3.8.0 for \\(N = 1000\\), \\(1024\\) and \\(98432\\).",
       "traps": [
         "Using a non-power-of-two `BLOCK_SIZE`. Each block must hold a power-of-two number of elements, so pad the row and mask the tail.",
-        "Closing over a Python `BLOCK_SIZE` in the grid instead of reading `meta['BLOCK_SIZE']`. The grid then stops specializing with the launch.",
+        "Closing over a Python `BLOCK_SIZE` in the grid instead of reading `meta['BLOCK_SIZE']`. The grid then disagrees with the kernel whenever the launch or an autotuner uses another block size, and blocks go missing or overlap.",
         "Masking the loads but not the store. Dead lanes then write out of bounds on the final partial block."
       ],
       "selfTest": [
@@ -152,20 +152,20 @@
           "resource": "triton-tutorials-gpu7",
           "title": "`tl.dot` input precision",
           "url": "https://triton-lang.org/main/python-api/triton.language.html",
-          "locator": "`tl.dot`: `input_precision` default `tf32` for f32 inputs on tensor-core hardware, with `ieee` for exact fp32"
+          "locator": "`tl.dot`: `input_precision` default `tf32` for f32 inputs on tensor-core hardware, with `ieee` for full fp32 inputs (still rounded at every step, so not exact)"
         }
       ],
       "focus": [
         "Reductions run over axis 0 of a block. The max tail uses minus infinity while a sum tail uses 0, and swapping them corrupts the result.",
         "The fused traffic claim is \\((8MN + 4M)/(2MN)\\), about 4 for wide rows. Check the element counts before quoting the speedup.",
         "Matmul accumulates in fp32 and casts once. The cast position, not just the input dtype, sets the error.",
-        "`tl.exp` is fast but approximate, so tolerance must reflect that, as the tutorial `atol=1e-2` does."
+        "The matmul tutorial compares fp16 outputs at `atol=1e-2`, set by fp16 inputs and the final cast. The softmax tutorial uses the `torch.allclose` defaults; `tl.exp` is fast but approximate, so state your softmax tolerance separately."
       ],
       "reproduce": "On a 64 by 64 fp32 product of standard normal matrices with seed 0, a `tl.dot` loop with `input_precision='tf32'` gives a maximum absolute error of 0.0237 against fp64, while `'ieee'` gives 7.6e-06. Measured on an RTX 3050 6 GB with CUDA 13.4 and Triton 3.8.0. Reproduce the gap direction and explain why tf32 input truncation, not accumulation order, dominates it.",
       "traps": [
         "Passing `other=0.0` to a row-max load. Masked lanes then cap the maximum at 0 and break all-negative rows.",
         "Comparing fp16 matmul output with default tolerances. Use the tutorial `atol=1e-2` and justify it from input precision.",
-        "Assuming `tl.dot` on fp32 inputs is exact. The default tf32 path truncates inputs, so set `input_precision='ieee'` when the test needs it."
+        "Assuming `tl.dot` on fp32 inputs matches fp32 math. The default tf32 path truncates inputs, so set `input_precision='ieee'` when the test needs full fp32 inputs, and still compare with a tolerance."
       ],
       "selfTest": [
         {
@@ -261,7 +261,7 @@
         "First-call cost mixes compilation, autotuning and execution. Only warm calls measure the kernel.",
         "Tune on a representative workload, not on the final benchmark shapes."
       ],
-      "reproduce": "Time a `torch.compile`d elementwise function on a 1024 by 1024 fp32 tensor: about 4.59 s cold against 0.77 ms warm, measured on an RTX 3050 6 GB with CUDA 13.4. State which interval pays for compilation, then run the matmul tutorial autotuned kernel twice on one shape and show the second launch skips benchmarking.",
+      "reproduce": "Time `torch.compile(lambda x, y: torch.relu(x + y) * 2)` on 1024 by 1024 fp32 tensors, host-timed with synchronization: with PyTorch 2.14.1 and an empty Inductor cache on an RTX 3050 6 GB with CUDA 13.4, the first call took about 1.2 to 1.9 s and warm calls about 0.1 ms. State which interval pays for compilation and what a warm Inductor cache changes, then run the matmul tutorial autotuned kernel twice on one shape and show the second launch skips benchmarking.",
       "traps": [
         "Benchmarking candidates without warmup. Compile time then votes for the smallest tile, not the fastest kernel.",
         "One config for all shapes. A tall-skinny winner can lose on square shapes, and the key exists to stop that.",
@@ -337,7 +337,7 @@
           "resource": "gpu-mode-languages-gpu7",
           "title": "GPU MODE Lecture 29: Triton internals and artifacts",
           "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
-          "locator": "`presentation.md`: NVCC toolchain (`nvcc` to PTX to `ptxas` to SASS), Triton Compilation through TTIR, TTGIR, LLIR, PTX and cubin, and the JIT handle `asm` keys; `vector_add.py`: `compiled_kernel.asm` keys with `get_sass`, and `MLIR_ENABLE_DUMP=1` for per-pass IR"
+          "locator": "`presentation.md`: NVCC toolchain (`nvcc` to PTX to `ptxas` to SASS), Triton Compilation through TTIR, TTGIR, LLIR, PTX and cubin, the JIT handle `asm` keys, and `MLIR_ENABLE_DUMP=1` for per-pass IR; `vector_add.py`: `compiled_kernel.asm` keys with `get_sass`"
         },
         {
           "resource": "triton-tutorials-gpu7",
@@ -479,7 +479,7 @@
           "name": "LeetGPU 1 Vector Addition in Triton with a CUDA twin",
           "url": "https://leetgpu.com/challenges/vector-addition",
           "locator": "Public `challenge.py` at `challenges/easy/1_vector_add/challenge.py`: `torch.add` reference with `atol=1e-05`, `rtol=1e-05`, free tier",
-          "note": "Write matched CUDA and Triton kernels in your own repository, pass the example plus the scalar-tail and non-power-of-two functional tests, and compare `cuobjdump -res-usage` reports for both."
+          "note": "Write matched CUDA and Triton kernels in your own repository and pass the example plus the scalar-tail and non-power-of-two functional tests, on LeetGPU or locally against `reference_impl` from `challenge.py` as in the CUDA primitives section (a Triton `solve` takes the tensors directly). Then compare `cuobjdump -res-usage` reports for both."
         },
         {
           "name": "LeetGPU 2 Matrix Multiplication in Triton with a CUDA twin",
@@ -496,7 +496,7 @@
     },
     {
       "id": "torch-compile-boundaries",
-      "title": "torch.compile capture, fusion, graph breaks and recompilation",
+      "title": "`torch.compile` capture, fusion, graph breaks and recompilation",
       "hours": 4,
       "target": [
         "measure"
@@ -508,7 +508,7 @@
       "outcomes": [
         "Trace one operation from `torch.compile` capture through FX graph and generated Triton code to the running kernel.",
         "Diagnose graph breaks and recompilations with `explain` and `TORCH_LOGS`, and repair the common cases.",
-        "Predict how dynamic shapes change guards, recompilation and CUDA-graph eligibility."
+        "Predict how dynamic shapes change guards, recompilation and CUDA-graph recording."
       ],
       "why": "Framework compilation decides fusion boundaries for you until it silently gives up. Breaks and guards are where its speedups go missing.",
       "next": [
@@ -532,26 +532,27 @@
           "resource": "aisys-compiler-gpu7",
           "title": "Graph breaks, recompiles and dynamic shapes",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 14, Explaining and Minimizing Graph Breaks (`torch._dynamo.explain`, `allow_in_graph`, `torch.where` masking, `torch.cond` limits), Minimize Graph Recompilations (`TORCH_LOGS=graph_breaks,recompiles,guards`, `mark_dynamic`, `eager_on_recompile`), and Dynamic Shapes and Variable Sequence Lengths (symbolic shapes, guards, `dynamic=True` disabling CUDA graphs)"
+          "locator": "Chapter 14, Explaining and Minimizing Graph Breaks (`torch._dynamo.explain`, `allow_in_graph`, `torch.where` masking, `torch.cond` limits), Minimize Graph Recompilations (`TORCH_LOGS=graph_breaks,recompiles,guards`, `mark_dynamic`, `eager_on_recompile`), and Dynamic Shapes and Variable Sequence Lengths (symbolic shapes and guards)",
+          "depth": "The book says `dynamic=True` disables CUDA graphs. In PyTorch 2.14.1 it does not: with `mode='reduce-overhead'` Inductor records one CUDA graph per distinct size and warns after 8 (`torch._inductor.config.triton.cudagraph_dynamic_shape_warn_limit`)."
         },
         {
           "resource": "aisys-code-compiler-gpu7",
           "title": "Compiler debugging scripts",
           "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code",
-          "locator": "`code/ch14/inspect_compiled_code.py` for dumping the compiled SimpleLLMBlock kernels; `code/ch14/baseline_graph_break_control_flow.py` against `optimized_graph_break_control_flow.py` for the Python-branch break; `code/ch14/recompilation_demo.py` for guard-driven recompiles"
+          "locator": "`code/ch14/inspect_compiled_code.py` for dumping the compiled SimpleLLMBlock kernels; `code/ch14/baseline_graph_break_control_flow.py` against `optimized_graph_break_control_flow.py` for the Python-branch break; `code/ch14/recompilation_demo.py` (in the repository since late August 2026) for guard-driven recompiles"
         }
       ],
       "focus": [
         "Dynamo captures straight-line tensor code and breaks on data-dependent Python control flow, falling back to eager for that region.",
         "Every compiled graph carries guards on shapes, dtypes and devices. A failing guard recompiles, so changing values look like slow code.",
-        "`dynamic=True` generalizes shapes up front but disables CUDA graphs. Prefer `mark_dynamic` on the dims that truly vary.",
+        "`dynamic=True` compiles one graph for many shapes, but `reduce-overhead` mode still records a CUDA graph per distinct size, so graph memory and recording cost grow with the shape count. Prefer `mark_dynamic` on the dims that truly vary, and bucket sizes when graphs matter.",
         "Inductor fuses and autotunes over the captured graph only. Code outside the graph keeps its launch overhead whatever the mode says."
       ],
       "reproduce": "Run `torch._dynamo.explain` on a function with a Python `if` over `y.sum() > 0` and on its `torch.where` rewrite, with PyTorch 2.14. The first reports Graph Count 2 with Break Count 1 (generic jump); the second reports Graph Count 1 with Break Count 0. Quote both reports from your own run.",
       "traps": [
         "Reading one slow iteration as a slow kernel. The first iterations pay capture and compile; compare warm steady state only.",
         "Closing over a changing Python constant such as a seed or timestamp. Every new value fails a guard and recompiles.",
-        "Setting `dynamic=True` globally for one varying dim. You lose CUDA graphs everywhere instead of marking one dim dynamic."
+        "Setting `dynamic=True` and expecting one CUDA graph. Each distinct size records its own graph under `reduce-overhead`; bucket the sizes or mark only the dim that varies."
       ],
       "selfTest": [
         {
@@ -563,8 +564,8 @@
           "a": "`TORCH_LOGS=graph_breaks,recompiles,guards`. Breaks cut graphs short; recompiles show which guard keeps failing."
         },
         {
-          "q": "Why does `dynamic=True` cost CUDA graphs?",
-          "a": "Generalized symbolic shapes cannot use the fixed-shape capture that graphs require, so Inductor skips graph capture for them."
+          "q": "With `dynamic=True` and `mode='reduce-overhead'`, what happens when 20 distinct batch sizes arrive?",
+          "a": "One compiled graph serves them all, but Inductor records a separate CUDA graph for each size and warns after 8 by default. Bucket the sizes so a few graphs cover the traffic."
         },
         {
           "q": "When does `eager_on_recompile` beat fixing the guard?",
@@ -714,7 +715,7 @@
           "resource": "gpu-mode-languages-gpu7",
           "title": "GPU MODE Lecture 103: CuTe layout algebra",
           "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_103",
-          "locator": "Slides on layout definitions, composition and logical division of thread and data layouts"
+          "locator": "Slides on layout definitions, composition and the composition algorithm"
         }
       ],
       "focus": [
@@ -739,8 +740,8 @@
           "a": "Seven elements of padding per column go unallocated. Writes to padded offsets land out of bounds even though every logical index is in range."
         },
         {
-          "q": "Why does `local_tile` keep the K mode while `local_partition` keeps the tile mode?",
-          "a": "`local_tile` assigns one CTA its full K range to reduce, slicing the rest mode. `local_partition` assigns one thread its fragment of the tile, slicing the tile mode."
+          "q": "What do `local_tile` and `local_partition` each slice, and what mode does each leave behind?",
+          "a": "`local_tile` slices the rest mode with the CTA coordinate and leaves the tile modes plus the K rest index, giving `(BLK_M,BLK_K,k)` so the CTA can loop over its K tiles. `local_partition` slices the tile mode with the thread index and leaves the rest mode, giving each thread its elements repeated across the tile."
         },
         {
           "q": "A kernel is labeled TN for both inputs. What are the two layouts?",
@@ -793,7 +794,7 @@
           "resource": "aisys-compiler-gpu7",
           "title": "Warp specialization and software pipelining",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 14, Warp Specialization with Triton (`warp_specialize=True`, `num_consumer_groups`, `num_buffers_warp_spec`) and Software Pipelining and Double Buffering with Triton (prefetch-next then compute-current with the commit-then-wait handshake, `num_stages` against occupancy)"
+          "locator": "Chapter 14, Warp Specialization with Triton (`warp_specialize=True` on `tl.range`; the book's `num_consumer_groups` and `num_buffers_warp_spec` config keys are rejected by `triton.Config` in Triton 3.8.0) and Software Pipelining and Double Buffering with Triton (prefetch-next then compute-current with the commit-then-wait handshake, `num_stages` against occupancy)"
         },
         {
           "resource": "triton-tutorials-gpu7",
@@ -860,7 +861,7 @@
         "compiler-regression-tests"
       ],
       "outcomes": [
-        "Compare Triton, Pallas, Tile IR and the CuTe DSL on mapping, scheduling and effort for one kernel.",
+        "Compare Triton, Pallas, cuTile (Tile IR) and the CuTe DSL on mapping, scheduling and effort for one kernel.",
         "Build device, dtype, shape and layout dispatch with a tested fallback for every unvalidated path.",
         "Write compiler-version, generated-code and performance regression tests that fail on real drift."
       ],
@@ -880,7 +881,7 @@
           "resource": "mit-6s894-l10",
           "title": "Higher-level kernel languages",
           "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture10.pdf",
-          "locator": "Lecture 10, Higher-level kernel languages slides: Triton blocked matmul with `tl.program_id` and pointer arithmetic, the Pallas block-reference form, and the Triton against CUDA against SASS effort-performance ordering with Tile IR and the CuTe DSL"
+          "locator": "Lecture 10, Higher-level kernel languages slides: Triton blocked matmul with `tl.program_id` and pointer arithmetic, the Pallas block-reference form (`pl.BlockSpec`, `pallas_call`), and the Triton against CUDA against SASS effort-performance ordering with cuTile and the CuTe DSL"
         },
         {
           "resource": "cuda-tile-gpu7",
@@ -897,7 +898,7 @@
         }
       ],
       "focus": [
-        "Triton maps programs explicitly to blocks and schedules inside blocks automatically. Pallas uses block references with versioned masking, and Tile IR abstracts the thread mapping into the compiler.",
+        "Triton maps programs explicitly to blocks and schedules inside blocks automatically. Pallas names programs with its own IDs and indexes block references declared with `pl.BlockSpec` instead of raw pointers, and Tile IR abstracts the thread mapping into the compiler.",
         "Dispatch keys on device, dtype, shape and layout together. Any untested combination must route to the validated fallback, never to the fast path.",
         "Pin the compiler and library versions in every regression test. A Triton or CUDA update can change tiling, precision defaults and resource use.",
         "Keep negative results: shapes where the custom kernel loses to the library decide the dispatch boundary."
@@ -911,7 +912,7 @@
       "selfTest": [
         {
           "q": "What is the essential mapping difference between the Triton and Pallas matmul forms?",
-          "a": "Triton names programs with `tl.program_id` and builds raw pointers with strides. Pallas names programs with its own IDs and indexes versioned block references instead of pointers."
+          "a": "Triton names programs with `tl.program_id` and builds raw pointers with strides. Pallas names programs with its own IDs and indexes block references declared with `pl.BlockSpec` instead of pointers."
         },
         {
           "q": "A new GPU generation doubles shared memory. Does your dispatch change?",
@@ -931,7 +932,7 @@
           "name": "LeetGPU 5 Softmax in Triton with dispatch and fallback",
           "url": "https://leetgpu.com/challenges/softmax",
           "locator": "Public `challenge.py` at `challenges/medium/5_softmax/challenge.py`: max-trick reference with `atol=1e-05`, `rtol=1e-05`, free tier",
-          "note": "Wrap your kernel in device, dtype, shape and contiguity dispatch with a `torch.softmax` fallback, and add a version-pinned regression test over held-out shapes including non-multiples."
+          "note": "Wrap your kernel in device, dtype, shape and contiguity dispatch with a `torch.softmax` fallback, and add a version-pinned regression test over held-out shapes including non-multiples. Run it on LeetGPU or locally against `reference_impl` from `challenge.py`."
         }
       ],
       "stopWhen": "Your dispatch routes every held-out shape, dtype and layout to a tested path, and a compiler update fails loudly instead of silently.",
