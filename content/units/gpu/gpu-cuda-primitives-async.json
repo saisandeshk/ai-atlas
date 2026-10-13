@@ -793,47 +793,89 @@
         "copy-compute-overlap"
       ],
       "outcomes": [
-        "TODO"
+        "Set up pinned host buffers and asynchronous copies with correct stream arguments.",
+        "Build a multi-stream copy and compute pipeline with event dependencies and prove overlap from a timeline.",
+        "Diagnose serialized overlap from trace evidence: pageable memory, default-stream use or dependency errors."
       ],
-      "why": "TODO",
+      "why": "Copy-compute overlap is the cheapest speedup in GPU computing and the easiest to fake. Without pinned memory and explicit dependencies the timeline stays sequential.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/cuda-graphs-dispatch",
+          "note": "Capture the stable pipeline as a graph."
+        },
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/timelines-nvtx",
+          "note": "Attribute host gaps and transfers in full traces."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-async-gpu4",
+          "title": "Streams and copy-compute overlap",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 11, Sections `Overlapping Kernel Execution with CUDA Streams` and `Using Streams to Overlap Compute with Data Transfers` (pinned memory, `cudaMallocHost`, `cudaMemcpyAsync`, two DMA engines), plus `Stream-Ordered Memory Allocator`"
+        },
+        {
+          "resource": "aisys-async-gpu4",
+          "title": "Default streams and event dependencies",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 11, Sections `Legacy Default Stream`, `Modern Per-Thread Default Stream`, `Fine-Grained Synchronization with Events and Callbacks` and `Using CUDA Events for Cross-Stream Synchronization`"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Asynchronous execution reference",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html",
+          "locator": "Section 2.5: 2.5.2.3 (async copies need pinned host memory), 2.5.6 (blocking streams versus non-blocking streams and the legacy default stream), 2.5.7 (`cudaStreamWaitEvent`) and 2.5.8 (implicit synchronization)"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Streams intuition",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 6, slides 1 to 9: dedicated DMA engines running parallel to kernels, the implicit barrier, command queues, and one buffer per stream"
         }
       ],
       "focus": [
-        "TODO"
+        "`cudaMemcpyAsync` on pageable host memory degrades to a synchronous staged copy, so overlap starts with `cudaMallocHost`.",
+        "The legacy default stream synchronizes every blocking stream. Create non-blocking streams with `cudaStreamCreateWithFlags` and order cross-stream work with `cudaStreamWaitEvent`, not `cudaDeviceSynchronize`.",
+        "Overlap needs comparable copy and compute phases on different engines. Two kernels that each fill the GPU serialize (measured 1.04x), while a chunked copy and compute pipeline shows in `nsys`.",
+        "Every buffer must outlive its stream work. Free or reuse device and host buffers only after the consuming stream synchronizes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Build a 4-chunk host-to-device plus kernel pipeline on separate streams with `cudaStreamWaitEvent` chaining. Capture with `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none` and show copy and compute overlapping in the timeline, with event math placing overlapped wall time below the sequential sum.",
       "traps": [
-        "TODO"
+        "Timing around launches with a host timer measures launch submission, not work. Bracket with events or synchronize the stream first.",
+        "Reusing a host buffer right after enqueueing its copy corrupts the transfer, because the copy is asynchronous.",
+        "One synchronous `cudaMemcpy` or default-stream kernel inside the pipeline reimposes global ordering and silently deletes the overlap."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does overlap require pinned host memory?",
+          "a": "The DMA engine cannot read pageable memory directly, so the driver inserts a synchronous staged copy through a pinned buffer and the transfer no longer overlaps."
+        },
+        {
+          "q": "A default-stream kernel launches between two blocking-stream kernels. What runs concurrently?",
+          "a": "Nothing. The legacy default stream synchronizes all blocking streams, so all three serialize."
+        },
+        {
+          "q": "What does `cudaStreamWaitEvent` order, exactly?",
+          "a": "Work enqueued into the waiting stream after the call waits for the event. Work already enqueued in that stream is unaffected."
+        },
+        {
+          "q": "Two 5 ms kernels that each fill the GPU run in different streams. How much overlap, and why?",
+          "a": "Almost none (measured 1.04x). Overlap needs independent resources, such as the copy engine versus the SMs, not two full-GPU kernels."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code: Chapter 11 stream overlap demos",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch11",
+          "locator": "`stream_overlap_demo.py`, `streams_overlap_demo.cu` and `event_timing_demo.py`: run the hardware-compatible paths and reproduce one overlap timeline with event timing",
+          "note": "Skip the B200-only expectation files. Record any guard or unavailable feature instead of forcing the run."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your pipeline timeline shows copy and compute overlapping, event math confirms it, and switching back to pageable memory visibly collapses the overlap.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The book chapters teach the mechanism but no pool resource is an exact API reference, so the CUDA Programming Guide (new) supplies the verified stream, event and pinned-memory calls."
       }
     },
     {
@@ -848,47 +890,85 @@
         "primitive-dispatch"
       ],
       "outcomes": [
-        "TODO"
+        "Capture a stable kernel sequence into a graph and replay it with identical results.",
+        "Update node parameters for same-shape changes and fall back to recapture otherwise.",
+        "Gate dispatch on shape, dtype and device validation with a correct eager fallback."
       ],
-      "why": "TODO",
+      "why": "Graphs remove per-launch CPU overhead for repeated work, but a graph bakes in addresses and shapes. The validation and fallback around it is the actual engineering.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "Stale replay state is seeded there."
+        },
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/launch-overhead-graph-misses",
+          "note": "Apply graphs to launch-bound inference paths."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-async-gpu4",
+          "title": "CUDA graphs chapter",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 12, Sections `CUDA Graphs` (capture, memory pools, pointer stability), `Capturing a CUDA Graph with a CUDA Stream` (`cudaStreamBeginCapture` to `cudaStreamEndCapture`) and `Dynamic Graph Update` (same-shape swaps without recapture)",
+          "depth": "Skip device-initiated launch beyond the vocabulary. It needs newer hardware than this section assumes."
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Graphs reference",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html",
+          "locator": "Sections 2.5.9.2 (capture, instantiate and launch stages) and 4.2.2 to 4.2.3 (stream capture with cross-stream join rules, prohibited operations, whole-graph update and per-node update with `cudaGraphExecKernelNodeSetParams`)",
+          "depth": "Read the capture constraints and update rules. Skim conditional nodes; they are not used in this section."
+        },
+        {
+          "resource": "gpu-kernel-project-gpu4",
+          "title": "Dispatch and fallback contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Architecture constraints (dispatch never selects an unvalidated path; every custom path has a correct fallback) and Milestone C (correctness-gated dispatch with unseen-shape fallback)"
         }
       ],
       "focus": [
-        "TODO"
+        "Capture, instantiate and launch happen once, once and many times. Replay costs about 1 us per launch (measured 0.98 against 1.70 eager on tiny kernels), so graphs pay only when launch overhead matters.",
+        "Capture forbids allocation, synchronization, legacy-stream work and shape changes. Preallocate maximum shapes and validate before capturing.",
+        "Same topology plus same shapes updates in place with `cudaGraphExecUpdate`; anything else destroys and recaptures. Always check the reported failing node.",
+        "The first replay carries setup cost, so warm up before timing. Without warmup my graph measured slower than eager (4.31 against 3.48 ms)."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Capture an 8-kernel saxpy chain, replay 100 times with outputs identical to eager, then change a pointer through update and change a shape to force recapture. Report per-launch time both ways after warmup.",
       "traps": [
-        "TODO"
+        "Capturing on the legacy default stream is invalid. Use an explicit stream, preferably non-blocking.",
+        "Replaying after freeing and reallocating buffers reads stale addresses. Graphs bake in pointers, so tie buffer lifetime to the executable graph.",
+        "Ignoring the `cudaGraphExecUpdate` return code and launching the stale instance after an incompatible change."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When do CUDA graphs help, in one measured rule?",
+          "a": "When per-launch CPU overhead is a large fraction of kernel time. Tiny kernels measured 1.70 us eager versus 0.98 us per graph launch; long kernels show nothing."
+        },
+        {
+          "q": "Why must captured shapes stay fixed?",
+          "a": "The executable graph bakes in addresses, grid sizes and parameters. Same-shape value changes update in place; shape changes need recapture."
+        },
+        {
+          "q": "Whole-graph update fails on a new input. What is the correct recovery?",
+          "a": "Destroy the executable graph and recapture plus re-instantiate from the new sequence. The update API names the failing node for the log."
+        },
+        {
+          "q": "Why must random-number generation stay outside the capture?",
+          "a": "Captured work replays identically, so generated values would freeze across replays. Generate outside and pass buffers in."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code: Chapter 12 graph demos",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch12",
+          "locator": "`graph_capture_demo.py`, `graph_replay_benchmark.py` and `baseline_cuda_graphs.py`: capture and replay on your GPU with a state-reset test",
+          "note": "Run hardware-compatible paths only. Add a same-shape update plus a forced-recapture fallback test of your own."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your graph replays bit-identical results, an update handles same-shape changes, and an invalid shape falls back to eager correctly.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The book chapters teach graph mechanics but no pool resource is an exact API reference, so the CUDA Programming Guide (new) supplies the verified capture and update calls."
       }
     },
     {
@@ -902,47 +982,81 @@
         "primitives-failure-injection"
       ],
       "outcomes": [
-        "TODO"
+        "Inject race, divergent-barrier, partial-warp, stale-buffer and mask defects and describe each signature.",
+        "Attribute asynchronous errors with sanitizer, event and timeline evidence instead of blanket synchronization.",
+        "Write regression tests that fail on each defect and pass on the fix."
       ],
-      "why": "TODO",
+      "why": "Primitives fail in ways that look like performance problems. This unit turns the section's bugs into a diagnostic checklist before the mini-project.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-measurement-profiling-correctness/compute-sanitizer-diagnosis",
+          "note": "Extend attribution into the systematic sanitizer workflow."
+        },
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/timing-boundaries-async",
+          "note": "Keep async timing discipline while diagnosing."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gpu-kernel-project-gpu4",
+          "title": "Failure-injection requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone D and the failure-injection requirements: out-of-bounds, partial-warp, missing synchronization, bank conflict, uncoalesced stride, divergent barrier, stale stream buffer, wrong mask, overflow and tile-edge defects with tooling diagnosis and regressions"
+        },
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Divergence, completion and single-pass hazards",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 10, Sections 10.4 (control-divergence hazards) and 10.7 (hierarchical completion); Chapter 11, Section 11.7 (printed p. 256): single-pass atomic, fence and barrier deadlock risk"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Asynchronous error attribution",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html",
+          "locator": "Section 2.5.4.2: `cudaGetLastError` versus `cudaPeekAtLastError`, printable error names, and the `CUDA_LAUNCH_BLOCKING=1` trick to serialize launches while debugging"
         }
       ],
       "focus": [
-        "TODO"
+        "Each defect has a signature. Races vary run to run, divergent barriers hang, partial warps corrupt tails only, stale buffers corrupt after reuse, and wrong masks corrupt masked rows only.",
+        "Attribute first: serialize with `CUDA_LAUNCH_BLOCKING=1` to find the owning kernel, confirm with sanitizer evidence, and never ship a global synchronization as the fix.",
+        "A defect that never fires in tests still ships. Write the adversarial size, skew, reuse and mask cases from the project list as regression tests."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Seed all five defects (race, divergent barrier, partial warp, stale buffer, wrong mask) in your section kernels, diagnose each with cited tool evidence, fix each without a global synchronization, and keep the regression tests green.",
       "traps": [
-        "TODO"
+        "Declaring victory after 100 clean trials. A race needs size, block-count and stream-interleaving variation before the claim means anything.",
+        "Sprinkling `cudaDeviceSynchronize` after every call. It hides lifetime bugs and deletes the overlap built in the streams unit, so scope every fix to the owning stream or event.",
+        "Testing only friendly values. Pair each defect test with an adversarial-value twin, since order and mask bugs hide at friendly magnitudes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A scan hangs only at large lengths. What are the first suspects?",
+          "a": "A divergent barrier or a global-sync-across-blocks assumption that deadlocks past one wave. Check barrier uniformity and any assumed block execution order."
+        },
+        {
+          "q": "Results are correct on powers of two but wrong at length 1000. What are the suspects?",
+          "a": "Tail guards in loads, shuffle masks over partial warps, the block-sums tail, or the scan fix-up range. All share the shape of untested remainders."
+        },
+        {
+          "q": "Corruption appears only when two streams run together. What are the suspects?",
+          "a": "A missing event dependency, buffer reuse before the consumer finishes, or accidental default-stream ordering. All are lifetime and ordering bugs, not kernel bugs."
+        },
+        {
+          "q": "How do you attribute an asynchronous error to its kernel?",
+          "a": "Synchronize per stream and read the last-error APIs at each boundary, then set `CUDA_LAUNCH_BLOCKING=1` to serialize launches. Fix at the owning boundary."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "GPU Microbenchmark and Kernel Suite, Milestone D failure handling",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone D: inject the access, synchronization, mask, stream and numerical defects; diagnose each with tooling; add regressions; surface asynchronous errors at the owning API boundary"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "All five seeded defects are diagnosed with cited tool evidence, fixed without global synchronization, and covered by regression tests.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The project spec names every defect class with checkable handling, while PMPP and the guide supply the mechanism and attribution. No search needed."
       }
     }
   ]
