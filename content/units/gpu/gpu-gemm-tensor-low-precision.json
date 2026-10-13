@@ -1,6 +1,17 @@
 {
   "section": "gpu-gemm-tensor-low-precision",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "cuda-matrix-reference-gpu5",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "CUDA 13.0 matrix programming and PTX references",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Coverage and correctness gap: the pool lacks a precise WMMA contract and Lab 6 misstates TF32 conversion and register types. Use Programming Guide 10.24 and PTX ISA 9.0 mma.m16n8k8 fragments, mma and cvt, archived with CUDA 13.0.0; also consult cp.async completion semantics.",
+      "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions"
+    }
+  ],
   "units": [
     {
       "id": "gemm-arithmetic-naive",
@@ -327,47 +338,84 @@
         "fragment-layout"
       ],
       "outcomes": [
-        "TODO"
+        "Implement one warp-wide TF32 MMA with explicitly converted inputs and FP32 accumulators.",
+        "Distinguish opaque WMMA fragments, documented PTX lane fragments and CuTe MMA atoms.",
+        "Verify fragment ownership with basis products and a nonzero initial accumulator."
       ],
-      "why": "TODO",
+      "why": "Tensor cores compute a collective matrix operation, not independent thread FMAs. Correct lane ownership, conversion and warp participation come before performance tuning.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-gemm-tensor-low-precision/async-copy-pipelines",
+          "note": "Feed the collective instruction with a safe pipeline."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Tensor-core model and one-instruction exercise",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab6",
+          "locator": "Fall 2025 Lab 6 Part 0: Tensor Cores and exercise_mma.cu",
+          "depth": "Stop before full-matrix optimization. Correct two handout claims: multiplicands use bit registers, accumulators use float registers, and FP32 inputs need explicit TF32 conversion rather than implicit truncation."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "WMMA's collective and memory contract",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions",
+          "locator": "CUDA 13.0.0 Programming Guide 10.24.1 Description, 10.24.2 Alternate Floating Point and 10.24.7 Example",
+          "depth": "Read the FP16-input, FP32-accumulator example and TF32 conversion requirement. Do not infer lane ownership from the fragment array."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "Explicit TF32 lane map and conversion",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-1688",
+          "locator": "PTX ISA 9.0: Matrix Fragments for mma.m16n8k8, Multiply-and-Accumulate Instruction mma and Data Movement and Conversion Instructions cvt",
+          "depth": "Use the TF32 diagrams and cvt.rn.tf32.f32. Skip FP64 and sparse variants."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Instruction traits become an MMA atom",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0t_mma_atom.html",
+          "locator": "MMA atoms: Operation, Traits and Atom; Tiled MMA, documentation dated September 21, 2026",
+          "depth": "Follow how instruction shape and thread/value layouts define the atom. Compare with your PTX map rather than implementing another complete GEMM."
         }
       ],
       "focus": [
-        "TODO"
+        "WMMA requires uniform warp participation and matching arguments. Fragment element ownership is unspecified; use store_matrix_sync before coordinate-dependent epilogues.",
+        "WMMA load/store pointers require 32-byte alignment; leading dimensions require multiples of 8 half elements or 4 float elements, both 16 bytes. A valid allocation base does not validate every subview.",
+        "For mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32, each lane supplies four TF32 bit-pattern values for the first operand, two for the second, and four FP32 accumulator values. Use inline-assembly r constraints for multiplicands and f constraints for accumulators.",
+        "MMA shape, input representation, accumulator type and output storage are separate parts of the numerical contract. One collective instruction performs 2048 useful FLOPs for this shape."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement the one-warp 16 by 8 by 8 TF32 product in Lab 6 `exercise_mma.cu`. Explicitly convert each multiplicand with `cvt.rn.tf32.f32`, then issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`. Run its permutations, basis products, decimal inputs and zero/nonzero accumulator cases against the bundled absolute-error threshold 0.005. Inspect generated PTX and SASS for conversion and tensor instructions; explain each lane's loaded and stored coordinates.",
       "traps": [
-        "TODO"
+        "Passing arbitrary FP32 bit patterns as TF32 operands and expecting the MMA to convert them.",
+        "Executing a collective MMA or WMMA call in only some lanes, including at an output boundary.",
+        "Using a WMMA fragment's array index as a portable row or column index."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What does the final f32 in the PTX opcode specify?",
+          "a": "The initial accumulator operand type. The first f32 specifies the result type; the two tf32 fields specify multiplicand types."
+        },
+        {
+          "q": "Why test a nonzero initial accumulator?",
+          "a": "A correct product-only result does not prove accumulator loading and mapping are correct. The instruction computes a product plus that initial matrix."
+        },
+        {
+          "q": "Does FP32 accumulation recover information lost in TF32 conversion?",
+          "a": "No. It reduces later accumulation error but cannot restore discarded input significand bits."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT 6.S894 Lab 6 Part 0 - exercise_mma",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab6",
+          "locator": "Implement exercise_mma.cu for sm_80 or newer; retain the supplied fragment and numerical tests."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The one-warp exercise passes every supplied case, and you can distinguish PTX ownership from opaque WMMA fragments and identify the emitted tensor instruction.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage and correctness failed for the WMMA contract and Lab 6's conversion/register claims. The archived official CUDA family fills that gap while retaining MIT practice and CuTe atoms."
       }
     },
     {
