@@ -10,6 +10,16 @@
       "access": "Free",
       "use": "PyTorch 2.14 SDPA API: mask polarity, rectangular causal alignment, GQA and backend limitations. Tutorial read 2026-10-13: Explicit Dispatcher Control, Causal Self Attention, Using SDPA with torch.compile and Using SDPA with attn_bias subclasses. Correct the tutorial's evaluation-time causal flag before integration.",
       "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html"
+    },
+    {
+      "id": "triton-layernorm-gpu6",
+      "role": "tutorial",
+      "priority": "required",
+      "name": "Triton 3.8.0 Layer Normalization",
+      "provider": "Triton Project",
+      "access": "Free",
+      "use": "Motivations and `_layer_norm_fwd_fused` in tutorial 05, pinned to v3.8.0. Study centered variance, float32 reductions, valid-column masks and the forward wrapper's supported-width guard. Defer backward and the benchmark sweep.",
+      "url": "https://github.com/triton-lang/triton/blob/v3.8.0/python/tutorials/05-layer-norm.py"
     }
   ],
   "units": [
@@ -566,7 +576,7 @@
     {
       "id": "norm-rope-fusion",
       "title": "Stable RMSNorm and LayerNorm, and RoPE fusion",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -575,47 +585,77 @@
         "rope-position-kernel"
       ],
       "outcomes": [
-        "TODO"
+        "Implement stable forward RMSNorm and LayerNorm with explicit epsilon, reduction width and accumulation dtype.",
+        "Implement half-split and interleaved RoPE with correct request positions.",
+        "Choose a legal norm/RoPE fusion boundary and validate it against separate operations."
       ],
-      "why": "TODO",
+      "why": "Normalization and rotation are small kernels with strict numerical and layout contracts. Fusion is useful only when it preserves their order, reduction domain and positions.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/mlp-epilogue-fusion",
+          "note": "Apply the same dependency and traffic reasoning to gated MLPs."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "triton-layernorm-gpu6",
+          "title": "Triton 3.8.0 LayerNorm forward",
+          "url": "https://github.com/triton-lang/triton/blob/v3.8.0/python/tutorials/05-layer-norm.py",
+          "locator": "Motivations, `_layer_norm_fwd_fused`, and `LayerNorm.forward` under Benchmark",
+          "depth": "Stop at the forward implementation and supported-width guard. Skip backward, Apex and the automatic benchmark sweep. Do not inherit the tutorial's unmeasured 'faster' claim."
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer RMSNorm interface",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/norm/__init__.py",
+          "locator": "Commit f2794d5: `rmsnorm` docstring and `_rmsnorm_impl` dispatch",
+          "depth": "Read ordinary normalization, not quantized or architecture-specific variants. Pass epsilon explicitly when comparing libraries."
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer RoPE positions and pairing layouts",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/rope.py",
+          "locator": "Commit f2794d5: `apply_rope` docstring, especially `indptr`, `offsets`, `rotary_dim` and `interleave`"
         }
       ],
       "focus": [
-        "TODO"
+        "RMSNorm uses \\(x/\\sqrt{\\operatorname{mean}(x^2)+\\epsilon}\\) before the learned scale. LayerNorm subtracts the mean and uses population variance, not the sample-variance denominator. Neither is a substitute for the other.",
+        "Promote low-precision inputs before squaring and reducing. Centered variance avoids subtracting nearly equal raw moments. Mask padded lanes out of both reductions and divide by the valid width, not the padded tile width.",
+        "A RoPE pair maps \\((a,b)\\) to \\((a\\cos\\theta-b\\sin\\theta, a\\sin\\theta+b\\cos\\theta)\\). Half-split pairs corresponding entries from two halves; interleaved pairs adjacent channels. Position offsets and frequency conventions are model parameters.",
+        "A fused head-norm/RoPE kernel must finish the whole head reduction before rotating and storing pairs. Do not move a model's hidden-width pre-norm through its projection, or reorder learned channel scales and rotation. Test fusion against the exact original operation order."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write CPU double-precision references for RMSNorm, centered LayerNorm and half-split RoPE. With input `[3., 3., 3., 3.]`, unit weights, zero LayerNorm bias and `eps=1e-5`, LayerNorm returns zero while RMSNorm does not. For input `[1., 2., 3., 4.]`, rotate half-split pairs by angles 0.3 and 0.7 radians using genuine sine/cosine tables; squared norm is preserved within `rtol=1e-12, atol=1e-12` in PyTorch 2.14.1. Implement the forward GPU kernels and compare fused head-norm then RoPE with the separate reference order.",
       "traps": [
-        "TODO"
+        "Using dtype-dependent default epsilon in one baseline and a fixed value in another. Pass the same explicit epsilon and affine parameters.",
+        "Assuming the challenge's randomly generated `cos` and `sin` tables represent unit rotations. Its tests check the algebraic transform, not trigonometric identity or position generation.",
+        "Squaring large finite values without a range policy. Float32 promotion prevents many half-precision overflows, not every possible float32 overflow; test or reject inputs outside your supported numerical range."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can padding zeros corrupt LayerNorm even though their input contribution is zero?",
+          "a": "They change the denominator if counted as features. After mean subtraction their squared deviations are also nonzero unless explicitly masked."
+        },
+        {
+          "q": "Does norm preservation prove that a RoPE implementation uses the correct layout?",
+          "a": "No. Rotating the wrong pairs can still preserve norm. Compare the model's pairing layout, frequencies and absolute positions with an independent reference."
+        },
+        {
+          "q": "Can arbitrary learned channel scales commute with RoPE?",
+          "a": "No. A pair's two scales generally differ, so scaling before rotation and scaling after rotation produce different vectors. Preserve the prescribed order."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU 61: Rotary Positional Embedding",
+          "url": "https://github.com/AlphaGPU/leetgpu-challenges/blob/9c9dbe55e8d6124f42f0de9b6696290cbcd9670e/challenges/medium/61_rope_embedding/challenge.py",
+          "locator": "`reference_impl`, `generate_example_test` and all six cases in `generate_functional_test`",
+          "note": "Use your local harness and preserve `solve` as in challenge 6. These are half-split even-width cases with supplied tables, including zero and mixed values. Skip the million-row performance case on a small GPU. The section mini-project covers forward norms, generated positions, interleaved pairing, partial rotary width and fused head-norm/RoPE checks. This is the first of the pool's two selected transformer challenges."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Challenge 61 passes, both norm kernels match explicit-epsilon references on odd-width and constant rows, and your legal fused path matches the separate operation order across positions and layouts.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for stable LayerNorm in the selected pool. The opened Triton 3.8.0 forward tutorial fills it; FlashInfer and challenge 61 retain RMSNorm and RoPE coverage, with mini-project fusion tests."
       }
     },
     {
