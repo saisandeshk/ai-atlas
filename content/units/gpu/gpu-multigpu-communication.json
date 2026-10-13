@@ -113,47 +113,90 @@
         "alpha-beta-cost"
       ],
       "outcomes": [
-        "TODO"
+        "State the NCCL contract for each collective: same count and datatype on every rank, rank-ordered outputs, and root as a rank rather than a device.",
+        "Derive per-rank volume and \\(\\alpha\\)-\\(\\beta\\) time for all-gather, reduce-scatter and ring all-reduce, and predict the latency-bandwidth crossover for a stated size."
       ],
-      "why": "TODO",
+      "why": "Volume tells you the bytes on the wire and latency tells you the floor for small messages. Without both terms you cannot say whether a collective is latency-bound or bandwidth-bound.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/ring-tree-collectives",
+          "note": "Apply volumes and the crossover to ring and tree designs."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/comm-measurement-simulation",
+          "note": "Fit the model against a sweep and predict one held-out size."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nccl-gpu9",
+          "title": "Collective contracts",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html",
+          "locator": "AllReduce, AllGather, ReduceScatter and AlltoAll: every rank passes the same count and datatype; AllGather orders output by rank; Reduce followed by Broadcast equals AllReduce; ReduceScatter followed by AllGather equals AllReduce"
+        },
+        {
+          "resource": "cs336-a2-comm-analysis-gpu9",
+          "title": "Volume reasoning without latency",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.1 Communication Primitives (pp. 39-40): ring all-gather and ring reduce-scatter at \\((N-1)/N \\times S/W\\) seconds, ring all-reduce as their sum, and Problem (alternate_ring_all_reduce)"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Size-dependent selection knobs",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-algo",
+          "locator": "NCCL_ALGO with Ring, Tree, CollNet variants, NVLS, NVLSTree and PAT plus per-collective syntax; NCCL_PROTO with LL, LL128 and Simple; NCCL_LL_THRESHOLD and NCCL_TREE_THRESHOLD mark the small-versus-large crossover"
         }
       ],
       "focus": [
-        "TODO"
+        "The contract is strict: mismatched counts, datatypes or call order across ranks is undefined behaviour including hangs, not a checked error. Root arguments name ranks, so a remapped rank-to-device layout changes which device is root.",
+        "CS336 sizes its model with per-device egress \\(W\\) and no latency term, so \\((N-1)/N \\times S/W\\) is exact only for large messages. Add the latency term for small ones: \\(T(n) = \\alpha + \\beta n\\) with \\(\\beta = 1/B\\).",
+        "The crossover \\(n^* = \\alpha B\\) separates the regimes. With \\(\\alpha = 10\\) microseconds and \\(B = 100\\) GB/s the crossover sits at 1 MB: below it startup dominates, above it bytes dominate.",
+        "Small messages favour tree algorithms with LL or LL128 protocol; large messages favour ring with Simple. The threshold variables exist because one setting cannot win at both ends."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive ring all-reduce time as reduce-scatter plus all-gather: \\(T = 2(N-1)\\alpha + 2S(N-1)/(NB)\\). Then compute the crossover size where the latency and bandwidth terms are equal for a stated \\(\\alpha\\) and \\(B\\).",
       "traps": [
-        "TODO"
+        "Reading the CS336 volume as a complete time model. It drops \\(\\alpha\\), so it underpredicts small messages by orders of magnitude; that gap is exactly what LL/LL128 and tree selection address.",
+        "Assuming the alternate ring algorithm from the CS336 problem is competitive. It sends full \\(S\\) per step for \\((N-1)S/W\\) seconds, a factor of about \\(N/2\\) worse than the chunked ring; chunking is what buys the saving.",
+        "Treating bus bandwidth and algorithm bandwidth as the same number. The fit must use bytes on the wire per rank, not \\(S\\), or the fitted \\(\\beta\\) is wrong by the volume factor."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What does the alternate ring all-reduce cost, and why?",
+          "a": "\\((N-1)S/W\\) seconds. Each of the \\(N-1\\) steps transmits a full size-\\(S\\) buffer instead of a size-\\(S/N\\) chunk, so no \\(1/N\\) factor appears."
+        },
+        {
+          "q": "With \\(\\alpha = 10\\) microseconds and \\(B = 100\\) GB/s, where is the crossover?",
+          "a": "\\(n^* = \\alpha B = 10^{-5} \\times 10^{11} = 10^6\\) bytes, or 1 MB. Messages far below 1 MB are latency-bound; far above are bandwidth-bound."
+        },
+        {
+          "q": "Why must every rank pass the same count and datatype?",
+          "a": "The collective is one matched operation across ranks. A mismatch breaks the pairing the implementation assumes, which the NCCL page defines as undefined behaviour including hangs and data corruption."
+        },
+        {
+          "q": "All-gather output differs across two runs with identical inputs. What changed?",
+          "a": "The rank-to-device mapping. AllGather orders output by rank index, so remapping ranks permutes which device's block lands where."
+        },
+        {
+          "q": "A 16 KB and a 400 MB all-reduce need different NCCL settings. Which and why?",
+          "a": "Tree with LL or LL128 for 16 KB (latency-dominated, few steps win) and ring with Simple for 400 MB (bandwidth-dominated, balanced links win)."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Simulate Distributed Collectives",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-simulate-collectives",
+          "locator": "Solve the problem: model the ring steps and per-rank bytes for the stated collective and ranks"
+        },
+        {
+          "name": "TensorTonic: Calculate Collective Effective Bandwidth",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-collective-bandwidth",
+          "locator": "Solve the problem: divide bytes on the wire by time and compare against the peak link rate"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the ring all-reduce time and the crossover without notes, and both TensorTonic problems agree with your hand computation.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "NCCL contracts, CS336 Section 8.1 volumes and NCCL size knobs cover contracts and the crossover at derive depth, with two TensorTonic problems as checked practice."
       }
     },
     {
