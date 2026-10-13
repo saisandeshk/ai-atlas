@@ -876,7 +876,8 @@ function ProjectPath({
             >
               <button type="button" onClick={() => onSection(section.id)}>
                 <span className="path-marker">
-                  {done ? <Check aria-hidden="true" /> : section.index}
+                  {/* Advanced-track indexes carry a prefix (GPU-1) that the stage header already shows. */}
+                  {done ? <Check aria-hidden="true" /> : section.index.split('-').pop()}
                 </span>
                 <span className="path-copy">
                   <strong>{tex(mini.title)}</strong>
