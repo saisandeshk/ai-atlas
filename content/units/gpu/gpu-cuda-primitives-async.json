@@ -1,11 +1,22 @@
 {
   "section": "gpu-cuda-primitives-async",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "cuda-programming-guide-gpu4",
+      "role": "reference",
+      "priority": "reference",
+      "name": "CUDA C++ Programming Guide (v13.4.2)",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Use Section 2.3.4 for coalesced access, the transpose example and bank-conflict padding; Section 2.5 for streams, events, synchronization and the stream-capture intro; and Section 4.2 for graph creation, update and capture constraints. This is the API reference beside the book chapters.",
+      "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/"
+    }
+  ],
   "units": [
     {
       "id": "maps-vectorized-coarsening",
       "title": "Elementwise maps, vectorized access and thread coarsening",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "implement"
       ],
@@ -15,47 +26,85 @@
         "thread-coarsening"
       ],
       "outcomes": [
-        "TODO"
+        "Write a grid-stride elementwise kernel that covers any length, including zero and nonmultiple sizes, with one bounds check.",
+        "Convert scalar loads to alignment-guarded vectorized loads and predict the per-warp transaction change.",
+        "Apply thread coarsening and state where its extra registers and lost parallelism stop paying off."
       ],
-      "why": "TODO",
+      "why": "Every later primitive reuses this loop. If the map is wrong on tails or wastes transactions, the reduction, scan and softmax built on it inherit both defects.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/transpose-tiling-banks",
+          "note": "Reuse coalesced-access analysis on two-dimensional layouts."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/reduction-trees-order",
+          "note": "Put a tree structure on top of correct per-thread work."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Thread coarsening",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 6, Section 6.3 (printed p. 138): assigning several elements to each thread; Chapter 10, Section 10.8 (printed p. 229): coarsening against parallelization overhead"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Map pattern and coarsening notes",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 7, Pattern #1: Map (slide 9); Pattern #3: Reduce (slides 18 to 31), including the thread-coarsening note"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Coalesced access and transaction width",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html",
+          "locator": "Section 2.3.4.1: 32-byte transactions, the 4-byte word example with four transactions at full utilization, and the 12.5 percent worst case",
+          "depth": "Read for the transaction model only. The section's transpose example belongs to the next unit."
+        },
+        {
+          "resource": "nvidia-reduction-gpu4",
+          "title": "Grid-stride loop pattern",
+          "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
+          "locator": "Reduction #7, slides 31 to 33: the grid-stride accumulation loop that adds as many elements as necessary",
+          "depth": "Use only for the loop pattern. The reduction sequence belongs to the reduction units."
         }
       ],
       "focus": [
-        "TODO"
+        "A grid-stride loop decouples launch configuration from length: each thread visits `i`, `i + gridDim.x * blockDim.x`, and so on, so every index is covered exactly once for any length including 0.",
+        "One 16-byte vectorized load moves 4 floats per thread and needs 16-byte alignment. Guard with an alignment and divisibility test and keep a scalar tail.",
+        "Coarsening trades fewer blocks and amortized index math for more registers per thread and less parallel slack. PMPP frames it as paying less for parallelism.",
+        "Coalescing is about the warp, not the thread: consecutive threads should touch consecutive words so one 128-byte request fills four 32-byte transactions."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop. On 1000003 random floats all three match a CPU reference bit-exactly (max error 0), and you predict each variant's per-warp transaction count before running.",
       "traps": [
-        "TODO"
+        "Trusting base-pointer alignment after arithmetic. `cudaMalloc` returns aligned bases, but `p + offset` may not be 16-byte aligned, so check the accessed address at runtime.",
+        "Testing only round sizes. A vectorized loop without a scalar tail silently drops the last `n mod 4` elements, so test 1000003, not just 1048576.",
+        "Assuming more coarsening is faster. Past the point where blocks still fill the SMs, extra work per thread only adds register pressure and loses latency hiding."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "With 256 blocks of 256 threads and length 1000003, which indices does thread 0 visit?",
+          "a": "Stride 65536: 0, 65536, up to 983040, which is 16 visits. The next, 1048576, exceeds the length."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A float pointer sits at a byte address with remainder 8 modulo 16. Is a `float4` load through it safe?",
+          "a": "No. Vector loads need 16-byte alignment. Peel a scalar head, take a scalar path, or realign the allocation."
+        },
+        {
+          "q": "One warp loads one consecutive float per thread. How many 32-byte transactions, and at what utilization?",
+          "a": "128 bytes in four transactions at full utilization. Every fetched byte is used."
+        },
+        {
+          "q": "Why can 8-way coarsening run slower than 4-way on a short vector?",
+          "a": "Too few blocks remain to fill the SMs, and each thread holds more live state. Parallel slack is lost after the memory saving is exhausted."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: scalar, vectorized and coarsened map variants with grid-stride coverage, an independent CPU reference and odd-size tests.",
+      "stopWhen": "All three saxpy variants match the reference exactly on an odd size, and you predict each variant's per-warp transaction count before profiling.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "PMPP, MIT Lecture 7 and the guide cover maps, coarsening and transaction depth at implement level, with the mini-project supplying the named practice."
       }
     },
     {
@@ -72,47 +121,84 @@
         "bank-conflict-padding"
       ],
       "outcomes": [
-        "TODO"
+        "Predict requested transactions for strided reads and writes of a transpose.",
+        "Implement copy, naive and padded shared-memory tiled transpose with correct odd-shape guards.",
+        "Diagnose a 32-way bank conflict and apply padding, showing measured bandwidth against the copy ceiling."
       ],
-      "why": "TODO",
+      "why": "Transpose is the smallest kernel where layout decides bandwidth. The tile, barrier and padding pattern repeats in GEMM and attention.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/parallel-scans",
+          "note": "Reuse tiled shared-memory thinking for block scans."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/warp-block-reductions",
+          "note": "Apply the same coalescing analysis to reduction loads."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nvidia-transpose-gpu4",
+          "title": "Copy, naive and coalesced transpose",
+          "url": "https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/",
+          "locator": "Simple Matrix Copy; Naive Matrix Transpose, with the 1024-element (4096-byte) write stride on the 1024x1024 test; Coalesced Transpose Via Shared Memory, with `TILE_DIM=32`, `BLOCK_ROWS=8` and 4 elements per thread",
+          "depth": "The M2050 and K20c GB/s numbers are 2013 hardware. Reproduce the ranking on your own GPU, not the values."
+        },
+        {
+          "resource": "nvidia-transpose-gpu4",
+          "title": "Bank conflicts and the padding fix",
+          "url": "https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/",
+          "locator": "Shared Memory Bank Conflicts through the padded `tile[TILE_DIM][TILE_DIM+1]` variant, including the `copySharedMem` control experiment"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Transpose worked example and padding",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html",
+          "locator": "Sections 2.3.4.1.1 (naive transpose with uncoalesced writes), 2.3.4.2.1 (shared-memory transpose) and 2.3.4.2.2 (32-way column conflict, fixed by declaring 32x33 shared memory)"
         }
       ],
       "focus": [
-        "TODO"
+        "Naive transpose reads coalesced but writes with a stride of the matrix width. On the blog's 1024x1024 test that is 4096 bytes between consecutive threads.",
+        "A `tile[32][32]` of floats read down one column maps every element to the same bank: a 32-way conflict. With `tile[32][33]`, element row \\(r\\) of column \\(c\\) sits in bank \\((r + c) \\bmod 32\\), so a column access is conflict-free.",
+        "The copy kernel is the ceiling: it moves the same twice-the-matrix traffic with ideal access. A transpose near copy bandwidth is done.",
+        "Fewer threads than tile elements (a \\(32 \\times 8\\) block for a \\(32 \\times 32\\) tile) amortizes index math, with 4 elements per thread."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data. Median of 11 event-timed trials on an RTX 3050 Laptop GPU with CUDA 13.4 gives copy 153.5 GB/s, naive 47.7 GB/s and tiled 151.2 GB/s, and the tiled output matches a CPU transpose exactly, including a 1000x1000 odd-shape check.",
       "traps": [
-        "TODO"
+        "Trusting a bandwidth number above the vendor DRAM peak. Mine read 606 GB/s until I found the grid covered only a quarter of the matrix. Check coverage first, then compare against a `cudaMemcpy` ceiling.",
+        "Reading the blog's M2050 and K20c GB/s values as targets. Reproduce the ranking of copy, tiled and naive, not decade-old values.",
+        "Swapping block indices without swapping tile offsets writes each tile to the wrong place while staying in bounds. Zeros cannot catch this; an index-pattern input where element equals row times width plus column can."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "On a 1024x1024 fp32 matrix, what stride separates consecutive threads' writes in the naive transpose?",
+          "a": "1024 elements, or 4096 bytes. Each warp's 32 writes land in 32 different segments."
+        },
+        {
+          "q": "A warp reads one column of a `tile[32][32]` float array. Which banks, and what changes with `tile[32][33]`?",
+          "a": "All 32 requests hit one bank: a 32-way conflict. With the +1 padding, row r of column c maps to bank (r + c) mod 32, so the 32 requests hit 32 distinct banks."
+        },
+        {
+          "q": "The tiled kernel matches copy bandwidth on square shapes but fails on width 1000. What is the likely cause?",
+          "a": "Missing bounds guards for nonmultiple dimensions. Guard both the load loop and the store loop, since a partial edge tile underfills both."
+        },
+        {
+          "q": "Why is the copy kernel a better ceiling than the vendor peak bandwidth?",
+          "a": "Copy moves the same read-plus-write traffic with ideal access on your GPU, clocks and power state. It measures what is achievable here, not a datasheet bound."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU challenge 3: Matrix Transpose",
+          "url": "https://leetgpu.com/challenges/matrix-transpose",
+          "locator": "Challenge 3: `solve(input, rows, cols)` over fp32, with functional cases from 1x1 and 1x4 through 8192x8192 and a perf shape of rows 7000 by cols 6000",
+          "note": "Solve on the hosted runner and keep local source. Mirror the 2x3 example plus a nonmultiple shape against a CPU reference outside the leaderboard."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your tiled transpose matches the reference on square, tall, wide and odd shapes and reaches at least 0.9 times your measured copy bandwidth on 4096x4096.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The blog plus the guide's transpose sections cover all three topics at implement and measure depth, with a verified challenge as practice."
       }
     },
     {
