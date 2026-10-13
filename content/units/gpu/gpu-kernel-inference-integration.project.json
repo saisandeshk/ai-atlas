@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "One custom path running in a real inference endpoint",
     "hours": "12 to 16",
-    "brief": "Integrate one validated CUDA or Triton path into a real operator or small endpoint inside kernellab: trace dispatch to the kernel, prove launch and graph behavior, measure paged KV and chunked prefill, cover quantized, speculative and structured paths, check multimodal co-execution, and gate releases with fallback and rollback. All endpoint sizes fit 6 GB.",
+    "brief": "Integrate one validated CUDA or Triton path into a real operator or small endpoint on your GPU: trace dispatch to the kernel, measure paged KV and chunked prefill, cover quantized and speculative paths, and gate releases with fallback and rollback. Size all work to fit your GPU's memory; run paths it lacks as reading only. Build with `-arch=native`.",
     "units": [
       "dispatch-path-tracing",
       "launch-overhead-graph-misses",
@@ -17,18 +17,17 @@
       "regression-gates-rollback"
     ],
     "steps": [
-      "Profile a 1024 by 1024 `torch.float32` CUDA matmul wrapped in `torch.profiler.record_function(\\\"mm\\\")` and `torch.cuda.nvtx.range(\\\"mm\\\")`, capture a short `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none` trace, follow one `aten::mm` entry to its kernel, and reconcile profiler CUDA time with the union of kernel intervals and completed wall time. Run the ch13 whole-graph against regional compile pair with `python -m cli.aisp bench run --targets ch13:regional_compile --profile minimal` and attribute which boundary each variant moves.",
-      "Time 200 eager launches of a 1024-element vector add against 200 `graph.replay()` calls with CUDA events interleaved in pairs under a recorded seed and report both medians. On an RTX 3050 with PyTorch 2.14.1, six runs of 41 interleaved pairs gave eager medians from 2.4 to 13.5 us and replay medians from 1.8 to 7.2 us as host load changed, replay 1.4 to 1.9 times faster each run; record host load with yours, and replay must not exceed eager on this shape, with recapture required after any shape change. Capture one stable 32-step sequence, keep capture logs, and test eager fallback on an unsupported path.",
-      "Work a four-request mix with decode lengths 10, 10, 10 and 100: static batching holds all slots until length 100 while continuous batching frees three slots at length 10; state which kernel dimensions shrink when live batch drops from 4 to 1. Derive per-token KV bytes as \\(2 \\times L \\times H_{kv} \\times D \\times B\\): for 32 layers, 8 KV heads, 128 head dim and fp16 the result is 131072 bytes (128 KiB) per token. Place a 40-token sequence in block size 16 for 3 blocks with 8 wasted slots, and keep block tables and hit rates from the KV management and radix reuse runs.",
-      "Chunk a 20000-token prompt into 5000-token chunks beside 8 live decodes with a stated token budget: 4 chunks with named sharing per iteration, total attention work unchanged and worst per-iteration latency lower. Verify the LeetGPU challenge 87 worked example closed-book (draft `[1, 2, 0]` with given probabilities and samples `[0.50, 0.70, 0.30, 0.90]`: accept position 0 near 0.83, reject position 1 near 0.40, resample from `[0.667, 0, 0, 0.333]` to emit `[1, 3, 0, 0]`), pass challenges 87 and 96 locally with adversarial scales and tails, and run the disaggregated prefill and decode comparison with TTFT, TPOT and transfer notes.",
-      "Sketch one image-plus-text request through prefill and two decode steps: mark where the image encoder runs, which token range its embeddings replace, and which blocks are hashable for reuse when a second request shares text but not the image. Time encoder-batch against decoder-only execution in the integrated endpoint and add a multimodal prefix-hash identity check that reuses only matching prefixes.",
-      "Register the fused residual-add plus RMSNorm (LeetGPU challenge 83) as a custom op with a fake shape rule, allocate the FlashInfer decode workspace, plan a batch of 7 requests in `NHD` layout with `page_size = 16` and run one layer, stating which buffers must stay stable for graph capture and which eager fallback runs on an unsupported dtype. Derive endpoint capacity for an 8-billion-parameter fp16 model on an 80 GB A100: weights near 16 GB leave near 64 GB for KV and workspace, near 490000 tokens at 131072 bytes per token (524288 per 64 GiB) before workspace, then subtract the workspace reservation under a stated GB and GiB convention. Show a 10 percent kernel win on a 30 percent step share giving at most near 3 percent end to end, and compare one custom path against production engine and vendor-library baselines with a load test over a stated arrival mix.",
-      "Prove greedy equivalence on a 50000-token vocabulary with a fixed seed (`argmax` of logits equals `argmax` of their softmax, so skipping materialization is exact unless logits round to equal probabilities), then fix windows, stride and dtype and gate quality with perplexity \\(\\text{PPL} = \\exp(\\text{mean NLL})\\) on a fixed token file before and after the change. Write the versioned gate contract (versioned inputs, correctness plus quality checks, TTFT and TPOT budgets with sample counts, fallback trigger and rollback command), seed one wrong-mask defect to show the gate failing before timing is read, then drill rollback with raw samples retained."
+      "Trace one `aten::mm` entry to its kernel on an `nsys` timeline, reconciling profiler time with kernel intervals and wall time. Run the regional-compile pair and attribute which boundary each variant moves.",
+      "Time eager launches against graph replay with interleaved trials, recording host load; replay must not lose on this shape, with recapture after any shape change. Keep capture logs and test eager fallback on an unsupported path.",
+      "Work a mixed batch of short and long decodes under static and continuous batching, stating which kernel dimensions shrink as slots free. Derive per-token KV bytes for your config, place one sequence into blocks, and keep block tables with hit rates.",
+      "Chunk one long prompt beside decodes under a token budget you set, showing per-iteration latency falls while attention work holds. Pass LeetGPU challenges 87 and 96 in your own harness, and compare disaggregated prefill and decode with TTFT, TPOT and transfer notes.",
+      "Time encoder-batch against decoder-only execution for one image-plus-text request, with a prefix-hash check reusing only matching prefixes. Integrate one validated kernel as a custom op, compare it against production baselines under a load test, with workspace planning, and derive capacity for your GPU.",
+      "Prove greedy equivalence and gate quality with perplexity on a fixed token file before and after the change. Write the versioned gate with fallback and rollback, seed one defect to show it failing, and drill rollback with raw samples kept."
     ],
     "deliverables": [
-      "Dispatch and launch evidence: the `aten::mm` to kernel trace, the 200-launch eager against replay medians with capture logs, and the batching and KV derivations with block tables.",
-      "The integrated custom op with workspace plan, capacity math, baseline load test and the multimodal timing with prefix-hash check.",
-      "The quality gate with fixed token file and perplexity reports, plus the versioned regression gate with a seeded failing defect, fallback routing and rollback drill."
+      "Dispatch and launch evidence: the operator-to-kernel trace, eager against replay trials, and batching and KV derivations.",
+      "The integrated custom op with workspace plan, capacity math, baselines and the multimodal timing check.",
+      "The quality gate on a fixed token file and the versioned regression gate with rollback drill."
     ],
     "checks": [
       {
@@ -39,23 +38,23 @@
         "kind": "external-tests",
         "name": "LeetGPU inference kernels run locally",
         "url": "https://leetgpu.com/challenges/",
-        "note": "Pass 83 Fused Residual Add RMS Norm, 87 Speculative Decoding Verification and 96 INT8 KV Cache Attention locally; integrate one result with fallback."
+        "note": "Pass 83 Fused Residual Add RMS Norm, 87 Speculative Decoding Verification and 96 INT8 KV Cache Attention in your harness; integrate one result with fallback."
       }
     ],
     "rubric": [
       {
         "criterion": "Dispatch proof",
-        "pass": "The trace follows one operator entry to its kernel with reconciled times, eager against replay medians come from interleaved trials with recapture rules, and batching and KV derivations match the runs.",
+        "pass": "The trace follows one operator entry to its kernel with reconciled times, and eager against replay medians come from interleaved trials with recapture rules.",
         "strong": "Block tables show which reuse actually happened."
       },
       {
         "criterion": "Integration with quality",
-        "pass": "The custom op runs in the endpoint with stable buffers named, capacity math states conventions and workspace, baselines are production-grade, and greedy and perplexity gates pass on a fixed token file.",
-        "strong": "The 10 percent on 30 percent bound is applied with measured shares."
+        "pass": "The custom op runs in the endpoint with stable buffers named, capacity math states its conventions, production baselines are compared under load, and quality gates pass on a fixed token file.",
+        "strong": "The report bounds the end-to-end win from the measured step share."
       },
       {
         "criterion": "Gates and rollback",
-        "pass": "The versioned gate fails on the seeded wrong-mask defect before timing, fallback routes correctly, and rollback is drilled with raw samples retained.",
+        "pass": "Your own tests fail the gate on the seeded defect before timing, fallback routes correctly, and rollback is drilled with raw samples kept.",
         "strong": "The multimodal check reuses only matching prefixes and never the image blocks."
       }
     ],
