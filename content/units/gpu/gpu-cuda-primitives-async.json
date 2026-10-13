@@ -75,7 +75,7 @@
         "Coarsening trades fewer blocks and amortized index math for more registers per thread and less parallel slack. PMPP frames it as paying less for parallelism.",
         "Coalescing is about the warp, not the thread: consecutive threads should touch consecutive words so one 128-byte request fills four 32-byte transactions."
       ],
-      "reproduce": "From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop, and predict each variant's per-warp transaction count before running. On 1000003 random floats all three match a CPU reference computed with `fmaf` bit-exactly. `nvcc` contracts `a * x[i] + y[i]` into one fused multiply-add by default, so a CPU reference that multiplies and then adds differs in the last bit: on an RTX 3050 6 GB with CUDA 13.4 it disagreed at 282,894 of the 1,000,003 elements.",
+      "reproduce": "From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop, and predict each variant's per-warp transaction count before running. On 1000003 random floats all three match a CPU reference computed with `fmaf` bit-exactly. `nvcc` contracts `a * x[i] + y[i]` into one fused multiply-add by default, so a CPU reference that multiplies and then adds differs in the last bit: on an RTX 3050 6 GB with CUDA 13.4 it disagreed at 282,894 of the 1,000,003 elements; your count will differ, so check the mismatch pattern on your own GPU rather than the exact count.",
       "traps": [
         "Trusting base-pointer alignment after arithmetic. `cudaMalloc` returns aligned bases, but `p + offset` may not be 16-byte aligned, so check the accessed address at runtime.",
         "Testing only round sizes. A vectorized loop without a scalar tail silently drops the last \\(n \\bmod 4\\) elements, so test 1000003, not just 1048576.",
@@ -163,7 +163,7 @@
         "The copy kernel is the ceiling: it moves the same twice-the-matrix traffic with ideal access. A transpose near copy bandwidth is done.",
         "Fewer threads than tile elements (a \\(32 \\times 8\\) block for a \\(32 \\times 32\\) tile) amortizes index math, with 4 elements per thread."
       ],
-      "reproduce": "Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data and time each with events, median of 11 trials. On an RTX 3050 6 GB with CUDA 13.4 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s, counting one read and one write per element, and the tiled output matched a CPU transpose exactly, including a 1000x1000 check of the edge guards. Expect the same ranking on your GPU, with tiled near copy.",
+      "reproduce": "Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data and time each with events, median of 11 trials. On an RTX 3050 6 GB with CUDA 13.4 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s, counting one read and one write per element, and the tiled output matched a CPU transpose exactly, including a 1000x1000 check of the edge guards. Expect the same ranking on your GPU, with tiled near copy; your GB/s values will differ, so compare each kernel to your own measured copy bandwidth.",
       "traps": [
         "Trusting a bandwidth number above the DRAM peak. It usually means the grid covers only part of the matrix or the byte count is wrong, so check coverage first, then compare against the copy kernel.",
         "Reading the blog's M2050 and K20c GB/s values as targets. Reproduce the ranking of copy, tiled and naive, not decade-old values.",
@@ -334,7 +334,7 @@
           "title": "Shuffle prelab",
           "url": "https://github.com/accelerated-computing-class/lab7",
           "locator": "Lab 7, Part 0 (`shuffle.cu`): `__shfl_up_sync(0xffffffff, threadIdx.x, 1)` semantics, no wrap-around, and the two 32-integer cumulative-sum kernels with and without shared memory",
-          "depth": "Build for your own GPU with `nvcc -arch=sm_86` and recompute any SM count the questions assume. Use only Part 0 here; the scan parts belong to later units."
+          "depth": "Build for your own GPU with `nvcc -arch=native` and recompute any SM count the questions assume. Use only Part 0 here; the scan parts belong to later units."
         },
         {
           "resource": "nvidia-reduction-gpu4",
@@ -371,8 +371,8 @@
           "a": "If the other 12 lanes skip the shuffle inside a branch, the call is invalid and may hang. If they have exited, the call is allowed but shuffles that read from them return undefined values. Keep all 32 lanes in the reduction with identity values for the missing elements."
         },
         {
-          "q": "A 1,000,003-element reduction uses 256-thread blocks. How many blocks does it launch at coarsening 4 and at coarsening 64, and why can the second be slower on an 18-SM GPU?",
-          "a": "977 blocks at 4 and 62 at 64. Compute capability 8.6 holds up to six 256-thread blocks per SM, 108 on 18 SMs, so 62 blocks leave SMs partly idle and too few warps to hide memory latency."
+          "q": "A 1,000,003-element reduction uses 256-thread blocks. How many blocks does it launch at coarsening 4 and at coarsening 64, and why can the second be slower on your GPU?",
+          "a": "977 blocks at 4 and 62 at 64. As the worked example, compute capability 8.6 holds up to six 256-thread blocks per SM, 108 on 18 SMs, so 62 blocks leave SMs partly idle with too few warps to hide memory latency; redo the block-to-SM arithmetic for your own GPU."
         },
         {
           "q": "What exactly does first-add-during-load halve?",
@@ -448,7 +448,7 @@
           "title": "Associative scan implementation",
           "url": "https://github.com/accelerated-computing-class/lab7",
           "locator": "Lab 7, Part 1 (`scan.cu`, `launch_scan`): an inclusive scan templated over an associative operator, tested with `SumOp` and `DebugRangeConcatOp`, no external libraries such as CUB, benchmarked at length \\(2^{26}\\) with throughput defined as twice the bytes over time",
-          "depth": "Build for your own GPU with `nvcc -arch=sm_86`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth."
+          "depth": "Build for your own GPU with `nvcc -arch=native`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth."
         }
       ],
       "focus": [
@@ -485,7 +485,7 @@
           "name": "MIT Lab 7 Part 1: associative scan",
           "url": "https://github.com/accelerated-computing-class/lab7",
           "locator": "Part 1 `launch_scan` in `scan.cu`: pass the `SumOp` and `DebugRangeConcatOp` tests without CUB, then benchmark at length \\(2^{26}\\) against the retargeted bandwidth goal",
-          "note": "Build with `nvcc -arch=sm_86` (or your GPU's architecture) and run locally; the course runner needs an MIT token. Recompute every SM count, clock and bandwidth the questions assume."
+          "note": "Build with `nvcc -arch=native` and run in your own harness; the course runner needs an MIT token. Recompute every SM count, clock and bandwidth the questions assume."
         },
         {
           "name": "LeetGPU challenge 16: Prefix Sum",
@@ -559,7 +559,7 @@
         "Privatization replicates bins per block in shared memory, which is fast and block-scoped, then merges at a cost of blocks times bins adds. Coarsening into fewer blocks cuts the merge.",
         "Work PMPP Exercise 6 by hand before coding: it quantifies basic versus privatized versus coarsened update counts on the same input."
       ],
-      "reproduce": "Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins and on input that falls entirely in one bin, both match `torch.bincount` and the privatized version is faster. On an RTX 3050 6 GB, 50M updates took 17.8 ms with global atomics over 256 uniform bins and 27.4 ms into one bin, against 1.3 ms privatized in both cases. State the int32 bin overflow limit (2147483647) and your merge policy above it.",
+      "reproduce": "Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins and on input that falls entirely in one bin, both match `torch.bincount` and the privatized version is faster. On an RTX 3050 6 GB, 50M updates took 17.8 ms with global atomics over 256 uniform bins and 27.4 ms into one bin, against 1.3 ms privatized in both cases; your times will differ, so compare the ratios on your own GPU. State the int32 bin overflow limit (2147483647) and your merge policy above it.",
       "traps": [
         "Merging privatized int32 bins into int32 global bins can overflow while per-block counts look fine. Accumulate the merge in 64-bit or document the length limit.",
         "Benchmarking only uniform input hides contention. One hot bin serializes global atomics on one address (27.4 against 17.8 ms for 50M updates in the run above), so always include a skewed case.",
@@ -641,7 +641,7 @@
           "title": "Run-length compression",
           "url": "https://github.com/accelerated-computing-class/lab7",
           "locator": "Lab 7, Part 2 (`rle_compress.cu`, `launch_rle_compress`): run starts as an implicit predicate plus scan for positions over a 16-million-byte bitmap (`rle_raw.bmp`)",
-          "depth": "Build for your own GPU with `nvcc -arch=sm_86` and retarget the 1.6 ms course goal to your hardware. Part 3 decompression is extra credit; skip it here."
+          "depth": "Build for your own GPU with `nvcc -arch=native` and retarget the 1.6 ms course goal to your hardware. Part 3 decompression is extra credit; skip it here."
         }
       ],
       "focus": [
@@ -678,7 +678,7 @@
           "name": "MIT Lab 7 Part 2: run-length compression",
           "url": "https://github.com/accelerated-computing-class/lab7",
           "locator": "Part 2 `launch_rle_compress` in `rle_compress.cu`: scan-built positions for run starts, reusing your Part 1 scan",
-          "note": "Build with `nvcc -arch=sm_86` (or your GPU's architecture), run locally, and recompute the timing goal for your GPU; the course runner needs an MIT token."
+          "note": "Build with `nvcc -arch=native`, run in your own harness, and recompute the timing goal for your GPU; the course runner needs an MIT token."
         },
         {
           "name": "LeetGPU challenge 72: Stream Compaction",
@@ -871,7 +871,7 @@
           "name": "AI Systems companion code: Chapter 11 stream overlap demos",
           "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch11",
           "locator": "`streams_overlap_demo.cu`, `event_timing_demo.py` and `stream_overlap_demo.py`: build and run the overlap demo, reproduce one overlap timeline with event timing, and compare the event timing variants",
-          "note": "From the `code` directory, `nvcc -O3 -arch=sm_86 ch11/streams_overlap_demo.cu -o streams_overlap_demo` builds the CUDA demo, which reports its sequential and overlapped times; `event_timing_demo.py` runs with PyTorch alone; `stream_overlap_demo.py` imports the shared harness and needs the repository's `requirements.txt`. Ignore the B200 expectation files."
+          "note": "From the `code` directory, `nvcc -O3 -arch=native ch11/streams_overlap_demo.cu -o streams_overlap_demo` builds the CUDA demo, which reports its sequential and overlapped times; `event_timing_demo.py` runs with PyTorch alone; `stream_overlap_demo.py` imports the shared harness and needs the repository's `requirements.txt`. Ignore the B200 expectation files."
         }
       ],
       "stopWhen": "Your pipeline timeline shows copy and compute overlapping, event math confirms it, and switching back to pageable memory visibly collapses the overlap.",
@@ -933,7 +933,7 @@
         "Capture, instantiate and launch happen once, once and many times. Replay removes most per-launch CPU cost: on an RTX 3050 6 GB with CUDA 13.4, tiny kernels took 0.79 us each inside a graph against 2.67 us launched one by one, so graphs pay when launch overhead is a large share of step time.",
         "Capture forbids allocation, synchronization, legacy-stream work and shape changes. Preallocate maximum shapes and validate before capturing.",
         "`cudaGraphExecUpdate` updates an instantiated graph in place when the new capture has the same topology: kernel arguments, pointers and grid sizes may change. A different sequence of nodes fails the update; check the result and the reported node, then destroy and re-instantiate.",
-        "The first launch after instantiation also uploads the graph (`cudaGraphUpload` can do it ahead of time), so warm up before timing: the first replay of an 8-kernel chain took 34 us on the RTX 3050 above, against about 6 us warm."
+        "The first launch after instantiation also uploads the graph (`cudaGraphUpload` can do it ahead of time), so warm up before timing: the first replay of an 8-kernel chain took 34 us on the RTX 3050 example above, against about 6 us warm; measure your own first-replay cost the same way."
       ],
       "reproduce": "Capture an 8-kernel saxpy chain, replay it 100 times with outputs identical to eager, update a pointer and a length in place with `cudaGraphExecUpdate`, then change the number of kernels so the update fails and you re-instantiate. Report per-kernel launch time eager and in the graph, after warmup.",
       "traps": [
