@@ -413,7 +413,7 @@
     {
       "id": "varlen-paged-decode-attention",
       "title": "Variable-length, paged and decode attention",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -422,47 +422,72 @@
         "paged-decode-attention"
       ],
       "outcomes": [
-        "TODO"
+        "Implement request-local ragged indexing and logical-token to physical-page translation.",
+        "Build a reduced paged decode path that matches contiguous attention.",
+        "Explain when split-KV parallelism needs a stable merge and extra workspace."
       ],
-      "why": "TODO",
+      "why": "Serving batches contain different lengths and noncontiguous cache pages. Attention must preserve request and token identity while changing storage.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/kv-cache-write-kernels",
+          "note": "Write and gather the cache that this address mapping consumes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer ragged and paged layouts",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/docs/tutorials/kv_layout.rst",
+          "locator": "Commit f2794d5: Layout: NHD/HND, Ragged Tensor and Page Table Layout, plus the FAQ on cache ownership",
+          "depth": "Skip MLA and cascade layouts. Read the data contracts rather than copying older API examples. Empty requests need your own policy; the documented last-page rule assumes at least one page."
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "Attention states and recursive attention",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/docs/tutorials/recursive_attention.rst",
+          "locator": "Commit f2794d5: attention-state definition and binary/n-ary merge equations; Applications, KV Sequence Parallelism",
+          "depth": "Apply the merge equations only to disjoint token subsets. Skip shared-prefix performance claims. Use maximum subtraction in the merge, as the text notes but its displayed expression omits."
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "Paged decode planning and execution contract",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/decode.py",
+          "locator": "Commit f2794d5: `BatchDecodeWithPagedKVCacheWrapper` class example, constructor and `plan`/`run` docstrings",
+          "depth": "Trace one supported backend's shape, page-table and workspace arguments. Do not implement every backend or assume Hopper/Blackwell paths work on Ampere."
         }
       ],
       "focus": [
-        "TODO"
+        "Ragged data uses prefix offsets; each request has its own query and KV range. A flat index is not a logical token position, and neighboring requests must never attend to each other.",
+        "With page size \\(P\\), logical token \\(t\\) uses page-table entry \\(\\lfloor t/P\\rfloor\\) and slot \\(t \\bmod P\\). The page-table entry gives the physical page; it need not equal the logical page number.",
+        "For a nonempty request with \\(n_p\\) pages and last-page occupancy \\(r\\), valid length is \\((n_p-1)P+r\\), with \\(1 \\le r \\le P\\). Read only valid slots, even if stale data occupies the rest.",
+        "Split-KV decode produces independent states over disjoint key ranges. Merge normalizers and weighted outputs, not equally weighted partial outputs. Extra launches and partial-state workspace can outweigh the added parallelism."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From memory, translate a seven-token request with page size 4 and physical page list `[3, 1]`. Its last-page occupancy is 3; token 6 maps to page 1, slot 2. Build a CPU gather oracle, permute the physical allocation while preserving the page table, and verify unchanged dense decode output. Then implement the same mapping in a bounded CUDA or Triton decode kernel with odd lengths and partial pages.",
       "traps": [
-        "TODO"
+        "Using allocated page capacity as sequence length. Unused slots are not keys and may contain another request's old data.",
+        "Averaging split outputs. Each output is already normalized by a different partition's mass; their logsumexp statistics set the merge weights.",
+        "Counting the same prefix in two split states. Merge algebra represents a disjoint partition; overlap double-counts those keys."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "If the last page is full, is its occupancy zero?",
+          "a": "No. It equals the page size. Zero does not encode a full page under the documented nonempty-request contract."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Should physical page order affect the attention answer?",
+          "a": "No, if the page table still maps the same logical tokens and values. Changing logical token positions or masks would affect it. Floating-point reduction order may introduce tolerated rounding differences."
+        },
+        {
+          "q": "Why can splitting the KV sequence help decode when query tiling cannot?",
+          "a": "It creates more independent thread blocks from a long key sequence despite having only one query row. A second reduction combines their attention states, so the gain must exceed that overhead."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a `kernellab` ragged/paged decode path, a contiguous gather oracle, page-permutation tests, request-isolation tests and split-state checks.",
+      "stopWhen": "Your reduced decode kernel matches the independent contiguous oracle for permuted pages, unequal request lengths, partial last pages and the chosen empty-request policy.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Pinned FlashInfer layouts, decode contracts and recursive-state derivation cover the required mechanisms. The mini-project supplies bounded kernel implementation and independent tests."
       }
     },
     {
