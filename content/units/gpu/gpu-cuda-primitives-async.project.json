@@ -1,0 +1,65 @@
+{
+  "miniProject": {
+    "title": "CUDA maps, reductions, transpose and overlap with async proof",
+    "hours": "12 to 16",
+    "brief": "Fill kernellab with the CUDA core: vectorized and coarsened maps, shuffle and two-pass reductions, tiled transpose, scans, privatized histograms, stable softmax, overlapped copies and captured graphs, each checked against an independent reference and timed with events. Keep the local LeetGPU harness and five seeded async defects with tool evidence.",
+    "units": [
+      "maps-vectorized-coarsening",
+      "transpose-tiling-banks",
+      "reduction-trees-order",
+      "warp-block-reductions",
+      "parallel-scans",
+      "histograms-privatization",
+      "stream-compaction",
+      "online-softmax-kernel",
+      "pinned-streams-overlap",
+      "cuda-graphs-dispatch",
+      "primitive-defect-diagnosis"
+    ],
+    "steps": [
+      "Build the local LeetGPU harness in tests/leetgpu/: compile each `solve` with `nvcc -shared -Xcompiler -fPIC`, load it with `ctypes`, and check it against `reference_impl` plus the generators from the public `challenge.py` files, with a two-line `core/challenge_base.py` stub setting `device = \\\"cuda\\\"` where the helper is needed. Verify the path on challenge 4 before timing anything.",
+      "Write scalar, `float4` vectorized and 4-way coarsened saxpy kernels with grid-stride loops in `kernels/cuda/map.cu`. Predict per-warp transaction counts first, then check all three on 1000003 random floats bit-exactly against a CPU reference computed with `fmaf`: `nvcc` contracts the multiply-add to one fused operation by default, so a multiply-then-add reference differs in the last bit at 282894 of the 1000003 elements on the reference card. Cover lengths 0 and 1000003 plus odd sizes, with the empty path avoiding an invalid launch.",
+      "Write a shuffle warp reduction plus a two-pass grid reduction with 4-way coarsening and grid-stride loads. Cover lengths 0, 1, 31, 32, 33, 1023, 1000003 and one large size, pad tail lanes with the identity, return 0 for length 0 and the single value for length 1, and match a float64 reference within relative error 1e-6 on 1000003 values. Sweep the coarsening factor with interleaved event trials and retain one losing factor: with 256 threads the grid needs 977 blocks at factor 4 against 62 at factor 64, while `sm_86` holds 6 such blocks per SM for 108 resident on 18 SMs. Show the hand tree on `[6, 2, 7, 4, 5, 8, 3, 1]` giving 36 in 7 adds and 3 steps, and the float32 order case with `1e8` cancelling to 1 or 0 by grouping.",
+      "Rebuild copy, naive and padded shared-memory tiled transpose for 4096 by 4096 fp32 random data and time each with events as median of 11 trials counting one read and one write per element. On the reference RTX 3050 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s with exact match including a 1000 by 1000 edge-guard check; expect the same ranking with tiled near copy on your card. Pass LeetGPU challenge 3 locally across 1 by 1 through 8192 by 8192 cases. Diagnose bank behavior with the enumerator from the previous section and keep the padding fix.",
+      "Implement block scan plus block-sums scan plus add-back for arbitrary lengths: hand-run Kogge-Stone exclusive scan on `[4, 6, 7, 1, 2, 8, 5, 2]` to `[0, 4, 10, 17, 18, 20, 28, 33]`, match `torch.cumsum` on odd sizes, and build scan-plus-scatter for stream compaction that maps `[-1, 2, 0, 4]` through predicate `[0, 1, 0, 1]` and scan `[0, 0, 1, 1]` to `[2, 4, 0, 0]`. Implement global-atomic and privatized int32 histograms matching `torch.bincount`: on the reference card 50M updates over 256 bins took 17.8 ms global uniform and 27.4 ms into one bin against 1.3 ms privatized in both cases. State the int32 overflow limit 2147483647 with a merge policy, and pass LeetGPU challenges 13, 16 and 72 locally.",
+      "Derive the online normalizer recurrence from the safe form, hand-run it on `[1, 2, 3, 1000]`, then implement materialized, two-pass and online softmax that agree within 1e-5 on 500000 uniform (-10, 10) logits including the challenge 5 `[1000, 1, 2, 3]` overflow case. Pass LeetGPU challenge 5 locally, then add an all-masked-row test with a documented policy stating the output for empty rows.",
+      "Build a 4-chunk host-to-device plus kernel pipeline on separate streams with `cudaStreamWaitEvent` chaining, capture with `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none`, and show copy and compute overlapping with event math placing overlapped wall time below the sequential sum. Capture an 8-kernel saxpy chain with CUDA graphs, replay 100 times with outputs identical to eager, update a pointer and a length in place with `cudaGraphExecUpdate`, then change the kernel count so the update fails and re-instantiation is required. Report per-kernel launch time eager and in-graph after warmup: on the reference card tiny kernels took 2.67 us eager against 0.79 us replay with first replay near 34 us. Your medians will differ; replay must not exceed eager on this shape.",
+      "Seed all five defects in section kernels (race, divergent barrier, partial warp, stale buffer, wrong mask), diagnose each with cited tool evidence without a global synchronization repair, and keep the regression tests green. This is the Milestone D failure handling for the CUDA core."
+    ],
+    "deliverables": [
+      "The local LeetGPU harness with `reference_impl` checks for challenges 3, 4, 5, 13, 16 and 72.",
+      "kernels/cuda/ maps, reductions, transpose, scans, histograms, compaction and softmax with independent references, odd-size and mask tests and the coarsening sweep with a retained loser.",
+      "The 4-chunk overlap timeline with event math, the 8-kernel graph capture with update and re-instantiation evidence, and five seeded-defect regressions with tool logs."
+    ],
+    "checks": [
+      {
+        "kind": "rubric",
+        "name": "Self-grade with the rubric below"
+      },
+      {
+        "kind": "external-tests",
+        "name": "LeetGPU primitive challenges run locally against the reference implementation",
+        "url": "https://leetgpu.com/challenges/",
+        "note": "Run challenges 3, 4, 5, 13, 16 and 72 locally with `nvcc -shared -Xcompiler -fPIC` and `ctypes`; keep raw timings outside the leaderboard."
+      }
+    ],
+    "rubric": [
+      {
+        "criterion": "Oracle agreement",
+        "pass": "Each kernel matches its independent reference (fmaf CPU map, float64 reduction, CPU transpose, `torch.cumsum`, `torch.bincount`, max-trick softmax) on random and adversarial inputs including 0 and 1000003, and seeded omissions fail.",
+        "strong": "The map keeps the multiply-then-add variant as a comparison showing the 282894-element last-bit gap."
+      },
+      {
+        "criterion": "Performance with a loser",
+        "pass": "Transpose, histogram and coarsening comparisons use interleaved event trials with raw samples, and one losing factor or shape is retained with an explanation.",
+        "strong": "Block counts and residency (977 against 62, 108 resident) are derived before the sweep."
+      },
+      {
+        "criterion": "Async proof",
+        "pass": "The `nsys` timeline shows overlap with event math below the sequential sum, graphs replay identically with update and re-instantiation both demonstrated, and each defect names the tool line that locates it.",
+        "strong": "Buffer lifetimes are drawn with stream dependencies, and no repair hides behind a global barrier."
+      }
+    ],
+    "feedsInto": "Capstone kernel suite: maps, reductions, transpose, scans, histograms, softmax and the overlap and graph evidence. GEMM, attention and Triton sections reuse the harness and the defect method."
+  }
+}
