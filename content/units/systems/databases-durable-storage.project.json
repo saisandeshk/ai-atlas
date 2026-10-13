@@ -1,8 +1,8 @@
 {
   "miniProject": {
-    "title": "Durable state for the service slice and a PostgreSQL catalog with transaction evidence",
+    "title": "Durable service state and PostgreSQL catalog with transaction evidence",
     "hours": "14 to 20",
-    "brief": "Make the service slice durable: a checksummed append-only log with a rebuildable index, crash recovery at every publication boundary, compaction with versioned records and an acknowledged-prefix oracle. Beside it, keep the service's tenant and credential metadata in PostgreSQL 18 and produce the dossier's SQL evidence: constraints, a join rewrite, a point-in-time export, a query-plan change, a write-skew test and an MVCC visibility trace.",
+    "brief": "Make the service slice durable with a checksummed log, rebuildable index, crash recovery and versioned compaction, and keep tenant metadata in PostgreSQL 18. Produce the dossier SQL evidence for constraints, plans, transactions and visibility.",
     "units": [
       "relational-algebra-sql",
       "windows-nulls-point-in-time",
@@ -15,20 +15,18 @@
       "storage-evolution-amplification"
     ],
     "steps": [
-      "Store every write in `kv/store.py` as a frame: `struct.pack(\">II\", length, crc)` plus the payload, with `crc = zlib.crc32` of the packed length and the payload, as in the WAL unit; the payload is a versioned record (`v`, `tenant`, `key`, `value` or `tombstone`, `idem`). Append with a short-write loop and `fsync` before the server acknowledges, and `fsync` the directory when a log file is created. If `fsync` fails, stop accepting writes and acknowledge nothing more: a later `fsync` can succeed without the lost pages having reached the disk. Recovery scans validated frames; an incomplete tail is truncated as never acknowledged, and a complete frame with a bad CRC or an oversized length is corruption that stops recovery with an error.",
-      "Rebuild the index from the log at start: a `dict` from `key` to the offset of its newest record for point reads and a sorted key list (`bisect`) for range reads. Test point, missing-key, range-boundary and tombstone fixtures against a `dict` oracle replayed from the same records. In the `README`, derive with the unit's model what an ordered on-disk index over 1,000,000 keys would need (fanout 168: 5953 leaves, 36 parents and a root, three page visits per uncached lookup) and why the in-memory hash index needs no pages but must be rebuilt on every start.",
-      "Test every boundary against an acknowledged-prefix oracle. Run numbered writes in a child process and crash it with `os._exit` at each injected point (mid-payload, after write before `fsync`, after `fsync` before the acknowledgement, after the acknowledgement), and truncate a log at every byte offset (for the unit's three 11-byte frames, offsets 0 to 33: 34 cases). After each recovery, the state must equal the oracle replay of a prefix of the attempted writes that contains every acknowledged one, and a flipped payload byte must raise a corruption error. Call these process-exit and truncation tests, not power-loss tests. Rerun the fault matrix's restart row: it now passes.",
-      "Compact by writing a new generation that keeps the newest record per key, tombstones included, publish a manifest naming the live generation with `lab/publish.py`, and delete the old generation only after the manifest is durable. Crash before, during and after publication and show recovery always opens a complete old or new generation. Drop a tombstone only when no older generation or retained snapshot could still hold the key, and keep a test showing the deleted key coming back when it is dropped early. Count logical bytes separately for appends, flushes and compaction rewrites; the unit's toy runs give \\(160/96=5/3\\).",
-      "Version the record: v1 holds `key` and `value`, v2 adds an optional `expires_at` that defaults to `null`. Test all four writer and reader combinations; an old reader that rewrites a v2 record during compaction must keep the field it does not know. Treat a change to the type of `value` as a new field, not as v2.",
-      "Model a buffer pool in front of the read path: four frames with pin counts, dirty bits and a clock or LRU victim choice. Test the two hard cases: with every frame pinned there is no victim and the request fails with a typed error, and a failed write-back of a dirty victim keeps its mapping and dirty bit and surfaces the error. Choose the layout for this store's reads (point gets by key, short range scans) and say why a row-oriented log fits and when a columnar copy would.",
-      "In `postgres:18`, create the catalog: `tenant`, `credential (tenant, role, active, expires_at)`, `segment (generation, path, sha256, published_at)` and `usage (tenant, event_at, available_at, puts)`, with keys, `NOT NULL` and `CHECK` constraints doing the validation, and test each rejection. Rewrite one join with its filter moved into a subquery and test bag equivalence (`EXCEPT ALL` both ways is empty), plus `COUNT` of a join against `EXISTS`. Export the as-served usage rows at a cutoff (`event_at` and `available_at` at or before it, ties broken by a unique key), with tests for `NULL` `puts`, tied event times and rows exactly at the cutoff, inside a read-only `REPEATABLE READ` transaction, store the SQL, cutoff and SHA-256, backfill a late row and show the saved export still verifies.",
-      "For one catalog query that joins, filters and aggregates, save `EXPLAIN (ANALYZE, BUFFERS)` before and after one index change, with data sizes, `ANALYZE` state, settings and versions, labeled as warm cache, and boundary tests (empty result, one row, ties) giving the same answers both ways. Reproduce write skew on the rule that every tenant keeps an active admin credential: two `SERIALIZABLE` transactions, held at a barrier until both have counted 2, each deactivate a different admin, and one fails with `40001` (on PostgreSQL 18.6 the second `COMMIT` failed). Show its update never became visible, restart it from `BEGIN`, recheck the rule and refuse. Show in `pg_stat_activity` that a blocked row update waits with `wait_event_type` `Lock` and `wait_event` `transactionid`, a transaction wait rather than a buffer latch (`LWLock`), and trace `xmin`, `xmax` and `ctid` of one row before and after an update commits."
+      "Store every write as a checksummed frame acknowledged only after `fsync`, refuse further writes after an `fsync` failure, and test every short-write and truncation boundary against an acknowledged-prefix oracle, rejecting corruption.",
+      "Rebuild a key-to-offset index with range support and check it against a replayed oracle, derive the ordered-index page cost against the hash rebuild, and model a pinned buffer pool with its no-victim and failed-writeback cases, choosing the layout for point and scan reads.",
+      "Compact by publishing a manifest with `lab/publish.py` that names the live generation, recover to one complete generation after a crash at each step, retain tombstones until safe, version records compatibly across all writer and reader combinations, and count logical bytes by kind.",
+      "Model tenants, credentials, segments and usage in PostgreSQL with keys and constraints doing the validation, and rewrite one join with its filter moved, proving bag equivalence both ways, with each rejection tested.",
+      "Export the as-served usage rows at a cutoff inside a read-only `REPEATABLE READ` transaction, cover nulls, ties and exact-cutoff rows with backfill stability, and store the query, cutoff and digest.",
+      "Compare `EXPLAIN` output before and after one index change with sizes and settings recorded and boundary results equal, force write skew across two `SERIALIZABLE` transactions with restart and recheck, and trace tuple visibility while separating lock waits from latches."
     ],
     "deliverables": [
-      "`kv/store.py`: checksummed log, index rebuild, compaction with manifest publication and versioned records, with the crash, truncation, corruption, tombstone and compatibility tests.",
-      "The acknowledged-prefix report: every injected boundary, the recovered prefix and the acknowledged writes it contains.",
-      "`dossier/sql/`: the catalog schema, constraint tests, join equivalence, the point-in-time export with its digest, the plan comparison and the write-skew and visibility transcripts.",
-      "The buffer pool model with its tests and the layout note."
+      "`kv/store.py` with checksummed log, rebuilt index, manifest compaction and versioned records, plus crash and compatibility tests.",
+      "The acknowledged-prefix report across every injected boundary with recovered prefixes and retained corruption cases.",
+      "The catalog, export, plan and transaction evidence with digests, equivalence proofs and visibility traces.",
+      "The buffer pool model with its failure tests and the layout choice for the store reads."
     ],
     "checks": [
       {
@@ -38,31 +36,21 @@
     ],
     "rubric": [
       {
-        "criterion": "Durability contract",
-        "pass": "No write is acknowledged before `fsync`, a failed `fsync` stops writes, and the oracle passes at every injected boundary and truncation offset.",
-        "strong": "The `README` states what the tests cover (process exit, truncation, bit flips) and what they cannot (power loss, lying caches, lost or misdirected writes)."
+        "criterion": "Durability and recovery",
+        "pass": "No write is acknowledged before `fsync`, failures stop writes, and the oracle passes at every boundary with corruption rejected.",
+        "strong": "The report states which failures the tests cover and which real faults lie outside them."
       },
       {
-        "criterion": "Recovery and compaction",
-        "pass": "Recovery opens a complete old or new generation after a crash at every publication step, and deleted keys stay deleted.",
-        "strong": "The early tombstone drop is kept as a regression test, and the byte counters separate append, flush and rewrite work."
+        "criterion": "Index, versions and compaction",
+        "pass": "The rebuilt index matches the oracle, all version combinations pass, and recovery opens one complete generation with tombstones held.",
+        "strong": "An early tombstone drop is kept as a regression, and byte counters separate the kinds of work."
       },
       {
-        "criterion": "Index and compatibility",
-        "pass": "The rebuilt index agrees with the oracle on point, range and tombstone fixtures, and all four version combinations pass.",
-        "strong": "The page-capacity derivation and buffer pool tests explain what an on-disk ordered index would add."
-      },
-      {
-        "criterion": "SQL evidence",
-        "pass": "Constraints reject bad rows, the join rewrite is bag-equivalent, the export verifies after a backfill, and the plan comparison records sizes, settings and versions.",
-        "strong": "The plan change is explained from actual rows, loops and buffers, not from timing alone."
-      },
-      {
-        "criterion": "Transactions",
-        "pass": "The write-skew test produces `40001`, the retry refuses the second deactivation, and the visibility trace shows the old and new tuple versions.",
-        "strong": "The dossier draws the read-write dependency cycle and separates the lock wait from a latch with quoted `pg_stat_activity` output."
+        "criterion": "SQL and transactions",
+        "pass": "Constraints reject bad rows, the rewrite proves equivalent, the export verifies after backfill, and the skew test restarts cleanly.",
+        "strong": "Plans are explained from rows and buffers, and visibility evidence separates waits from latches."
       }
     ],
-    "feedsInto": "Capstone service slice: checksummed append-only state, crash recovery and the transaction invariant. Dossier: the SQL, query-plan and transaction evidence."
+    "feedsInto": "Capstone service slice: durable state, recovery and the transaction invariant. The dossier keeps the SQL, plan and visibility evidence."
   }
 }
