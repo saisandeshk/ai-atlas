@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "Installable taskrunner package with a typed registry and two seeded defects",
     "hours": "8 to 12",
-    "brief": "Start the one repository the whole stage builds on: a src-layout taskrunner package that registers typed tasks, streams its run log lazily and cleans up run directories on every path. Install its wheel into a clean environment, then seed an aliasing defect and an object-lifetime defect, diagnose each and keep a regression test that fails on the seeded code.",
+    "brief": "Build the installable task runner package the later projects extend, with a typed task registry, a lazy run log and deterministic cleanup. Two seeded defects, one aliasing and one lifetime, train evidence-first diagnosis with a regression test for each.",
     "units": [
       "names-mutability-copying",
       "arguments-scopes-closures",
@@ -15,19 +15,17 @@
       "refcounting-gc-weakrefs"
     ],
     "steps": [
-      "Run `uv init --package taskrunner`: uv 0.11.32 writes a `src` layout, the `uv_build` backend and the console script `taskrunner = \"taskrunner:main\"`. Build the sdist and wheel with `uv build`, install the wheel into a new virtual environment outside the repository, and run `taskrunner` from another directory. Print `taskrunner.__file__` from that environment to show the installed copy was imported, not `src/`.",
-      "Model a task as a frozen slotted dataclass `TaskSpec(name, timeout_s, retries)` whose `__post_init__` rejects a name that is not an identifier, a timeout that is not positive and negative retries. Test an `asdict` round trip, a `replace()` change and use as a `dict` key. Define a `Task` `Protocol` for callables that take a `params` mapping and return a result `dict`, and a `@task(name, timeout_s=..., retries=...)` decorator factory that registers the function under its name and rejects duplicates.",
-      "Type the package under `mypy --strict`. If the decorator is typed to return the `Task` `Protocol`, mypy 2.4.0 rejects `count_lines.__name__` on a decorated function, because the `Protocol` declares only `__call__`. A generic `def task[F: Task](...) -> Callable[[F], F]` that returns the function unchanged keeps its own type and metadata; keep both versions in the write-up.",
-      "Write the run log as JSON Lines, one record per run (`task`, `params`, `status`, `seconds`). Read it with a generator `iter_runs(path)` that parses one line at a time, and build the summary from generator expressions. With `tracemalloc`, compare the peak of summarizing through `iter_runs` against a version that first builds a `list` of records, at two log sizes such as 100,000 and 1,000,000 lines. Predict which peak grows with the file before measuring.",
-      "Give each run a directory through a `@contextmanager` `run_dir(root, run_id)` that yields the path, writes a `done` or `failed` marker and closes the run log on success, on task failure and on an exception raised inside the `with` block. Map failures to a small hierarchy (`TaskError`, `ConfigError`) and to CLI exit codes (0 success, 2 bad configuration, 3 task failure), raise each mapped error from its cause, and test that `__cause__` survives.",
-      "Seed an aliasing defect: build each run's `params` with `dict(DEFAULTS)` and let a task extend `params['paths']`. The copy is shallow and shares the nested list, so with `DEFAULTS = {'retries': 2, 'paths': ['data/in']}` a run that adds `'extra'` leaves the next run, and `DEFAULTS` itself, with `['data/in', 'extra']`. Write the regression test first (two runs, then assert the second run and `DEFAULTS` are unchanged), watch it fail, and fix it with `copy.deepcopy` or immutable defaults, explaining the choice.",
-      "Seed a lifetime defect: a `Runner` that opens its log, closes it in `__del__` and stores the bound method `self.on_done = self._close_log`. The instance holds the method and the method holds the instance, so with `gc.disable()` a `del` leaves the log open. Keep the probe as diagnosis evidence: a `weakref` callback has not fired after `del`, then `gc.collect()` returns a nonzero count (2 on CPython 3.14.4 for a runner holding only the log and the method), the log closes and the callback fires. The regression test deletes a runner with the collector disabled and asserts the log is closed. It fails on the seeded code, and still fails if a `weakref.finalize` is added while the bound method stays on the instance; it passes once `on_done` is the `weakref.finalize(self, self.log.close)` object itself, which holds no strong reference to the instance and runs at most once."
+      "Scaffold a src-layout package with `uv init`, build its wheel with `uv build`, install the wheel into a fresh environment and run its console entry point outside the repository, showing the installed copy is imported.",
+      "Model tasks as a frozen slotted dataclass validated in `__post_init__`, registered by a decorator that rejects duplicates, and checked against the AlgoMaster Python Data Classes and Decorators exercises, with `mypy --strict` clean.",
+      "Stream the JSON Lines run log through a generator and build the summary from generator expressions, then predict which peak grows with file size and compare peaks with `tracemalloc` against a list-building version.",
+      "Give each run a directory through a context manager that writes a marker and closes the log on every path, map failures to a small chained exception hierarchy, and test every path.",
+      "Seed an aliasing defect where a shallow copy shares nested run parameters across runs, write the regression test first, watch it fail, then fix it and explain why the chosen copy strategy removes the sharing.",
+      "Seed a cleanup defect where a stored bound method keeps a cycle alive, diagnose it with a `weakref` probe and the collector, then fix it so the regression test passes with the collector disabled."
     ],
     "deliverables": [
-      "The taskrunner repository: src-layout package, sdist and wheel, and a `README` with the clean-environment install commands and the `taskrunner.__file__` output.",
-      "Tests for `TaskSpec` validation and round trip, duplicate registration, `iter_runs` laziness, `run_dir` cleanup on all three paths and exception causes, with `mypy --strict` reporting no issues.",
-      "Two defect write-ups, aliasing and lifetime, each with the failing regression output on the seeded code, the diagnosis evidence and the passing run after the fix.",
-      "The `tracemalloc` peak table for the lazy and list-building summaries at two log sizes, with the Python version."
+      "The `taskrunner` repository: src-layout package, wheel, and a `README` with install and import evidence.",
+      "Tests for validation, registration, laziness, cleanup and causes, with `mypy --strict` clean.",
+      "Two defect write-ups with failing and passing regression output, diagnosis evidence and the laziness peak comparison."
     ],
     "checks": [
       {
@@ -37,26 +35,26 @@
     ],
     "rubric": [
       {
-        "criterion": "Packaging",
-        "pass": "The wheel installs into a fresh environment and the `taskrunner` entry point runs from outside the repository with no `sys.path` edits.",
-        "strong": "The `README` rebuilds and reinstalls from a clean clone in one copied block, and a test asserts the imported module is not under `src/`."
+        "criterion": "Installable package",
+        "pass": "The wheel installs into a fresh environment and the entry point runs outside the repository.",
+        "strong": "A test asserts the imported package is the installed copy, and the `README` rebuilds it from a clean checkout."
       },
       {
         "criterion": "Typed model",
-        "pass": "`TaskSpec` rejects bad values, round-trips through `asdict` and works as a `dict` key; duplicates are rejected; `mypy --strict` reports no issues.",
-        "strong": "Decorated tasks keep their own type, and the write-up shows the `Protocol`-typed decorator that mypy rejected and why."
+        "pass": "`TaskSpec` rejects bad values and round-trips, duplicates are rejected, and `mypy --strict` is clean.",
+        "strong": "Decorated tasks keep their own type, and the write-up shows the rejected `Protocol` typing and why."
       },
       {
         "criterion": "Resources and laziness",
-        "pass": "`run_dir` closes the log and writes its marker on success, failure and an inner raise, and mapped errors keep `__cause__`.",
-        "strong": "The `tracemalloc` table shows the `iter_runs` peak staying flat while the list-building peak grows with the log."
+        "pass": "Cleanup and markers hold on every path with causes chained, and the learner's tests cover each path.",
+        "strong": "The peak comparison shows the generator holding flat while the list version grows, as predicted."
       },
       {
         "criterion": "Seeded defects",
         "pass": "Both regression tests fail on the seeded code and pass after the fix.",
-        "strong": "Each write-up names the reference behind the bug (the shared nested list; the method cycle) and why the fix removes it, for example why a finalizer added beside the bound method still needs a collector run."
+        "strong": "Each write-up names the shared reference or cycle behind the bug and why the fix removes it."
       }
     ],
-    "feedsInto": "Capstone package and interface: the installable typed package, its entry point and the run log the service and pipeline write. Native and diagnosis: the lifetime write-up is a first evidence-first debugging report."
+    "feedsInto": "The installable typed package, its entry point and the run log that the service and pipeline write; the lifetime write-up seeds the evidence-first debugging report."
   }
 }
