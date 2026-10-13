@@ -204,7 +204,7 @@
     {
       "id": "reduction-trees-order",
       "title": "Reduction trees, work efficiency and floating-point order",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "derive"
       ],
@@ -213,47 +213,85 @@
         "floating-reduction-order"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the work \\(N - 1\\), depth \\(\\log_2 N\\) and idle-thread fraction of a tree reduction.",
+        "Predict how tree order changes a float32 sum and bound the change with a float64 reference.",
+        "Trace the interleaved-to-sequential addressing fixes and state what each one removes."
       ],
-      "why": "TODO",
+      "why": "Reduction is where parallelism meets floating-point reality. The fastest tree also sums in a different order, and that order is part of the result.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/warp-block-reductions",
+          "note": "Complete the tree across warps and blocks with tails."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/histograms-privatization",
+          "note": "Contrast tree completion with atomic completion."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Reduction trees and a simple kernel",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 10, Sections 10.1 to 10.3 (printed pp. 211 to 217): reduction trees, operation count and the first shared-memory kernel"
+        },
+        {
+          "resource": "nvidia-reduction-gpu4",
+          "title": "Seven-kernel optimization sequence",
+          "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
+          "locator": "Slide 2 (intent: 7 versions), slides 7 to 28 from interleaved addressing through complete unrolling, and the slide 34 performance table for 4M elements",
+          "depth": "The GB/s values are 2008-era hardware. Trace the code changes and treat the table as history, not targets."
+        },
+        {
+          "resource": "gpu-mode-primitives-gpu4",
+          "title": "Order-dependence scripts",
+          "url": "https://github.com/gpu-mode/lectures",
+          "locator": "Lecture 9 code in `lecture_009/`: `nondeterminism.py` (left-to-right 0.0 versus right-to-left 1e-19 on the same list) and `accuracy.py` (fp32 versus fp16 absorption at 1000.0 plus 1e-3)",
+          "depth": "Run the scripts to feel order effects. Save the lecture slides for later."
         }
       ],
       "focus": [
-        "TODO"
+        "A tree does \\(N - 1\\) adds in \\(\\lceil \\log_2 N \\rceil\\) steps. Step \\(s\\) does \\(N/2^s\\) adds, so half the threads idle after the first step.",
+        "Interleaved addressing diverges warps and pays for modulo; the strided-index form removes divergence but bank-conflicts; sequential addressing is conflict-free.",
+        "Challenge 4's reference accumulates in float64, so an fp32 tree passes at 1e-5 on friendly magnitudes. That proves nothing about ill-conditioned inputs.",
+        "The deck uses `int` throughout, where every tree order is exact. Its sequence needs an FP re-derivation before you copy it into a float kernel."
       ],
-      "reproduce": "TODO",
+      "reproduce": "By hand, reduce [6, 2, 7, 4, 5, 8, 3, 1] with a sequential-addressing tree to get 36 with 7 adds in 3 steps. Then show in float32 that (1e8 plus -1e8) plus 1.0 gives 1.0, while 1e8 plus ((-1e8) plus 1.0) gives 0.0.",
       "traps": [
-        "TODO"
+        "Treating a Challenge 4 pass as an order certificate. The float64 reference plus 1e-5 tolerance absorbs tree-order error on friendly magnitudes, so test cancellation inputs separately.",
+        "Unrolling the last warp without `volatile` shared-memory qualifications lets the compiler keep values in registers and compute stale results.",
+        "Reading idle threads as inefficiency. Halving active threads each step is still work-efficient at \\(N - 1\\) adds; fixed-fanout alternatives do \\(N \\log N\\)."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "For 1024 elements, how many adds and how many steps does a tree reduction take?",
+          "a": "1023 adds in 10 steps. Each step halves the partials until one remains."
+        },
+        {
+          "q": "Why is the deck's first kernel slow, in two causes?",
+          "a": "`tid % (2*s)` diverges warps and integer modulo is slow. Later kernels replace it with a strided index and a halving loop."
+        },
+        {
+          "q": "Challenge 4 compares against `torch.sum(input.double()).float()`. What does that reference hide?",
+          "a": "Summation order error. Any fp32 tree order lands within 1e-5 on the test magnitudes, so order bugs on ill-conditioned inputs escape."
+        },
+        {
+          "q": "Why do (1e8 plus -1e8) plus 1.0 and 1e8 plus ((-1e8) plus 1.0) differ in float32?",
+          "a": "-1e8 plus 1.0 rounds back to -1e8 because 1.0 is below its ulp, so the second order returns 0.0 while the first returns 1.0."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU challenge 4: Reduction",
+          "url": "https://leetgpu.com/challenges/reduction",
+          "locator": "Challenge 4: `solve(input, N)` fp32 sum against a float64 reference at 1e-5, with functional cases for N=1, N=5 non-power-of-two and a 15M large input, and a perf shape of N=4194304",
+          "note": "Pass all functional tests, then add your own cancellation test in the 1e8 style against a float64 reference. The public tests do not check order."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You hand-trace the 8-element tree, explain what each deck stage removes, and your kernel passes Challenge 4 plus your own cancellation test.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "PMPP, the reduction deck and the Lecture 9 scripts cover tree work and FP order at derive depth, with a verified challenge as practice."
       }
     },
     {
@@ -269,47 +307,83 @@
         "arbitrary-length-tails"
       ],
       "outcomes": [
-        "TODO"
+        "Write a warp shuffle reduction with a correct mask and tail handling.",
+        "Complete a grid reduction with block partials and a second pass, covering lengths 0, 1, odd and huge.",
+        "Measure coarsening-factor trade-offs and keep the factor where gains stop."
       ],
-      "why": "TODO",
+      "why": "No single block sees the whole vector. This unit turns a block-local tree into a correct whole-array reduction, the completion pattern behind every multi-pass primitive.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/parallel-scans",
+          "note": "Reuse the block-partials hierarchy for scans."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "The barrier and partial-warp defects seeded there come from here."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Divergence, memory and hierarchical reduction",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 10, Sections 10.4 to 10.7: minimizing control divergence, memory divergence and global accesses, plus hierarchical reduction for arbitrary input length"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Shuffle prelab",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Lab 7, Part 0 (`shuffle.cu`): `__shfl_up_sync(0xffffffff, threadIdx.x, 1)` semantics, no wrap-around, and the two 32-integer cumulative-sum kernels with and without shared memory",
+          "depth": "Build for your own GPU with `nvcc -arch=sm_86` and recompute any SM count the questions assume. Use only Part 0 here; the scan parts belong to later units."
+        },
+        {
+          "resource": "nvidia-reduction-gpu4",
+          "title": "Warp completion and cascading",
+          "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
+          "locator": "Slides 21 to 23 (unrolling the last warp with `warpReduce`) and slides 31 to 33 (multiple adds per thread with a grid-stride loop)"
+        },
+        {
+          "resource": "gpu-mode-primitives-gpu4",
+          "title": "Coarsened reduction code",
+          "url": "https://github.com/gpu-mode/lectures",
+          "locator": "Lecture 9 code in `lecture_009/reduce_coarsening.cu`: per-thread accumulation with `COARSE_FACTOR` before the block tree"
         }
       ],
       "focus": [
-        "TODO"
+        "`__shfl_down_sync(0xffffffff, v, offset)` exchanges only among active lanes. Partial warps need guarded lanes or a participation-derived mask.",
+        "Blocks cannot synchronize globally, so write one partial per block and finish with a second kernel launch. The second pass needs its own tail handling for odd partial counts.",
+        "First-add-during-load halves the launched blocks and the load traffic. Cascading extends the idea until occupancy or registers stop the gain."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a shuffle warp reduction plus a two-pass grid reduction with 4-way coarsening and grid-stride loads. On 1000003 values it matches a float64 reference with relative error below 1e-6 (measured 7.65e-09 on an RTX 3050 Laptop GPU) and it returns 0 for length 0 and the single value for length 1.",
       "traps": [
-        "TODO"
+        "Calling `__syncthreads()` inside a divergent branch. Threads that skip the barrier deadlock the block, so keep barriers on uniform control flow.",
+        "Finishing with one global atomic per element instead of one per block. Atomics belong at block granularity; per-element atomics turn completion into contention.",
+        "Testing only multiples of 1024. Tail bugs hide there, so test 1, 31, 32, 33, 1023 and 1000003."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why complete a grid reduction in two passes instead of one global barrier?",
+          "a": "No grid-wide barrier exists for independently scheduled blocks. One partial per block plus a second launch is the portable completion; single-pass schemes risk deadlock."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A warp has 20 active lanes and reduces with a full 0xffffffff mask. What breaks?",
+          "a": "Shuffles read undefined values from inactive lanes. Derive the mask from participation or pad the tail with identity elements."
+        },
+        {
+          "q": "Why can 8-way coarsening run slower than 4-way on a short vector?",
+          "a": "Fewer blocks remain to fill the SMs while each thread holds more live state, so latency hiding is lost after the traffic saving is exhausted."
+        },
+        {
+          "q": "What exactly does first-add-during-load halve?",
+          "a": "The launched blocks: each thread sums two elements on load, so half as many blocks produce half as many partials with half the load traffic."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: shuffle and multi-pass reductions over zero, odd, nonmultiple and large sizes, with coarsening-factor measurements and a retained losing factor.",
+      "stopWhen": "Your two-pass reduction matches float64 within 1e-6 relative error on adversarial sizes, and you can state the coarsening factor where your GPU stops gaining.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "PMPP, the Lab 7 prelab, the deck and Lecture 9 code cover shuffles, completion and tails at implement depth, with the mini-project supplying the named practice."
       }
     },
     {
@@ -326,47 +400,108 @@
         "segmented-scan"
       ],
       "outcomes": [
-        "TODO"
+        "Derive Kogge-Stone versus Brent-Kung work and step counts from the algorithm structure.",
+        "Implement exclusive scan for arbitrary lengths with correct identity handling.",
+        "Explain segmented-scan head-flag semantics and the decoupled look-back tile states."
       ],
-      "why": "TODO",
+      "why": "Scan turns per-element predicates into global write positions. Compaction, sort and run-length coding all stand on it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/stream-compaction",
+          "note": "Use scan output as scatter addresses."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/histograms-privatization",
+          "note": "Contrast scan-structured irregularity with atomic contention."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Kogge-Stone, work efficiency and Brent-Kung",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 11, Sections 11.2 to 11.4 (printed pp. 239 to 246): Kogge-Stone, the N log N versus N-1 work argument, and the Brent-Kung up-sweep and down-sweep"
+        },
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Segmented and single-pass scans",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Section 11.6 (printed p. 253): three-kernel hierarchical scan for long inputs; Section 11.7 (printed p. 256): single-pass motivation with its atomic, fence and barrier deadlock risk",
+          "depth": "Read Section 11.7 for the argument only. Do not implement the domino scheme here."
+        },
+        {
+          "resource": "decoupled-lookback-gpu4",
+          "title": "Decoupled look-back protocol",
+          "url": "https://research.nvidia.com/sites/default/files/pubs/2016-03_Single-pass-Parallel-Prefix/nvr-2016-002.pdf",
+          "locator": "Sections 4.1 and 4.2: tile states X (invalid), A (aggregate ready) and P (prefix ready), with the look-back, fence and constant-bound properties",
+          "depth": "Read for the state machine after two-pass scans pass. Implement a bounded version only if hardware and time allow a fair comparison."
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Scan, segmented scan and global strategies",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 7, Pattern #5: Scan (slides 39 to 67), with scan-and-add versus reduce-then-scan versus decoupled look-back; Lecture 9, Pattern #5.5: Segmented Scan (slides 16 to 28), with head flags and the quicksort use case"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Associative scan implementation",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Lab 7, Part 1 (`scan.cu`, `launch_scan`): scan templated over an associative operator, no CUB, evaluated at length 2^26 with throughput defined as twice the bytes over time",
+          "depth": "Build for your own GPU with `nvcc -arch=sm_86`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth."
         }
       ],
       "focus": [
-        "TODO"
+        "Kogge-Stone does \\(N \\log_2 N - (N-1)\\) adds (20481 for \\(N = 2048\\)) in \\(\\log_2 N\\) steps, while Brent-Kung does \\(2N - 2\\) (4094) in about twice the steps. That is step efficiency versus work efficiency.",
+        "Exclusive scan seeds with the identity (0 for addition) and each output covers a strict prefix. Inclusive versus exclusive confusion shifts every scatter address by one.",
+        "Segmented scan restarts at head flags. Decoupled look-back tracks three states per tile: X invalid, A aggregate ready, P prefix ready."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Hand-run Kogge-Stone exclusive scan on [4, 6, 7, 1, 2, 8, 5, 2] to get [0, 4, 10, 17, 18, 20, 28, 33], then implement block scan plus block-sums scan plus add-back for arbitrary lengths and match `torch.cumsum` on odd sizes.",
       "traps": [
-        "TODO"
+        "Reusing an inclusive scan where an exclusive one is needed shifts every scatter address by one, corrupting output without crashing.",
+        "Testing only powers of two hides the block-sums tail. Test lengths of the form 2^k plus or minus 1, plus 1 and 0.",
+        "Validating a float kernel against a double scan proves nothing about the kernel's rounding. Test the kernel's own dtype and operator."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "For length 2048, how many adds do Kogge-Stone and Brent-Kung take, against what sequential baseline?",
+          "a": "20481 and 4094 against a 2047-add sequential scan. Kogge-Stone is step-efficient, Brent-Kung is work-efficient."
+        },
+        {
+          "q": "When does Kogge-Stone win despite doing more work?",
+          "a": "At small lengths where everything fits on chip and step count dominates. At large lengths DRAM passes dominate and work efficiency wins."
+        },
+        {
+          "q": "In decoupled look-back, what does a block do when the predecessor state is A versus P?",
+          "a": "On A it adds the aggregate and keeps looking back; on P it adds the inclusive prefix and stops."
+        },
+        {
+          "q": "Segmented inclusive scan of [3, 1, 7, 0, 4, 1, 6, 3] with head flags [1, 0, 0, 1, 0, 0, 1, 0] gives what?",
+          "a": "[3, 4, 11, 0, 4, 5, 6, 9]. Segments starting at positions 0, 3 and 6 restart from their own heads."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT Lab 7 Part 1: associative scan",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Part 1 `launch_scan` in `scan.cu`: associative template over at least two operators, no CUB, at length 2^26 against the retargeted bandwidth goal",
+          "note": "Build with nvcc for your own GPU. Recompute every SM count, clock and bandwidth the questions assume."
+        },
+        {
+          "name": "LeetGPU challenge 16: Prefix Sum",
+          "url": "https://leetgpu.com/challenges/prefix-sum",
+          "locator": "Challenge 16: `solve(input, N)` inclusive float scan, with functional cases for a single element, an 8-element power of two and a 2025 random input, and a perf shape of N=250000"
+        },
+        {
+          "name": "LeetGPU challenge 70: Segmented Exclusive Prefix Sum",
+          "url": "https://leetgpu.com/challenges/segmented-exclusive-prefix-sum",
+          "locator": "Challenge 70: `solve(values, flags, N)` with flags[0] set, first output of every segment 0.0, and a perf shape of N=50000000",
+          "note": "Attempt only after the required challenges 3, 4, 5, 13 and 16 pass."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your scan matches `torch.cumsum` on adversarial sizes, you derive both work counts from scratch, and Lab 7 Part 1 meets the retargeted bandwidth.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "PMPP, the look-back paper, MIT lectures and Lab 7 cover scan theory, segmented semantics and checked implementation without gaps."
       }
     },
     {
