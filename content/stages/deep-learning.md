@@ -54,48 +54,48 @@ Every network is affine maps plus nonlinearities, and the raw affine outputs (lo
 
 **You can now**
 
-- Write the batched affine map Y = XW + 1 b^T with exact shapes, and derive its weight, bias and input gradients.
+- Write the batched affine map $`Y = XW + 1 b^\top`$ with exact shapes, and derive its weight, bias and input gradients.
 - Derive ReLU, sigmoid and tanh derivatives from their definitions, and state where each saturates or dies.
 - Explain why stacked affine maps without a nonlinearity collapse to one affine map, and what logits are.
 
 **Study**
 
 1. [Shallow and deep affine structure](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Chapters 3 to 7) - Chapter 3, Sections 3.1 to 3.5 (Eq 3.1 to 3.12, printed pp. 25 to 35) for the scalar, multivariate and general affine-plus-activation forms; Chapter 4, Sections 4.1 to 4.4 (Eq 4.1 to 4.16, printed pp. 41 to 49) for composed maps and matrix notation.
-2. [MLP math and activation curves](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html) (D2L - tensors, autograd, MLP and backpropagation) - Hidden Layers: the linear-collapse derivation W = W1 W2, b = b1 W2 + b2 with X in R^{n x d}, H in R^{n x h}; Activation Functions: ReLU, sigmoid and tanh definitions, plots and derivative maxima. Depth: Skip the Universal Approximators discussion and the Exercises until practice. For the convention that this book calls affine maps linear, read the Chapter 3 Notes paragraph "Linear, affine, and nonlinear functions" in UDL (p. 39).
+2. [MLP math and activation curves](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html) (D2L - tensors, autograd, MLP and backpropagation) - Hidden Layers: the linear-collapse derivation $`W = W_1 W_2`$, $`b = b_1 W_2 + b_2`$ with $`X \in \mathbb{R}^{n \times d}`$, $`H \in \mathbb{R}^{n \times h}`$; Activation Functions: ReLU, sigmoid and tanh definitions, plots and derivative maxima. Depth: Skip the Universal Approximators discussion and the Exercises until practice. For the convention that this book calls affine maps linear, read the Chapter 3 Notes paragraph "Linear, affine, and nonlinear functions" in UDL (p. 39).
 
 **Focus**
 
-- Batched affine: X (n x d), W (d x h), b (h,) broadcasts over rows, so Y = XW + 1 b^T has shape (n, h). The bias gradient is the row sum of the upstream gradient.
-- Without a nonlinearity, two affine layers collapse to one: substituting H = XW1 + b1 into O = HW2 + b2 gives W = W1W2 and b = b1W2 + b2. Depth without activation adds no function class.
-- Sigmoid slope peaks at 0.25 at input 0; tanh peaks at 1 at input 0; both decay toward 0 for large |x|. ReLU has slope 0 below 0 and 1 above; D2L takes the left derivative, 0, exactly at 0.
-- GELU is x times the standard Gaussian CDF, smooth rather than piecewise linear, with GELU(0) = 0 and slope 0.5 at 0. UDL Figure 3.13 (p. 37) names it Gaussian error linear unit.
+- Batched affine: $`X`$ $`(n \times d)`$, $`W`$ $`(d \times h)`$, $`b`$ $`(h,)`$ broadcasts over rows, so $`Y = XW + 1 b^\top`$ has shape $`(n, h)`$. The bias gradient is the row sum of the upstream gradient.
+- Without a nonlinearity, two affine layers collapse to one: substituting $`H = XW_1 + b_1`$ into $`O = HW_2 + b_2`$ gives $`W = W_1 W_2`$ and $`b = b_1 W_2 + b_2`$. Depth without activation adds no function class.
+- Sigmoid slope peaks at 0.25 at input 0; tanh peaks at 1 at input 0; both decay toward 0 for large $`|x|`$. ReLU has slope 0 below 0 and 1 above; D2L takes the left derivative, 0, exactly at 0.
+- GELU is $`x`$ times the standard Gaussian CDF, smooth rather than piecewise linear, with $`\operatorname{GELU}(0) = 0`$ and slope 0.5 at 0. UDL Figure 3.13 (p. 37) names it Gaussian error linear unit.
 
-**Reproduce:** Closed-book, for X (4 x 3), W (3 x 5), b (5,) and upstream G = dL/dY: write Y shape (4 x 5) and derive dL/dW = X^T G, dL/db = sum of G over rows, dL/dX = G W^T. Then derive the sigmoid, tanh and ReLU derivatives and state each maximum.
+**Reproduce:** Closed-book, for $`X`$ $`(4 \times 3)`$, $`W`$ $`(3 \times 5)`$, $`b`$ (5,) and upstream $`G = dL/dY`$: write $`Y`$ shape $`(4 \times 5)`$ and derive $`dL/dW = X^\top G`$, $`dL/db`$ = sum of $`G`$ over rows, $`dL/dX = G W^\top`$. Then derive the sigmoid, tanh and ReLU derivatives and state each maximum.
 
 **Traps**
 
-- Returning G itself, or its mean, as the bias gradient. The bias is broadcast over the n rows, so dL/db = 1^T G, the sum over the batch with shape (h,). A mean belongs only to an explicit mean in the loss.
+- Returning $`G`$ itself, or its mean, as the bias gradient. The bias is broadcast over the $`n`$ rows, so $`dL/db = 1^\top G`$, the sum over the batch with shape $`(h,)`$. A mean belongs only to an explicit mean in the loss.
 - Reading ReLU slope at 0 as mathematically settled. Frameworks pick a subgradient (D2L uses 0); the kink matters for gradient checks in a later unit.
 - Assuming tanh fixes the sigmoid saturation problem. It is zero-centered but still saturates, and its per-layer factor is at most 1.
 
 **Practice**
 
 - [TensorTonic: Evaluate a Dense Layer (autograd-l07-dense-layer-forward)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l07-dense-layer-forward) - Neural-Network Modules section: Evaluate a Dense Layer; implement the batched affine forward in your own repository. Check your output shape and bias broadcasting against the reproduce derivation before submitting.
-- [TensorTonic: Differentiate a Tanh Activation (autograd-l04-tanh-forward-backward)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l04-tanh-forward-backward) - Neurons and Activation Gradients section: Differentiate a Tanh Activation, then Backpropagate Through a Scalar Neuron. Derive 1 - tanh^2 by hand first; confirm the peak value 1 at input 0.
+- [TensorTonic: Differentiate a Tanh Activation (autograd-l04-tanh-forward-backward)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l04-tanh-forward-backward) - Neurons and Activation Gradients section: Differentiate a Tanh Activation, then Backpropagate Through a Scalar Neuron. Derive $`1 - \tanh^2`$ by hand first; confirm the peak value 1 at input 0.
 
-**Stop when:** You write the 4 x 3 example gradients and all three activation derivatives from memory, and both TensorTonic problems pass with failures, if any, limited to sign conventions you can fix on sight.
+**Stop when:** You write the $`(4 \times 3)`$ example gradients and all three activation derivatives from memory, and both TensorTonic problems pass with failures, if any, limited to sign conventions you can fix on sight.
 
 <details>
 <summary>Self-test</summary>
 
-1. X is 4 x 3, W is 3 x 5, b has 5 entries. What is the shape of Y = XW + b, and of dL/dW in terms of G = dL/dY?
-   - Y is 4 x 5. dL/dW = X^T G is (3 x 4) times (4 x 5) = 3 x 5. dL/db is the sum of G over the 4 rows.
+1. $`X`$ is $`(4 \times 3)`$, $`W`$ is $`(3 \times 5)`$, $`b`$ has 5 entries. What is the shape of $`Y = XW + b`$, and of $`dL/dW`$ in terms of $`G = dL/dY`$?
+   - $`Y`$ is $`(4 \times 5)`$. $`dL/dW = X^\top G`$ is $`(3 \times 4)`$ times $`(4 \times 5)`$ = $`3 \times 5`$. $`dL/db`$ is the sum of $`G`$ over the 4 rows.
 2. Why do two stacked affine layers without an activation collapse?
-   - Substitution gives a single affine map with W = W1W2 and b = b1W2 + b2, so the pair expresses nothing a single layer cannot.
+   - Substitution gives a single affine map with $`W = W_1 W_2`$ and $`b = b_1 W_2 + b_2`$, so the pair expresses nothing a single layer cannot.
 3. What are the maximum slopes of the sigmoid and tanh, and where?
    - Sigmoid peaks at 0.25 at input 0; tanh peaks at 1 at input 0. Both approach 0 for large positive or negative inputs.
 4. What are GELU(0) and the GELU slope at 0?
-   - GELU(0) = 0 since 0 times Phi(0) is 0. The derivative is Phi(x) + x phi(x), so at 0 it equals Phi(0) = 0.5.
+   - $`\operatorname{GELU}(0) = 0`$ since 0 times $`\Phi(0)`$ is 0. The derivative is $`\Phi(x) + x \phi(x)`$, so at 0 it equals $`\Phi(0) = 0.5`$.
 
 </details>
 
@@ -109,7 +109,7 @@ Classification and contrastive objectives call softmax and cross-entropy on raw 
 
 **You can now**
 
-- Derive the per-example cross-entropy with logits as -f_y + log-sum-exp, and its gradient softmax(z) minus one-hot(y).
+- Derive the per-example cross-entropy with logits as $`-f_y + \log \sum_j e^{f_j}`$, and its gradient $`\operatorname{softmax}(z)`$ minus one-hot($`y`$).
 - Implement max-subtracted softmax and log-softmax that never overflow, and binary cross-entropy with logits that never takes log of a rounded sigmoid.
 - State sum, mean and masked-mean reductions exactly: divisor used, and which positions get zero gradient.
 
@@ -117,27 +117,27 @@ Classification and contrastive objectives call softmax and cross-entropy on raw 
 
 1. [Losses from maximum likelihood](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Chapters 3 to 7) - Chapter 5, Sections 5.1 to 5.2 (Eq 5.1 to 5.6, printed pp. 56 to 60) for likelihood to negative log-likelihood; Section 5.3 (Eq 5.7 to 5.15, pp. 61 to 64) for least squares; Section 5.4 (Eq 5.16 to 5.20, pp. 64 to 66) for sigmoid plus binary cross-entropy; Section 5.5 (Eq 5.21 to 5.24, pp. 67 to 69) and Section 5.7 (Eq 5.27 to 5.31, pp. 71 to 72) for softmax plus multiclass cross-entropy.
 2. [Naive softmax and the spelled-out cross-entropy](https://d2l.ai/chapter_linear-classification/softmax-regression-scratch.html) (D2L - tensors, autograd, MLP and backpropagation) - The Softmax: the three-step naive code plus the warning that it is not robust and not for serious use; The Cross-Entropy Loss: y_hat[[0, 1], y] indexing and the reduce_mean of negative logs. Depth: Do not copy the naive softmax or the log-of-probability loss into your own code. Use them only to see what the stable versions below replace.
-3. [The max-subtraction trick](https://cs231n.github.io/linear-classify/#softmax-classifier) (CS231n Linear Classification - Softmax classifier and numeric stability) - Softmax classifier: L_i = -f_{y_i} + log sum_j e^{f_j}; Practical issues: Numeric stability: the f -= np.max(f) code turning [123, 456, 789] into [-666, -333, 0].
+3. [The max-subtraction trick](https://cs231n.github.io/linear-classify/#softmax-classifier) (CS231n Linear Classification - Softmax classifier and numeric stability) - Softmax classifier: $`L_i = -f_{y_i} + \log \sum_j e^{f_j}`$; Practical issues: Numeric stability: the f -= np.max(f) code turning [123, 456, 789] into [-666, -333, 0].
 4. [Masked reductions in cross_entropy](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html) (torch.nn.functional.cross_entropy - reduction and ignore_index) - ignore_index and reduction parameters: ignored targets contribute no gradient, and mean averages over the non-ignored targets only.
 
 **Focus**
 
-- Max subtraction is exact, not approximate: shifting every logit by c multiplies numerator and denominator by e^c, which cancels. The largest shifted logit is 0, so every exp input is at most 0 and no term overflows.
-- The fused per-example loss is L_i = -f_{y_i} + log sum_j exp(f_j), and its logit gradient is softmax(z) minus one-hot(y). This matches centered differences to about 1e-9 in float64.
-- Binary cross-entropy with logits must use the log-sigmoid form, never sigmoid followed by log: a confident sigmoid rounds to exactly 0 or 1 and the log is then infinite. Its logit gradient is sigmoid(z) - y.
-- Mean divides every gradient by N; a masked mean divides by the valid count and gives masked positions exactly zero gradient. D2L cross_entropy uses reduce_mean; UDL least squares (Eq 5.11) sums.
+- Max subtraction is exact, not approximate: shifting every logit by $`c`$ multiplies numerator and denominator by $`e^c`$, which cancels. The largest shifted logit is 0, so every $`\exp`$ input is at most 0 and no term overflows.
+- The fused per-example loss is $`L_i = -f_{y_i} + \log \sum_j \exp(f_j)`$, and its logit gradient is $`\operatorname{softmax}(z)`$ minus one-hot($`y`$). This matches centered differences to about 1e-9 in float64.
+- Binary cross-entropy with logits must use the log-sigmoid form, never sigmoid followed by log: a confident sigmoid rounds to exactly 0 or 1 and the log is then infinite. Its logit gradient is $`\operatorname{sigmoid}(z) - y`$.
+- Mean divides every gradient by $`N`$; a masked mean divides by the valid count and gives masked positions exactly zero gradient. D2L cross_entropy uses reduce_mean; UDL least squares (Eq 5.11) sums.
 
-**Reproduce:** Closed-book, implement log_softmax with max subtraction and a cross-entropy returning per-example losses plus their mean. Derive dL/dz = softmax(z) minus one-hot(y). Show softmax([1000, 1001, 1002]) = [0.0900, 0.2447, 0.6652], and explain why the naive form returns [nan, nan, nan].
+**Reproduce:** Closed-book, implement log_softmax with max subtraction and a cross-entropy returning per-example losses plus their mean. Derive $`dL/dz = \operatorname{softmax}(z)`$ minus one-hot($`y`$). Show softmax([1000, 1001, 1002]) = [0.0900, 0.2447, 0.6652], and explain why the naive form returns [nan, nan, nan].
 
 **Traps**
 
-- Taking log(softmax(z)) in two steps. Even with max subtraction, a very small probability can underflow to 0 and its log becomes -inf. log_softmax(z) = (z - m) - log sum exp(z - m), with m the max, never forms the probability.
+- Taking $`\log(\operatorname{softmax}(z))`$ in two steps. Even with max subtraction, a very small probability can underflow to 0 and its log becomes -inf. log_softmax(z) = $`(z - m) - \log \sum \exp(z - m)`$, with $`m`$ the max, never forms the probability.
 - Clipping probabilities after a naive softmax to fix overflow. exp(1000) already overflowed to inf and the division already produced nan; clipping cannot recover the true distribution.
 - Expecting the stable answer on [1000, 1001, 1002] to be [1, 0, 0]. Only logit gaps matter, so the result equals softmax([0, 1, 2]): about [0.09, 0.245, 0.665].
 
 **Practice**
 
-- [Deep-ML 1227: Numerically Stable Softmax](https://www.deep-ml.com/problems/1227) - Implement softmax(t, dim) by subtracting the max along dim. The two platform tests use a small 2 x 3 tensor along rows and along columns, so they do not exercise overflow.. After it passes, add your own large-logit test: [1000, 1001, 1002] must give [0.0900, 0.2447, 0.6652], and your log-softmax plus mean cross-entropy must stay finite.
+- [Deep-ML 1227: Numerically Stable Softmax](https://www.deep-ml.com/problems/1227) - Implement softmax(t, dim) by subtracting the max along dim. The two platform tests use a small $`(2 \times 3)`$ tensor along rows and along columns, so they do not exercise overflow.. After it passes, add your own large-logit test: [1000, 1001, 1002] must give [0.0900, 0.2447, 0.6652], and your log-softmax plus mean cross-entropy must stay finite.
 - [TensorTonic: Calculate Squared-Error Loss Gradients (autograd-l08-squared-error-loss-gradients)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l08-squared-error-loss-gradients) - Losses, Training, and Zeroing Gradients section: Calculate Squared-Error Loss Gradients. State whether your derivation sums or means over examples, and how that choice scales the gradient.
 
 **Stop when:** Your fused loss matches centered differences, survives logits of magnitude 1000, and you can state the divisor and the masked-position gradient for sum, mean and masked mean without notes.
@@ -146,13 +146,13 @@ Classification and contrastive objectives call softmax and cross-entropy on raw 
 <summary>Self-test</summary>
 
 1. Why does subtracting the maximum logit prevent overflow without changing softmax?
-   - Softmax depends only on logit differences: shifting all logits by c scales numerator and denominator by the same e^c. After subtracting the max, the largest exp input is 0, so every term is at most 1.
+   - Softmax depends only on logit differences: shifting all logits by $`c`$ scales numerator and denominator by the same $`e^c`$. After subtracting the max, the largest $`\exp`$ input is 0, so every term is at most 1.
 2. What is the gradient of the per-example cross-entropy with respect to the logits?
-   - softmax(z) minus one-hot(y): p_k - 1 at the true class, p_j elsewhere. It matches centered finite differences to about 1e-9 in float64.
+   - $`\operatorname{softmax}(z)`$ minus one-hot($`y`$): $`p_k - 1`$ at the true class, $`p_j`$ elsewhere. It matches centered finite differences to about 1e-9 in float64.
 3. A batch of 5 has 2 masked positions under a masked mean. What is the divisor, and what gradient do masked positions get?
    - The divisor is the valid count, 3. Masked positions get exactly zero gradient, matching ignore_index semantics.
 4. Why must binary cross-entropy with logits avoid sigmoid-then-log?
-   - A confident logit makes sigmoid round to exactly 0 or 1 in floating point, and log(0) is infinite. The fused log-sigmoid form stays finite, with gradient sigmoid(z) - y.
+   - A confident logit makes sigmoid round to exactly 0 or 1 in floating point, and $`\log(0)`$ is infinite. The fused log-sigmoid form stays finite, with gradient $`\operatorname{sigmoid}(z) - y`$.
 
 </details>
 
@@ -173,17 +173,17 @@ Frameworks hide this loop, but every gradient bug in later sections is a broken 
 **Study**
 
 1. [Backpropagation from toy model to algorithm](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Chapters 3 to 7) - Chapter 7, Section 7.2 Observations 1 and 2 (printed pp. 97 to 99) for saved forward activations and ripple effects; Section 7.3 toy example forward (Eq 7.9, p. 101) and backward (Eq 7.10 to 7.16, pp. 101 to 103); Section 7.4 with the summary (Eq 7.17 to 7.26, pp. 103 to 106).
-2. [Backprop equations and graph cost](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) (D2L - tensors, autograd, MLP and backpropagation) - Forward Propagation, Computational Graph of Forward Propagation, and Backpropagation: the W2 and W1 gradient equations; Training Neural Networks: why training memory exceeds prediction memory and grows with layers times batch. Depth: The worked model omits biases by statement; Exercise 2 asks you to add one. Do not mistake the W-only equations for a complete MLP.
-3. [The vector-Jacobian seed](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Opening paragraphs on the computational graph and backpropagation; Section 2.5.2 Backward for Non-Scalar Variables: y.backward(gradient=torch.ones(len(y))) computing v^T partial y / partial x.
+2. [Backprop equations and graph cost](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) (D2L - tensors, autograd, MLP and backpropagation) - Forward Propagation, Computational Graph of Forward Propagation, and Backpropagation: the $`W_2`$ and $`W_1`$ gradient equations; Training Neural Networks: why training memory exceeds prediction memory and grows with layers times batch. Depth: The worked model omits biases by statement; Exercise 2 asks you to add one. Do not mistake the $`W`$-only equations for a complete MLP.
+3. [The vector-Jacobian seed](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Opening paragraphs on the computational graph and backpropagation; Section 2.5.2 Backward for Non-Scalar Variables: y.backward(gradient=torch.ones(len(y))) computing $`v^\top \partial y / \partial x`$.
 
 **Focus**
 
-- Forward pass saves what backward needs: UDL Observation 1 stores every hidden activation because weight gradients are computed from them (dL/dW2 needs h). Saving is a design obligation, not caching.
+- Forward pass saves what backward needs: UDL Observation 1 stores every hidden activation because weight gradients are computed from them ($`dL/dW_2`$ needs $`h`$). Saving is a design obligation, not caching.
 - Reverse accumulation visits nodes in reverse topological order and multiplies the incoming gradient by each local derivative. That product is the vector-Jacobian product; a scalar loss seeds it with 1.
 - PyTorch backward on a non-scalar needs the seed vector explicitly (the gradient argument), while MXNet and TensorFlow sum first. A missing seed is an error, not an implicit sum, in PyTorch.
 - Training memory exceeds prediction memory because intermediates are retained for backward, scaling with layers times batch (D2L). Prediction keeps only the current layer.
 
-**Reproduce:** Closed-book, write the UDL toy forward (Eq 7.9) for one example, derive dL/df3 = 2(f3 - y) down through the chain to the w0 term, then implement scalar Value objects with topological backward and match centered differences on the neuron graph.
+**Reproduce:** Closed-book, write the UDL toy forward (Eq 7.9) for one example, derive $`dL/df_3 = 2(f_3 - y)`$ down through the chain to the $`w_0`$ term, then implement scalar Value objects with topological backward and match centered differences on the neuron graph.
 
 **Traps**
 
@@ -194,7 +194,7 @@ Frameworks hide this loop, but every gradient bug in later sections is a broken 
 **Practice**
 
 - [TensorTonic: Topologically Sort a Computation DAG (autograd-l05-topological-sort)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l05-topological-sort) - Automatic Reverse-Mode Autodiff section: Topologically Sort a Computation DAG, then Run Reverse-Mode Autodiff. Implement both in your own repository; the sort must handle shared nodes visited once.
-- [D2L Backprop Exercises: add a bias](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) - Exercises: add a bias to the hidden layer, draw the computational graph, and derive the forward and backward equations. Compare your bias gradient against the affine-unit rule dL/db = row-summed upstream gradient.
+- [D2L Backprop Exercises: add a bias](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) - Exercises: add a bias to the hidden layer, draw the computational graph, and derive the forward and backward equations. Compare your bias gradient against the affine-unit rule $`dL/db`$ = row-summed upstream gradient.
 
 **Stop when:** Your engine differentiates the scalar neuron graph, matches centered differences, and you can hand-run the UDL toy chain and name every saved value backward needs.
 
@@ -202,13 +202,13 @@ Frameworks hide this loop, but every gradient bug in later sections is a broken 
 <summary>Self-test</summary>
 
 1. Why does the forward pass store every hidden activation?
-   - Backward evaluates local derivatives at the forward values: weight gradients need h (dL/dW2 uses h^T) and nonlinearity derivatives need their inputs. Without them the chain rule has no numbers.
+   - Backward evaluates local derivatives at the forward values: weight gradients need $`h`$ ($`dL/dW_2`$ uses $`h^\top`$) and nonlinearity derivatives need their inputs. Without them the chain rule has no numbers.
 2. A node feeds two downstream ops. What is its reverse-mode gradient?
    - The sum of the vector-Jacobian products over both outgoing edges, by the multivariate chain rule. Accumulation is covered fully in the next unit.
 3. In PyTorch, what does y.backward() do when y = x * x is a vector?
-   - It raises an error. PyTorch needs an explicit seed vector, as in y.backward(gradient=torch.ones(len(y))), which computes v^T partial y / partial x.
-4. For loss (f3 - y)^2, what is dL/df3?
-   - 2(f3 - y) (UDL Eq 7.11). It seeds the whole reverse chain.
+   - It raises an error. PyTorch needs an explicit seed vector, as in y.backward(gradient=torch.ones(len(y))), which computes $`v^\top \partial y / \partial x`$.
+4. For loss $`(f_3 - y)^2`$, what is $`dL/df_3`$?
+   - $`2(f_3 - y)`$ (UDL Eq 7.11). It seeds the whole reverse chain.
 5. When is forward-mode differentiation cheaper than reverse mode?
    - Roughly when there are fewer inputs than outputs: forward mode costs about one pass per input dimension, reverse mode about one pass per output. A scalar loss with many parameters favors reverse mode.
 
@@ -230,8 +230,8 @@ Real graphs reuse nodes and stretch small tensors across batches. Each reuse add
 
 **Study**
 
-1. [Accumulation and non-scalar seeds](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Section 2.5.1: PyTorch does not reset the gradient buffer, so the new gradient is added and x.grad.zero_() resets it, which suits sums of objectives; Section 2.5.2: the gradient argument as the seed vector v.
-2. [Broadcasting and in-place memory](https://d2l.ai/chapter_preliminaries/ndarray.html) (D2L - tensors, autograd, MLP and backpropagation) - Broadcasting: a of shape (3, 1) plus b of shape (1, 2) giving a 3 x 2 result by copying along length-1 axes; Saving Memory: Y = Y + X reallocates (id changes) while Z[:] = X + Y and X += Y reuse storage. Depth: The page shows forward broadcasting only. Derive the backward rule in Focus below; the PyTorch note gives the exact forward contract it inverts.
+1. [Accumulation and non-scalar seeds](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Section 2.5.1: PyTorch does not reset the gradient buffer, so the new gradient is added and x.grad.zero_() resets it, which suits sums of objectives; Section 2.5.2: the gradient argument as the seed vector $`v`$.
+2. [Broadcasting and in-place memory](https://d2l.ai/chapter_preliminaries/ndarray.html) (D2L - tensors, autograd, MLP and backpropagation) - Broadcasting: a of shape (3, 1) plus b of shape (1, 2) giving a $`(3 \times 2)`$ result by copying along length-1 axes; Saving Memory: Y = Y + X reallocates (id changes) while Z[:] = X + Y and X += Y reuse storage. Depth: The page shows forward broadcasting only. Derive the backward rule in Focus below; the PyTorch note gives the exact forward contract it inverts.
 3. [Exact broadcast contract](https://docs.pytorch.org/docs/stable/notes/broadcasting.html) (PyTorch Broadcasting semantics) - General semantics: trailing-dimension rules, prepend-1 alignment, result size as the per-dimension max, with (5, 1, 4, 1) plus (3, 1, 1) giving (5, 3, 4, 1); In-place semantics: an in-place tensor may not change shape.
 4. [Saved forward values](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Chapters 3 to 7) - Chapter 7, Section 7.2 Observation 1 (printed pp. 97 to 98): run the network and store the activations of all hidden units in the forward pass for later gradient computation.
 
@@ -239,14 +239,14 @@ Real graphs reuse nodes and stretch small tensors across batches. Each reuse add
 
 - A node feeding two downstream ops gets the sum of both vector-Jacobian products. PyTorch .grad also accumulates across backward calls, so a missing zero_() silently adds yesterday's gradient to today's.
 - Broadcast forward: align trailing dimensions, prepend 1 to the shorter shape, and take the per-dimension max. Backward inverts it: sum the upstream gradient over exactly the axes where the input had size 1 or a prepended dimension, then reshape back.
-- For L = sum((X + b)^2) with X (2, 3) and b (3,): dL/dX = 2(X + b) keeps shape (2, 3), while dL/db = 2 times the sum of (X + b) over rows. This matches centered differences to about 1e-8 in float64.
+- For $`L = \sum((X + b)^2)`$ with $`X`$ (2, 3) and $`b`$ (3,): $`dL/dX = 2(X + b)`$ keeps shape (2, 3), while $`dL/db`$ = 2 times the sum of $`(X + b)`$ over rows. This matches centered differences to about 1e-8 in float64.
 - Leaves are user-created tensors with requires_grad; intermediates carry the graph. Backward saves the forward values its local derivatives need (activations for weights, inputs for nonlinearities); detaching cuts provenance so gradients stop at the cut.
 
-**Reproduce:** Closed-book, for L = sum((X + b)^2) with X (2, 3) and b (3,): derive dL/db as 2 times the row sums of (X + b) and dL/dX as 2(X + b). Implement broadcast plus accumulation in your blank-file engine and match centered differences.
+**Reproduce:** Closed-book, for $`L = \sum((X + b)^2)`$ with $`X`$ (2, 3) and $`b`$ (3,): derive $`dL/db`$ as 2 times the row sums of $`(X + b)`$ and $`dL/dX`$ as $`2(X + b)`$. Implement broadcast plus accumulation in your blank-file engine and match centered differences.
 
 **Traps**
 
-- Averaging instead of summing at a branch. The 1/N factor belongs to an explicit mean op, never to fan-out: a doubly used node contributes twice.
+- Averaging instead of summing at a branch. The $`1/N`$ factor belongs to an explicit mean op, never to fan-out: a doubly used node contributes twice.
 - Summing over the wrong axes in unbroadcast. Sum exactly the axes where the input was size 1 or prepended; summing a full-size axis silently shrinks a real dimension.
 - Assuming backward zeroes .grad. It adds; the D2L page states this explicitly for PyTorch, unlike MXNet and TensorFlow which reset.
 
@@ -260,14 +260,14 @@ Real graphs reuse nodes and stretch small tensors across batches. Each reuse add
 <details>
 <summary>Self-test</summary>
 
-1. z = x * u with u = y.detach() and y = x * x. What is dz/dx, and why not 3x^2?
-   - u. Detach wipes provenance, so x influences z only directly through the x factor; the path through y carries no gradient. D2L verifies x.grad == u.
+1. z = x * u with u = y.detach() and y = x * x. What is $`dz/dx`$, and why not $`3x^2`$?
+   - $`u`$. Detach wipes provenance, so $`x`$ influences $`z`$ only directly through the $`x`$ factor; the path through $`y`$ carries no gradient. D2L verifies x.grad == u.
 2. What is the shape of (5, 1, 4, 1) plus (3, 1, 1), and over which axes is the smaller operand's gradient summed?
    - The result is (5, 3, 4, 1). The smaller operand aligns as (1, 3, 1, 1), so its gradient sums over dims 0 and 2, then reshapes to (3, 1, 1).
 3. What happens on a second backward call without zero_()?
    - The new gradient adds to the stored one. That suits optimizing a sum of objectives but corrupts per-batch training.
-4. For y = XW + b inside a deeper network, which values must backward have available?
-   - X, for dL/dW = X^T G, and W, for dL/dX = G W^T. W costs no extra memory because the parameter is alive anyway; X is the activation memory backward forces you to keep. dL/db needs only G.
+4. For $`y = XW + b`$ inside a deeper network, which values must backward have available?
+   - $`X`$, for $`dL/dW = X^\top G`$, and $`W`$, for $`dL/dX = G W^\top`$. $`W`$ costs no extra memory because the parameter is alive anyway; $`X`$ is the activation memory backward forces you to keep. $`dL/db`$ needs only $`G`$.
 
 </details>
 
@@ -287,18 +287,18 @@ An analytic gradient is a claim, and this unit is the assay. Every engine and lo
 
 **Study**
 
-1. [The gradient-check protocol](https://cs231n.github.io/neural-networks-3/#gradcheck) (CS231n Neural Networks 3 - Gradient checks) - Gradient Checks: the centered formula with O(h^2) error, relative error with the 1e-2 / 1e-4 / 1e-7 bands, double precision, h near 1e-5, kinks at ReLU, few datapoints, burn-in point, regularization and dropout discipline, and checking a few dimensions per parameter.
-2. [Where the formula comes from](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/single-variable-calculus.html) (D2L - tensors, autograd, MLP and backpropagation) - The limit definition of the derivative and the linear approximation f(x + eps) approx f(x) + eps f'(x): finite differences evaluate the quotient at small nonzero eps instead of taking the limit. Depth: Read for the definition only. The centered formula, error orders and protocol all come from the CS231n note above.
+1. [The gradient-check protocol](https://cs231n.github.io/neural-networks-3/#gradcheck) (CS231n Neural Networks 3 - Gradient checks) - Gradient Checks: the centered formula with $`O(h^2)`$ error, relative error with the 1e-2 / 1e-4 / 1e-7 bands, double precision, $`h`$ near 1e-5, kinks at ReLU, few datapoints, burn-in point, regularization and dropout discipline, and checking a few dimensions per parameter.
+2. [Where the formula comes from](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/single-variable-calculus.html) (D2L - tensors, autograd, MLP and backpropagation) - The limit definition of the derivative and the linear approximation $`f(x + \epsilon) \approx f(x) + \epsilon f'(x)`$: finite differences evaluate the quotient at small nonzero $`\epsilon`$ instead of taking the limit. Depth: Read for the definition only. The centered formula, error orders and protocol all come from the CS231n note above.
 3. [Framework defaults and the overlap warning](https://docs.pytorch.org/docs/stable/generated/torch.autograd.gradcheck.gradcheck.html) (torch.autograd.gradcheck API and tolerances) - Signature defaults eps 1e-6, atol 1e-5, rtol 1e-3; the note that checked tensors with overlapping memory, for example expand outputs, will likely fail.
 
 **Focus**
 
-- Use the centered form (f(x+h) - f(x-h)) / 2h. On exp at 1 with h = 1e-5 it errs by about 6e-11 (second order), while one-sided errs by about 1.4e-5 (first order).
-- Compare with relative error |a - n| / max(|a|, |n|) and pass both-zero explicitly. CS231n bands: above 1e-2 probably wrong, 1e-4 to 1e-2 uncomfortable, below 1e-4 fine with kinks, 1e-7 or less happy.
-- Run in float64: centered differences on exp at 1 err by about 1e-2 in float32 against about 6e-11 in float64. Smaller h is not always better; roundoff grows as truncation shrinks.
+- Use the centered form $`(f(x+h) - f(x-h)) / 2h`$. On $`\exp`$ at 1 with $`h = 10^{-5}`$ it errs by about 6e-11 (second order), while one-sided errs by about 1.4e-5 (first order).
+- Compare with relative error $`|a - n| / \max(|a|, |n|)`$ and pass both-zero explicitly. CS231n bands: above 1e-2 probably wrong, 1e-4 to 1e-2 uncomfortable, below 1e-4 fine with kinks, 1e-7 or less happy.
+- Run in float64: centered differences on $`\exp`$ at 1 err by about 1e-2 in float32 against about 6e-11 in float64. Smaller $`h`$ is not always better; roundoff grows as truncation shrinks.
 - ReLU at exactly 0 gives centered 0.5 against analytic 0, a relative error of 1: the signature of a crossed kink, not a broken derivative. Check few datapoints, past burn-in, with regularization off and noise seeded or disabled.
 
-**Reproduce:** Closed-book, implement gradcheck(f, x) with centered differences in float64, h = 1e-5 and relative error. Show exp matching to below 1e-7, and ReLU at 0 giving 0.5 against analytic 0.
+**Reproduce:** Closed-book, implement gradcheck(f, x) with centered differences in float64, $`h = 10^{-5}`$ and relative error. Show $`\exp`$ matching to below 1e-7, and ReLU at 0 giving 0.5 against analytic 0.
 
 **Traps**
 
@@ -316,14 +316,14 @@ An analytic gradient is a claim, and this unit is the assay. Every engine and lo
 <details>
 <summary>Self-test</summary>
 
-1. One-sided differences on exp at 1 with h = 1e-5 err by about 1.4e-5. What does centered achieve, and why?
-   - About 6e-11. Taylor expansion cancels the first-order term, leaving O(h^2) error instead of O(h).
+1. One-sided differences on $`\exp`$ at 1 with $`h = 10^{-5}`$ err by about 1.4e-5. What does centered achieve, and why?
+   - About 6e-11. Taylor expansion cancels the first-order term, leaving $`O(h^2)`$ error instead of $`O(h)`$.
 2. Analytic gradient is 0 and numerical is 0.5 at a ReLU evaluated at 0. What is the relative error, and what does it mean?
-   - |0 - 0.5| / max(0, 0.5) = 1. The perturbations crossed the kink, so the centered quotient averages both sides; it indicts the check point, not the implementation.
+   - $`|0 - 0.5| / \max(0, 0.5) = 1`$. The perturbations crossed the kink, so the centered quotient averages both sides; it indicts the check point, not the implementation.
 3. Both analytic and numerical gradients are exactly 0. Pass or fail?
    - Pass, by an explicit both-zero rule. The ratio form would divide zero by zero.
 4. A correct gradient shows relative error near 1e-2 in float32. What do you change?
-   - Rerun the check in float64. Single-precision roundoff alone can fail a correct gradient; the same exp check drops to about 6e-11 in float64.
+   - Rerun the check in float64. Single-precision roundoff alone can fail a correct gradient; the same $`\exp`$ check drops to about 6e-11 in float64.
 5. Why does torch gradcheck warn about expand outputs as inputs?
    - Expanded indices share memory, so perturbing one index changes all its aliases at once. Point perturbation assumes independent coordinates.
 
@@ -351,7 +351,7 @@ A tensor is storage plus an interpretation. Backward passes that assume contiguo
 
 **Focus**
 
-- A tensor is storage plus shape, stride, offset and dtype. Element [2, 1] of a (3, 4) C-contiguous float32 tensor sits at offset 2*4 + 1*1 = 9, so the strides are (4, 1) in elements. NumPy reports the same layout in bytes: (16, 4) for float32.
+- A tensor is storage plus shape, stride, offset and dtype. Element [2, 1] of a (3, 4) C-contiguous float32 tensor sits at offset $`2 \times 4 + 1 \times 1 = 9`$, so the strides are (4, 1) in elements. NumPy reports the same layout in bytes: (16, 4) for float32.
 - Transpose swaps shape and strides without moving data: (3, 4) with strides (4, 1) becomes (4, 3) with strides (1, 4), non-contiguous but still a view, so [1, 2] of the transpose aliases offset 9 of the base.
 - Reshape, reshape_as and flatten may return a view or a copy: never rely on which. view() demands a compatible layout instead. Basic indexing gives views; advanced indexing (integer or boolean arrays) copies.
 - Expand is a stride-0 view: no storage advances along the stretched axis, which is why perturbing one expanded element moves all its aliases and breaks point-wise gradient checks.
@@ -374,9 +374,9 @@ A tensor is storage plus an interpretation. Backward passes that assume contiguo
 <summary>Self-test</summary>
 
 1. A (3, 4) float32 tensor is C-contiguous. What are its strides, and what is the offset of [2, 1]?
-   - Strides (4, 1) in elements. Offset 2*4 + 1*1 = 9.
+   - Strides (4, 1) in elements. Offset $`2 \times 4 + 1 \times 1 = 9`$.
 2. Transpose it. What are the new shape, strides and contiguity, and which base offset does [1, 2] read?
-   - Shape (4, 3), strides (1, 4), non-contiguous view. Offset 1*1 + 2*4 = 9, the same element.
+   - Shape (4, 3), strides (1, 4), non-contiguous view. Offset $`1 \times 1 + 2 \times 4 = 9`$, the same element.
 3. Which of these copy: x[0], x[[0, 2]], x.reshape(-1), x.transpose(0, 1)?
    - Only x[[0, 2]] is guaranteed to copy (advanced indexing). x[0] and the transpose are views; reshape may be either, so code must not rely on it.
 4. Y = Y + X versus Y[:] = X + Y: which reallocates, and how do you tell?
@@ -401,17 +401,17 @@ Views alias memory, in-place ops rewrite history, and detach cuts the graph with
 **Study**
 
 1. [In-place hazards and the version counter](https://docs.pytorch.org/docs/stable/notes/autograd.html) (PyTorch Autograd mechanics - in-place operations) - In-place operations with autograd: in-place is discouraged because it rewrites the graph instead of allocating new nodes; In-place correctness checks: every tensor keeps a version counter, and accessing a saved tensor whose version changed raises an error.
-2. [Detach and the training loop contract](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Section 2.5.3 Detaching Computation: u = y.detach() with z = u * x gives gradient u, not 3x^2, while the graph to y persists; Section 2.5.1: the gradient buffer accumulates, so x.grad.zero_() resets it between objectives.
+2. [Detach and the training loop contract](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Section 2.5.3 Detaching Computation: u = y.detach() with z = u * x gives gradient $`u`$, not $`3x^2`$, while the graph to y persists; Section 2.5.1: the gradient buffer accumulates, so x.grad.zero_() resets it between objectives.
 3. [Parameters versus buffers](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html) (torch.nn.Module - parameters, buffers and state) - Parameters and buffers documentation: modules collect parameters recursively for the optimizer; register_buffer holds persistent non-parameter tensors that are saved alongside parameters without getting gradients.
 
 **Focus**
 
 - Every tensor carries a version counter, bumped by each in-place op. Backward saved the counter value too, so mutating a needed value raises an error instead of computing a wrong gradient. Treat the error as a correct alarm, not an obstacle.
 - In-place graph rewrites are only safe for updates outside tracking: optimizer steps mutate parameters under no-grad. Anything inside the tracked graph should allocate new nodes.
-- Detach cuts provenance silently: gradients stop at the cut and read as correct-looking smaller values (u instead of 3x^2). A forgotten zero_() is the mirror bug: values look plausible but sum two objectives.
+- Detach cuts provenance silently: gradients stop at the cut and read as correct-looking smaller values ($`u`$ instead of $`3x^2`$). A forgotten zero_() is the mirror bug: values look plausible but sum two objectives.
 - Ownership: a module owns its parameters recursively (TensorTonic parameter collection below), the optimizer mutates exactly those, and buffers carry persistent non-differentiated state such as running statistics.
 
-**Reproduce:** Closed-book, write the two canonical failures. First, h = x.sigmoid() saves its output; mutate h in place with h.mul_(2) before backward and read the version-counter error. Second, with y = x * x and u = y.detach(), show that z = x * u gives dz/dx = u = x^2, not 3x^2. Then state the parameter-versus-buffer rule for a layer with a running counter.
+**Reproduce:** Closed-book, write the two canonical failures. First, h = x.sigmoid() saves its output; mutate h in place with h.mul_(2) before backward and read the version-counter error. Second, with y = x * x and u = y.detach(), show that z = x * u gives $`dz/dx = u = x^2`$, not $`3x^2`$. Then state the parameter-versus-buffer rule for a layer with a running counter.
 
 **Traps**
 
@@ -431,8 +431,8 @@ Views alias memory, in-place ops rewrite history, and detach cuts the graph with
 
 1. You modify a saved activation in place, then call backward. What happens?
    - PyTorch raises a version-counter error when backward accesses the modified saved tensor. The counter recorded at save time no longer matches.
-2. For z = x * u with u = y.detach() and y = x * x, what is dz/dx?
-   - u, i.e. x^2 in value. Provenance through y is cut, so the 2x^2 path contributes nothing and the total is not 3x^2.
+2. For z = x * u with u = y.detach() and y = x * x, what is $`dz/dx`$?
+   - $`u`$, i.e. $`x^2`$ in value. Provenance through $`y`$ is cut, so the $`2x^2`$ path contributes nothing and the total is not $`3x^2`$.
 3. Two backward calls with no zero_(): what is in .grad, and when is that what you want?
    - The sum of both gradients. Wanted when optimizing a sum of objectives; a bug when the calls were meant to be separate batch updates.
 4. A layer keeps a running event counter alongside its weights. Parameter or buffer?
@@ -479,8 +479,8 @@ Feeds into: Capstone artifact 1, the neural core proof pack.
 - **Required - Implementation:** [D2L - tensors, autograd, MLP and backpropagation](https://d2l.ai/) - Use chapter_preliminaries ndarray and autograd, then MLP, backpropagation, and numerical stability and initialization. Recreate scalar operations, affine maps, activation, reduction, stable cross-entropy, topological backward and unbroadcast in a blank file.
 - **Required - Practice:** [TensorTonic - Build Micrograd from Scratch](https://www.tensortonic.com/problems) - Use the 25-problem Micrograd study plan in order for derivatives, gradient checks, value graphs, reverse mode, accumulation, operators, modules, losses and training. Preserve local tests as the evidence instead of a platform score.
 - **Optional - Practice:** [Deep-ML candidate - autograd and loss problems](https://www.deep-ml.com/problems) - After the five-sample platform check passes, use at most one of 26 Basic Autograd Operations, 997 Manual Cross-Entropy Backprop or 1227 Stable Softmax as a changed-prompt drill.
-- **Reference - Reference:** [CS231n Linear Classification - Softmax classifier and numeric stability](https://cs231n.github.io/linear-classify/#softmax-classifier) - Read the Softmax classifier section for the cross-entropy form L_i = -f_{y_i} + log sum exp, then the Practical issues: Numeric stability part for the max-subtraction code f -= np.max(f).
-- **Reference - Reference:** [CS231n Neural Networks 3 - Gradient checks](https://cs231n.github.io/neural-networks-3/#gradcheck) - Read the Gradient Checks section only: centered formula with O(h^2) error, relative error with thresholds, double precision, step size h near 1e-5, kinks, few datapoints, burn-in, regularization and dropout discipline, and checking a few dimensions per parameter.
+- **Reference - Reference:** [CS231n Linear Classification - Softmax classifier and numeric stability](https://cs231n.github.io/linear-classify/#softmax-classifier) - Read the Softmax classifier section for the cross-entropy form $`L_i = -f_{y_i} + \log \sum_j e^{f_j}`$, then the Practical issues: Numeric stability part for the max-subtraction code f -= np.max(f).
+- **Reference - Reference:** [CS231n Neural Networks 3 - Gradient checks](https://cs231n.github.io/neural-networks-3/#gradcheck) - Read the Gradient Checks section only: centered formula with $`O(h^2)`$ error, relative error with thresholds, double precision, step size $`h`$ near 1e-5, kinks, few datapoints, burn-in, regularization and dropout discipline, and checking a few dimensions per parameter.
 - **Reference - Reference:** [PyTorch Broadcasting semantics](https://docs.pytorch.org/docs/stable/notes/broadcasting.html) - Read General semantics for the trailing-dimension rules, prepend-1 alignment and max-size result, with the (5, 1, 4, 1) plus (3, 1, 1) examples; read In-place semantics for why an in-place tensor may not change shape.
 - **Reference - Reference:** [torch.autograd.gradcheck API and tolerances](https://docs.pytorch.org/docs/stable/generated/torch.autograd.gradcheck.gradcheck.html) - Read the gradcheck signature defaults (eps 1e-6, atol 1e-5, rtol 1e-3) and the note that inputs with overlapping memory, such as expand outputs, will likely fail the check.
 - **Reference - Reference:** [torch.nn.functional.cross_entropy - reduction and ignore_index](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html) - Read the ignore_index and reduction parameters: ignored targets contribute no gradient, and mean reduction averages over the non-ignored targets only.
@@ -576,7 +576,7 @@ Every later failure in this stage, from silent dtype promotion to aliasing bugs,
 1. x = torch.zeros(3, 4). What are the strides of x and of x.t(), and is either contiguous?
    - x has stride (4, 1) and is contiguous. x.t() has shape (4, 3) and stride (1, 4); it shares storage and is not contiguous.
 2. Which element does xt[2][1] alias, and at what storage offset?
-   - x[1][2], at offset 2*1 + 1*4 = 6 from a zero storage_offset.
+   - x[1][2], at offset $`2 \times 1 + 1 \times 4 = 6`$ from a zero storage_offset.
 3. t = torch.ones(5); n = t.numpy(); t.add_(1). What is n now, and why?
    - All twos. The tensor and the array share one CPU allocation, so the in-place add is visible through both.
 4. When does c = t.contiguous() copy, and when does it return t itself?
@@ -742,7 +742,7 @@ Gradients accumulate silently, grad modes look alike, and eval state hides insid
 <summary>Self-test</summary>
 
 1. out = (inp + 1).pow(2).t() with inp = eye(4, 5) requiring grad, seeded with ones. What is inp.grad[0][0] and inp.grad[0][1] after one backward?
-   - 4 and 2. Each entry gets 2*(inp+1) at its own position: 2*2 on the diagonal ones, 2*1 elsewhere.
+   - 4 and 2. Each entry gets $`2(\mathrm{inp}+1)`$ at its own position: $`2 \times 2`$ on the diagonal ones, $`2 \times 1`$ elsewhere.
 2. The same backward runs again with retain_graph and no zeroing. What changes?
    - Every entry doubles. The new gradients add to the existing .grad instead of replacing it.
 3. Why does the Extending gradcheck example use dtype=torch.double?
@@ -1064,45 +1064,45 @@ Every later unit assumes signals survive the forward and backward pass. Wrong sc
 
 **You can now**
 
-- Derive the He variance 2/fan-in for ReLU layers from variance propagation, and state the Xavier form for symmetric activations.
+- Derive the He variance $`2/\text{fan-in}`$ for ReLU layers from variance propagation, and state the Xavier form for symmetric activations.
 - Predict whether activations and gradients shrink or grow across depth for a stated initialization scale.
 - Measure per-layer activation and gradient norms in a deep MLP and name the failing regime.
 
 **Study**
 
-1. [Parameter initialization (derivation)](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Chapter 7, Section 7.5 through 7.5.3 (pp. 107 to 111): forward variance, backward variance and the 4/(fan-in + fan-out) compromise.
+1. [Parameter initialization (derivation)](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Chapter 7, Section 7.5 through 7.5.3 (pp. 107 to 111): forward variance, backward variance and the $`4/(\text{fan-in} + \text{fan-out})`$ compromise.
 2. [Numerical stability, symmetry breaking and Xavier](https://d2l.ai/chapter_multilayer-perceptrons/numerical-stability-and-init.html#sec-numerical-stability) (D2L - optimization and regularization slice) - Vanishing and Exploding Gradients, Breaking the Symmetry, Parameter Initialization and Xavier Initialization; Summary.
-3. [HOML: Glorot and He initialization in PyTorch](https://www.oreilly.com/library/view/hands-on-machine-learning/9798341607972/) (Hands-On Machine Learning with Scikit-Learn and PyTorch) - Chapter 11, Glorot Initialization and He Initialization (printed pp. 365-368): Equation 11-1, Table 11-1 and the nn.init calls with model.apply. Depth: Read it for the PyTorch default: nn.Linear draws Kaiming-uniform weights with bound 1/sqrt(fan_in), a factor sqrt(6) below the He bound sqrt(6/fan_in), so a ReLU stack needs nn.init.kaiming_uniform_ or kaiming_normal_ to reach the He scale.
+3. [HOML: Glorot and He initialization in PyTorch](https://www.oreilly.com/library/view/hands-on-machine-learning/9798341607972/) (Hands-On Machine Learning with Scikit-Learn and PyTorch) - Chapter 11, Glorot Initialization and He Initialization (printed pp. 365-368): Equation 11-1, Table 11-1 and the nn.init calls with model.apply. Depth: Read it for the PyTorch default: nn.Linear draws Kaiming-uniform weights with bound $`1/\sqrt{\text{fan\_in}}`$, a factor $`\sqrt{6}`$ below the He bound $`\sqrt{6/\text{fan\_in}}`$, so a ReLU stack needs nn.init.kaiming_uniform_ or kaiming_normal_ to reach the He scale.
 
 **Focus**
 
-- ReLU keeps about half of symmetric inputs, so E[h^2] is half the pre-activation variance. That half is where the factor 2 in He comes from.
+- ReLU keeps about half of symmetric inputs, so $`\mathbb{E}[h^2]`$ is half the pre-activation variance. That half is where the factor 2 in He comes from.
 - Xavier balances fan-in against fan-out for the near-linear regime. UDL's compromise averages the two He conditions; it is not the classic tanh Xavier formula.
 - Constant initialization never breaks symmetry: identical weights give identical gradients, so units update identically forever. Randomness must differ across units, not just across layers.
 - Variance preservation is an expectation over random draws. One unlucky draw still skews a narrow layer, so width matters alongside scale.
 
-**Reproduce:** Closed-book, derive sigma^2 = 2/fan-in for a ReLU layer from mean-zero pre-activations and E[h^2] = Var(f)/2. Then push a batch through a 50-layer, width-100 ReLU MLP at weight variances 0.001, 0.02 and 1.0 and log the mean squared pre-activation per layer. Expect 0.001 to collapse toward zero, 1.0 to overflow, and 0.02 (the He value) to stay within about an order of magnitude of its start; single draws drift, so try a few seeds.
+**Reproduce:** Closed-book, derive $`\sigma^2 = 2/\text{fan-in}`$ for a ReLU layer from mean-zero pre-activations and $`\mathbb{E}[h^2] = \operatorname{Var}(f)/2`$. Then push a batch through a 50-layer, width-100 ReLU MLP at weight variances 0.001, 0.02 and 1.0 and log the mean squared pre-activation per layer. Expect 0.001 to collapse toward zero, 1.0 to overflow, and 0.02 (the He value) to stay within about an order of magnitude of its start; single draws drift, so try a few seeds.
 
 **Traps**
 
-- Using Xavier variance for ReLU layers. Without the factor 2 the forward variance halves each layer; use He for ReLU and Xavier-style 1/fan forms for tanh or sigmoid.
-- Reading UDL equation 7.34 as classic Xavier. It averages the forward and backward He conditions for ReLU, 4/(fan-in + fan-out); the chapter Notes (p. 113) say Glorot or Xavier initialization ignores the ReLU and so differs by a factor of two.
+- Using Xavier variance for ReLU layers. Without the factor 2 the forward variance halves each layer; use He for ReLU and Xavier-style $`1/\text{fan}`$ forms for tanh or sigmoid.
+- Reading UDL equation 7.34 as classic Xavier. It averages the forward and backward He conditions for ReLU, $`4/(\text{fan-in} + \text{fan-out})`$; the chapter Notes (p. 113) say Glorot or Xavier initialization ignores the ReLU and so differs by a factor of two.
 - Concluding stability from one seed. Variance statements are expectations, so rerun narrow layers with fresh draws before trusting a scale.
 
 **Practice**
 
 - [D2L Numerical Stability and Initialization: Exercises](https://d2l.ai/chapter_multilayer-perceptrons/numerical-stability-and-init.html) - Exercises: the symmetry-breaking, constant-init and eigenvalue questions
-- [TrenTorch: Weight Initialization](https://trentorch.com/ide/dl-training-weight-initialization) - Implement xavier_uniform_bound, xavier_normal_std, kaiming_uniform_bound and kaiming_normal_std from the variance targets. Derive each value before coding: Kaiming normal std with the default gain sqrt(2) is sqrt(2/fan_in), and each uniform bound is sqrt(3) times its normal std because U(-a, a) has variance a^2/3.
+- [TrenTorch: Weight Initialization](https://trentorch.com/ide/dl-training-weight-initialization) - Implement xavier_uniform_bound, xavier_normal_std, kaiming_uniform_bound and kaiming_normal_std from the variance targets. Derive each value before coding: Kaiming normal std with the default gain $`\sqrt{2}`$ is $`\sqrt{2/\text{fan\_in}}`$, and each uniform bound is $`\sqrt{3}`$ times its normal std because $`U(-a, a)`$ has variance $`a^2/3`$.
 
-**Stop when:** You derive 2/fan-in without notes, and your probe shows collapse below the He value, overflow above it, and bounded drift at it across a few seeds.
+**Stop when:** You derive $`2/\text{fan-in}`$ without notes, and your probe shows collapse below the He value, overflow above it, and bounded drift at it across a few seeds.
 
 <details>
 <summary>Self-test</summary>
 
 1. A ReLU layer has fan-in 200. What weight variance preserves activation scale, and why 2 and not 1?
-   - 2/200 = 0.01. The ReLU clips about half of symmetric pre-activations to zero, halving E[h^2]; the 2 compensates that half.
+   - 2/200 = 0.01. The ReLU clips about half of symmetric pre-activations to zero, halving $`\mathbb{E}[h^2]`$; the 2 compensates that half.
 2. Tanh layer, fan-in 256, fan-out 128. Give the D2L Xavier uniform bound.
-   - Uniform U(-sqrt(6/384), sqrt(6/384)) = U(-0.125, 0.125), since 6/(256+128) = 1/64.
+   - Uniform $`U(-\sqrt{6/384}, \sqrt{6/384}) = U(-0.125, 0.125)`$, since 6/(256+128) = 1/64.
 3. All weights in an MLP layer are initialized to the same constant. What happens?
    - Every unit computes the same forward value and receives the same gradient, so they update identically forever. Symmetry never breaks; use independent random draws.
 4. Init variance is far too large. Which two signatures do you expect forward and backward?
@@ -1133,11 +1133,11 @@ Most failed runs show one of four signatures. Reading the signature decides whet
 **Focus**
 
 - Sigmoid derivatives peak at 0.25 and decay to zero at both tails; tanh peaks at 1 but still decays. Products of many such terms vanish, while ReLU passes 1 on its active side and 0 elsewhere.
-- A residual block outputs x + f(x), so its gradient is I plus residual terms. The identity term gives every layer a direct path, but He init still doubles per-block variance, which is why these nets pair residuals with normalization.
+- A residual block outputs $`x + f(x)`$, so its gradient is $`I`$ plus residual terms. The identity term gives every layer a direct path, but He init still doubles per-block variance, which is why these nets pair residuals with normalization.
 - Dead ReLU units output zero and pass zero gradient for all negative inputs. A large negative bias update can silence a unit for the rest of training.
 - Batch normalization uses batch statistics during training and frozen statistics at test time. A train and eval gap with normalization present points at state handling before architecture.
 
-**Reproduce:** Closed-book, write a two-block residual unrolling x2 = x0 + f1(x0) + f2(x0 + f1(x0)) and its gradient with respect to x0, and circle the identity term that survives even if both residual Jacobians vanish.
+**Reproduce:** Closed-book, write a two-block residual unrolling $`x_2 = x_0 + f_1(x_0) + f_2(x_0 + f_1(x_0))`$ and its gradient with respect to $`x_0`$, and circle the identity term that survives even if both residual Jacobians vanish.
 
 **Traps**
 
@@ -1155,11 +1155,11 @@ Most failed runs show one of four signatures. Reading the signature decides whet
 <summary>Self-test</summary>
 
 1. In a 10-layer sigmoid MLP, gradient norms shrink by about 0.2 per layer. Where does a factor near 0.2 come from, and what does it do over 10 layers?
-   - Each layer multiplies the gradient by its weights and by a sigmoid derivative of at most 0.25. Ten factors near 0.2 give about 0.2^10, roughly 1e-7, so early layers barely learn.
+   - Each layer multiplies the gradient by its weights and by a sigmoid derivative of at most 0.25. Ten factors near 0.2 give about $`0.2^{10}`$, roughly 1e-7, so early layers barely learn.
 2. Half the ReLUs in a layer output zero on every training example and their weights never change. Dead or saturated, and why stuck?
    - Dead. Their pre-activations are negative on every example, so the ReLU derivative is zero and no gradient reaches their incoming weights or bias. They recover only if earlier layers happen to shift their inputs.
-3. Why does x + f(x) train deeper than f(x) alone, in one gradient sentence?
-   - Its Jacobian is I plus df/dx, so the gradient contains an identity term that reaches early layers directly instead of only through products of small or unstable Jacobians.
+3. Why does $`x + f(x)`$ train deeper than $`f(x)`$ alone, in one gradient sentence?
+   - Its Jacobian is $`I`$ plus $`df/dx`$, so the gradient contains an identity term that reaches early layers directly instead of only through products of small or unstable Jacobians.
 4. Training accuracy is 95 percent and evaluation accuracy 70 percent, with batch normalization and dropout. Name the first two checks.
    - First, confirm evaluation runs in eval mode (model.eval(): no dropout, running statistics). Second, measure training accuracy the same way, in eval mode on a training subset, because the logged training number came from train mode. Only a gap that survives both is overfitting.
 
@@ -1190,11 +1190,11 @@ Normalization decides which axes share statistics and whether evaluation depends
 **Focus**
 
 - Batch norm normalizes each channel over batch and spatial axes with learned per-channel scale and shift. One example's training output depends on the other batch members.
-- Layer norm normalizes one example over its features with no running statistics, so train and test match. Group norm sits between: G channel groups per example, with G = C giving per-channel behavior.
+- Layer norm normalizes one example over its features with no running statistics, so train and test match. Group norm sits between: $`G`$ channel groups per example, with $`G = C`$ giving per-channel behavior.
 - RMS norm drops mean centering and bias and scales by the root mean square only. Fewer statistics, same axis argument.
 - PyTorch tracks batch statistics as exponential running averages during training. D2L's full-dataset recomputation after training describes the goal, not the implementation.
 
-**Reproduce:** Closed-book, implement layer normalization for a (batch, features) input from sums only. Then compute batch norm by hand for values [0, 2, 4] with unit scale, zero shift and zero epsilon: outputs -1.225, 0 and 1.225.
+**Reproduce:** Closed-book, implement layer normalization for a (batch, features) input from sums only. Then compute batch norm by hand for values [0, 2, 4] with unit scale, zero shift and zero $`\epsilon`$: outputs -1.225, 0 and 1.225.
 
 **Traps**
 
@@ -1204,7 +1204,7 @@ Normalization decides which axes share statistics and whether evaluation depends
 
 **Practice**
 
-- [TrenTorch: Layer Normalization, forward](https://trentorch.com/ide/txf-block-layer-norm-forward) - Implement layer_norm_forward(x, gamma, beta, eps) over the last axis; one test compares against torch.nn.LayerNorm. Use the biased variance (divide by n) with eps inside the square root; a test fails on the n - 1 version.
+- [TrenTorch: Layer Normalization, forward](https://trentorch.com/ide/txf-block-layer-norm-forward) - Implement layer_norm_forward(x, gamma, beta, eps) over the last axis; one test compares against torch.nn.LayerNorm. Use the biased variance (divide by $`n`$) with $`\epsilon`$ inside the square root; a test fails on the $`n - 1`$ version.
 - [D2L Batch Normalization from Scratch and Concise implementation](https://d2l.ai/chapter_convolutional-modern/batch-norm.html#implementation-from-scratch) - Implementation from Scratch and Concise Implementation: build batch norm, match the concise layer, and answer the bias-removal exercise
 
 **Stop when:** Your from-scratch layer norm matches the framework output on random input, and you state each method's axes and eval behavior without notes.
@@ -1212,14 +1212,14 @@ Normalization decides which axes share statistics and whether evaluation depends
 <details>
 <summary>Self-test</summary>
 
-1. Batch values [0, 2, 4], gamma 1, beta 0, epsilon 0. What are the normalized outputs?
+1. Batch values [0, 2, 4], $`\gamma`$ 1, $`\beta`$ 0, $`\epsilon`$ 0. What are the normalized outputs?
    - Mean 2, variance 8/3, std 1.633. Outputs (-2/1.633, 0, 2/1.633) = (-1.225, 0, 1.225).
-2. Conv input (N, C, H, W). Which axes does batch norm use per channel, and why does batch size 1 still work?
-   - Batch, height and width. Even one image supplies H times W values per channel, so mean and variance are defined. Fully connected batch norm has only the batch axis and degenerates at batch size 1.
-3. Group norm with G = 1 versus G = C on one example. What does each compute?
-   - G = 1 normalizes all channels and spatial positions jointly with one mean and variance. G = C normalizes each channel separately, which is per-channel instance behavior.
-4. RMS norm input [3, 4], gamma 1. What is the output?
-   - RMS = sqrt((9+16)/2) = 3.536. Outputs (0.849, 1.131). No centering is applied.
+2. Conv input $`(N, C, H, W)`$. Which axes does batch norm use per channel, and why does batch size 1 still work?
+   - Batch, height and width. Even one image supplies $`H`$ times $`W`$ values per channel, so mean and variance are defined. Fully connected batch norm has only the batch axis and degenerates at batch size 1.
+3. Group norm with $`G = 1`$ versus $`G = C`$ on one example. What does each compute?
+   - $`G = 1`$ normalizes all channels and spatial positions jointly with one mean and variance. $`G = C`$ normalizes each channel separately, which is per-channel instance behavior.
+4. RMS norm input [3, 4], $`\gamma`$ 1. What is the output?
+   - $`\text{RMS} = \sqrt{(9+16)/2} = 3.536`$. Outputs (0.849, 1.131). No centering is applied.
 
 </details>
 
@@ -1247,12 +1247,12 @@ Regularization trades training fit for held-out behavior. Each method changes a 
 
 **Focus**
 
-- L2 adds (lambda/2)||w||^2 to the loss, and SGD turns it into per-step shrinkage (1 - eta*lambda). The 1/2 cancels the square's derivative.
+- L2 adds $`(\lambda/2)\|w\|^2`$ to the loss, and SGD turns it into per-step shrinkage $`(1 - \eta\lambda)`$. The $`1/2`$ cancels the square's derivative.
 - Adam normalizes the whole gradient, L2 term included, by its adaptive denominator, so the penalty no longer shrinks weights by a fixed fraction. AdamW applies the shrinkage outside the adaptive update.
-- Inverted dropout divides kept activations by (1-p) during training, so test time needs no scaling and the expectation stays exact.
+- Inverted dropout divides kept activations by $`(1-p)`$ during training, so test time needs no scaling and the expectation stays exact.
 - Label smoothing replaces hard targets with a blend of the true class and uniform. Augmentation enlarges the data, but its transforms must not change the label.
 
-**Reproduce:** Closed-book, derive w <- (1 - eta*lambda)w - eta*grad from the penalized loss. Then write the AdamW two-line update, decoupled decay plus bias-corrected adaptive step, and state the default decay 0.01.
+**Reproduce:** Closed-book, derive $`w \leftarrow (1 - \eta\lambda)w - \eta\text{grad}`$ from the penalized loss. Then write the AdamW two-line update, decoupled decay plus bias-corrected adaptive step, and state the default decay 0.01.
 
 **Traps**
 
@@ -1263,19 +1263,19 @@ Regularization trades training fit for held-out behavior. Each method changes a 
 **Practice**
 
 - [D2L Dropout: Exercises](https://d2l.ai/chapter_multilayer-perceptrons/dropout.html) - Exercises: layer-probability swaps, the dropout versus no-dropout comparison, activation variance plots, and the dropout plus weight-decay interaction
-- [D2L Weight Decay: Exercises](https://d2l.ai/chapter_linear-regression/weight-decay.html) - Exercises: the lambda sweep on training and validation accuracy and the validation-optimum question
-- [TrenTorch: Label Smoothing](https://trentorch.com/ide/dl-training-label-smoothing) - Implement smooth_labels(one_hot, smoothing, num_classes) for one target and for a batch. The true class ends at 1 - smoothing + smoothing/K and every other class at smoothing/K, the same targets torch.nn.CrossEntropyLoss(label_smoothing=...) uses.
+- [D2L Weight Decay: Exercises](https://d2l.ai/chapter_linear-regression/weight-decay.html) - Exercises: the $`\lambda`$ sweep on training and validation accuracy and the validation-optimum question
+- [TrenTorch: Label Smoothing](https://trentorch.com/ide/dl-training-label-smoothing) - Implement smooth_labels(one_hot, smoothing, num_classes) for one target and for a batch. The true class ends at $`1 - \text{smoothing} + \text{smoothing}/K`$ and every other class at $`\text{smoothing}/K`$, the same targets torch.nn.CrossEntropyLoss(label_smoothing=...) uses.
 
-**Stop when:** You write both the SGD shrinkage update and the AdamW decoupled update without notes, and your lambda sweep on the D2L regression task shows training loss rising with lambda while validation loss first falls, then rises.
+**Stop when:** You write both the SGD shrinkage update and the AdamW decoupled update without notes, and your $`\lambda`$ sweep on the D2L regression task shows training loss rising with $`\lambda`$ while validation loss first falls, then rises.
 
 <details>
 <summary>Self-test</summary>
 
-1. Loss L(w) plus (lambda/2)||w||^2 under SGD with step eta. What is the update?
-   - w <- w - eta*(grad + lambda*w) = (1 - eta*lambda)*w - eta*grad.
+1. Loss $`L(w)`$ plus $`(\lambda/2)\|w\|^2`$ under SGD with step $`\eta`$. What is the update?
+   - $`w \leftarrow w - \eta(\text{grad} + \lambda w) = (1 - \eta\lambda)w - \eta\text{grad}`$.
 2. Why does the same penalty fail to shrink weights by a fixed fraction under Adam?
-   - Adam divides the total gradient, penalty included, by sqrt(v) + eps. The penalty's effect is rescaled per coordinate by gradient history instead of applying a fixed (1 - eta*lambda) factor.
-3. Dropout p 0.3, activation 10. What values can the next layer see during training, and what is the mean?
+   - Adam divides the total gradient, penalty included, by $`\sqrt{v} + \epsilon`$. The penalty's effect is rescaled per coordinate by gradient history instead of applying a fixed $`(1 - \eta\lambda)`$ factor.
+3. Dropout $`p`$ 0.3, activation 10. What values can the next layer see during training, and what is the mean?
    - 0 with probability 0.3, or 10/0.7 = 14.29 with probability 0.7. Mean 0.7 times 14.29 = 10.
 4. 10 classes, smoothing 0.1. What target values do the true class and each other class get?
    - True class 0.9 + 0.1/10 = 0.91; each other class 0.01.
@@ -1299,7 +1299,7 @@ The optimizer is the difference between a loss that falls and one that stalls or
 **Study**
 
 1. [Optimizers from GD to Adam](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Chapter 6, Sections 6.1 through 6.4 (pp. 77 to 90): gradient descent, SGD, momentum with Nesterov, and Adam with bias correction.
-2. [Momentum (heavy-ball form)](https://d2l.ai/chapter_optimization/momentum.html#sec-momentum) (D2L - optimization and regularization slice) - The Momentum Method and Effective Sample Weight: heavy-ball update and the eta/(1-beta) effective step; Theoretical Analysis.
+2. [Momentum (heavy-ball form)](https://d2l.ai/chapter_optimization/momentum.html#sec-momentum) (D2L - optimization and regularization slice) - The Momentum Method and Effective Sample Weight: heavy-ball update and the $`\eta/(1-\beta)`$ effective step; Theoretical Analysis.
 3. [AdaGrad recognition and failure regime](https://d2l.ai/chapter_optimization/adagrad.html#sec-adagrad) (D2L - optimization and regularization slice) - Sparse Features, Preconditioning and The Algorithm: accumulating denominator and its decay.
 4. [RMSProp recognition and failure regime](https://d2l.ai/chapter_optimization/rmsprop.html#sec-rmsprop) (D2L - optimization and regularization slice) - The Algorithm: leaking average fix for the unbounded denominator.
 5. [Adam with bias correction](https://d2l.ai/chapter_optimization/adam.html#sec-adam) (D2L - optimization and regularization slice) - The Algorithm and Yogi: bias correction and the divergence fix.
@@ -1307,16 +1307,16 @@ The optimizer is the difference between a loss that falls and one that stalls or
 
 **Focus**
 
-- UDL writes momentum as an exponential average of gradients, while D2L and PyTorch use heavy-ball v <- beta*v + g. Same direction, different scale: heavy-ball steps larger by 1/(1-beta).
+- UDL writes momentum as an exponential average of gradients, while D2L and PyTorch use heavy-ball $`v \leftarrow \beta v + g`$. Same direction, different scale: heavy-ball steps larger by $`1/(1-\beta)`$.
 - AdaGrad divides by the root of all past squared gradients, so its steps decay toward zero even far from the optimum on dense problems. RMSProp's leaking average keeps the denominator current.
-- Adam debiases both moments because zero initialization drags early averages toward zero. For beta1 = 0.9 the correction fades within a few dozen steps; for beta2 = 0.999 it still multiplies v by about 10 at step 100 (1 - 0.999^100 is about 0.095) and fades only after a few thousand steps.
-- AdamW applies weight decay before the adaptive step, outside m and v. The decay rate then means the same thing at every coordinate regardless of gradient scale.
+- Adam debiases both moments because zero initialization drags early averages toward zero. For $`\beta_1 = 0.9`$ the correction fades within a few dozen steps; for $`\beta_2 = 0.999`$ it still multiplies $`v`$ by about 10 at step 100 ($`1 - 0.999^{100}`$ is about 0.095) and fades only after a few thousand steps.
+- AdamW applies weight decay before the adaptive step, outside $`m`$ and $`v`$. The decay rate then means the same thing at every coordinate regardless of gradient scale.
 
-**Reproduce:** Closed-book, run one Adam step on scalar gradient 2 with eta 0.001, betas (0.9, 0.999) and eps 1e-8: m 0.2, v 0.004, corrected 2 and 4, update 0.001. Then state the general first-step rule: about eta times the sign of the gradient.
+**Reproduce:** Closed-book, run one Adam step on scalar gradient 2 with $`\eta`$ 0.001, betas (0.9, 0.999) and $`\epsilon`$ 1e-8: $`m`$ 0.2, $`v`$ 0.004, corrected 2 and 4, update 0.001. Then state the general first-step rule: about $`\eta`$ times the sign of the gradient.
 
 **Traps**
 
-- Mixing UDL and PyTorch momentum hyperparameters. Beta 0.9 means an effective step 10 times larger under heavy-ball than under UDL's averaged form at the same eta.
+- Mixing UDL and PyTorch momentum hyperparameters. $`\beta`$ 0.9 means an effective step 10 times larger under heavy-ball than under UDL's averaged form at the same $`\eta`$.
 - Carrying a learning rate between SGD and Adam. Adam moves each coordinate by about lr regardless of gradient scale, while an SGD step scales with the gradient, so a good SGD rate says nothing about a good Adam rate.
 - Tuning Adam's weight_decay as if it were L2 strength. In plain Adam the penalty enters the moments; switch to AdamW for decoupled meaning.
 
@@ -1325,19 +1325,19 @@ The optimizer is the difference between a loss that falls and one that stalls or
 - [Deep-ML 169: Implement AdamW Optimizer Step](https://www.deep-ml.com/problems/169) - Problem 169: implement the decoupled AdamW step; cross-check the decay placement against the PyTorch AdamW reference. This is the section's single Deep-ML drill; use changed constants and verify the decay sits outside the moments.
 - [D2L Adam: Exercises](https://d2l.ai/chapter_optimization/adam.html#sec-adam) - Exercises: the bias-correction-free rewrite and the Adam-diverges and Yogi-converges case
 
-**Stop when:** Your from-scratch momentum and AdamW match the framework step for step on a quadratic, and you convert a beta between UDL and heavy-ball forms without notes.
+**Stop when:** Your from-scratch momentum and AdamW match the framework step for step on a quadratic, and you convert a $`\beta`$ between UDL and heavy-ball forms without notes.
 
 <details>
 <summary>Self-test</summary>
 
-1. Heavy-ball momentum beta 0.9, eta 0.1, constant gradient g. What is the steady-state step?
-   - v settles at g/(1-0.9) = 10g, so the step is 0.1 times 10g = g. The effective learning rate is 10 times the nominal one.
+1. Heavy-ball momentum $`\beta`$ 0.9, $`\eta`$ 0.1, constant gradient $`g`$. What is the steady-state step?
+   - $`v`$ settles at $`g/(1-0.9) = 10g`$, so the step is 0.1 times $`10g = g`$. The effective learning rate is 10 times the nominal one.
 2. Why does AdaGrad stall on dense deep-learning objectives, and what does RMSProp change?
-   - Its denominator sums every past squared gradient and grows without bound, driving per-coordinate rates toward zero. RMSProp replaces the sum with a leaking average at gamma 0.9, so old gradients stop counting.
-3. Adam's first step on gradient 2 with default betas and eta 0.001 is about 0.001 regardless of gradient size. Show why.
-   - m1 = 0.1 times 2 = 0.2, v1 = 0.001 times 4 = 0.004; corrected m = 2, v = 4; update 0.001 times 2/(2+eps), about 0.001. Debiasing restores the gradient scale, so the step is eta times the sign.
+   - Its denominator sums every past squared gradient and grows without bound, driving per-coordinate rates toward zero. RMSProp replaces the sum with a leaking average at $`\gamma`$ 0.9, so old gradients stop counting.
+3. Adam's first step on gradient 2 with default betas and $`\eta`$ 0.001 is about 0.001 regardless of gradient size. Show why.
+   - $`m_1 = 0.1 \times 2 = 0.2`$, $`v_1 = 0.001 \times 4 = 0.004`$; corrected $`m = 2`$, $`v = 4`$; update $`0.001 \times 2/(2+\epsilon)`$, about 0.001. Debiasing restores the gradient scale, so the step is $`\eta`$ times the sign.
 4. AdamW weight_decay 0.01, lr 0.001. How much does a weight of 0.5 shrink per step from decay alone?
-   - theta <- theta - 0.001 times 0.01 times 0.5 = 0.5 - 0.000005. The shrinkage is proportional to the weight and independent of gradient history.
+   - $`\theta \leftarrow \theta - 0.001 \times 0.01 \times 0.5 = 0.5 - 0.000005`$. The shrinkage is proportional to the weight and independent of gradient history.
 
 </details>
 
@@ -1358,7 +1358,7 @@ Schedules, batch size and clipping jointly set the update scale. Each one silent
 **Study**
 
 1. [Schedules and warmup](https://d2l.ai/chapter_optimization/lr-scheduler.html#sec-scheduler) (D2L - optimization and regularization slice) - Schedulers and Policies: factor, multi-factor, cosine with formula, and warmup.
-2. [Gradient clipping by global norm](https://d2l.ai/chapter_recurrent-neural-networks/rnn-scratch.html#gradient-clipping) (D2L - optimization and regularization slice) - Gradient Clipping: Lipschitz bound, the min(1, theta/||g||) projection, and its limits. Depth: Read the Gradient Clipping section only. Skip the RNN implementation around it.
+2. [Gradient clipping by global norm](https://d2l.ai/chapter_recurrent-neural-networks/rnn-scratch.html#gradient-clipping) (D2L - optimization and regularization slice) - Gradient Clipping: Lipschitz bound, the $`\min(1, \theta/\|g\|)`$ projection, and its limits. Depth: Read the Gradient Clipping section only. Skip the RNN implementation around it.
 3. [Clip API semantics](https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.clip_grad_norm_.html) (PyTorch - optimization and automatic mixed precision examples) - clip_grad_norm_ page: global-norm definition over concatenated per-parameter norms, in-place edit, returned total norm, error_if_nonfinite.
 4. [Scaler order with clipping](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) (PyTorch - optimization and automatic mixed precision examples) - Adding GradScaler and Inspecting/modifying gradients: autocast forward, scale, backward, unscale, clip, step, update, zero_grad.
 5. [LR range test](https://arxiv.org/abs/1506.01186) (Cyclical Learning Rates for Training Neural Networks (Smith, 2017)) - Abstract and range-test description: linearly increasing the rate for a few epochs to read reasonable bounds.
@@ -1366,12 +1366,12 @@ Schedules, batch size and clipping jointly set the update scale. Each one silent
 
 **Focus**
 
-- Cosine decay sets eta_t from a closed form with fixed T. Stepping the scheduler per step versus per epoch changes the curve, so record which one the code does.
-- Accumulation adds K microbatch gradients and steps once. Scaling each microbatch's mean loss by 1/K reproduces the full-batch mean gradient when the microbatches are equal in size and nothing updates between them. Batch-norm statistics and dropout masks still differ, and the summation order changes, so agreement is to floating-point tolerance.
+- Cosine decay sets $`\eta_t`$ from a closed form with fixed $`T`$. Stepping the scheduler per step versus per epoch changes the curve, so record which one the code does.
+- Accumulation adds $`K`$ microbatch gradients and steps once. Scaling each microbatch's mean loss by $`1/K`$ reproduces the full-batch mean gradient when the microbatches are equal in size and nothing updates between them. Batch-norm statistics and dropout masks still differ, and the summation order changes, so agreement is to floating-point tolerance.
 - Scaled gradients must be unscaled before clipping. Clipping scaled values applies the threshold in the wrong units; the recipe unscales first so max_norm keeps its unscaled meaning.
 - The range test raises the rate linearly and reads bounds off the loss: flat start, steady fall, then divergence. It sets a search interval, not an optimum.
 
-**Reproduce:** Closed-book, write the cosine formula and evaluate it at halfway: eta0 0.3, etaT 0.01, T 20, t 10 gives 0.155. Write the clipping rescale min(1, theta/||g||) and apply it to per-param norms 3 and 4 with theta 1: total 5, scale 0.2. Write the accumulation average that reproduces a batch-32 mean from four microbatches of 8.
+**Reproduce:** Closed-book, write the cosine formula and evaluate it at halfway: $`\eta_0`$ 0.3, $`\eta_T`$ 0.01, $`T`$ 20, $`t`$ 10 gives 0.155. Write the clipping rescale $`\min(1, \theta/\|g\|)`$ and apply it to per-param norms 3 and 4 with $`\theta`$ 1: total 5, scale 0.2. Write the accumulation average that reproduces a batch-32 mean from four microbatches of 8.
 
 **Traps**
 
@@ -1381,7 +1381,7 @@ Schedules, batch size and clipping jointly set the update scale. Each one silent
 
 **Practice**
 
-- [TrenTorch: Gradient Accumulation](https://trentorch.com/ide/txf-llmeng-gradient-accumulation) - Implement compute_output_head_gradient, accumulate_gradients and train_with_gradient_accumulation; the tests compare the accumulated update with one full-batch step. Average the microbatch gradients, hold the weights fixed until every microbatch is done, then step once. Then check your PyTorch loop, which divides each microbatch loss by K, against a full-batch reference within floating-point tolerance.
+- [TrenTorch: Gradient Accumulation](https://trentorch.com/ide/txf-llmeng-gradient-accumulation) - Implement compute_output_head_gradient, accumulate_gradients and train_with_gradient_accumulation; the tests compare the accumulated update with one full-batch step. Average the microbatch gradients, hold the weights fixed until every microbatch is done, then step once. Then check your PyTorch loop, which divides each microbatch loss by $`K`$, against a full-batch reference within floating-point tolerance.
 - [TrenTorch: Warmup and Cosine Decay](https://trentorch.com/ide/dl-training-lr-warmup-cosine-decay) - Implement linear_warmup_lr, cosine_decay_lr and warmup_cosine_lr, with the decay step counted from the end of warmup. Check the closed form first: base 0.3, minimum 0.01, 20 decay steps, step 10 gives 0.155.
 - [D2L Learning-Rate Scheduling: Exercises](https://d2l.ai/chapter_optimization/lr-scheduler.html#sec-scheduler) - Exercises 1 and 4 (best fixed-rate model, warmup length); run the cosine comparison of exercise 3 on Fashion-MNIST instead of ImageNet
 
@@ -1390,10 +1390,10 @@ Schedules, batch size and clipping jointly set the update scale. Each one silent
 <details>
 <summary>Self-test</summary>
 
-1. Cosine schedule eta0 0.3, etaT 0.01, T 20. What is eta at t 10 and t 20?
-   - eta_t = 0.01 + 0.145*(1+cos(pi*t/20)). At t=10, cos(pi/2)=0, eta=0.155. At t=20, cos(pi)=-1, eta=0.01.
-2. Four microbatches of 8 with mean-reduced losses give microbatch gradients a, b, c and d. What update matches batch-32 SGD, and when does it fail to match?
-   - One optimizer step along (a + b + c + d)/4. It fails if you add the four gradients without dividing by 4 (a step 4 times too large), if the microbatches differ in size, or if state such as batch-norm statistics updates per microbatch.
+1. Cosine schedule $`\eta_0`$ 0.3, $`\eta_T`$ 0.01, $`T`$ 20. What is $`\eta`$ at $`t`$ 10 and $`t`$ 20?
+   - $`\eta_t = 0.01 + 0.145(1+\cos(\pi t/20))`$. At $`t=10`$, $`\cos(\pi/2)=0`$, $`\eta=0.155`$. At $`t=20`$, $`\cos(\pi)=-1`$, $`\eta=0.01`$.
+2. Four microbatches of 8 with mean-reduced losses give microbatch gradients $`a`$, $`b`$, $`c`$ and $`d`$. What update matches batch-32 SGD, and when does it fail to match?
+   - One optimizer step along $`(a + b + c + d)/4`$. It fails if you add the four gradients without dividing by 4 (a step 4 times too large), if the microbatches differ in size, or if state such as batch-norm statistics updates per microbatch.
 3. Where does clipping go in a GradScaler step, and what breaks if it moves before unscaling?
    - After scaler.unscale_ and before scaler.step. Before unscaling, gradients carry the dynamic scale factor, so a fixed max_norm threshold means something different every iteration.
 4. Range-test loss falls slowly, then steeply, then explodes. How do you read it?
@@ -1447,7 +1447,7 @@ A failing run is usually a broken objective before it is a broken optimizer. Sha
 <summary>Self-test</summary>
 
 1. Logits [[2, 1, 0], [1, 2, 0]], targets [0, -100], ignore_index -100, mean reduction. What is the loss?
-   - The second position is ignored. First position: softmax gives p0 = e^2/(e^2+e+1) = 0.665, loss -ln(0.665) = 0.408. Mean over one valid position: 0.408.
+   - The second position is ignored. First position: softmax gives $`p_0 = e^2/(e^2+e+1) = 0.665`$, loss $`-\ln(0.665) = 0.408`$. Mean over one valid position: 0.408.
 2. Single-batch overfit stalls at high loss. What is ruled out, and what remains?
    - Data scale, label noise and evaluation protocol are ruled out as the blocker. What remains is capacity, objective wiring, or optimization: learning rate, initialization or gradient flow.
 3. Shuffled-label training reaches near-zero loss but true-label training does not generalize. What does the control prove?
@@ -1492,7 +1492,7 @@ Loss curves alone never name the broken mechanism. Diagnosis is a designed exper
 **Traps**
 
 - Reading any falling training loss as progress. Memorization falls too; only held-out slices and controls tell fitting from learning.
-- Fixing NaN by switching to float64 or adding an epsilon somewhere. Either can hide the first invalid op; find it first, then decide between learning rate, clipping, initialization and objective order.
+- Fixing NaN by switching to float64 or adding an $`\epsilon`$ somewhere. Either can hide the first invalid op; find it first, then decide between learning rate, clipping, initialization and objective order.
 - Reporting the best of many seeds as the result. Report the spread across at least two seeds, with the same seeds for the baseline and the fix, before claiming a fix.
 
 **Practice**
@@ -1524,7 +1524,7 @@ Loss curves alone never name the broken mechanism. Diagnosis is a designed exper
 3. Write a fault script that applies one of at least six faults chosen from a seed and writes the choice to a file you open only after committing your diagnosis. Include a softmax before CrossEntropyLoss, a missing zero_grad, eval mode left on, a learning rate 100 times too high, a bad initialization scale and validation data passed through training augmentation.
 4. Diagnose three injected faults. For each, write rival hypotheses first, run one control that separates them, repair, and add a regression test that fails on the fault and passes on the repair.
 5. Compare SGD with momentum and AdamW with decoupled weight decay at matched budgets, with warmup, a cosine schedule and gradient clipping, across two seeds.
-6. Check gradient accumulation: k micro-batches of size b match one batch of size k times b within tolerance for a model without batch normalization or dropout, and show what breaks when the loss is not divided by k.
+6. Check gradient accumulation: $`k`$ micro-batches of size $`b`$ match one batch of size $`k`$ times $`b`$ within tolerance for a model without batch normalization or dropout, and show what breaks when the loss is not divided by $`k`$.
 
 **Deliverables**
 
@@ -1613,31 +1613,31 @@ Every CNN bug report starts with a shape mismatch. Channels, padding and groups 
 
 **You can now**
 
-- Derive output shapes with padding, stride, dilation and groups, including the effective kernel size d(k-1)+1.
-- State the weight layout (C_out, C_in/G, kH, kW) and count parameters for plain, grouped and depthwise cases.
+- Derive output shapes with padding, stride, dilation and groups, including the effective kernel size $`d(k-1)+1`$.
+- State the weight layout $`(C_{\text{out}}, C_{\text{in}}/G, kH, kW)`$ and count parameters for plain, grouped and depthwise cases.
 - Implement cross-correlation from loops and match a framework Conv2d on shapes and values.
 
 **Study**
 
 1. [Cross-correlation, kernels and the feature map](https://d2l.ai/chapter_convolutional-neural-networks/conv-layer.html) (D2L - convolutional and recurrent architecture route) - Section 7.2: The Cross-Correlation Operation (corr2d from scratch), Convolutional Layers (the Conv2D class), Object Edge Detection in Images, Learning a Kernel, and Cross-Correlation and Convolution.
-2. [Padding and stride shapes](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html) (D2L - convolutional and recurrent architecture route) - Sections 7.3.1 and 7.3.2: the padding formula (7.3.1), the stride formula (7.3.2), and the comp_conv2d shape demos including kernel (3, 5) with padding (0, 1) and stride (3, 4).
-3. [Channels and 1x1 convolutions](https://d2l.ai/chapter_convolutional-neural-networks/channels.html) (D2L - convolutional and recurrent architecture route) - Section 7.4: multiple input channels, multiple output channels, and 1x1 convolutions with the reshape-plus-matmul check. Depth: Skip the ResNeXt preview at the end. Grouped cost returns through the PyTorch reference below.
-4. [Stride, dilation and channels](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - convolution and residual networks) - Chapter 10, Sections 10.2.3 to 10.2.5 (pp. 164 to 165): stride, kernel size, dilation rate as zeros-plus-one, and channel counts Ci by Co by K.
+2. [Padding and stride shapes](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html) (D2L - convolutional and recurrent architecture route) - Sections 7.3.1 and 7.3.2: the padding formula (7.3.1), the stride formula (7.3.2), and the comp_conv2d shape demos including kernel $`(3, 5)`$ with padding $`(0, 1)`$ and stride $`(3, 4)`$.
+3. [Channels and $`1 \times 1`$ convolutions](https://d2l.ai/chapter_convolutional-neural-networks/channels.html) (D2L - convolutional and recurrent architecture route) - Section 7.4: multiple input channels, multiple output channels, and $`1 \times 1`$ convolutions with the reshape-plus-matmul check. Depth: Skip the ResNeXt preview at the end. Grouped cost returns through the PyTorch reference below.
+4. [Stride, dilation and channels](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - convolution and residual networks) - Chapter 10, Sections 10.2.3 to 10.2.5 (pp. 164 to 165): stride, kernel size, dilation rate as zeros-plus-one, and channel counts $`Ci`$ by $`Co`$ by $`K`$.
 5. [The exact shape and groups contract](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html) (PyTorch nn.Conv2d reference) - Signature and Shape: the floor formula with dilation, the groups divisibility rule with the groups=2 and depthwise examples, and the Variables weight shape.
 
 **Focus**
 
 - Deep-learning convolution is cross-correlation with no kernel flip. A learned kernel absorbs the flip, so the distinction changes nothing in a trained layer.
-- Output size per axis is floor((n + 2p - d(k-1) - 1)/s + 1). With odd k and matching same padding each output centers on its input pixel.
-- Groups split channels into G independent convolutions. Parameters and multiply-adds fall by G, while output shape is unchanged. Groups equal to C_in is depthwise convolution.
-- A 1x1 convolution is a per-pixel linear map across channels. Stacked 1x1 layers need a nonlinearity between them or they fold into one linear map.
+- Output size per axis is $`\left\lfloor (n + 2p - d(k-1) - 1)/s + 1 \right\rfloor`$. With odd $`k`$ and matching same padding each output centers on its input pixel.
+- Groups split channels into $`G`$ independent convolutions. Parameters and multiply-adds fall by $`G`$, while output shape is unchanged. Groups equal to $`C_{\text{in}}`$ is depthwise convolution.
+- A $`1 \times 1`$ convolution is a per-pixel linear map across channels. Stacked $`1 \times 1`$ layers need a nonlinearity between them or they fold into one linear map.
 
-**Reproduce:** Closed-book, derive that Conv2d(3, 64, k=7, s=2, p=3) on 224x224 gives 112x112 with 9,472 parameters. Then implement corr2d from loops and match torch.nn.Conv2d values on a 5x5 input.
+**Reproduce:** Closed-book, derive that Conv2d(3, 64, k=7, s=2, p=3) on $`224 \times 224`$ gives $`112 \times 112`$ with 9,472 parameters. Then implement corr2d from loops and match torch.nn.Conv2d values on a $`5 \times 5`$ input.
 
 **Traps**
 
-- Counting padding once in the formula. D2L and PyTorch p means padding on both sides, so the total added rows are 2p.
-- Assuming groups change the output shape. Groups change only the weight layout and the cost, not H_out or W_out.
+- Counting padding once in the formula. D2L and PyTorch $`p`$ means padding on both sides, so the total added rows are $`2p`$.
+- Assuming groups change the output shape. Groups change only the weight layout and the cost, not $`H_{\text{out}}`$ or $`W_{\text{out}}`$.
 - Reading convolution as flipped correlation and hand-flipping a learned kernel before reuse. Export the kernel as is.
 
 **Practice**
@@ -1649,14 +1649,14 @@ Every CNN bug report starts with a shape mismatch. Channels, padding and groups 
 <details>
 <summary>Self-test</summary>
 
-1. 3x3 input, 2x2 kernel, no padding, stride 1. What is the output shape and why?
-   - 2x2. The 2-wide window fits 3 - 2 + 1 = 2 times per axis; without padding a k-wide kernel loses k - 1 positions per axis.
+1. $`3 \times 3`$ input, $`2 \times 2`$ kernel, no padding, stride 1. What is the output shape and why?
+   - $`2 \times 2`$. The 2-wide window fits $`3 - 2 + 1 = 2`$ times per axis; without padding a $`k`$-wide kernel loses $`k - 1`$ positions per axis.
 2. Conv2d(32, 32, k=3, groups=8). What is the weight shape and the parameter count with bias?
-   - (32, 4, 3, 3): 32 times 4 times 9 equals 1,152 weights plus 32 biases, or 1,184. The dense version needs 9,216 weights plus 32 biases.
+   - $`(32, 4, 3, 3)`$: $`32 \times 4 \times 9 = 1{,}152`$ weights plus 32 biases, or 1,184. The dense version needs 9,216 weights plus 32 biases.
 3. Kernel size 3 with dilation 2. What is the effective kernel size and what does it buy?
-   - 5, from d(k-1)+1. A 3x3 kernel with dilation 2 sees a 5x5 window with 9 weights per channel pair, at the multiply-add cost of an ordinary 3x3 kernel.
-4. Two stacked 1x1 convolutions with no nonlinearity between them. What is the problem?
-   - They compose into a single linear map. Keep a 1x1 layer only with a nonlinearity or normalization separating it from the next linear map.
+   - 5, from $`d(k-1)+1`$. A $`3 \times 3`$ kernel with dilation 2 sees a $`5 \times 5`$ window with 9 weights per channel pair, at the multiply-add cost of an ordinary $`3 \times 3`$ kernel.
+4. Two stacked $`1 \times 1`$ convolutions with no nonlinearity between them. What is the problem?
+   - They compose into a single linear map. Keep a $`1 \times 1`$ layer only with a nonlinearity or normalization separating it from the next linear map.
 
 </details>
 
@@ -1682,12 +1682,12 @@ Resolution sets both what a unit can see and what training costs. A receptive fi
 
 **Focus**
 
-- Receptive field grows by (k-1) times the product of earlier strides per layer. Stride-2 downsampling doubles the growth rate while quartering activations.
-- One conv layer holds C_out times (C_in/G) times kH times kW weights plus C_out biases, and costs about twice that many FLOPs per output position for the multiply-add.
-- Pooling has no parameters, acts per channel, and 2x2 stride-2 pooling quarters resolution. Max-pooling gives limited shift tolerance inside a window, not invariance.
+- Receptive field grows by $`(k-1)`$ times the product of earlier strides per layer. Stride-2 downsampling doubles the growth rate while quartering activations.
+- One conv layer holds $`C_{\text{out}}`$ times $`(C_{\text{in}}/G)`$ times $`kH`$ times $`kW`$ weights plus $`C_{\text{out}}`$ biases, and costs about twice that many FLOPs per output position for the multiply-add.
+- Pooling has no parameters, acts per channel, and $`2 \times 2`$ stride-2 pooling quarters resolution. Max-pooling gives limited shift tolerance inside a window, not invariance.
 - A transposed convolution applies the transpose of a downsampling weight matrix. It learns an upsampling and is not an inverse of any forward convolution.
 
-**Reproduce:** Closed-book, compute for a 56x56x64 input with Conv2d(64, 128, k=3, s=1, p=1): output 56x56x128, 73,856 parameters, about 4.6e8 FLOPs, and about 1.6 MB of float32 output activations. Then grow the receptive field through two more k=3 s=1 layers to 7.
+**Reproduce:** Closed-book, compute for a $`56 \times 56 \times 64`$ input with Conv2d(64, 128, k=3, s=1, p=1): output $`56 \times 56 \times 128`$, 73,856 parameters, about 4.6e8 FLOPs, and about 1.6 MB of float32 output activations. Then grow the receptive field through two more $`k=3`$ $`s=1`$ layers to 7.
 
 **Traps**
 
@@ -1697,21 +1697,21 @@ Resolution sets both what a unit can see and what training costs. A receptive fi
 
 **Practice**
 
-- [UDL Chapter 10 Problems 10.8, 10.9, 10.11 and 10.14: channel counts and receptive fields](https://udlbook.github.io/udlbook/) - Problems (pp. 184 to 185): 10.8 (two-layer channel counts), 10.9 (three k=3 layers), 10.11 (receptive field with a stride-2 layer) and 10.14 (5x5 kernel, 3 to 10 channels). Solve on paper against the weight-shape formula before checking the section text.
-- [TrenTorch: FLOPs Estimation (Linear/Conv)](https://trentorch.com/ide/systems-perf-flops-estimation) - Implement linear_flops and conv2d_flops with 2 FLOPs per multiply-add and one per bias add. Check it on the reproduce layer: Conv2d(64, 128, k=3, p=1) on 56x56 gives 462,422,016 FLOPs before bias plus 401,408 for the bias, about 4.6e8.
+- [UDL Chapter 10 Problems 10.8, 10.9, 10.11 and 10.14: channel counts and receptive fields](https://udlbook.github.io/udlbook/) - Problems (pp. 184 to 185): 10.8 (two-layer channel counts), 10.9 (three $`k=3`$ layers), 10.11 (receptive field with a stride-2 layer) and 10.14 ($`5 \times 5`$ kernel, 3 to 10 channels). Solve on paper against the weight-shape formula before checking the section text.
+- [TrenTorch: FLOPs Estimation (Linear/Conv)](https://trentorch.com/ide/systems-perf-flops-estimation) - Implement linear_flops and conv2d_flops with 2 FLOPs per multiply-add and one per bias add. Check it on the reproduce layer: Conv2d(64, 128, k=3, p=1) on $`56 \times 56`$ gives 462,422,016 FLOPs before bias plus 401,408 for the bias, about 4.6e8.
 
 **Stop when:** Your hand counts match the weight-shape formula on a new layer, and a shifted-input probe shows exactly which pooling outputs move.
 
 <details>
 <summary>Self-test</summary>
 
-1. Three k=3 s=1 layers on a 1D input. What is the receptive-field size?
-   - 7: 1 plus 3 times 2. Each k=3 layer adds 2 to the extent at stride 1.
+1. Three $`k=3`$ $`s=1`$ layers on a 1D input. What is the receptive-field size?
+   - 7: $`1 + 3 \times 2`$. Each $`k=3`$ layer adds 2 to the extent at stride 1.
 2. Stride-2 pooling quarters the positions. Why does it not quarter the compute of the next stage?
-   - Networks usually double the channels after downsampling. Convolution cost scales with positions times C_in times C_out, so doubling both channel counts restores the FLOPs exactly, while activation memory only halves.
+   - Networks usually double the channels after downsampling. Convolution cost scales with positions times $`C_{\text{in}}`$ times $`C_{\text{out}}`$, so doubling both channel counts restores the FLOPs exactly, while activation memory only halves.
 3. Does a transposed convolution invert the convolution with the same weights?
    - No. It applies the transposed weight matrix with its own learned weights, so equal shape back does not mean equal values.
-4. 2x2 stride-2 max-pooling. Which input shifts leave the output unchanged?
+4. $`2 \times 2`$ stride-2 max-pooling. Which input shifts leave the output unchanged?
    - A shift by 2 pixels shifts the output by one cell (equivariance on the coarse grid). A one-pixel shift leaves an output unchanged only when that window's maximum stays inside the window, which depends on the data; test with a shifted copy.
 
 </details>
@@ -1741,10 +1741,10 @@ Residual structure and augmentation decide whether a deeper or larger-input mode
 
 - Convolution is equivariant to translation in the interior. Stride, pooling and zero-padded borders break exact equivariance, and pooling trades it for local tolerance.
 - Zero padding leaks absolute position. The network can learn where the whitespace border is.
-- A residual block fits the difference from identity, so pushing branch weights toward zero recovers a shallower net. The unraveled sum gives 2^K paths for K blocks.
+- A residual block fits the difference from identity, so pushing branch weights toward zero recovers a shallower net. The unraveled sum gives $`2^K`$ paths for $`K`$ blocks.
 - Each residual addition grows activation variance under standard initialization. Per-channel batch normalization, or branch rescaling, keeps the forward stable.
 
-**Reproduce:** Closed-book, sketch why the ResNet stem maps 224 to 56x56x64: 7x7 s2 p3 gives 112, then 3x3 max-pool s2 p1 gives 56. State the test-time batch-norm rule: use the running statistics accumulated during training, so no output depends on the rest of the batch.
+**Reproduce:** Closed-book, sketch why the ResNet stem maps 224 to $`56 \times 56 \times 64`$: $`7 \times 7`$ $`s2`$ $`p3`$ gives 112, then $`3 \times 3`$ max-pool $`s2`$ $`p1`$ gives 56. State the test-time batch-norm rule: use the running statistics accumulated during training, so no output depends on the rest of the batch.
 
 **Traps**
 
@@ -1784,23 +1784,23 @@ Unrolling turns a loop into a deep shared-weight network. BPTT is backprop on th
 **You can now**
 
 - Unroll a vanilla RNN cell and derive its per-step shapes and shared-parameter count.
-- Derive BPTT as chained Jacobian products and state what truncating at tau keeps and drops.
+- Derive BPTT as chained Jacobian products and state what truncating at $`\tau`$ keeps and drops.
 - Implement an RNN language model from tensor ops with gradient clipping and train it below uniform perplexity.
 
 **Study**
 
-1. [The recurrent cell and its unrolling](https://d2l.ai/chapter_recurrent-neural-networks/rnn.html) (D2L - convolutional and recurrent architecture route) - Recurrent Neural Networks with Hidden States (the H_t recurrence and parameter sharing) and RNN-Based Character-Level Language Models.
-2. [Scratch RNN with clipping and decoding](https://d2l.ai/chapter_recurrent-neural-networks/rnn-scratch.html) (D2L - convolutional and recurrent architecture route) - The RNN Model from scratch, One-Hot Encoding, Gradient Clipping with the min(1, theta/||g||) rule, Training, and Decoding with warm-up prefix.
-3. [Backpropagation through time and truncation](https://d2l.ai/chapter_recurrent-neural-networks/bptt.html) (D2L - convolutional and recurrent architecture route) - Analysis of Gradients (full computation with the chained sum, regular truncation at tau, randomized truncation) and Backprop Through Time in Detail (the W_qh, W_hx and W_hh gradient sums).
+1. [The recurrent cell and its unrolling](https://d2l.ai/chapter_recurrent-neural-networks/rnn.html) (D2L - convolutional and recurrent architecture route) - Recurrent Neural Networks with Hidden States (the $`H_t`$ recurrence and parameter sharing) and RNN-Based Character-Level Language Models.
+2. [Scratch RNN with clipping and decoding](https://d2l.ai/chapter_recurrent-neural-networks/rnn-scratch.html) (D2L - convolutional and recurrent architecture route) - The RNN Model from scratch, One-Hot Encoding, Gradient Clipping with the $`\min(1, \theta/\|g\|)`$ rule, Training, and Decoding with warm-up prefix.
+3. [Backpropagation through time and truncation](https://d2l.ai/chapter_recurrent-neural-networks/bptt.html) (D2L - convolutional and recurrent architecture route) - Analysis of Gradients (full computation with the chained sum, regular truncation at $`\tau`$, randomized truncation) and Backprop Through Time in Detail (the $`W_{qh}`$, $`W_{hx}`$ and $`W_{hh}`$ gradient sums).
 
 **Focus**
 
-- H_t = phi(X_t W_xh + H_{t-1} W_hh + b_h) reuses the same three matrices every step. Sequence length adds depth, not parameters.
-- BPTT sums per-step losses whose gradients chain products of hidden Jacobians. Regular truncation at tau drops all paths longer than tau and biases long-dependency learning.
-- Clip by global norm g <- min(1, theta/||g||) g after unrolling. It bounds the step, not the Jacobian product, so it treats explosion, not vanishing.
+- $`H_t = \phi(X_t W_{xh} + H_{t-1} W_{hh} + b_h)`$ reuses the same three matrices every step. Sequence length adds depth, not parameters.
+- BPTT sums per-step losses whose gradients chain products of hidden Jacobians. Regular truncation at $`\tau`$ drops all paths longer than $`\tau`$ and biases long-dependency learning.
+- Clip by global norm $`g \gets \min(1, \theta/\|g\|) g`$ after unrolling. It bounds the step, not the Jacobian product, so it treats explosion, not vanishing.
 - Detaching the hidden state between batches stops gradients but keeps the values. Truncated BPTT still learns only within-segment dependencies.
 
-**Reproduce:** Closed-book, write the H_t and O_t equations with shapes for the D2L character vocabulary of 28 tokens, hidden size 32 and batch 4, and derive dL/dW_hh as the chained sum. Then train the scratch RNN on The Time Machine to a perplexity well below 28, the value of uniform guessing.
+**Reproduce:** Closed-book, write the $`H_t`$ and $`O_t`$ equations with shapes for the D2L character vocabulary of 28 tokens, hidden size 32 and batch 4, and derive $`dL/dW_{hh}`$ as the chained sum. Then train the scratch RNN on The Time Machine to a perplexity well below 28, the value of uniform guessing.
 
 **Traps**
 
@@ -1812,17 +1812,17 @@ Unrolling turns a loop into a deep shared-weight network. BPTT is backprop on th
 
 - [Deep-ML 62: Implement a Simple RNN with Backpropagation Through Time (BPTT)](https://www.deep-ml.com/problems/62) - The RNN forward pass and BPTT gradient in NumPy. The page checks the solution against test cases in the browser.. Do it after the D2L scratch model so the changed prompt tests understanding, not recall.
 
-**Stop when:** Your scratch RNN trains below uniform perplexity, Deep-ML 62 passes, and you can state which dependencies your tau can and cannot learn.
+**Stop when:** Your scratch RNN trains below uniform perplexity, Deep-ML 62 passes, and you can state which dependencies your $`\tau`$ can and cannot learn.
 
 <details>
 <summary>Self-test</summary>
 
-1. T=100, hidden 32. How many W_hh matrices does the unrolled graph hold?
-   - One shared (32, 32) matrix. Unrolling copies the use, not the parameters, and gradients accumulate into it from all steps.
-2. Truncated BPTT with tau=10 on a dependency of length 50. What happens?
-   - The gradient path is cut. The update cannot assign credit across the full span, so the dependency is effectively unlearnable at that tau.
-3. Gradient norm 12 with theta=1. What is the clipped gradient?
-   - g/12. min(1, 1/12) scales the norm to exactly 1 without changing direction.
+1. $`T=100`$, hidden 32. How many $`W_{hh}`$ matrices does the unrolled graph hold?
+   - One shared $`(32, 32)`$ matrix. Unrolling copies the use, not the parameters, and gradients accumulate into it from all steps.
+2. Truncated BPTT with $`\tau=10`$ on a dependency of length 50. What happens?
+   - The gradient path is cut. The update cannot assign credit across the full span, so the dependency is effectively unlearnable at that $`\tau`$.
+3. Gradient norm 12 with $`\theta=1`$. What is the clipped gradient?
+   - $`g/12`$. $`\min(1, 1/12)`$ scales the norm to exactly 1 without changing direction.
 4. Why does D2L one-hot encode instead of using an embedding layer?
    - Small char vocab makes one-hot cheap and explicit. It is the same linear map as an embedding row lookup, so shapes and gradients agree.
 
@@ -1846,27 +1846,27 @@ Gates are the fix for the gradient pathology of the previous unit. Each gate is 
 
 1. [Jacobian powers and gradient pathology](https://d2l.ai/chapter_recurrent-neural-networks/bptt.html) (D2L - convolutional and recurrent architecture route) - Backprop Through Time in Detail: the linear-recurrence gradient derivation ending in hidden-Jacobian powers. Exercises question 1: symmetric-matrix powers and what they mean for RNN gradients..
 2. [GRU gates and scratch implementation](https://d2l.ai/chapter_recurrent-modern/gru.html) (D2L - convolutional and recurrent architecture route) - Reset Gate and Update Gate, Candidate Hidden State, Hidden State, and Implementation from Scratch.
-3. [LSTM gates and scratch implementation](https://d2l.ai/chapter_recurrent-modern/lstm.html) (D2L - convolutional and recurrent architecture route) - Input, Forget and Output Gates, Memory Cell Internal State with C_t = F_t C_{t-1} + I_t tilde-C_t, Hidden State, and Implementation from Scratch. Depth: Skip the JAX lax.scan branches unless you train in JAX. The equations are framework-free.
+3. [LSTM gates and scratch implementation](https://d2l.ai/chapter_recurrent-modern/lstm.html) (D2L - convolutional and recurrent architecture route) - Input, Forget and Output Gates, Memory Cell Internal State with $`C_t = F_t C_{t-1} + I_t \tilde{C}_t`$, Hidden State, and Implementation from Scratch. Depth: Skip the JAX lax.scan branches unless you train in JAX. The equations are framework-free.
 
 **Focus**
 
-- dL/dh_t fans out through powers of W_hh transposed. Eigenvalues below 1 decay geometrically and above 1 grow geometrically, and tanh or sigmoid derivatives shrink most steps further.
-- GRU: R gates how much past state enters the candidate, and Z interpolates old state with candidate. LSTM splits the same job across F for erase, I for write and O for reveal, with a separate cell C_t.
-- With F=1 and I=0 the cell holds its value exactly and gradients flow unchanged. That constant-error path is the whole point.
-- PyTorch and D2L agree on the update gate: z weights the old state. They differ on the reset gate: D2L multiplies R into the state before W_hh, while torch.nn.GRU applies r after the recurrent matmul and its bias, r * (W_hn h + b_hn). Implement the PyTorch form when you match torch.nn.GRU.
+- $`dL/dh_t`$ fans out through powers of $`W_{hh}`$ transposed. Eigenvalues below 1 decay geometrically and above 1 grow geometrically, and tanh or sigmoid derivatives shrink most steps further.
+- GRU: $`R`$ gates how much past state enters the candidate, and $`Z`$ interpolates old state with candidate. LSTM splits the same job across $`F`$ for erase, $`I`$ for write and $`O`$ for reveal, with a separate cell $`C_t`$.
+- With $`F=1`$ and $`I=0`$ the cell holds its value exactly and gradients flow unchanged. That constant-error path is the whole point.
+- PyTorch and D2L agree on the update gate: $`z`$ weights the old state. They differ on the reset gate: D2L multiplies $`R`$ into the state before $`W_{hh}`$, while torch.nn.GRU applies $`r`$ after the recurrent matmul and its bias, $`r \cdot (W_{hn} h + b_{hn})`$. Implement the PyTorch form when you match torch.nn.GRU.
 
 **Reproduce:** Closed-book, write all GRU and LSTM equations with gate nonlinearities. Then implement both cells from tensor ops and match torch.nn.GRU and torch.nn.LSTM outputs on random input to float32 tolerance, using the PyTorch reset-gate form for the GRU.
 
 **Traps**
 
-- Porting gate formulas between sources without checking conventions. Some texts write h_t = (1 - z) h_{t-1} + z h~, the opposite of D2L and PyTorch, and the reset placement differs between D2L and torch.nn.GRU.
+- Porting gate formulas between sources without checking conventions. Some texts write $`h_t = (1 - z) h_{t-1} + z \tilde{h}`$, the opposite of D2L and PyTorch, and the reset placement differs between D2L and torch.nn.GRU.
 - Assuming LSTM always beats GRU. Cost and data decide, which is why the LSTM page asks for the cost comparison.
 - Treating saturated gates as a bug to tune away. Gates at 0 or 1 stop gate learning while protecting memory, so that trade is expected.
 
 **Practice**
 
 - [TrenTorch: GRU Forward](https://trentorch.com/ide/seq-rnn-gru-cell-forward) - Implement gru_cell_forward with torch.nn.GRUCell's [reset, update, new] packing; one test is a GRUCell oracle. The reset gate multiplies only the hidden-side candidate term, the PyTorch form. Then solve LSTM Forward (seq-rnn-lstm-cell-forward) in the same track, with the [input, forget, cell, output] packing.
-- [D2L GRU Exercises 1 and 4: gate values and single-gate ablation](https://d2l.ai/chapter_recurrent-modern/gru.html) - Exercises: question 1 (best reset and update values to use only the input at t-prime for the output at t) and question 4 (a GRU with only a reset gate or only an update gate)
+- [D2L GRU Exercises 1 and 4: gate values and single-gate ablation](https://d2l.ai/chapter_recurrent-modern/gru.html) - Exercises: question 1 (best reset and update values to use only the input at $`t'`$ for the output at $`t`$) and question 4 (a GRU with only a reset gate or only an update gate)
 - [D2L LSTM Exercise 3: gated-cell cost comparison](https://d2l.ai/chapter_recurrent-modern/lstm.html) - Exercises: question 3 (computational cost of GRU, LSTM and plain RNN at fixed hidden size, training and inference)
 
 **Stop when:** Your cells match framework outputs and gradients, and the ablations show which gate carries long-span memory.
@@ -1874,14 +1874,14 @@ Gates are the fix for the gradient pathology of the previous unit. Each gate is 
 <details>
 <summary>Self-test</summary>
 
-1. A linear recurrence has W_hh with spectral radius 1.5. What gradient scale results over 100 steps?
-   - About 1.5^100, near 4e17: explosion. Below 1 it vanishes the same way, so only near-1 spectra plus gating survive long spans.
-2. GRU with Z=1 everywhere under the D2L convention. What behavior results?
-   - H_t equals H_{t-1}: the state freezes and ignores all inputs. With Z=0 the state is just the candidate, a tanh RNN whose recurrent input is gated by R.
-3. LSTM: which gate settings copy C_{t-1} unchanged?
-   - F=1 and I=0. The output gate then decides how much of tanh(C) shows in H.
+1. A linear recurrence has $`W_{hh}`$ with spectral radius 1.5. What gradient scale results over 100 steps?
+   - About $`1.5^{100}`$, near 4e17: explosion. Below 1 it vanishes the same way, so only near-1 spectra plus gating survive long spans.
+2. GRU with $`Z=1`$ everywhere under the D2L convention. What behavior results?
+   - $`H_t`$ equals $`H_{t-1}`$: the state freezes and ignores all inputs. With $`Z=0`$ the state is just the candidate, a tanh RNN whose recurrent input is gated by $`R`$.
+3. LSTM: which gate settings copy $`C_{t-1}`$ unchanged?
+   - $`F=1`$ and $`I=0`$. The output gate then decides how much of $`\tanh(C)`$ shows in $`H`$.
 4. A GRU with a reset gate but no update gate. What breaks?
-   - Every step replaces the state with a fresh tanh candidate, so there is no copy path. Long-span memory must survive repeated multiplication by W_hh and tanh, which brings back vanishing gradients.
+   - Every step replaces the state with a fresh tanh candidate, so there is no copy path. Long-span memory must survive repeated multiplication by $`W_{hh}`$ and tanh, which brings back vanishing gradients.
 
 </details>
 
@@ -1956,18 +1956,18 @@ Decoding and masking turn a trained seq2seq net into honest predictions. One unm
 
 **Study**
 
-1. [Masked loss, greedy prediction and BLEU](https://d2l.ai/chapter_recurrent-modern/seq2seq.html) (D2L - convolutional and recurrent architecture route) - Sections 10.7.5, 10.7.7 and 10.7.8: Loss Function with Masking ((l times mask).sum() over mask.sum()), greedy predict_step, and the BLEU measure. Depth: Use D2L bleu() as a relative probe only. It weights n-grams by (1/2)^n, unlike the uniform 1/k of Papineni et al.
-2. [Greedy, exhaustive and beam search](https://d2l.ai/chapter_recurrent-modern/beam-search.html) (D2L - convolutional and recurrent architecture route) - Sections 10.8.1 to 10.8.4: Greedy Search with the 0.048 and 0.054 examples, Exhaustive Search cost, Beam Search, and the length penalty with alpha 0.75.
+1. [Masked loss, greedy prediction and BLEU](https://d2l.ai/chapter_recurrent-modern/seq2seq.html) (D2L - convolutional and recurrent architecture route) - Sections 10.7.5, 10.7.7 and 10.7.8: Loss Function with Masking ((l times mask).sum() over mask.sum()), greedy predict_step, and the BLEU measure. Depth: Use D2L bleu() as a relative probe only. It weights n-grams by $`(1/2)^n`$, unlike the uniform $`1/k`$ of Papineni et al.
+2. [Greedy, exhaustive and beam search](https://d2l.ai/chapter_recurrent-modern/beam-search.html) (D2L - convolutional and recurrent architecture route) - Sections 10.8.1 to 10.8.4: Greedy Search with the 0.048 and 0.054 examples, Exhaustive Search cost, Beam Search, and the length penalty with $`\alpha`$ 0.75.
 3. [Packed sequences at recognition depth](https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.rnn.pack_padded_sequence.html) (PyTorch sequence packing utilities) - pack_padded_sequence: the lengths argument, enforce_sorted and batch-first. Depth: Recognition only. Know what packing skips and what contract it demands; do not reimplement the packed format.
 
 **Focus**
 
-- Greedy decoding feeds each argmax back with <bos> start and <eos> stop. Beam search keeps k hypotheses with length normalization, so larger k costs linearly more for usually better sequences.
+- Greedy decoding feeds each argmax back with <bos> start and <eos> stop. Beam search keeps $`k`$ hypotheses with length normalization, so larger $`k`$ costs linearly more for usually better sequences.
 - Masked loss divides by valid tokens, not by batch times steps. Dividing by the padded size silently down-weights short-sequence batches.
 - Packing skips pad steps in the RNN so pads cost nothing and contribute no state. It needs lengths and, by default, length-sorted batches.
 - A leak test perturbs what should not matter, such as pad values, future tokens or carried state, and asserts that valid outputs do not change: bit-identical for a causal RNN on CPU, and within a tight tolerance wherever a kernel may reorder sums.
 
-**Reproduce:** Closed-book, implement masked cross-entropy with mask equal to targets-not-pad and sum-over-sum reduction, plus a greedy loop. Then pass three leak probes: random pad ids, changed tokens after position t (outputs up to t must not move), and carried versus reset hidden state.
+**Reproduce:** Closed-book, implement masked cross-entropy with mask equal to targets-not-pad and sum-over-sum reduction, plus a greedy loop. Then pass three leak probes: random pad ids, changed tokens after position $`t`$ (outputs up to $`t`$ must not move), and carried versus reset hidden state.
 
 **Traps**
 
@@ -1986,11 +1986,11 @@ Decoding and masking turn a trained seq2seq net into honest predictions. One unm
 <summary>Self-test</summary>
 
 1. Batch of lengths 5 and 2 padded to 5. What is the masked-loss denominator?
-   - 7: 5 plus 2 valid tokens. Summing over 10 positions would dilute the short sequence.
+   - 7: $`5 + 2`$ valid tokens. Summing over 10 positions would dilute the short sequence.
 2. In D2L's greedy-search example, greedy scores 0.048 while picking a different second token gives 0.054. Why does greedy miss it, and what does beam search change?
-   - Greedy takes the most likely token at each step and never revisits. The other second token is less likely by itself but makes the later tokens more likely. Beam search keeps k partial sequences, so it can keep that branch alive long enough to see the payoff, though it is not guaranteed to find the best sequence.
-3. The D2L beam score divides the log-probability by L^alpha, with alpha 0.75. What does raising alpha do?
-   - It favors longer outputs. Log-probabilities are negative and grow in magnitude with length, so a larger divisor for long sequences offsets more of that penalty. Alpha 0 recovers the raw log-probability, which favors short outputs.
+   - Greedy takes the most likely token at each step and never revisits. The other second token is less likely by itself but makes the later tokens more likely. Beam search keeps $`k`$ partial sequences, so it can keep that branch alive long enough to see the payoff, though it is not guaranteed to find the best sequence.
+3. The D2L beam score divides the log-probability by $`L^{\alpha}`$, with $`\alpha`$ 0.75. What does raising $`\alpha`$ do?
+   - It favors longer outputs. Log-probabilities are negative and grow in magnitude with length, so a larger divisor for long sequences offsets more of that penalty. $`\alpha`$ 0 recovers the raw log-probability, which favors short outputs.
 4. Leak probe: all <pad> ids replaced with random ids, and valid outputs change. Is that a bug?
    - Yes. Valid outputs must not depend on pad contents, so the change shows padding leaking into the representation or the loss.
 
@@ -2005,7 +2005,7 @@ Decoding and masking turn a trained seq2seq net into honest predictions. One unm
 3. For a stated CNN of four to six layers, derive every output shape, the last layer's receptive field, the parameter count and the forward multiply-adds by hand. Check shapes and parameters in code. Check the receptive field by which input pixels get a nonzero gradient from one output, after setting weights to ones, removing ReLUs and swapping max for average pooling so no path is zeroed by chance.
 4. Implement a GRU or LSTM cell in PyTorch's gate convention, load weights from torch.nn.GRUCell or LSTMCell, and match outputs and gradients over a 20-step unroll in float64.
 5. Batch variable-length sequences with padding plus masks or packing, and test that changing padded values leaves every valid output and the final valid hidden state unchanged.
-6. For a unidirectional model, test that changing the input at step t leaves outputs before t unchanged. Run the same test on a bidirectional model and show that it fails, which proves the test can fail.
+6. For a unidirectional model, test that changing the input at step $`t`$ leaves outputs before $`t`$ unchanged. Run the same test on a bidirectional model and show that it fails, which proves the test can fail.
 7. Plot gradient norms through time for a vanilla RNN and your gated cell on a long sequence, and relate them to measured gate values.
 
 **Deliverables**
@@ -2036,7 +2036,7 @@ Feeds into: Capstone artifact 2: this CNN or recurrent model is one option for t
 - **Support - Practice:** [Stanford CS231n - Assignments 1 and 2](https://cs231n.stanford.edu/2025/assignments.html) - Use only the neural network, normalization, dropout, convolution and PyTorch components that match this section. Do not complete the course or unrelated vision tasks.
 - **Optional - Practice:** [Deep-ML candidate - convolution and recurrence problems](https://www.deep-ml.com/problems) - After the platform admission check, use at most one of 41 Conv2D, 62 RNN with BPTT, 287 GRU or 59 LSTM as a changed-prompt drill.
 - **Support - Practice:** [TrenTorch - convolution cost and recurrent cells](https://trentorch.com/) - Solve FLOPs Estimation, GRU Forward and LSTM Forward after the D2L scratch models. Each reference cell matches torch.nn.GRUCell or LSTMCell.
-- **Reference - Reference:** [PyTorch nn.Conv2d reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html) - Read Signature and Shape for the exact floor formula with dilation, the groups divisibility rule with grouped and depthwise examples, and the weight layout (C_out, C_in/groups, kH, kW). D2L and UDL teach the mechanism; this page is the shape contract to code against.
+- **Reference - Reference:** [PyTorch nn.Conv2d reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html) - Read Signature and Shape for the exact floor formula with dilation, the groups divisibility rule with grouped and depthwise examples, and the weight layout $`(C_{\text{out}}, C_{\text{in}}/\text{groups}, kH, kW)`$. D2L and UDL teach the mechanism; this page is the shape contract to code against.
 - **Reference - Reference:** [PyTorch sequence packing utilities](https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.rnn.pack_padded_sequence.html) - Read pack_padded_sequence for lengths, enforce_sorted and batch-first at recognition depth: what packing skips and what contract it demands. Do not reimplement the packed format; pair it with the masked-loss implementation in D2L seq2seq.
 
 ### Exit checkpoint
@@ -2089,46 +2089,46 @@ Contrastive objectives compare directions, not positions. If norms leak into the
 **You can now**
 
 - Explain why cosine similarity keeps angles and discards norms, and when that helps retrieval.
-- Derive NT-Xent as softmax cross-entropy over the 2N-1 other views, with 1/tau logit scaling.
-- Predict the loss for degenerate batches, including the log(2N-1) uniform case.
+- Derive NT-Xent as softmax cross-entropy over the $`2N-1`$ other views, with $`1/\tau`$ logit scaling.
+- Predict the loss for degenerate batches, including the $`\log(2N-1)`$ uniform case.
 
 **Study**
 
-1. [NT-Xent and cosine similarity](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 2.1, Eq. (1): sim(u,v) as the L2-normalized dot product and l_{i,j} with the sum over k != i; Algorithm 1 for the full loop.
-2. [Why normalization matters](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 5.1, Table 5: L2 Yes versus No rows, with the sentence that normalization plus temperature weights examples by hardness. Depth: Skip the temperature-value comparison; the next unit owns tau.
+1. [NT-Xent and cosine similarity](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 2.1, Eq. (1): $`\operatorname{sim}(u,v)`$ as the L2-normalized dot product and $`l_{i,j}`$ with the sum over $`k \ne i`$; Algorithm 1 for the full loop.
+2. [Why normalization matters](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 5.1, Table 5: L2 Yes versus No rows, with the sentence that normalization plus temperature weights examples by hardness. Depth: Skip the temperature-value comparison; the next unit owns $`\tau`$.
 
 **Focus**
 
 - Cosine similarity is a dot product after L2 normalization. Positive scaling of either vector changes nothing.
-- NT-Xent treats the 2N-1 other views as classes. The positive stays in the denominator, so the loss is a valid cross-entropy.
-- With identical embeddings every row is uniform at any tau, so the loss equals log(2N-1): log 3 = 1.0986 for 2N = 4.
+- NT-Xent treats the $`2N-1`$ other views as classes. The positive stays in the denominator, so the loss is a valid cross-entropy.
+- With identical embeddings every row is uniform at any $`\tau`$, so the loss equals $`\log(2N-1)`$: $`\log 3 = 1.0986`$ for $`2N = 4`$.
 - Without normalization, one large-norm embedding dominates every softmax row it appears in.
 
-**Reproduce:** Closed-book, derive l_{i,j} from softmax cross-entropy over pairwise similarities. Then compute the tau = 1 loss by hand for embeddings [1,0], [1,0], [0,1], [0,1] and get 0.5514.
+**Reproduce:** Closed-book, derive $`l_{i,j}`$ from softmax cross-entropy over pairwise similarities. Then compute the $`\tau = 1`$ loss by hand for embeddings $`\left[\begin{smallmatrix}1&0\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}1&0\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}0&1\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}0&1\end{smallmatrix}\right]`$ and get 0.5514.
 
 **Traps**
 
 - Calling cosine similarity translation-invariant. It is invariant to positive scaling, not to shifts; centering the batch changes all angles.
-- Dropping the positive from the denominator. SimCLR sums over k != i, which includes the positive; without it the loss can go negative.
+- Dropping the positive from the denominator. SimCLR sums over $`k \ne i`$, which includes the positive; without it the loss can go negative.
 - Reading NT-Xent as fixed-class classification. The classes are the current batch views, so the same pair gets a different loss in different batches.
 
 **Practice**
 
-- [Deep-ML 384: Contrastive Loss (InfoNCE / SimCLR-style)](https://www.deep-ml.com/problems/384) - Implement contrastive_loss(embeddings, temperature). The visible tests check two identical pairs at tau = 1.0 for 0.5514 and four identical embeddings for 1.0986.. Then add local tests for temperature extremes, a missing positive, duplicate pairs, and normalized versus unnormalized inputs.
+- [Deep-ML 384: Contrastive Loss (InfoNCE / SimCLR-style)](https://www.deep-ml.com/problems/384) - Implement contrastive_loss(embeddings, temperature). The visible tests check two identical pairs at $`\tau = 1.0`$ for 0.5514 and four identical embeddings for 1.0986.. Then add local tests for temperature extremes, a missing positive, duplicate pairs, and normalized versus unnormalized inputs.
 
 **Stop when:** You derive NT-Xent without notes, reproduce 0.5514 by hand, and your implementation passes the Deep-ML tests plus the four local edge tests.
 
 <details>
 <summary>Self-test</summary>
 
-1. Embeddings [1,0], [1,0], [0,1], [0,1] at tau = 1 give loss 0.5514. Show the per-row terms.
-   - For row 0 the positive scores 1 and the two negatives score 0, so l = -1 + log(e + 2) = 0.5514. Rows 1, 2 and 3 match by symmetry, and the mean over all four rows is 0.5514.
-2. All four embeddings are identical. What is the loss at tau = 1?
-   - log 3 = 1.0986. Every row is uniform over its three candidates, so each row contributes log 3.
+1. Embeddings $`\left[\begin{smallmatrix}1&0\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}1&0\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}0&1\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}0&1\end{smallmatrix}\right]`$ at $`\tau = 1`$ give loss 0.5514. Show the per-row terms.
+   - For row 0 the positive scores 1 and the two negatives score 0, so $`l = -1 + \log(e + 2) = 0.5514`$. Rows 1, 2 and 3 match by symmetry, and the mean over all four rows is 0.5514.
+2. All four embeddings are identical. What is the loss at $`\tau = 1`$?
+   - $`\log 3 = 1.0986`$. Every row is uniform over its three candidates, so each row contributes $`\log 3`$.
 3. Why does SimCLR Table 5 favor L2 normalization?
    - Raw dot products mix angle with norm, so loud vectors dominate the softmax. With normalization plus temperature the loss weights examples by relative hardness, and Top-1 rises from 57.2 to 64.4 at the best setting. Without normalization the contrastive accuracy is higher (91.7 versus 87.8) yet the representation is worse, so the pretext score does not measure representation quality.
 4. Is the positive pair part of its own denominator?
-   - Yes. The sum runs over all k != i including the positive index j, which keeps the loss a proper cross-entropy bounded below by 0.
+   - Yes. The sum runs over all $`k \ne i`$ including the positive index $`j`$, which keeps the loss a proper cross-entropy bounded below by 0.
 
 </details>
 
@@ -2142,28 +2142,28 @@ Temperature and batch size set the difficulty of the discrimination game. The po
 
 **You can now**
 
-- Derive the 1/tau sharpening of logits and gradients, and predict saturation at small tau.
+- Derive the $`1/\tau`$ sharpening of logits and gradients, and predict saturation at small $`\tau`$.
 - Explain how batch size sets the negative count and when longer training closes the gap.
 - Build positives by augmentation composition and state the invariance each transform declares.
 
 **Study**
 
-1. [Temperature and normalization](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 5.1, Table 5: tau 0.05, 0.1, 0.5 and 1.0 with L2 normalization; best Top-1 64.4 at tau = 0.1; the hard-negative weighting sentence.
+1. [Temperature and normalization](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 5.1, Table 5: $`\tau`$ 0.05, 0.1, 0.5 and 1.0 with L2 normalization; best Top-1 64.4 at $`\tau = 0.1`$; the hard-negative weighting sentence.
 2. [Batch size and training length](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Sections 2.2 and 5.2 with Figure 9: batch sizes 256 to 8192 with 16,382 negatives per positive at 8192; larger batches help early and the gap shrinks with longer training.
 3. [Augmentation composition](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 3.1 with Figures 5 and 6: single transforms fail while crop plus color distortion wins; color histograms alone suffice as a shortcut.
 
 **Focus**
 
-- Dividing by tau multiplies every logit gap. Small tau sharpens toward argmax; large tau flattens toward uniform.
-- The positive-logit gradient is -(1 - p_pos)/tau. Easy pairs saturate near zero gradient at small tau, so hard negatives drive learning.
-- Negatives per positive equal 2(N-1): 510 at batch 256 and 16,382 at batch 8192. Longer training closes much of the batch gap.
+- Dividing by $`\tau`$ multiplies every logit gap. Small $`\tau`$ sharpens toward $`\operatorname{argmax}`$; large $`\tau`$ flattens toward uniform.
+- The positive-logit gradient is $`-(1 - p_{\text{pos}})/\tau`$. Easy pairs saturate near zero gradient at small $`\tau`$, so hard negatives drive learning.
+- Negatives per positive equal $`2(N-1)`$: 510 at batch 256 and 16,382 at batch 8192. Longer training closes much of the batch gap.
 - Random crop plus color distortion wins because it blocks the color-histogram shortcut, not because either transform is strong alone.
 
-**Reproduce:** Closed-book, write the NT-Xent gradient for the positive similarity. For similarities [2, 1, 0], compute the tau = 1 softmax [0.665, 0.245, 0.090] with gradient -0.335, and the tau = 0.1 gradient of about -0.0005.
+**Reproduce:** Closed-book, write the NT-Xent gradient for the positive similarity. For similarities $`\left[\begin{smallmatrix}2&1&0\end{smallmatrix}\right]`$, compute the $`\tau = 1`$ softmax $`\left[\begin{smallmatrix}0.665&0.245&0.090\end{smallmatrix}\right]`$ with gradient -0.335, and the $`\tau = 0.1`$ gradient of about -0.0005.
 
 **Traps**
 
-- Pushing tau ever lower. Below 0.1 easy pairs saturate and a few hard negatives dominate; Table 5 drops from 64.4 at 0.1 to 59.7 at 0.05.
+- Pushing $`\tau`$ ever lower. Below 0.1 easy pairs saturate and a few hard negatives dominate; Table 5 drops from 64.4 at 0.1 to 59.7 at 0.05.
 - Assuming bigger batches always win. Figure 9 shows large gains at 100 epochs that mostly disappear with longer training on randomly resampled batches.
 - Letting labels choose positives and still calling the method self-supervised. SimCLR positives are two views of one image; once class labels pick positives, it is supervised contrastive learning and must be compared as such.
 
@@ -2171,17 +2171,17 @@ Temperature and batch size set the difficulty of the discrimination game. The po
 
 - [TensorTonic: Implement Symmetric CLIP Contrastive Loss](https://www.tensortonic.com/problems/cs336-l17-symmetric-clip-loss) - Named problem on the free language-modeling-from-scratch plan: implement the two-directional loss over an image-text similarity batch.. Transfer your NT-Xent derivation: CLIP swaps augmentation pairs for image-text pairs and averages both softmax directions.
 
-**Stop when:** You predict tau-sharpening and batch-size effects from the formulas, and your two-directional implementation passes the page tests.
+**Stop when:** You predict $`\tau`$-sharpening and batch-size effects from the formulas, and your two-directional implementation passes the page tests.
 
 <details>
 <summary>Self-test</summary>
 
-1. Similarities [2, 1, 0] at tau = 1: what is the positive probability?
-   - e^2/(e^2 + e + 1) = 0.665. The remaining mass splits 0.245 and 0.090.
-2. What happens to easy-pair gradients as tau goes to 0?
-   - The softmax saturates to one-hot, so (1 - p)/tau goes to 0 for decided pairs and learning concentrates on the remaining hard pairs; too small stalls training.
+1. Similarities $`\left[\begin{smallmatrix}2&1&0\end{smallmatrix}\right]`$ at $`\tau = 1`$: what is the positive probability?
+   - $`e^2/(e^2 + e + 1) = 0.665`$. The remaining mass splits 0.245 and 0.090.
+2. What happens to easy-pair gradients as $`\tau`$ goes to 0?
+   - The softmax saturates to one-hot, so $`(1 - p)/\tau`$ goes to 0 for decided pairs and learning concentrates on the remaining hard pairs; too small stalls training.
 3. Batch 8192 gives how many negatives per positive, and why?
-   - 16,382. The batch holds 2N = 16,384 views; excluding the anchor and its positive leaves 2N - 2 negatives.
+   - 16,382. The batch holds $`2N = 16{,}384`$ views; excluding the anchor and its positive leaves $`2N - 2`$ negatives.
 4. Positive-identification accuracy is near perfect but linear evaluation is poor. What went wrong?
    - The task is solvable by shortcut, such as color histograms under crop-only augmentation. Composition makes pairing harder and representations better.
 
@@ -2204,17 +2204,17 @@ Without negatives the objective accepts a constant answer; with lazy positives i
 **Study**
 
 1. [Self-supervision and augmentation](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Sections 9.3.7-9.3.8 (pp. 152-153): contrastive pairs of transformed images; augmentation as label-preserving expansion; Figure 9.12.
-2. [Negative rule and augmentation shortcuts](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 2.1: all other 2(N-1) views count as negatives, including same-class views; Section 3.1 with Figure 6: color histograms alone suffice to distinguish images.
+2. [Negative rule and augmentation shortcuts](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 2.1: all other $`2(N-1)`$ views count as negatives, including same-class views; Section 3.1 with Figure 6: color histograms alone suffice to distinguish images.
 3. [Collapse without stop-gradient](https://ar5iv.labs.arxiv.org/html/2011.10566) (SimSiam - Exploring Simple Siamese Representation Learning) - Figure 2: 67.7 percent with stop-gradient versus 0.1 percent without, plus the per-channel spread plot; Table 1 row (a): no predictor also gives 0.1 percent.
 
 **Focus**
 
 - An augmentation declares an invariance. Crop-only declares color histograms fair game, and the encoder takes that shortcut.
 - Every batch negative is repelled, including same-class images. At batch 8192 with 1000 balanced classes, each anchor repels about 16 same-class views.
-- Full collapse keeps per-dimension spread at zero and rank at one while the loss sits at log(2N-1). Partial collapse needs the same checks, since its loss still falls.
+- Full collapse keeps per-dimension spread at zero and rank at one while the loss sits at $`\log(2N-1)`$. Partial collapse needs the same checks, since its loss still falls.
 - SimSiam avoids collapse on positives alone with stop-gradient and a predictor. The constant solution still minimizes its loss; the paper shows that removing either piece collapses to 0.1 percent and offers an EM-style hypothesis, not a proof.
 
-**Reproduce:** From a blank file, write the three-line collapse check (mean per-dimension std of the L2-normalized embeddings, mean norm, numerical rank with a stated tolerance) and run it on constant versus Gaussian 128-d embeddings: expect spread 0.0 versus about 0.088, which is 1/sqrt(128), and rank 1 versus 128.
+**Reproduce:** From a blank file, write the three-line collapse check (mean per-dimension std of the L2-normalized embeddings, mean norm, numerical rank with a stated tolerance) and run it on constant versus Gaussian 128-d embeddings: expect spread 0.0 versus about 0.088, which is $`1/\sqrt{128}`$, and rank 1 versus 128.
 
 **Traps**
 
@@ -2224,7 +2224,7 @@ Without negatives the objective accepts a constant answer; with lazy positives i
 
 **Practice**
 
-- [CS231n Assignment 3, Q2: augmentation ablation from scratch](https://cs231n.github.io/assignments2025/assignment3/) - Self_Supervised_Learning.ipynb: Data Augmentation (compute_train_transform, checked with rel_error), Train the SimCLR model, and the Finetune a Linear Layer comparison on the 10 percent split. The training cell loads pretrained weights and runs one epoch, so the ablation needs its own runs: skip the load_state_dict line, train a few epochs with and without color jitter at the notebook tau of 0.5, then probe both. Small runs may show only a small gap; report what you measure, and run your collapse check on both embedding sets.
+- [CS231n Assignment 3, Q2: augmentation ablation from scratch](https://cs231n.github.io/assignments2025/assignment3/) - Self_Supervised_Learning.ipynb: Data Augmentation (compute_train_transform, checked with rel_error), Train the SimCLR model, and the Finetune a Linear Layer comparison on the 10 percent split. The training cell loads pretrained weights and runs one epoch, so the ablation needs its own runs: skip the load_state_dict line, train a few epochs with and without color jitter at the notebook $`\tau`$ of 0.5, then probe both. Small runs may show only a small gap; report what you measure, and run your collapse check on both embedding sets.
 
 **Stop when:** Your collapse check reports spread and numerical rank for constant, Gaussian and learned embeddings, and your ablation reports probe accuracy for both runs against the frozen random-encoder baseline.
 
@@ -2260,21 +2260,21 @@ A probe is the representation's external exam. A leaked pair turns the exam into
 
 1. [Linear evaluation protocol](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 2.3: linear classifier on the frozen base network with test accuracy as the representation-quality proxy.
 2. [Transfer learning and fine-tuning](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Section 9.3.6 (pp. 151-152) with Figure 9.12a (p. 153): pretrain on a secondary task, replace the last layers, then train only the new layers or fine-tune all.
-3. [Probe the encoder, not the projector](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 4.2 with Table 3: h beats z by over 10 points; rotation prediction 67.6 percent from h versus 25.6 percent from g(h).
+3. [Probe the encoder, not the projector](https://ar5iv.labs.arxiv.org/html/2002.05709) (SimCLR - A Simple Framework for Contrastive Learning of Visual Representations) - Section 4.2 with Table 3: $`h`$ beats $`z`$ by over 10 points; rotation prediction 67.6 percent from $`h`$ versus 25.6 percent from $`g(h)`$.
 4. [Frozen linear probe on CIFAR](https://cs231n.github.io/assignments2025/assignment3/) (Stanford CS231n - transformer and self-supervised assignment slice) - Self_Supervised_Learning.ipynb: Classifier with frozen Model().f, Finetune a Linear Layer for Classification, Baseline Without Self-Supervised Learning versus With Self-Supervised Learning, Plot your Comparison.
 
 **Focus**
 
 - Freeze the encoder (requires_grad False) and train only the head. Anything else measures supervised relearning.
-- Probe h, the pre-projection features. In SimCLR Table 3, where rotation was added to the augmentations, the projector output z lost the rotation information that h kept.
+- Probe $`h`$, the pre-projection features. In SimCLR Table 3, where rotation was added to the augmentations, the projector output $`z`$ lost the rotation information that $`h`$ kept.
 - Match budgets exactly: same data fraction, epochs and head settings for baseline and pretrained runs.
 - Split by source identity before augmenting. Two views of one image on opposite sides of the split leak the answer.
 
-**Reproduce:** Closed-book, write the frozen-probe loop: load the encoder, freeze all of f, attach one linear layer, and train the head on the fixed 10 percent split. Then state what turns it into fine-tuning: unfreeze f and give its parameters to the optimizer, usually at a lower learning rate.
+**Reproduce:** Closed-book, write the frozen-probe loop: load the encoder, freeze all of $`f`$, attach one linear layer, and train the head on the fixed 10 percent split. Then state what turns it into fine-tuning: unfreeze $`f`$ and give its parameters to the optimizer, usually at a lower learning rate.
 
 **Traps**
 
-- Probing z instead of h. In SimCLR Table 3 an MLP on h predicts rotation at 67.6 percent and one on z at 25.6, near the 25 percent chance level, because rotation was one of the augmentations.
+- Probing $`z`$ instead of $`h`$. In SimCLR Table 3 an MLP on $`h`$ predicts rotation at 67.6 percent and one on $`z`$ at 25.6, near the 25 percent chance level, because rotation was one of the augmentations.
 - Celebrating a probe win with mismatched budgets. A longer-trained or larger-split baseline can erase the gap.
 - Splitting augmented views independently. Near-duplicates across the split inflate retrieval and probe scores without teaching anything.
 
@@ -2289,8 +2289,8 @@ A probe is the representation's external exam. A leaked pair turns the exam into
 
 1. Why does the notebook set requires_grad False on model.f?
    - To freeze the encoder so test accuracy measures representation quality, following the SimCLR Section 2.3 protocol.
-2. Rotation prediction: h scores 67.6 percent, g(h) 25.6 percent. What does that tell you about probing?
-   - Probe h. In that run rotation was one of the augmentations, so the contrastive loss trained z to ignore it; probing z understates what the encoder keeps.
+2. Rotation prediction: $`h`$ scores 67.6 percent, $`g(h)`$ 25.6 percent. What does that tell you about probing?
+   - Probe $`h`$. In that run rotation was one of the augmentations, so the contrastive loss trained $`z`$ to ignore it; probing $`z`$ understates what the encoder keeps.
 3. Your retrieval score rises after adding test pairs mined from the training distribution. Leak or gain?
    - Suspect near-duplicate leakage first. Re-split by pair identity, re-run, and only then claim a gain.
 4. Your probe reaches a reference accuracy quoted in a notebook comment, but your baseline trained for fewer epochs. What can you claim?
@@ -2314,18 +2314,18 @@ Patches turn an image into a token sequence. The grid position that convolution 
 
 **Study**
 
-1. [Patch embedding as strided convolution](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html) (D2L - Vision Transformer) - Model plus Patch Embedding sections: m = hw/p^2 patches flattened to cp^2; single convolution with kernel size and stride set to patch size; worked example img_size 96 with patch 16 gives 36 patches of shape (4, 36, 512).
+1. [Patch embedding as strided convolution](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html) (D2L - Vision Transformer) - Model plus Patch Embedding sections: $`m = hw/p^2`$ patches flattened to $`cp^2`$; single convolution with kernel size and stride set to patch size; worked example img_size 96 with patch 16 gives 36 patches of shape (4, 36, 512).
 2. [Class token, positions and pre-norm blocks](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html) (D2L - Vision Transformer) - Putting It All Together and Vision Transformer Encoder: cls_token plus learnable pos_embedding over num_patches + 1 positions; ViTBlock pre-normalization; head reads X[:, 0].
-3. [Vision transformers and scale](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Sections 12.10.2-12.10.3 (pp. 229-232): 16x16 patches with learned linear map and learned 1D positional encodings; Figure 12.17; SWin multi-scale windows in Figure 12.18.
+3. [Vision transformers and scale](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Sections 12.10.2-12.10.3 (pp. 229-232): $`16 \times 16`$ patches with learned linear map and learned 1D positional encodings; Figure 12.17; SWin multi-scale windows in Figure 12.18.
 
 **Focus**
 
-- Patchify is a disjoint row-major grid: (H/p) by (W/p) patches, each flattened to C*p^2 values (768 for 3-channel 16px patches).
+- Patchify is a disjoint row-major grid: $`(H/p)`$ by $`(W/p)`$ patches, each flattened to $`Cp^2`$ values (768 for 3-channel 16px patches).
 - One convolution with kernel equal to stride equal to patch size does extraction plus projection; D2L output keeps one vector per patch.
 - Self-attention is permutation-equivariant, so order must be injected. D2L learns pos_embedding from random init; the UDL ViT learns 1D encodings too.
 - Halving patch size quadruples tokens, multiplies attention-score work by 16, and multiplies per-token projection and MLP work by 4.
 
-**Reproduce:** From a blank file, patchify a 2x2 single-channel image with patch size 1 and show row-major order [0, 1, 2, 3]. Then derive the (4, 36, 512) output shape from img_size 96 and patch 16.
+**Reproduce:** From a blank file, patchify a $`2 \times 2`$ single-channel image with patch size 1 and show row-major order $`\left[\begin{smallmatrix}0&1&2&3\end{smallmatrix}\right]`$. Then derive the (4, 36, 512) output shape from img_size 96 and patch 16.
 
 **Traps**
 
@@ -2343,7 +2343,7 @@ Patches turn an image into a token sequence. The grid position that convolution 
 <details>
 <summary>Self-test</summary>
 
-1. 224x224 image, patch 16: patches and tokens?
+1. $`224 \times 224`$ image, patch 16: patches and tokens?
    - 196 patches, 197 tokens with cls.
 2. Why does a ViT need positional embeddings when a CNN needs none?
    - Attention is permutation-equivariant (UDL Problem 12.3), so it cannot see order; convolution bakes locality and translation structure into the operation.
@@ -2364,25 +2364,25 @@ Paired data aligns two geometries into one shared space. That space supports ret
 
 **You can now**
 
-- Explain the symmetric image-text objective over the N x N similarity matrix.
+- Explain the symmetric image-text objective over the $`N \times N`$ similarity matrix.
 - Implement the two-directional loss with learned temperature and batched negatives.
 - Run zero-shot retrieval and state the slice limits of the alignment.
 
 **Study**
 
-1. [Symmetric contrastive objective](https://ar5iv.labs.arxiv.org/html/2103.00020) (CLIP - Learning Transferable Visual Models From Natural Language Supervision) - Section 2.3: N x N possible pairings with maximization of the N real-pair similarities; symmetric cross-entropy; temperature tau as a learned log-parameterized scalar.
-2. [Scale and temperature limits](https://ar5iv.labs.arxiv.org/html/2103.00020) (CLIP - Learning Transferable Visual Models From Natural Language Supervision) - Section 2.5: minibatch 32,768; tau initialized to 0.07 and clipped to scale logits by at most 100.
+1. [Symmetric contrastive objective](https://ar5iv.labs.arxiv.org/html/2103.00020) (CLIP - Learning Transferable Visual Models From Natural Language Supervision) - Section 2.3: $`N \times N`$ possible pairings with maximization of the $`N`$ real-pair similarities; symmetric cross-entropy; temperature $`\tau`$ as a learned log-parameterized scalar.
+2. [Scale and temperature limits](https://ar5iv.labs.arxiv.org/html/2103.00020) (CLIP - Learning Transferable Visual Models From Natural Language Supervision) - Section 2.5: minibatch 32,768; $`\tau`$ initialized to 0.07 and clipped to scale logits by at most 100.
 3. [Zero-shot transfer and prompts](https://ar5iv.labs.arxiv.org/html/2103.00020) (CLIP - Learning Transferable Visual Models From Natural Language Supervision) - Sections 3.1.2 and 3.1.4: zero-shot as text-generated classifier weights; A photo of a {label} gains 1.3 percent, 80-prompt ensembling adds 3.5 percent.
-4. [Projector heads and CLIP practice](https://cs231n.github.io/assignments2025/assignment3/) (Stanford CS231n - transformer and self-supervised assignment slice) - cs231n/simclr/model.py class Model: ResNet-50 backbone f giving the 2048-d feature h, MLP head g giving z, both returned L2-normalized; CLIP_DINO.ipynb: get_similarity_no_loop, clip_zero_shot_classifier, CLIPImageRetriever.retrieve.
+4. [Projector heads and CLIP practice](https://cs231n.github.io/assignments2025/assignment3/) (Stanford CS231n - transformer and self-supervised assignment slice) - cs231n/simclr/model.py class Model: ResNet-50 backbone $`f`$ giving the 2048-d feature $`h`$, MLP head $`g`$ giving $`z`$, both returned L2-normalized; CLIP_DINO.ipynb: get_similarity_no_loop, clip_zero_shot_classifier, CLIPImageRetriever.retrieve.
 
 **Focus**
 
-- The loss makes 2N decisions per batch: each image picks its text and each text picks its image from N options.
+- The loss makes $`2N`$ decisions per batch: each image picks its text and each text picks its image from $`N`$ options.
 - Temperature is learned, not tuned: log-parameterized, started at 0.07, capped at 100x for stability.
 - Each pair trains against 32,767 in-batch negatives, so every step is a 32,768-way proxy classification.
 - Zero-shot builds the classifier from text at test time. Prompts are model inputs: the default template gains 1.3 percent and 80-prompt ensembling adds 3.5 percent on ImageNet.
 
-**Reproduce:** Closed-book, compute the symmetric tau = 1 loss for similarity matrix [[3, 1], [1, 2]]: row losses 0.1269 and 0.3133 with mean 0.2201 in both directions.
+**Reproduce:** Closed-book, compute the symmetric $`\tau = 1`$ loss for similarity matrix $`\left[\begin{smallmatrix}3&1\\1&2\end{smallmatrix}\right]`$: row losses 0.1269 and 0.3133 with mean 0.2201 in both directions.
 
 **Traps**
 
@@ -2392,16 +2392,16 @@ Paired data aligns two geometries into one shared space. That space supports ret
 
 **Practice**
 
-- [CS231n Assignment 3, Q4: CLIP zero-shot and retrieval](https://cs231n.github.io/assignments2025/assignment3/) - CLIP_DINO.ipynb: get_similarity_no_loop for the NxM cosine matrix, clip_zero_shot_classifier for prompt-based labels, CLIPImageRetriever.retrieve with top-k.. Precompute image features once in __init__ instead of per query, as the starter-code comment directs.
+- [CS231n Assignment 3, Q4: CLIP zero-shot and retrieval](https://cs231n.github.io/assignments2025/assignment3/) - CLIP_DINO.ipynb: get_similarity_no_loop for the $`N \times M`$ cosine matrix, clip_zero_shot_classifier for prompt-based labels, CLIPImageRetriever.retrieve with top-$`k`$.. Precompute image features once in __init__ instead of per query, as the starter-code comment directs.
 
 **Stop when:** You reproduce 0.2201 by hand, your Q4 functions label and retrieve COCO images, and you can state one slice where you would not trust the alignment.
 
 <details>
 <summary>Self-test</summary>
 
-1. Batch of N pairs: how many scores and how many decisions?
-   - N^2 scores; 2N decisions, N per direction.
-2. Why does CLIP learn tau, and with what guardrails?
+1. Batch of $`N`$ pairs: how many scores and how many decisions?
+   - $`N^2`$ scores; $`2N`$ decisions, $`N`$ per direction.
+2. Why does CLIP learn $`\tau`$, and with what guardrails?
    - It sets the logit range for the softmax; learning avoids tuning it. Init 0.07, clipped at 100x scaling to prevent instability.
 3. What is a zero-shot classifier in CLIP terms?
    - Cosine softmax with L2-normalized inputs, text-generated weights, no bias and temperature scaling; the text encoder generates the classifier.
@@ -2426,14 +2426,14 @@ Graphs make neighborhoods explicit. Each layer trades local identity for wider c
 
 **Study**
 
-1. [Graphs and adjacency powers](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Sections 13.1-13.2 (pp. 241-244): node and edge matrices; entry (m, n) of A^L counts length-L walks; Figures 13.3-13.4.
+1. [Graphs and adjacency powers](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Sections 13.1-13.2 (pp. 241-244): node and edge matrices; entry $`(m, n)`$ of $`A^L`$ counts length-$`L`$ walks; Figures 13.3-13.4.
 2. [Tasks and equivariant layers](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Sections 13.3-13.4.1 (pp. 245-250): graph and node tasks; layers must be permutation-equivariant; Figure 13.7 aggregate-then-update.
 3. [Why deep GNNs stall](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - representation foundations) - Notes to Chapter 13, Oversmoothing and suspended animation (pp. 265-266): two-layer norm, random-walk stationary washout, over-squashing, residuals for depth.
-4. [Graph encoding notebook](https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap13/13_1_Graph_Representation.ipynb) (Understanding Deep Learning - representation foundations) - Notebook 13.1, Graph Representation: adjacency and embedding encodings. Depth: Open only if the A^L walk counting in Section 13.2 is unclear.
+4. [Graph encoding notebook](https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap13/13_1_Graph_Representation.ipynb) (Understanding Deep Learning - representation foundations) - Notebook 13.1, Graph Representation: adjacency and embedding encodings. Depth: Open only if the $`A^L`$ walk counting in Section 13.2 is unclear.
 
 **Focus**
 
-- A^L counts walks, not paths: revisits allowed. The diagonal of A^2 holds node degrees.
+- $`A^L`$ counts walks, not paths: revisits allowed. The diagonal of $`A^2`$ holds node degrees.
 - Correct layers are permutation-equivariant: permuting node order permutes embeddings identically. Readouts for graph labels must be invariant.
 - Repeated averaging converges toward the random-walk stationary distribution, so deep stacks wash out local signal.
 - Two layers are the empirical norm: the original GCN and GraphSAGE both use two. Depth needs residual connections or similar fixes, not more of the same layer.
@@ -2442,7 +2442,7 @@ Graphs make neighborhoods explicit. Each layer trades local identity for wider c
 
 **Traps**
 
-- Counting paths with A^L. Walks may revisit nodes; the book states this explicitly.
+- Counting paths with $`A^L`$. Walks may revisit nodes; the book states this explicitly.
 - Expecting depth to help by default. Mean aggregation converges across nodes, so a 10-layer stack can underperform a 2-layer one.
 - Indexing nodes as an ordered input. If shuffling IDs changes predictions beyond permutation, the layer is wrong, not the data.
 
@@ -2456,7 +2456,7 @@ Graphs make neighborhoods explicit. Each layer trades local identity for wider c
 <summary>Self-test</summary>
 
 1. Path 1-2-3: length-2 walks from 1 to 3, and from 2 to 2?
-   - One (1-2-3) and two (2-1-2, 2-3-2), matching the A^2 entries 1 and 2.
+   - One (1-2-3) and two (2-1-2, 2-3-2), matching the $`A^2`$ entries 1 and 2.
 2. What must a permutation of node order do to layer outputs?
    - Permute them identically (equivariance); a graph-level readout must stay unchanged (invariance).
 3. All node embeddings look identical after six layers. Diagnose and name the mechanism.
@@ -2470,9 +2470,9 @@ Graphs make neighborhoods explicit. Each layer trades local identity for wider c
 
 **About 10 to 14 hours.** Train a small SimCLR-style encoder on a CIFAR-10 subset, evaluate it with a frozen linear probe and held-out retrieval against a random-encoder baseline, and show that your split audit catches a pair leak you planted yourself.
 
-1. Implement NT-Xent from your derivation. Pass Deep-ML 384 and the CS231n Assignment 3 simclr_loss_naive and simclr_loss_vectorized checks, and add tests for identical embeddings (log(2N-1)), temperature extremes and unnormalized inputs.
+1. Implement NT-Xent from your derivation. Pass Deep-ML 384 and the CS231n Assignment 3 simclr_loss_naive and simclr_loss_vectorized checks, and add tests for identical embeddings ($`\log(2N-1)`$), temperature extremes and unnormalized inputs.
 2. Train a small encoder with a projector on a fixed CIFAR-10 subset at a stated temperature and batch size. Log loss, positive-pair accuracy and the collapse check (per-dimension spread of normalized embeddings and numerical rank) every epoch.
-3. Evaluate with a frozen linear probe on h and on z, and with nearest-neighbour retrieval on a held-out split, against a frozen random-encoder baseline with matched budgets, over two seeds.
+3. Evaluate with a frozen linear probe on $`h`$ and on $`z`$, and with nearest-neighbour retrieval on a held-out split, against a frozen random-encoder baseline with matched budgets, over two seeds.
 4. Split by source image before augmenting, and write a split audit that combines exact hashes with a near-duplicate check, such as cosine similarity of downsampled pixels above a stated threshold.
 5. Plant a leak: copy a few hundred test images, lightly augmented, into the training set. Show what the audit flags and misses, and measure how much the leak inflates retrieval and probe scores.
 6. Run one ablation, such as dropping color jitter, and report probe accuracy and the collapse check for both runs.
@@ -2493,7 +2493,7 @@ Graphs make neighborhoods explicit. Each layer trades local identity for wider c
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Objective | NT-Xent passes Deep-ML 384, the CS231n loss checks and your edge tests. | Your tests also cover duplicate images in one batch and show how they change the loss. |
-| Evaluation protocol | The frozen probe and retrieval beat the random-encoder baseline at matched budgets. | The result holds on both seeds, and the gap between probing h and z is reported. |
+| Evaluation protocol | The frozen probe and retrieval beat the random-encoder baseline at matched budgets. | The result holds on both seeds, and the gap between probing $`h`$ and $`z`$ is reported. |
 | Leak detection | The audit flags the planted near-duplicates. | You report the audit's misses and false alarms on the planted set, and the score inflation the leak caused. |
 | Collapse | Spread and rank are logged for every run. | A deliberately collapsed run, such as a constant projector output, trips the check. |
 | Limits | The note names what the compact run cannot show. | Each limit names the measurement that would settle it. |
@@ -2555,13 +2555,13 @@ Derive a contrastive objective, build a compact representation learner, detect a
 
 Topics: Autoencoder reconstruction objectives; Latent variables, priors and approximate posteriors
 
-Every later unit reuses the same split: a prior over z, a decoder likelihood, and an approximate posterior. If this split is vague, the ELBO looks like bookkeeping instead of a bound.
+Every later unit reuses the same split: a prior over $`z`$, a decoder likelihood, and an approximate posterior. If this split is vague, the ELBO looks like bookkeeping instead of a bound.
 
 **You can now**
 
 - Derive a mixture-of-Gaussians marginal and state the prior, likelihood and marginal of the nonlinear latent variable model.
 - Explain why the VAE is a training architecture while the learned model is the nonlinear latent variable model.
-- Contrast a plain autoencoder bottleneck with a probabilistic latent model that defines Pr(x).
+- Contrast a plain autoencoder bottleneck with a probabilistic latent model that defines $`\Pr(x)`$.
 
 **Study**
 
@@ -2570,35 +2570,35 @@ Every later unit reuses the same split: a prior over z, a decoder likelihood, an
 
 **Focus**
 
-- The marginal Pr(x) = integral Pr(x|z)Pr(z) dz sums over every latent cause. The mixture example (Eq 17.4) is the discrete case; the nonlinear model (Eq 17.7) replaces the table with a network f[z,phi].
-- The prior is fixed to N(0,I) (Eq 17.5) while the likelihood N(f[z,phi], sigma squared I) carries the parameters (Eq 17.6). Generation samples z first and never touches the encoder.
-- The chapter introduction warns that calling the VAE the model of Pr(x) misleads. The final model is a nonlinear latent variable model with no variational and no autoencoder parts.
+- The marginal $`\Pr(x) = \int \Pr(x \mid z) \Pr(z) \, dz`$ sums over every latent cause. The mixture example (Eq 17.4) is the discrete case; the nonlinear model (Eq 17.7) replaces the table with a network $`f[z, \phi]`$.
+- The prior is fixed to $`\mathcal{N}(0, I)`$ (Eq 17.5) while the likelihood $`\mathcal{N}(f[z, \phi], \sigma^2 I)`$ carries the parameters (Eq 17.6). Generation samples $`z`$ first and never touches the encoder.
+- The chapter introduction warns that calling the VAE the model of $`\Pr(x)`$ misleads. The final model is a nonlinear latent variable model with no variational and no autoencoder parts.
 - A plain autoencoder minimizes reconstruction through a bottleneck and defines no distribution. The probabilistic model adds prior, likelihood and posterior, which is what makes a likelihood bound possible.
 
 **Reproduce:** Closed-book, write Equations 17.1, 17.2 and 17.7 from memory, then state the prior, likelihood and generation path for a 2D latent and 1D observation.
 
 **Traps**
 
-- Reading the encoder as part of the generative model. Generation draws z from the prior and decodes; the encoder only proposes q during training.
-- Treating a low reconstruction error as a likelihood claim. Autoencoders have no Pr(x), so their error cannot be compared with ELBO or flow likelihood numbers.
+- Reading the encoder as part of the generative model. Generation draws $`z`$ from the prior and decodes; the encoder only proposes $`q`$ during training.
+- Treating a low reconstruction error as a likelihood claim. Autoencoders have no $`\Pr(x)`$, so their error cannot be compared with ELBO or flow likelihood numbers.
 
 **Practice**
 
 - [UDL Problems 17.1 to 17.3: MoG parameters, log concavity and Jensen](https://udlbook.github.io/udlbook/) - Problems 17.1 to 17.3 (p. 348): count mixture parameters with ranges, prove log is concave, prove the second-moment bound. Do these on paper before the ELBO unit. Problem 17.2 is the concave-log fact that Jensen needs in Section 17.3.
 
-**Stop when:** You can write the MoG marginal and Eqs 17.5 to 17.7 without notes and explain which parts survive into the final Pr(x).
+**Stop when:** You can write the MoG marginal and Eqs 17.5 to 17.7 without notes and explain which parts survive into the final $`\Pr(x)`$.
 
 <details>
 <summary>Self-test</summary>
 
 1. A 1D mixture of Gaussians has 5 components. How many raw parameters does it need, and how many are free?
    - 15 raw numbers: 5 means, 5 variances and 5 weights. Weights lie in [0,1] and sum to 1, which removes one degree of freedom, so 14 are free. Means are real and variances are positive.
-2. Why does the book say the VAE is an architecture, not the model of Pr(x)?
-   - The learned model is the nonlinear latent variable model: prior N(0,I) plus decoder likelihood. The encoder and the sampling step only help optimize the bound and are absent from the final Pr(x).
+2. Why does the book say the VAE is an architecture, not the model of $`\Pr(x)`$?
+   - The learned model is the nonlinear latent variable model: prior $`\mathcal{N}(0, I)`$ plus decoder likelihood. The encoder and the sampling step only help optimize the bound and are absent from the final $`\Pr(x)`$.
 3. How does a plain autoencoder differ from the VAE bottleneck?
-   - An autoencoder learns a low-dimensional code that reconstructs well and defines no distribution. A VAE learns a prior, a likelihood and an approximate posterior, so it defines Pr(x) and a lower bound on its log likelihood.
+   - An autoencoder learns a low-dimensional code that reconstructs well and defines no distribution. A VAE learns a prior, a likelihood and an approximate posterior, so it defines $`\Pr(x)`$ and a lower bound on its $`\log`$ likelihood.
 4. How do you generate from the Section 17.2 model?
-   - Draw z from N(0,I), compute f[z,phi], then draw x from N(f[z,phi], sigma squared I). The encoder plays no role.
+   - Draw $`z`$ from $`\mathcal{N}(0, I)`$, compute $`f[z, \phi]`$, then draw $`x`$ from $`\mathcal{N}(f[z, \phi], \sigma^2 I)`$. The encoder plays no role.
 
 </details>
 
@@ -2623,18 +2623,18 @@ The ELBO is the only training signal in the required VAE build. A sign error in 
 
 **Focus**
 
-- Jensen turns log E into E log and creates the bound (Eqs 17.14 to 17.16). Equation 17.17 shows the gap to the true log likelihood is exactly DKL[q||posterior], so the bound is tight when q equals the posterior.
-- Equation 17.18 rewrites the same bound as expected log likelihood minus DKL[q||prior]. Section 17.6 conditions q on x to get the VAE form (Eq 17.21) with encoder networks for mean and covariance.
+- Jensen turns $`\log \mathbb{E}`$ into $`\mathbb{E} \log`$ and creates the bound (Eqs 17.14 to 17.16). Equation 17.17 shows the gap to the true log likelihood is exactly $`D_{\mathrm{KL}}[q \,\|\, \text{posterior}]`$, so the bound is tight when $`q`$ equals the posterior.
+- Equation 17.18 rewrites the same bound as expected log likelihood minus $`D_{\mathrm{KL}}[q \,\|\, \text{prior}]`$. Section 17.6 conditions $`q`$ on $`x`$ to get the VAE form (Eq 17.21) with encoder networks for mean and covariance.
 - The one-sample estimate (Eq 17.23) pairs one decoded log likelihood with the closed-form Gaussian KL (Eq 17.24). Keep the two terms separate in code so collapse is visible.
-- Reparameterization (Eq 17.25) moves randomness into eps from N(0,I). Backprop passes through mu and Sigma and never down the stochastic branch.
+- Reparameterization (Eq 17.25) moves randomness into $`\epsilon`$ from $`\mathcal{N}(0, I)`$. Backprop passes through $`\mu`$ and $`\Sigma`$ and never down the stochastic branch.
 
 **Reproduce:** Closed-book, derive Equation 17.18 from Equation 17.16 in four lines, then compute the Deep-ML 393 check (0.5 reconstruction, 2.5 KL, 3.0 total) with NumPy.
 
 **Traps**
 
-- Coding std as exp(logvar) instead of exp(0.5 logvar). The samples then have variance sigma to the fourth power while the KL in Eq 17.24 assumes sigma squared.
+- Coding std as exp(logvar) instead of exp(0.5 logvar). The samples then have variance $`\sigma^4`$ while the KL in Eq 17.24 assumes $`\sigma^2`$.
 - Averaging the KL over the wrong axis. The closed form sums over latent dimensions first and then averages over the batch; swapping the two changes the loss scale with latent size.
-- Comparing the Equation 17.30 objective with an ordinary ELBO. With beta above 1 it is still a lower bound on log Pr(x), but a looser one, so its value is not comparable with the beta = 1 bound.
+- Comparing the Equation 17.30 objective with an ordinary ELBO. With $`\beta`$ above 1 it is still a lower bound on $`\log \Pr(x)`$, but a looser one, so its value is not comparable with the $`\beta = 1`$ bound.
 
 **Practice**
 
@@ -2646,13 +2646,13 @@ The ELBO is the only training signal in the required VAE build. A sign error in 
 <summary>Self-test</summary>
 
 1. State the ELBO in reconstruction-minus-KL form and say when it is tight.
-   - ELBO = E_q[log Pr(x|z,phi)] - DKL[q||prior] (Eqs 17.18 and 17.21). It equals log Pr(x|phi) minus DKL[q||posterior] (Eq 17.17), so it is tight exactly when q equals the true posterior.
+   - $`\mathrm{ELBO} = \mathbb{E}_q[\log \Pr(x \mid z, \phi)] - D_{\mathrm{KL}}[q \,\|\, \text{prior}]`$ (Eqs 17.18 and 17.21). It equals $`\log \Pr(x \mid \phi)`$ minus $`D_{\mathrm{KL}}[q \,\|\, \text{posterior}]`$ (Eq 17.17), so it is tight exactly when $`q`$ equals the true posterior.
 2. Write the reparameterized sample and explain why gradients flow.
-   - z* = mu + Sigma^{1/2} eps with eps from N(0,I) (Eq 17.25). Randomness enters through eps, which has no parameters, so gradients flow through mu and Sigma and skip the stochastic branch.
+   - $`z^* = \mu + \Sigma^{1/2} \epsilon`$ with $`\epsilon`$ from $`\mathcal{N}(0, I)`$ (Eq 17.25). Randomness enters through $`\epsilon`$, which has no parameters, so gradients flow through $`\mu`$ and $`\Sigma`$ and skip the stochastic branch.
 3. For x=[[1,0]], x_hat=[[0.5,0.5]], mu=[[1,2]] and log_var=[[0,0]], what does Deep-ML 393 return?
    - (3.0, 0.5, 2.5). Reconstruction 0.5 is the summed squared error 0.25 + 0.25. KL 2.5 is 0.5 times (1 + 4). Total is their sum.
 4. Why does the VAE use one sample per data point in Equation 17.23?
-   - The expectation over q is estimated by Monte Carlo with N=1 while the KL stays closed-form. One sample per point is unbiased and keeps the per-step cost low; more samples only reduce estimator variance.
+   - The expectation over $`q`$ is estimated by Monte Carlo with $`N = 1`$ while the KL stays closed-form. One sample per point is unbiased and keeps the per-step cost low; more samples only reduce estimator variance.
 
 </details>
 
@@ -2673,21 +2673,21 @@ Collapse is the characteristic VAE failure: the loss looks fine while the latent
 **Study**
 
 1. [Posterior collapse and the information preference note](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Notes: the Posterior collapse paragraph and the Chen et al. paragraph (p. 346).
-2. [Disentanglement and the beta-weighted loss](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Section 17.8.4 with Equation 17.30 (pp. 342 to 343). Depth: Equation 17.30 with beta above 1 is still a lower bound, only a looser one. The Notes sentence about gradually increasing the KL term describes annealing: the KL weight starts near 0 and rises to 1.
+2. [Disentanglement and the $`\beta`$-weighted loss](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Section 17.8.4 with Equation 17.30 (pp. 342 to 343). Depth: Equation 17.30 with $`\beta`$ above 1 is still a lower bound, only a looser one. The Notes sentence about gradually increasing the KL term describes annealing: the KL weight starts near 0 and rises to 1.
 
 **Focus**
 
-- Collapse means the encoder outputs the prior for every input: per-dimension KL sits near zero and resampling z leaves reconstructions and samples unchanged.
-- Chen et al. observed the mechanism: with a PixelCNN-class likelihood the decoder models x alone, so the ELBO keeps reconstruction while the KL term pays for nothing and is driven to zero.
-- Beta above 1 in Eq 17.30 pushes q harder toward the prior and raises collapse risk. Annealing starts the KL weight at 0 and raises it to 1 so the code is used before it is taxed.
+- Collapse means the encoder outputs the prior for every input: per-dimension KL sits near zero and resampling $`z`$ leaves reconstructions and samples unchanged.
+- Chen et al. observed the mechanism: with a PixelCNN-class likelihood the decoder models $`x`$ alone, so the ELBO keeps reconstruction while the KL term pays for nothing and is driven to zero.
+- $`\beta`$ above 1 in Eq 17.30 pushes $`q`$ harder toward the prior and raises collapse risk. Annealing starts the KL weight at 0 and raises it to 1 so the code is used before it is taxed.
 - The book names VQ-VAE style discrete latents and total-correlation penalties as further directions. Treat them as pointers, not as claims you verified here.
 
-**Reproduce:** Train a tiny VAE on a 2D mixture twice: once with KL weight 1 and once with a large weight such as beta = 10 (or a decoder that also sees x). Log per-dimension KL each epoch. In the collapsed run, show that KL sits near zero and that decoding fresh prior samples gives nearly the same output. Then add annealing from 0 to 1 to the weight-1 run and state the schedule you used.
+**Reproduce:** Train a tiny VAE on a 2D mixture twice: once with KL weight 1 and once with a large weight such as $`\beta = 10`$ (or a decoder that also sees $`x`$). Log per-dimension KL each epoch. In the collapsed run, show that KL sits near zero and that decoding fresh prior samples gives nearly the same output. Then add annealing from 0 to 1 to the weight-1 run and state the schedule you used.
 
 **Traps**
 
 - Reading a falling total loss as learning. In collapse the reconstruction term improves while the KL term dies; only the split plot shows it.
-- Raising the KL weight to fix blurry samples. A larger final weight pressures q toward the prior and makes collapse more likely, not less.
+- Raising the KL weight to fix blurry samples. A larger final weight pressures $`q`$ toward the prior and makes collapse more likely, not less.
 
 **Practice**
 
@@ -2699,13 +2699,13 @@ Collapse is the characteristic VAE failure: the loss looks fine while the latent
 <summary>Self-test</summary>
 
 1. What is posterior collapse in one observable sentence?
-   - The encoder predicts the prior for every input: per-dimension KL is near zero and resampling z does not change reconstructions or samples.
+   - The encoder predicts the prior for every input: per-dimension KL is near zero and resampling $`z`$ does not change reconstructions or samples.
 2. Why does a powerful autoregressive decoder invite collapse?
-   - It can model x without z, so the ELBO keeps the reconstruction term while the KL term is pure cost. Optimization then sets q to the prior.
-3. What does beta above 1 in Equation 17.30 do to collapse risk?
-   - It raises the KL penalty, which pushes q toward the prior and makes collapse more likely. The objective stays a lower bound, only a looser one.
+   - It can model $`x`$ without $`z`$, so the ELBO keeps the reconstruction term while the KL term is pure cost. Optimization then sets $`q`$ to the prior.
+3. What does $`\beta`$ above 1 in Equation 17.30 do to collapse risk?
+   - It raises the KL penalty, which pushes $`q`$ toward the prior and makes collapse more likely. The objective stays a lower bound, only a looser one.
 4. Name two measurements that expose collapse.
-   - Per-dimension KL near zero across epochs, and a resampling test where fresh z with a fixed decoder leaves outputs unchanged while the loss barely moves.
+   - Per-dimension KL near zero across epochs, and a resampling test where fresh $`z`$ with a fixed decoder leaves outputs unchanged while the loss barely moves.
 
 </details>
 
@@ -2727,42 +2727,42 @@ GANs are the adversarial counterpoint to likelihood training: no density, a lear
 
 1. [Minimax, optimal discriminator and the Jensen-Shannon split](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Sections 15.1 to 15.2.2 with Equations 15.2 to 15.9 (pp. 276 to 283).
 2. [Wasserstein, DCGAN recipe and collapse](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Sections 15.2.3 to 15.2.6 on Wasserstein (pp. 284 to 286); Section 15.1.3 DCGAN recipe and Section 15.1.4 with Figure 15.5 on mode dropping and collapse (pp. 279 to 281). Depth: Skip Sections 15.3 to 15.6 here: progressive growing, conditional GANs, translation and StyleGAN are later material.
-3. [Basic GAN on a 2D Gaussian](https://d2l.ai/chapter_generative-adversarial-networks/gan.html) (D2L - GAN and DCGAN) - Generate Some Real Data, Generator, Discriminator and Training: 2D Gaussian with A=[[1,2],[-0.1,0.5]] and b=[1,2], linear generator, 3-layer Tanh discriminator, batch size 8, D updated before G each iteration.
+3. [Basic GAN on a 2D Gaussian](https://d2l.ai/chapter_generative-adversarial-networks/gan.html) (D2L - GAN and DCGAN) - Generate Some Real Data, Generator, Discriminator and Training: 2D Gaussian with A=[[1,2],[-0.1,0.5]] and b=[1,2], linear generator, 3-layer Tanh discriminator, batch size 8, $`D`$ updated before $`G`$ each iteration.
 4. [DCGAN blocks and Pokemon training](https://d2l.ai/chapter_generative-adversarial-networks/dcgan.html) (D2L - GAN and DCGAN) - The Generator with G_block and the 100-dim latent to 64 by 64 map; Discriminator with D_block and leaky ReLU 0.2; Training with Adam beta1 0.5.
 
 **Focus**
 
-- Equations 15.2 to 15.5 turn binary cross-entropy into a minimax game. The practical generator loss is the non-saturating -log D(G(z)) (label flipped to 1), because the max-log(1-D) form saturates when D is confident.
-- Section 15.2.1 shows the optimal discriminator is Pr(x)/[Pr(x)+Pr(fake)], and the loss becomes a Jensen-Shannon divergence split into quality and coverage terms. The book notes that the real-data term of Eq 15.6 does not involve the generator, so nothing directly rewards it for covering missed modes; it calls this the putative reason for mode dropping.
-- Section 15.1.4 separates the failures: mode dropping generates a realistic subset (no beards), while collapse maps most z to one or few points and ignores z. Figure 15.5 and the Notes diversity paragraph make this concrete.
-- The DCGAN recipe is strided convolutions, BatchNorm in both nets, leaky ReLU in D and Adam with beta1 0.5. D2L updates D first each iteration with detached fakes so no gradient reaches G through the D step.
+- Equations 15.2 to 15.5 turn binary cross-entropy into a minimax game. The practical generator loss is the non-saturating $`-\log D(G(z))`$ (label flipped to 1), because the $`\max \log(1 - D)`$ form saturates when $`D`$ is confident.
+- Section 15.2.1 shows the optimal discriminator is $`\Pr(x)/[\Pr(x) + \Pr(\text{fake})]`$, and the loss becomes a Jensen-Shannon divergence split into quality and coverage terms. The book notes that the real-data term of Eq 15.6 does not involve the generator, so nothing directly rewards it for covering missed modes; it calls this the putative reason for mode dropping.
+- Section 15.1.4 separates the failures: mode dropping generates a realistic subset (no beards), while collapse maps most $`z`$ to one or few points and ignores $`z`$. Figure 15.5 and the Notes diversity paragraph make this concrete.
+- The DCGAN recipe is strided convolutions, BatchNorm in both nets, leaky ReLU in $`D`$ and Adam with beta1 0.5. D2L updates $`D`$ first each iteration with detached fakes so no gradient reaches $`G`$ through the $`D`$ step.
 
-**Reproduce:** Closed-book, write the two losses of Equation 15.5 and the non-saturating generator loss. Then run the D2L basic GAN for 20 epochs at lr_D 0.05 and lr_G 0.005 and watch the discriminator loss move toward about 0.69 (log 2, the value when D outputs 0.5 everywhere) as the fake scatter covers the real Gaussian.
+**Reproduce:** Closed-book, write the two losses of Equation 15.5 and the non-saturating generator loss. Then run the D2L basic GAN for 20 epochs at lr_D 0.05 and lr_G 0.005 and watch the discriminator loss move toward about 0.69 ($`\log 2`$, the value when $`D`$ outputs 0.5 everywhere) as the fake scatter covers the real Gaussian.
 
 **Traps**
 
-- Forgetting detach on fake_X in the D step. The D loss then backpropagates into G: wasted compute, and if G's gradients are not zeroed before its own step, G also moves in the direction that helps D.
+- Forgetting detach on fake_X in the $`D`$ step. The $`D`$ loss then backpropagates into $`G`$: wasted compute, and if $`G`$'s gradients are not zeroed before its own step, $`G`$ also moves in the direction that helps $`D`$.
 - Following the DCGAN summary line about BatchNorm literally. The shipped D_block applies BatchNorm in every block including the first, while the paper recipe uses no norm on the discriminator input. Implement the paper variant and note the difference.
-- Reading D accuracy 0.5 as proof of distributional match. A finite-capacity D reaches chance on a mode-dropped generator too; the Notes duplicate test shows support can be far smaller than the training set.
+- Reading $`D`$ accuracy 0.5 as proof of distributional match. A finite-capacity $`D`$ reaches chance on a mode-dropped generator too; the Notes duplicate test shows support can be far smaller than the training set.
 
 **Practice**
 
-- [D2L basic GAN: alternating training on the 2D Gaussian](https://d2l.ai/chapter_generative-adversarial-networks/gan.html) - Training with update_D and update_G: batch size 8, latent dim 2, 20 epochs; confirm D runs before G and fakes use detach. Plot real versus fake scatter at epochs 1, 5 and 20, and add a discriminator-accuracy printout. State the epoch where accuracy first nears 0.5, and remember that chance accuracy does not prove the distributions match.
-- [UDL Problem 15.4: divergences for shifted uniforms](https://udlbook.github.io/udlbook/) - Problem 15.4 (p. 303): KL, reverse KL, JS and Wasserstein for uniform [0,1] versus [a,a+1] over a in [-3,3]. Do it on paper: KL is infinite for any nonzero a, JS is |a| log 2 up to 1 and log 2 after, W1 is |a|. This is the disjoint-support case Wasserstein was introduced for.
+- [D2L basic GAN: alternating training on the 2D Gaussian](https://d2l.ai/chapter_generative-adversarial-networks/gan.html) - Training with update_D and update_G: batch size 8, latent dim 2, 20 epochs; confirm $`D`$ runs before $`G`$ and fakes use detach. Plot real versus fake scatter at epochs 1, 5 and 20, and add a discriminator-accuracy printout. State the epoch where accuracy first nears 0.5, and remember that chance accuracy does not prove the distributions match.
+- [UDL Problem 15.4: divergences for shifted uniforms](https://udlbook.github.io/udlbook/) - Problem 15.4 (p. 303): KL, reverse KL, JS and Wasserstein for uniform $`[0, 1]`$ versus $`[a, a+1]`$ over $`a`$ in $`[-3, 3]`$. Do it on paper: KL is infinite for any nonzero $`a`$, JS is $`|a| \log 2`$ up to 1 and $`\log 2`$ after, W1 is $`|a|`$. This is the disjoint-support case Wasserstein was introduced for.
 
-**Stop when:** You derive the JS split without notes, your D2L run shows D-first updates with detached fakes, and you solve Problem 15.4 for a=0, 0.5 and 2.
+**Stop when:** You derive the JS split without notes, your D2L run shows $`D`$-first updates with detached fakes, and you solve Problem 15.4 for $`a = 0`$, 0.5 and 2.
 
 <details>
 <summary>Self-test</summary>
 
 1. Write the two alternating losses and the update order.
-   - D minimizes BCE on real data with label 1 and detached fakes with label 0. G minimizes -log D(G(z)), the same BCE with fake labels flipped to 1. Each iteration updates D first, then G.
+   - $`D`$ minimizes BCE on real data with label 1 and detached fakes with label 0. $`G`$ minimizes $`-\log D(G(z))`$, the same BCE with fake labels flipped to 1. Each iteration updates $`D`$ first, then $`G`$.
 2. Why can the generator ignore coverage, according to Section 15.2.1?
-   - In Equation 15.6 the real-data term does not involve G, so for a fixed discriminator the generator's gradient comes only from its own samples. Generating a realistic subset is not penalized directly. The book offers this as the putative reason for mode dropping.
+   - In Equation 15.6 the real-data term does not involve $`G`$, so for a fixed discriminator the generator's gradient comes only from its own samples. Generating a realistic subset is not penalized directly. The book offers this as the putative reason for mode dropping.
 3. Distinguish mode dropping from mode collapse.
-   - Dropping covers a realistic subset of modes. Collapse maps most or all z to one or few points and ignores the latent input.
-4. For uniform [0,1] versus [a,a+1] with a=2, give KL, JS and W1.
-   - Both KL directions are infinite because the supports are disjoint. JS is log 2 (1 bit). W1 is |a| = 2.
+   - Dropping covers a realistic subset of modes. Collapse maps most or all $`z`$ to one or few points and ignores the latent input.
+4. For uniform $`[0, 1]`$ versus $`[a, a+1]`$ with $`a = 2`$, give KL, JS and W1.
+   - Both KL directions are infinite because the supports are disjoint. JS is $`\log 2`$ (1 bit). W1 is $`|a| = 2`$.
 
 </details>
 
@@ -2776,7 +2776,7 @@ Diffusion training is ELBO arithmetic plus one Gaussian closure. Once the closed
 
 **You can now**
 
-- Derive the one-step forward kernel, the closed-form x0-to-xt sampler and the reverse conditional used for training.
+- Derive the one-step forward kernel, the closed-form $`x_0`$-to-$`x_t`$ sampler and the reverse conditional used for training.
 - Derive the diffusion ELBO down to the per-step noise matching loss of Algorithm 18.1.
 - Recognize noise, data and velocity prediction targets and state when each stays stable.
 
@@ -2784,21 +2784,21 @@ Diffusion training is ELBO arithmetic plus one Gaussian closure. Once the closed
 
 1. [Forward encoder and closed-form sampling](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Sections 18.1 and 18.2 with Equations 18.1 to 18.8 and Figures 18.2 and 18.3 (pp. 349 to 353).
 2. [Reverse decoder, ELBO and the noise reparameterization](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - generative models) - Sections 18.3 to 18.5 with Equations 18.16 to 18.40 and Algorithm 18.1 (pp. 356 to 363).
-3. [Velocity parameterization](https://arxiv.org/html/2202.00512v2) (Progressive Distillation for Fast Sampling of Diffusion Models) - Section 4: the v = alpha eps - sigma x definition with x_hat = alpha zt - sigma v_hat, and the low signal-to-noise stability argument. Depth: Read only the parameterization and loss-weighting discussion. Leave Algorithms 1 and 2 and all distillation results for later.
+3. [Velocity parameterization](https://arxiv.org/html/2202.00512v2) (Progressive Distillation for Fast Sampling of Diffusion Models) - Section 4: the $`v = \alpha \epsilon - \sigma x`$ definition with $`\hat{x} = \alpha z_t - \sigma \hat{v}`$, and the low signal-to-noise stability argument. Depth: Read only the parameterization and loss-weighting discussion. Leave Algorithms 1 and 2 and all distillation results for later.
 
 **Focus**
 
-- The forward kernel is q(zt|zt-1) = N(sqrt(1-beta_t) zt-1, beta_t I) (Eq 18.2). Products of Gaussians close in closed form: xt = sqrt(alpha_bar_t) x0 + sqrt(1-alpha_bar_t) eps with alpha_bar_t the product of (1-beta_s) (Eqs 18.7 and 18.8).
-- The reverse conditional q(zt-1|zt,x) (Eq 18.15) trains the decoder. The ELBO (Eq 18.25) becomes per-step KL terms that reduce to squared error between the true reverse mean and f_t (Eqs 18.28 and 18.29).
-- Section 18.5 converts data prediction into noise prediction through Eq 18.30 and trains g to output eps with the plain loss of Eq 18.40. The map is linear, so the two targets carry the same information with different conditioning.
-- Velocity v = alpha eps - sigma x keeps the implied x prediction stable when signal-to-noise goes to zero, where eps-to-x division by alpha blows up. UDL never names it, so the paper supplies this one recognition item.
+- The forward kernel is $`q(z_t \mid z_{t-1}) = \mathcal{N}(\sqrt{1 - \beta_t} z_{t-1}, \beta_t I)`$ (Eq 18.2). Products of Gaussians close in closed form: $`x_t = \sqrt{\bar{\alpha}_t} x_0 + \sqrt{1 - \bar{\alpha}_t} \epsilon`$ with $`\bar{\alpha}_t`$ the product of $`(1 - \beta_s)`$ (Eqs 18.7 and 18.8).
+- The reverse conditional $`q(z_{t-1} \mid z_t, x)`$ (Eq 18.15) trains the decoder. The ELBO (Eq 18.25) becomes per-step KL terms that reduce to squared error between the true reverse mean and $`f_t`$ (Eqs 18.28 and 18.29).
+- Section 18.5 converts data prediction into noise prediction through Eq 18.30 and trains $`g`$ to output $`\epsilon`$ with the plain loss of Eq 18.40. The map is linear, so the two targets carry the same information with different conditioning.
+- Velocity $`v = \alpha \epsilon - \sigma x`$ keeps the implied $`x`$ prediction stable when signal-to-noise goes to zero, where $`\epsilon`$-to-$`x`$ division by $`\alpha`$ blows up. UDL never names it, so the paper supplies this one recognition item.
 
-**Reproduce:** Closed-book, derive the three-step closed form of Problem 18.3 from Equations 18.5 to 18.7, then verify with NumPy that x0=[1,2] at t=3 with eps=[0.5,-0.5] on linspace(0.1,0.2,5) gives [1.1057,1.3488].
+**Reproduce:** Closed-book, derive the three-step closed form of Problem 18.3 from Equations 18.5 to 18.7, then verify with NumPy that $`x_0=[1,2]`$ at $`t=3`$ with $`\epsilon=[0.5,-0.5]`$ on linspace(0.1,0.2,5) gives [1.1057,1.3488].
 
 **Traps**
 
-- Scaling the mean by 1 - beta instead of sqrt(1 - beta). The square root is what keeps the variance at 1 when the input has unit variance (Problem 18.1); without it the signal shrinks faster than the noise is added.
-- Indexing alpha_bar at t instead of t-1 in the reverse mean. The coefficient (1-alpha_{t-1})/(1-alpha_t) in Eq 18.28 is sensitive to this shift; test t=1 separately.
+- Scaling the mean by $`1 - \beta`$ instead of $`\sqrt{1 - \beta}`$. The square root is what keeps the variance at 1 when the input has unit variance (Problem 18.1); without it the signal shrinks faster than the noise is added.
+- Indexing $`\bar{\alpha}`$ at $`t`$ instead of $`t - 1`$ in the reverse mean. The coefficient $`(1 - \alpha_{t-1})/(1 - \alpha_t)`$ in Eq 18.28 is sensitive to this shift; test $`t = 1`$ separately.
 - Treating noise, data and velocity targets as different models. They parameterize the same reverse mean; only their numerical behavior at low signal-to-noise differs.
 
 **Practice**
@@ -2810,14 +2810,14 @@ Diffusion training is ELBO arithmetic plus one Gaussian closure. Once the closed
 <details>
 <summary>Self-test</summary>
 
-1. Write the one-step forward kernel and the direct x0-to-xt sampler.
-   - q(zt|zt-1) = N(sqrt(1-beta_t) zt-1, beta_t I). Then xt = sqrt(alpha_bar_t) x0 + sqrt(1-alpha_bar_t) eps with alpha_bar_t the product of (1-beta_s) over s=1 to t.
-2. With a linear beta schedule linspace(0.1,0.2,5), what is x_1 for x0=[1.0] and eps=[1.0]?
-   - [1.2649]. alpha_bar_1 is 0.9, so sqrt(0.9) + sqrt(0.1) = 0.9487 + 0.3162.
+1. Write the one-step forward kernel and the direct $`x_0`$-to-$`x_t`$ sampler.
+   - $`q(z_t \mid z_{t-1}) = \mathcal{N}(\sqrt{1 - \beta_t} z_{t-1}, \beta_t I)`$. Then $`x_t = \sqrt{\bar{\alpha}_t} x_0 + \sqrt{1 - \bar{\alpha}_t} \epsilon`$ with $`\bar{\alpha}_t`$ the product of $`(1 - \beta_s)`$ over $`s = 1`$ to $`t`$.
+2. With a linear $`\beta`$ schedule linspace(0.1,0.2,5), what is $`x_1`$ for x0=[1.0] and eps=[1.0]?
+   - [1.2649]. $`\bar{\alpha}_1`$ is 0.9, so $`\sqrt{0.9} + \sqrt{0.1} = 0.9487 + 0.3162`$.
 3. How are noise prediction and data prediction related?
-   - By x = (zt - sqrt(1-alpha_t) eps)/sqrt(alpha_t) (Eqs 18.30 and 18.31). UDL trains g to predict eps (Eqs 18.35 to 18.40); the data estimate follows by this linear map.
+   - By $`x = (z_t - \sqrt{1 - \alpha_t} \epsilon)/\sqrt{\alpha_t}`$ (Eqs 18.30 and 18.31). UDL trains $`g`$ to predict $`\epsilon`$ (Eqs 18.35 to 18.40); the data estimate follows by this linear map.
 4. State the velocity target and why it helps.
-   - v = alpha_t eps - sigma_t x with x_hat = alpha_t zt - sigma_t v_hat. It stays well scaled at zero signal-to-noise, where converting an eps prediction to x divides by alpha near zero.
+   - $`v = \alpha_t \epsilon - \sigma_t x`$ with $`\hat{x} = \alpha_t z_t - \sigma_t \hat{v}`$. It stays well scaled at zero signal-to-noise, where converting an $`\epsilon`$ prediction to $`x`$ divides by $`\alpha`$ near zero.
 
 </details>
 
@@ -2842,9 +2842,9 @@ A trained denoiser is not yet a generator. Sampling cost and conditioning decide
 
 **Focus**
 
-- One U-Net maps zt to an eps estimate at one noise level, conditioned on a sinusoidal time embedding. Ancestral sampling (Algorithm 18.2) calls it serially about 1000 times per image, so cost scales with steps, not with parameters alone.
+- One U-Net maps $`z_t`$ to an $`\epsilon`$ estimate at one noise level, conditioned on a sinusoidal time embedding. Ancestral sampling (Algorithm 18.2) calls it serially about 1000 times per image, so cost scales with steps, not with parameters alone.
 - DDIM is a deterministic integrator of the probability-flow ODE: it drops per-step noise and gives good samples in about 50 steps on the book example. The Notes add latent-space diffusion as the further speedup used by Stable Diffusion.
-- Classifier guidance adds sigma_t squared times grad log Pr(c|zt) from a separate noisy classifier (Eq 18.41). Classifier-free guidance trains g(zt,phit,c) with randomly dropped labels and mixes conditional and unconditional scores at sample time.
+- Classifier guidance adds $`\sigma_t^2`$ times $`\operatorname{grad} \log \Pr(c \mid z_t)`$ from a separate noisy classifier (Eq 18.41). Classifier-free guidance trains $`g(z_t, \phi_t, c)`$ with randomly dropped labels and mixes conditional and unconditional scores at sample time.
 - Overweighting the conditioning improves apparent quality but produces stereotyped outputs. The book draws the same trade as GAN truncation: less variety for cleaner exemplars.
 
 **Reproduce:** Write Algorithm 18.2 (ancestral sampling) from memory, then write how a deterministic DDIM sampler on a 50-step subsequence changes it. Count network evaluations per sample for both, 1000 against 50, and if you trained a model in the CS231n notebook, time both samplers.
@@ -2897,11 +2897,11 @@ Every family optimizes a different proxy, and every metric rewards a different s
 **Focus**
 
 - Test likelihood needs a density: flows give it exactly (Eqs 16.1 to 16.3), VAE and diffusion give a lower bound, and GANs give nothing because they only sample. Training likelihood is not a generalization claim.
-- Inception Score (Eqs 14.2 and 14.3) rewards one realistic example per ImageNet class under one classifier. FID fits Gaussians to Inception features of real and fake sets, so it sees within-class spread but only through retained features. Precision-recall splits the two: realism versus coverage via k-nearest hyperspheres.
+- Inception Score (Eqs 14.2 and 14.3) rewards one realistic example per ImageNet class under one classifier. FID fits Gaussians to Inception features of real and fake sets, so it sees within-class spread but only through retained features. Precision-recall splits the two: realism versus coverage via $`k`$-nearest hyperspheres.
 - Figure 14.3 summarizes the trade: no family has efficient sampling, top quality, full coverage, a good latent space and exact likelihood at once. Quote the row, not a slogan.
 - Coupling (Eqs 16.13 and 16.14) leaves half the variables fixed and applies an invertible elementwise map to the rest with params from the fixed half. The Jacobian is triangular, so the determinant is the diagonal product and both directions stay cheap.
 
-**Reproduce:** Closed-book, derive the Problem 16.1 density 1/(2 sqrt(x)) and check its integral equals 1, then fill one Figure 14.3 row per family from memory.
+**Reproduce:** Closed-book, derive the Problem 16.1 density $`\frac{1}{2 \sqrt{x}}`$ and check its integral equals 1, then fill one Figure 14.3 row per family from memory.
 
 **Traps**
 
@@ -2911,7 +2911,7 @@ Every family optimizes a different proxy, and every metric rewards a different s
 
 **Practice**
 
-- [UDL Problems 16.1 and 16.2: 1D flow densities](https://udlbook.github.io/udlbook/) - Problems 16.1 and 16.2 (p. 325): uniform through x = z squared and standard normal through the sigmoid. Derive both densities by CDF differentiation and verify each integrates to 1. These are the smallest exact-likelihood claims in the section.
+- [UDL Problems 16.1 and 16.2: 1D flow densities](https://udlbook.github.io/udlbook/) - Problems 16.1 and 16.2 (p. 325): uniform through $`x = z^2`$ and standard normal through the sigmoid. Derive both densities by CDF differentiation and verify each integrates to 1. These are the smallest exact-likelihood claims in the section.
 
 **Stop when:** You can place any two families on likelihood, sampling cost, coverage and evaluation without notes and name the metric that would catch a mode-dropped winner.
 
@@ -2920,8 +2920,8 @@ Every family optimizes a different proxy, and every metric rewards a different s
 
 1. Which families give exact likelihood, a lower bound, or nothing?
    - Flows give exact likelihood by change of variables. VAE and diffusion give a lower bound through the ELBO. GANs give no density; they sample without evaluating probabilities.
-2. State the 1D flow density for uniform z through x = z squared.
-   - Pr(x) = 1/(2 sqrt(x)) on (0,1]. The CDF is P(X<=x) = sqrt(x); differentiate to get the density, which integrates to 1.
+2. State the 1D flow density for uniform $`z`$ through $`x = z^2`$.
+   - $`\Pr(x) = \frac{1}{2 \sqrt{x}}`$ on $`(0, 1]`$. The CDF is $`P(X \le x) = \sqrt{x}`$; differentiate to get the density, which integrates to 1.
 3. Why is Inception Score insufficient, and what do FID and precision-recall add?
    - IS needs ImageNet classes and one classifier and rewards a single good example per class. FID compares Gaussian-fitted Inception features of both sets, capturing within-class spread through retained features. Precision-recall splits realism (fakes inside the real manifold) from coverage (real data inside the fake manifold).
 4. How does coupling keep flows tractable?
@@ -2935,8 +2935,8 @@ Every family optimizes a different proxy, and every metric rewards a different s
 
 1. Derive the ELBO for a diagonal Gaussian encoder, including the closed-form KL per dimension, and implement it with the reparameterization trick. Pass Deep-ML 393, and test your KL against torch.distributions.kl_divergence and a Monte Carlo estimate.
 2. Train a small VAE on binarized MNIST, or on a 2D mixture if you only have a CPU, and log the reconstruction term, the total KL and the KL of each latent dimension every epoch.
-3. Produce collapse on purpose with a much stronger decoder or a large KL weight such as beta = 10. Show most dimensions with KL near zero, and a resampling test: decoding fresh prior samples gives nearly the same output.
-4. Ablate decoder capacity or beta at three settings, and add KL annealing from 0 to 1 over a stated number of steps. Report active units, the dimensions whose KL exceeds a threshold you state, for each run.
+3. Produce collapse on purpose with a much stronger decoder or a large KL weight such as $`\beta = 10`$. Show most dimensions with KL near zero, and a resampling test: decoding fresh prior samples gives nearly the same output.
+4. Ablate decoder capacity or $`\beta`$ at three settings, and add KL annealing from 0 to 1 over a stated number of steps. Report active units, the dimensions whose KL exceeds a threshold you state, for each run.
 5. Report the test ELBO in nats per example beside reconstructions and samples, and give one way each of the three could mislead.
 6. Train a small GAN on an eight-Gaussian 2D mixture with alternating updates, and count the modes its samples cover with a fixed sample size and distance threshold, over training and two seeds.
 
@@ -2954,7 +2954,7 @@ Every family optimizes a different proxy, and every metric rewards a different s
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Objective | Deep-ML 393 passes, and the closed-form KL matches torch.distributions within float tolerance. | The Monte Carlo KL estimate agrees within its standard error, and the note derives the per-dimension KL. |
-| Controlled collapse | One run shows most dimensions with near-zero KL, and the resampling test confirms the decoder ignores z. | The ablation reports active units across two seeds and explains any setting that breaks the trend. |
+| Controlled collapse | One run shows most dimensions with near-zero KL, and the resampling test confirms the decoder ignores $`z`$. | The ablation reports active units across two seeds and explains any setting that breaks the trend. |
 | Repair | Annealing or a capacity change restores active units under the stated threshold. | You report the repair's cost in ELBO and reconstruction, not only its benefit. |
 | Mode coverage | GAN coverage of the eight modes is counted with a stated threshold and sample size. | Coverage is tracked over training and across two seeds, and drops are tied to the alternating updates. |
 | Honest limits | The note gives one way each of loss, reconstructions and samples can mislead. | Each claim points to a run in your study that shows it. |
@@ -2967,7 +2967,7 @@ Feeds into: Capstone artifact 2 can use this VAE as its trained model, and the c
 - **Support - Implementation:** [D2L - GAN and DCGAN](https://d2l.ai/) - Use gan.md and dcgan.md for one bounded adversarial exposure. The required implementation remains a small VAE with separate reconstruction and KL terms on a two-dimensional mixture or binarized MNIST subset.
 - **Optional - Practice:** [Deep-ML candidate - VAE, GAN and diffusion problems](https://www.deep-ml.com/problems) - After the platform admission check, use at most one of 393 VAE Loss, 1384 Reparameterization, 174 1D GAN or 303 Forward Diffusion as a changed-prompt drill.
 - **Optional - Course:** [Stanford CS231n - diffusion assignment slice](https://cs231n.stanford.edu/2025/assignments.html) - Use the Assignment 3 diffusion component only after the VAE gate if diffusion mechanics remain weak. It is not a second required generative implementation.
-- **Reference - Reference:** [Progressive Distillation for Fast Sampling of Diffusion Models](https://arxiv.org/html/2202.00512v2) - Read Section 4 only for the velocity parameterization v = alpha eps - sigma x and why it stays stable at zero signal-to-noise ratio. Leave Algorithms 1 and 2 and the distillation results for later.
+- **Reference - Reference:** [Progressive Distillation for Fast Sampling of Diffusion Models](https://arxiv.org/html/2202.00512v2) - Read Section 4 only for the velocity parameterization $`v = \alpha \epsilon - \sigma x`$ and why it stays stable at zero signal-to-noise ratio. Leave Algorithms 1 and 2 and the distillation results for later.
 
 ### Exit checkpoint
 
@@ -3021,7 +3021,7 @@ Attention is the only communication path between positions in a transformer. If 
 
 **You can now**
 
-- Derive the 1/sqrt(d_k) scale from unit-variance query and key components and state the assumption it needs.
+- Derive the $`1/\sqrt{d_k}`$ scale from unit-variance query and key components and state the assumption it needs.
 - Implement stable scaled dot-product attention from tensor operations, with a row-wise softmax that cannot overflow in fp32.
 - Explain attention output as a convex combination of values and predict how a logit shift moves the weights.
 
@@ -3030,38 +3030,38 @@ Attention is the only communication path between positions in a transformer. If 
 1. [Dot-product self-attention through scaling](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Sections 12.2 to 12.3.2 (pp. 208 to 214): value, query and key computation in equations 12.2 to 12.4, attention weights in 12.5, matrix form in 12.7 and 12.8, and the scaling argument with equation 12.9.
 2. [Notebook 12.1: self-attention](https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap12/12_1_Self_Attention.ipynb) (Understanding Deep Learning - Transformers) - The complete notebook, referenced in the margin of the matrix-form derivation.
 3. [Queries, keys and values](https://d2l.ai/chapter_attention-mechanisms-and-transformers/queries-keys-values.html) (D2L - attention and transformer implementation route) - Section 11.1: the attention-pooling equation, the nonnegative, convex-combination, single-selection and average-pooling cases, and show_heatmaps.
-4. [Dot-product attention and scaling](https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html) (D2L - attention and transformer implementation route) - Section 11.3.1 including the variance-d derivation of the scaled scoring function, then the Scaled Dot Product Attention class with the (2, 1, 2) query toy and heatmap check. Depth: Skip Additive Attention; it is not a unit topic. Read the batch matrix multiplication part of Section 11.3.2 for shapes only.
-5. [Equivalent-implementation box](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The Efficient implementation equivalent code box: default scale 1/sqrt(E), score-times-scale order, and softmax-then-dropout order.
+4. [Dot-product attention and scaling](https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html) (D2L - attention and transformer implementation route) - Section 11.3.1 including the variance-$`d`$ derivation of the scaled scoring function, then the Scaled Dot Product Attention class with the (2, 1, 2) query toy and heatmap check. Depth: Skip Additive Attention; it is not a unit topic. Read the batch matrix multiplication part of Section 11.3.2 for shapes only.
+5. [Equivalent-implementation box](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The Efficient implementation equivalent code box: default scale $`1/\sqrt{E}`$, score-times-scale order, and softmax-then-dropout order.
 
 **Focus**
 
 - Queries, keys and values are three learned linear maps of the same input. D2L builds them bias-free by default while UDL equations 12.4 and 12.6 carry bias vectors, so the two parameter counts differ by construction.
-- Under independent zero-mean unit-variance components, q^T k has variance d. The 1/sqrt(d) factor restores unit variance before the softmax; without it large d saturates the softmax and gradients vanish.
-- Stable softmax subtracts the row max first. Naive fp32 softmax on the UDL Problem 12.4 logits overflows at exp(100): that entry becomes inf/inf, which is NaN, and the rest become 0. The shifted form returns the correct weights.
-- UDL lays inputs out as D by N columns with softmax per column; D2L uses batch by queries by keys with softmax on the last axis. In both, exactly one axis sums to 1: check which one before reading any heatmap.
+- Under independent zero-mean unit-variance components, $`q^\top k`$ has variance $`d`$. The $`1/\sqrt{d}`$ factor restores unit variance before the softmax; without it large $`d`$ saturates the softmax and gradients vanish.
+- Stable softmax subtracts the row max first. Naive fp32 softmax on the UDL Problem 12.4 logits overflows at $`\exp(100)`$: that entry becomes inf/inf, which is NaN, and the rest become 0. The shifted form returns the correct weights.
+- UDL lays inputs out as $`D \times N`$ columns with softmax per column; D2L uses batch by queries by keys with softmax on the last axis. In both, exactly one axis sums to 1: check which one before reading any heatmap.
 
-**Reproduce:** Closed-book, derive the 1/sqrt(d) scale from the variance argument. Then hand-compute the Deep-ML 490 first test: scores [[0.7071, 0], [0, 0.7071]], weights [[0.6698, 0.3302], [0.3302, 0.6698]], output [[1.6605, 2.6605], [2.3395, 3.3395]].
+**Reproduce:** Closed-book, derive the $`1/\sqrt{d}`$ scale from the variance argument. Then hand-compute the Deep-ML 490 first test: scores $`\left[\begin{smallmatrix}0.7071&0\\0&0.7071\end{smallmatrix}\right]`$, weights $`\left[\begin{smallmatrix}0.6698&0.3302\\0.3302&0.6698\end{smallmatrix}\right]`$, output $`\left[\begin{smallmatrix}1.6605&2.6605\\2.3395&3.3395\end{smallmatrix}\right]`$.
 
 **Traps**
 
-- Computing softmax as exp(z)/sum(exp(z)) in fp32. exp(100) overflows to inf, so the sum is inf, the large entry becomes NaN and every other entry 0. Always subtract the row max, and recheck any code that skips it.
+- Computing softmax as $`\exp(z)/\sum(\exp(z))`$ in fp32. $`\exp(100)`$ overflows to inf, so the sum is inf, the large entry becomes NaN and every other entry 0. Always subtract the row max, and recheck any code that skips it.
 - Softmaxing the wrong axis after a transpose. UDL and D2L sum over different axes by layout; a heatmap that sums to 1 along queries instead of keys inverts the routing story.
-- Quoting D2L parameter counts for UDL equations or vice versa. The bias terms add 3D parameters; carry them only when the equations you implement include them.
+- Quoting D2L parameter counts for UDL equations or vice versa. The bias terms add $`3D`$ parameters; carry them only when the equations you implement include them.
 
 **Practice**
 
-- [Deep-ML 490: Build Scaled Dot-Product Attention](https://www.deep-ml.com/problems/490) - Both shown tests (the 2x2 identity Q/K case and the 1x3 over 2x3 case) plus the prompt mask rule (0 blocks, 1 keeps). The two shown tests are unmasked and check outputs and weights to 4 decimals. Add your own hand-computed masked case before the masks unit.
+- [Deep-ML 490: Build Scaled Dot-Product Attention](https://www.deep-ml.com/problems/490) - Both shown tests (the $`2 \times 2`$ identity $`Q/K`$ case and the $`1 \times 3`$ over $`2 \times 3`$ case) plus the prompt mask rule (0 blocks, 1 keeps). The two shown tests are unmasked and check outputs and weights to 4 decimals. Add your own hand-computed masked case before the masks unit.
 
 **Stop when:** You derive the scale without notes, reproduce the 490 numbers by hand, and your own implementation matches a softmax-based reference on random small cases.
 
 <details>
 <summary>Self-test</summary>
 
-1. Query and key components are independent with zero mean and unit variance, in dimension d. What are the mean and variance of their dot product, and what scale restores unit variance?
-   - Mean 0 and variance d, since the dot product sums d independent unit-variance products. Multiply by 1/sqrt(d) to restore unit variance before the softmax.
+1. Query and key components are independent with zero mean and unit variance, in dimension $`d`$. What are the mean and variance of their dot product, and what scale restores unit variance?
+   - Mean 0 and variance $`d`$, since the dot product sums $`d`$ independent unit-variance products. Multiply by $`1/\sqrt{d}`$ to restore unit variance before the softmax.
 2. Naive fp32 softmax meets UDL Problem 12.4 logits [-3, 1, 100, 5, -1]. What comes out, what does the max-subtracted form give, and what do the 25 derivatives say?
-   - Naive exp overflows at exp(100), so the denominator is inf and the output is [0, 0, NaN, 0, 0]. Max-subtracted softmax gives y3 near 1 and the rest near 0. All 25 derivatives are near 0 (largest magnitude about 5.5e-42): a saturated softmax with vanishing gradients.
-3. A self-attention block takes N = 5 inputs of width D = 8, with queries, keys and values also width 8. How many QKV weights and biases, how many attention weights, and how many weights and biases in a fully connected DN to DN map?
+   - Naive $`\exp`$ overflows at $`\exp(100)`$, so the denominator is inf and the output is [0, 0, NaN, 0, 0]. Max-subtracted softmax gives $`y_3`$ near 1 and the rest near 0. All 25 derivatives are near 0 (largest magnitude about 5.5e-42): a saturated softmax with vanishing gradients.
+3. A self-attention block takes $`N = 5`$ inputs of width $`D = 8`$, with queries, keys and values also width 8. How many QKV weights and biases, how many attention weights, and how many weights and biases in a fully connected $`DN`$ to $`DN`$ map?
    - QKV: 3 times (64 + 8) = 216. Attention weights: 25. Fully connected: 1600 weights plus 40 biases = 1640.
 4. Why must attention weights be nonnegative and sum to one, and where does each output lie?
    - They form a convex combination, so each output is a weighted average of the value vectors and lies in their convex hull. Routing language only makes sense under this constraint.
@@ -3091,7 +3091,7 @@ Masks decide which tokens may speak to which. A leak through a future position o
 
 **Focus**
 
-- Padding and causal masks compose by intersection: a score survives only if both allow it. D2L valid_lens expresses padding lengths, the decoder [1..n] rows express causality, and a real batch needs both at once.
+- Padding and causal masks compose by intersection: a score survives only if both allow it. D2L valid_lens expresses padding lengths, the decoder $`[1..n]`$ rows express causality, and a real batch needs both at once.
 - Mask value conventions differ by API. SDPA bool True means participate while MultiheadAttention key_padding_mask True means mask out. Copying one convention into the other leaks padding.
 - A fully masked row has no agreed meaning. D2L -1e6 gives uniform weights, all -inf through plain softmax gives NaN, and SDPA on CPU returned zeros in version 2.14. Test your convention instead of assuming one.
 - SDPA applies dropout_p in every mode. Pass 0.0 outside training or evaluation outputs stay stochastic.
@@ -3100,7 +3100,7 @@ Masks decide which tokens may speak to which. A leak through a future position o
 
 **Traps**
 
-- Trusting uniform weights on a fully masked row. D2L returns 1/n there, so padding values still mix into the output unless you zero the row downstream.
+- Trusting uniform weights on a fully masked row. D2L returns $`1/n`$ there, so padding values still mix into the output unless you zero the row downstream.
 - Passing both attn_mask and is_causal to SDPA. The function raises an error; pick one expression of the same mask.
 - Leaving dropout_p nonzero during evaluation or testing. Outputs differ run to run and differential tests against a manual path fail for no structural reason.
 
@@ -3140,10 +3140,10 @@ Heads are parallel representation subspaces, and cross-attention is the bridge b
 
 **Study**
 
-1. [Multi-head self-attention](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.3.3 (pp. 214 to 215): per-head equations 12.10 and 12.11, D/H sizing, and concatenation with output projection in equation 12.12.
+1. [Multi-head self-attention](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.3.3 (pp. 214 to 215): per-head equations 12.10 and 12.11, $`D/H`$ sizing, and concatenation with output projection in equation 12.12.
 2. [Cross-attention for encoder-decoder models](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.8 with Figure 12.14 (pp. 226 to 227): queries from decoder embeddings, keys and values from encoder embeddings.
 3. [Notebook 12.2: multi-head self-attention](https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap12/12_2_Multihead_Self_Attention.ipynb) (Understanding Deep Learning - Transformers) - The complete notebook, referenced in the margin of the multi-head derivation.
-4. [Multi-head attention implementation](https://d2l.ai/chapter_attention-mechanisms-and-transformers/multihead-attention.html) (D2L - attention and transformer implementation route) - Section 11.5: the head equations with p set to num_hiddens over num_heads, transpose_qkv and transpose_output, the valid_lens repeat per head, and the num_hiddens 100 with num_heads 5 shape check.
+4. [Multi-head attention implementation](https://d2l.ai/chapter_attention-mechanisms-and-transformers/multihead-attention.html) (D2L - attention and transformer implementation route) - Section 11.5: the head equations with $`p`$ set to num_hiddens over num_heads, transpose_qkv and transpose_output, the valid_lens repeat per head, and the num_hiddens 100 with num_heads 5 shape check.
 5. [Self-attention call and decoder cross-attention](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html) (D2L - attention and transformer implementation route) - Section 11.6 Self-Attention: the attention(X, X, X, valid_lens) toy with batch 2, 4 queries and width 100. Depth: Stop before the CNN, RNN and self-attention comparison and before Positional Encoding; both belong to later units.
 6. [Decoder self versus encoder-decoder attention](https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html) (D2L - attention and transformer implementation route) - TransformerDecoderBlock: attention1 over (X, key_values, key_values) with dec_valid_lens versus attention2 over (Y, enc_outputs, enc_outputs) with enc_valid_lens.
 
@@ -3164,7 +3164,7 @@ Heads are parallel representation subspaces, and cross-attention is the bridge b
 
 **Practice**
 
-- [TrenTorch: Multi-Head Attention, splitting into heads](https://trentorch.com/ide/seq-attention-mha-split-heads) - Implement split_heads and multi_head_attention_per_head; the tests check consecutive d_k chunks per head, a match with a per-head loop, and masking. TrenTorch keeps heads on their own axis, (batch, heads, seq, d_k); D2L folds them into the batch, (batch x heads, seq, d_k). Walk the reproduce shapes through both layouts.
+- [TrenTorch: Multi-Head Attention, splitting into heads](https://trentorch.com/ide/seq-attention-mha-split-heads) - Implement split_heads and multi_head_attention_per_head; the tests check consecutive $`d_k`$ chunks per head, a match with a per-head loop, and masking. TrenTorch keeps heads on their own axis, (batch, heads, seq, $`d_k`$); D2L folds them into the batch, (batch x heads, seq, $`d_k`$). Walk the reproduce shapes through both layouts.
 - [D2L Multi-Head Attention: Exercise 1 (visualize heads)](https://d2l.ai/chapter_attention-mechanisms-and-transformers/multihead-attention.html) - Exercises in Section 11.5: visualize attention weights of multiple heads in the toy experiment. Plot one head per panel on the same input and confirm different heads attend differently; identical panels expose a split bug.
 
 **Stop when:** Your multi-head block returns (2, 4, 100) on the D2L toy, per-head weights match a manual single-head call, and masking with valid lengths [3, 2] zeroes the same key slots in every head.
@@ -3173,7 +3173,7 @@ Heads are parallel representation subspaces, and cross-attention is the bridge b
 <summary>Self-test</summary>
 
 1. BERT uses width 1024 with 16 heads. What is the per-head width, and what shape are its per-head query matrices?
-   - 64. Each per-head query, key and value matrix is 64 by 1024.
+   - 64. Each per-head query, key and value matrix is $`64 \times 1024`$.
 2. Why does fixing total width while varying head count hold parameters and compute flat?
    - All four projections stay num_hiddens by num_hiddens regardless of head count, so QKVO parameters stay 4 times width squared and per-head matmuls sum back to the same total.
 3. In the D2L decoder block, which tensors supply queries, keys and values to the second attention call, and which lengths mask it?
@@ -3205,12 +3205,12 @@ Self-attention sees sets, not sequences. Positional information is the only plac
 
 **Focus**
 
-- Without positions the block is permutation-equivariant: Sa[XP] equals Sa[X]P. UDL Problem 12.3 asks for this proof; it is the reason order must be injected as input.
-- Absolute encodings add a unique column per position. The D2L TransformerEncoder scales embeddings by sqrt(width) before the add because the encodings stay in [-1, 1].
-- Sinusoid pairs rotate with offset: position i plus delta is a fixed 2x2 rotation of position i, depending on delta and frequency only. Shifting text shifts encodings linearly.
+- Without positions the block is permutation-equivariant: $`\operatorname{Sa}[XP]`$ equals $`\operatorname{Sa}[X]P`$. UDL Problem 12.3 asks for this proof; it is the reason order must be injected as input.
+- Absolute encodings add a unique column per position. The D2L TransformerEncoder scales embeddings by $`\sqrt{\text{width}}`$ before the add because the encodings stay in $`[-1, 1]`$.
+- Sinusoid pairs rotate with offset: position $`i`$ plus $`\delta`$ is a fixed $`2 \times 2`$ rotation of position $`i`$, depending on $`\delta`$ and frequency only. Shifting text shifts encodings linearly.
 - Relative schemes index by the offset between key and query positions, not by absolute index. They survive absolute shifts that absolute tables must relearn.
 
-**Reproduce:** Closed-book, write p(i, 2j) and p(i, 2j+1), sketch the Sa[XP] equals Sa[X]P proof, and verify the 2x2 rotation numerically for one (i, delta, j) triple.
+**Reproduce:** Closed-book, write $`p(i, 2j)`$ and $`p(i, 2j+1)`$, sketch the $`\operatorname{Sa}[XP]`$ equals $`\operatorname{Sa}[X]P`$ proof, and verify the $`2 \times 2`$ rotation numerically for one $`(i, \delta, j)`$ triple.
 
 **Traps**
 
@@ -3220,8 +3220,8 @@ Self-attention sees sets, not sequences. Positional information is the only plac
 
 **Practice**
 
-- [TrenTorch: Sinusoidal positional encoding](https://trentorch.com/ide/seq-embeddings-sinusoidal-positional-encoding) - Implement sinusoidal_positional_encoding(seq_len, d_model) with sin on even columns and cos on odd columns. Row 0 must read [0, 1, 0, 1, ...]. After the tests pass, assert the 2x2 rotation identity numerically for one (i, delta, j) triple in your own repository.
-- [UDL Problem 12.3: permutation equivariance](https://udlbook.github.io/udlbook/) - Problems (p. 239): show Sa[XP] equals Sa[X]P for equation 12.8. Pen-and-paper proof through the value, query and key maps and the column-wise softmax.
+- [TrenTorch: Sinusoidal positional encoding](https://trentorch.com/ide/seq-embeddings-sinusoidal-positional-encoding) - Implement sinusoidal_positional_encoding(seq_len, d_model) with sin on even columns and cos on odd columns. Row 0 must read [0, 1, 0, 1, ...]. After the tests pass, assert the $`2 \times 2`$ rotation identity numerically for one $`(i, \delta, j)`$ triple in your own repository.
+- [UDL Problem 12.3: permutation equivariance](https://udlbook.github.io/udlbook/) - Problems (p. 239): show $`\operatorname{Sa}[XP]`$ equals $`\operatorname{Sa}[X]P`$ for equation 12.8. Pen-and-paper proof through the value, query and key maps and the column-wise softmax.
 
 **Stop when:** Your encoding table matches the closed form entry by entry, the rotation check passes, and you can say which tensors carry position into the first attention call.
 
@@ -3229,11 +3229,11 @@ Self-attention sees sets, not sequences. Positional information is the only plac
 <summary>Self-test</summary>
 
 1. State permutation equivariance for self-attention and explain why it forces positional input.
-   - Sa[XP] equals Sa[X]P for any permutation matrix P: reordering inputs reorders outputs identically. The block therefore carries no order information, so positions must enter as extra input.
+   - $`\operatorname{Sa}[XP]`$ equals $`\operatorname{Sa}[X]P`$ for any permutation matrix $`P`$: reordering inputs reorders outputs identically. The block therefore carries no order information, so positions must enter as extra input.
 2. Write the D2L sinusoidal encoding entries.
-   - p(i, 2j) equals sin(i / 10000^(2j/d)) and p(i, 2j+1) equals cos(i / 10000^(2j/d)), with i the position and d the width.
-3. What does the 2x2 rotation from position i to position i plus delta depend on?
-   - Only the offset delta and the pair frequency omega_j. It never depends on the absolute position i, which is why a fixed shift is a fixed linear map.
+   - $`p(i, 2j)`$ equals $`\sin(i / 10000^{2j/d})`$ and $`p(i, 2j+1)`$ equals $`\cos(i / 10000^{2j/d})`$, with $`i`$ the position and $`d`$ the width.
+3. What does the $`2 \times 2`$ rotation from position $`i`$ to position $`i`$ plus $`\delta`$ depend on?
+   - Only the offset $`\delta`$ and the pair frequency $`\omega_j`$. It never depends on the absolute position $`i`$, which is why a fixed shift is a fixed linear map.
 4. A 1500-token input meets D2L default PositionalEncoding. What happens?
    - The stored table is 1000 wide, so the slice caps at 1000 and the add fails on shape mismatch. Rebuild the encoding with a larger max_len.
 
@@ -3263,7 +3263,7 @@ The block is the unit that stacks. Normalization order decides trainability at d
 **Focus**
 
 - Post-norm (UDL equation 12.13, D2L encoder) normalizes after each residual add; pre-norm (ViTBlock) normalizes the branch inputs and adds untouched residuals. D2L states pre-norm trains more effectively.
-- Residuals force equal widths: D2L requires decoder num_hiddens to equal the encoder width for the adds and the cross QK^T product.
+- Residuals force equal widths: D2L requires decoder num_hiddens to equal the encoder width for the adds and the cross $`QK^\top`$ product.
 - Neither D2L MLP is gated: PositionWiseFFN is ReLU and ViTMLP is GELU with dropout. A gated block adds a third projection and an elementwise product; hold parameters fixed by shrinking width, not by ignoring the extra matrix.
 - Pattern follows context: BERT-style encoders read both sides for representations, GPT-style decoders mask the future for generation, encoder-decoders add cross-attention for sequence-to-sequence tasks.
 
@@ -3285,7 +3285,7 @@ The block is the unit that stacks. Normalization order decides trainability at d
 <summary>Self-test</summary>
 
 1. Write the operation order of a post-norm and a pre-norm attention sublayer.
-   - Post-norm: Y equals LayerNorm(X plus Attention(X)). Pre-norm: Y equals X plus Attention(LayerNorm(X)). Same parts, different order; only pre-norm keeps a clean residual path.
+   - Post-norm: $`Y`$ equals LayerNorm($`X`$ plus Attention($`X`$)). Pre-norm: $`Y`$ equals $`X`$ plus Attention(LayerNorm($`X`$)). Same parts, different order; only pre-norm keeps a clean residual path.
 2. Contrast BERT and GPT-3 on attention pattern, objective and size.
    - BERT is a bidirectional encoder trained to predict masked words: 24 layers, width 1024, 16 heads of width 64, MLP width 4096. GPT-3 is a causal decoder trained on next tokens: 96 layers, width 12288, 96 heads of width 128.
 3. Why must the D2L decoder match the encoder num_hiddens?
@@ -3311,15 +3311,15 @@ Attention scales quadratically in sequence length. The budget must be derived be
 
 **Study**
 
-1. [Complexity, sequential ops and path lengths](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html) (D2L - attention and transformer implementation route) - Comparing CNNs, RNNs, and Self-Attention: O(k n d^2) with O(1) ops and O(n/k) path for CNNs, O(n d^2) with O(n) ops and path for RNNs, O(n^2 d) with O(1) ops and path for self-attention.
-2. [Quadratic attention and model sizes](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.2.1 (p. 209) for N^2 attention weights independent of width; Section 12.9 (pp. 227 to 228) for roughly half the interactions in decoders and the sparsification gallery; BERT and GPT-3 parameter listings (pp. 219 and 224 to 225) as worked sizes. Depth: Treat the sparsification gallery as orientation only; sparse kernels are a later topic.
+1. [Complexity, sequential ops and path lengths](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html) (D2L - attention and transformer implementation route) - Comparing CNNs, RNNs, and Self-Attention: $`O(k n d^2)`$ with $`O(1)`$ ops and $`O(n/k)`$ path for CNNs, $`O(n d^2)`$ with $`O(n)`$ ops and path for RNNs, $`O(n^2 d)`$ with $`O(1)`$ ops and path for self-attention.
+2. [Quadratic attention and model sizes](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.2.1 (p. 209) for $`N^2`$ attention weights independent of width; Section 12.9 (pp. 227 to 228) for roughly half the interactions in decoders and the sparsification gallery; BERT and GPT-3 parameter listings (pp. 219 and 224 to 225) as worked sizes. Depth: Treat the sparsification gallery as orientation only; sparse kernels are a later topic.
 3. [Backends and precision behavior](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The three-implementation Note with backend selection functions, and the Numerical accuracy paragraph: math backend keeps fp32 intermediates for half and bf16 inputs, and outputs may differ by backend. Depth: Skip grouped-query attention; it belongs to decoder specialization.
 
 **Focus**
 
-- Count with multiply-add as 2 FLOP: QKVO projections 8 n d^2, scores plus weighting 4 n^2 d, width-4d MLP 16 n d^2. At n 512 and d 1024 that is about 5.37 GFLOP for attention and 8.59 GFLOP for the MLP.
-- Score memory is heads times n^2 entries in the working dtype: 16 heads at n 512 in fp32 is exactly 16 MiB, 1 MiB per head. At n 4096 the same block needs 1 GiB.
-- Causal masking keeps n(n+1)/2 pairs, so the necessary score FLOPs roughly halve, as UDL notes. A dense matmul followed by a mask still computes all n^2 scores; only a kernel that skips masked tiles saves the work, and only a fused kernel avoids materializing the scores.
+- Count with multiply-add as 2 FLOP: QKVO projections $`8 n d^2`$, scores plus weighting $`4 n^2 d`$, width-$`4d`$ MLP $`16 n d^2`$. At $`n`$ 512 and $`d`$ 1024 that is about 5.37 GFLOP for attention and 8.59 GFLOP for the MLP.
+- Score memory is heads times $`n^2`$ entries in the working dtype: 16 heads at $`n`$ 512 in fp32 is exactly 16 MiB, 1 MiB per head. At $`n`$ 4096 the same block needs 1 GiB.
+- Causal masking keeps $`n(n+1)/2`$ pairs, so the necessary score FLOPs roughly halve, as UDL notes. A dense matmul followed by a mask still computes all $`n^2`$ scores; only a kernel that skips masked tiles saves the work, and only a fused kernel avoids materializing the scores.
 - The math backend upcasts half and bf16 intermediates to fp32, so measured bytes can exceed a naive dtype-times-entries count. Fused backends can change numerics without changing the asymptotic count.
 
 **Reproduce:** Closed-book, fill the table for n 512, d 1024, h 16, fp32: attention parameters 4.19M, MLP parameters 8.39M, score memory 16 MiB, attention forward about 5.37 GFLOP. Then scale scores to n 4096 and show 1 GiB.
@@ -3327,27 +3327,27 @@ Attention scales quadratically in sequence length. The budget must be derived be
 **Traps**
 
 - Mixing MACs with FLOPs. One multiply-add is 2 FLOP; state the convention or totals disagree by exactly 2x.
-- Quoting GB for GiB quantities. 16 times 4096^2 times 4 bytes is 2^30 bytes: 1 GiB, not 1 GB.
+- Quoting GB for GiB quantities. 16 times $`4096^2`$ times 4 bytes is $`2^{30}`$ bytes: 1 GiB, not 1 GB.
 - Trusting fused-kernel numerics to match the math path bit for bit. The docs warn outputs may differ by backend; test within tolerance, not equality.
 
 **Practice**
 
-- [D2L Attention Scoring Functions: Exercise 3 (cost scaling)](https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html) - Exercises: cost versus key, query and value dimensionality and count, plus the memory-bandwidth follow-up. Answer with the derived 8nd^2 plus 4n^2d model and the 512-case numbers, stating the multiply-add convention.
-- [TensorTonic: Transformer Training FLOP Estimator](https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator) - The estimator problem in the PyTorch and einops group of the free language-modeling-from-scratch plan. It estimates one training step from forward matrix multiplications plus a supplied forward attention cost. Match its forward matmul terms to your 8nd^2 and 16nd^2 counts, then document how it counts the backward pass and every term it includes or leaves out.
+- [D2L Attention Scoring Functions: Exercise 3 (cost scaling)](https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html) - Exercises: cost versus key, query and value dimensionality and count, plus the memory-bandwidth follow-up. Answer with the derived $`8nd^2`$ plus $`4n^2d`$ model and the 512-case numbers, stating the multiply-add convention.
+- [TensorTonic: Transformer Training FLOP Estimator](https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator) - The estimator problem in the PyTorch and einops group of the free language-modeling-from-scratch plan. It estimates one training step from forward matrix multiplications plus a supplied forward attention cost. Match its forward matmul terms to your $`8nd^2`$ and $`16nd^2`$ counts, then document how it counts the backward pass and every term it includes or leaves out.
 
-**Stop when:** Your hand table matches measured score bytes and a profiler FLOP count within stated conventions, and you can name the dominant attention term on either side of n equals 2d (6d once the MLP is included).
+**Stop when:** Your hand table matches measured score bytes and a profiler FLOP count within stated conventions, and you can name the dominant attention term on either side of $`n`$ equals $`2d`$ ($`6d`$ once the MLP is included).
 
 <details>
 <summary>Self-test</summary>
 
-1. How many score bytes do 8 heads at n 1024 in fp32 need?
-   - 8 times 1024^2 entries times 4 bytes equals 33,554,432 bytes, which is 32 MiB.
+1. How many score bytes do 8 heads at $`n`$ 1024 in fp32 need?
+   - 8 times $`1024^2`$ entries times 4 bytes equals 33,554,432 bytes, which is 32 MiB.
 2. Why does decoder attention need only about half the encoder score FLOPs, and when is the saving real?
-   - Causality keeps the lower triangle: n(n+1)/2 pairs instead of n^2, roughly half for long sequences. A dense matmul plus mask still spends all n^2; the saving is real only in a kernel that skips masked blocks.
+   - Causality keeps the lower triangle: $`n(n+1)/2`$ pairs instead of $`n^2`$, roughly half for long sequences. A dense matmul plus mask still spends all $`n^2`$; the saving is real only in a kernel that skips masked blocks.
 3. How many bias-free attention parameters does one BERT-width layer hold?
-   - 4 times 1024^2 equals 4,194,304, about 4.19M. Biases would add 4 times 1024 on top.
+   - 4 times $`1024^2`$ equals 4,194,304, about 4.19M. Biases would add 4 times 1024 on top.
 4. Sequence length grows from 512 to 4096 at fixed width. What scales by 64, and what becomes the main cost?
-   - Score entries, bytes and score FLOPs all scale by 8^2 equals 64, while projection FLOPs scale by 8 and weights stay fixed. The score tensor grows from 16 MiB to 1 GiB per layer and example, so it is usually the first memory limit. Since n is now above 2d, score FLOPs also exceed the projection FLOPs.
+   - Score entries, bytes and score FLOPs all scale by $`8^2`$ equals 64, while projection FLOPs scale by 8 and weights stay fixed. The score tensor grows from 16 MiB to 1 GiB per layer and example, so it is usually the first memory limit. Since $`n`$ is now above $`2d`$, score FLOPs also exceed the projection FLOPs.
 
 </details>
 
@@ -3374,7 +3374,7 @@ Attention fails quietly: transposed axes still run, padding still mixes, fused k
 
 **Focus**
 
-- Choose by mechanism, not fashion: CNNs share local filters with translation structure, RNNs carry fixed state through O(n) sequential steps, attention pays O(n^2 d) for content-based O(1) paths. The D2L table makes the trade exact.
+- Choose by mechanism, not fashion: CNNs share local filters with translation structure, RNNs carry fixed state through $`O(n)`$ sequential steps, attention pays $`O(n^2 d)`$ for content-based $`O(1)`$ paths. The D2L table makes the trade exact.
 - The axis checklist is short: which axis the softmax sums to 1, whether head splitting precedes the transpose, whether valid_lens repeats per head, and whether transposed tensors are contiguous before any view.
 - Interventions beat inspections: perturb future tokens, change padded content, permute the batch (and the sequence, for an unmasked block without positions), and require matching outputs. UDL Section 12.7.2 explains how a decoder that sees the future can cheat; only the intervention proves yours cannot.
 - Some claims need a run: fused-backend numerics, half-precision intermediates, and the length where materialization binds. Derive the model, then measure the regime.
@@ -3397,7 +3397,7 @@ Attention fails quietly: transposed axes still run, padding still mixes, fused k
 <summary>Self-test</summary>
 
 1. Fill the D2L trade-off row for CNNs, RNNs and self-attention: compute order, sequential ops, max path.
-   - CNN: O(k n d^2), O(1), O(n/k). RNN: O(n d^2), O(n), O(n). Self-attention: O(n^2 d), O(1), O(1).
+   - CNN: $`O(k n d^2)`$, $`O(1)`$, $`O(n/k)`$. RNN: $`O(n d^2)`$, $`O(n)`$, $`O(n)`$. Self-attention: $`O(n^2 d)`$, $`O(1)`$, $`O(1)`$.
 2. Which D2L line protects multi-head masking, and what is the failure without it?
    - torch.repeat_interleave(valid_lens, num_heads, dim=0). Without it D2L masked_softmax fails with a mask shape error. Tiling with repeat instead runs but gives heads another example's length, because the fold is batch-major.
 3. Why must the SDPA differential test exclude fully masked rows?
@@ -3416,7 +3416,7 @@ Attention fails quietly: transposed axes still run, padding still mixes, fused k
 3. Assemble a pre-norm block (norm, attention, add, norm, gated MLP, add) with sinusoidal or learned positions. Check shapes across depths, batch sizes and sequence lengths, and identical eval-mode outputs after saving and reloading the state_dict.
 4. Run the intervention battery on the composed block: changing future tokens leaves earlier outputs unchanged, changing padded content leaves valid outputs unchanged, and permuting the batch permutes the outputs. Show that sequence permutation passes without mask or positions and fails with the causal mask.
 5. Differential-test forward and backward against torch.nn.functional.scaled_dot_product_attention on the math backend, within tolerance, with noncontiguous inputs and variable lengths, excluding fully masked rows. Pin your fully-masked-row convention in a separate test.
-6. Derive parameters, forward FLOPs and score memory for n = 512, d = 1024, h = 16 in fp32, then measure the score tensor bytes and a profiler FLOP count and reconcile them under stated conventions.
+6. Derive parameters, forward FLOPs and score memory for $`n = 512`$, $`d = 1024`$, $`h = 16`$ in fp32, then measure the score tensor bytes and a profiler FLOP count and reconcile them under stated conventions.
 
 **Deliverables**
 
@@ -3515,11 +3515,11 @@ Every memory number and profiler row later in this section is a consequence of t
 **Focus**
 
 - The graph is rebuilt from scratch every iteration. A grad_fn object from a previous iteration is stale and must never be reused.
-- Forward keeps only what backward needs. For x squared it keeps x; the rest of the forward temporaries are free to go.
+- Forward keeps only what backward needs. For $`x`$ squared it keeps $`x`$; the rest of the forward temporaries are free to go.
 - Object identity of a saved tensor is an implementation detail. The pow case returns the same object and the exp case returns a different object, but both share storage and compare equal.
 - The first backward frees saved tensors. A second backward without retain_graph fails because the saved values are gone, not because the graph forgot the formula.
 
-**Reproduce:** Closed-book on CPU: build y = (x @ W + b).relu().sum() with a 2 by 3 x, a 3 by 4 W and a bias of 4, all requiring grad. Walk y.grad_fn through next_functions and write down SumBackward0, ReluBackward0, AddBackward0, MmBackward0 and AccumulateGrad in order. Then show (x ** 2).grad_fn._saved_self is x gives True while its storage is shared.
+**Reproduce:** Closed-book on CPU: build y = (x @ W + b).relu().sum() with a $`2 \times 3`$ $`x`$, a $`3 \times 4`$ $`W`$ and a bias of 4, all requiring grad. Walk y.grad_fn through next_functions and write down SumBackward0, ReluBackward0, AddBackward0, MmBackward0 and AccumulateGrad in order. Then show (x ** 2).grad_fn._saved_self is x gives True while its storage is shared.
 
 **Traps**
 
@@ -3574,7 +3574,7 @@ Every speedup claim in this section stands or falls on timing discipline. Async 
 - non_blocking=True is a request, not a command. From pageable host memory the copy still syncs; pin the source first.
 - Backward follows forward stream placement. Grads produced under a side-stream backward must be consumed in the same stream context or after an explicit wait.
 
-**Reproduce:** On a CUDA GPU, warm up, then time a 2048 by 2048 fp32 matmul both ways: CUDA events around the op with a synchronize before reading, versus a bare perf_counter around the launch. The matmul is 2 times 2048^3, about 17.2 GFLOP, so the event time is a few milliseconds at most (4.1 ms on a laptop RTX 3050), while the bare clock reads microseconds (0.007 ms there) because it measures enqueue only. Exact numbers depend on hardware; the size of the gap is the assertion.
+**Reproduce:** On a CUDA GPU, warm up, then time a $`2048 \times 2048`$ fp32 matmul both ways: CUDA events around the op with a synchronize before reading, versus a bare perf_counter around the launch. The matmul is $`2 \times 2048^3`$, about 17.2 GFLOP, so the event time is a few milliseconds at most (4.1 ms on a laptop RTX 3050), while the bare clock reads microseconds (0.007 ms there) because it measures enqueue only. Exact numbers depend on hardware; the size of the gap is the assertion.
 
 **Traps**
 
@@ -3630,7 +3630,7 @@ OOM errors name a requested size but never the cause. The fix differs completely
 - Peak counters are sticky. Reset them immediately before the measured region or the peak belongs to an earlier phase.
 - empty_cache returns unused segments to the driver. It never frees live tensors and never defragments them, so it cannot make a too-large tensor fit.
 
-**Reproduce:** Derive fp32 Adam memory for a 10M-parameter model as 160 MB (152.6 MiB) before activations. Then, in a fresh process on a CUDA GPU, allocate one 1024 by 1024 fp32 tensor and read memory_allocated as 4.00 MiB and memory_reserved as 20.00 MiB. Run one matmul and read allocated again: it stays higher by the cuBLAS workspace (about 8 MiB on an RTX 3050 with PyTorch 2.14). State which number nvidia-smi tracks.
+**Reproduce:** Derive fp32 Adam memory for a 10M-parameter model as 160 MB (152.6 MiB) before activations. Then, in a fresh process on a CUDA GPU, allocate one $`1024 \times 1024`$ fp32 tensor and read memory_allocated as 4.00 MiB and memory_reserved as 20.00 MiB. Run one matmul and read allocated again: it stays higher by the cuBLAS workspace (about 8 MiB on an RTX 3050 with PyTorch 2.14). State which number nvidia-smi tracks.
 
 **Traps**
 
@@ -3649,7 +3649,7 @@ OOM errors name a requested size but never the cause. The fix differs completely
 
 1. A 10M-parameter model trains in fp32 with Adam and no AMP. How many bytes do parameters, gradients and optimizer states hold?
    - 40 MB, 40 MB and 80 MB: 160 MB total before activations, workspace, inputs and reserve.
-2. After allocating one 1024 by 1024 fp32 tensor, allocated reads 4.00 MiB and reserved reads 20.00 MiB. What is the extra 16 MiB?
+2. After allocating one $`1024 \times 1024`$ fp32 tensor, allocated reads 4.00 MiB and reserved reads 20.00 MiB. What is the extra 16 MiB?
    - The unused rest of the 20 MiB segment the allocator reserved for this request, held for reuse, not live tensors. nvidia-smi tracks closer to reserved than to allocated.
 3. Peak grows every loop iteration while current stays flat. What was forgotten?
    - reset_peak_memory_stats before the measured region. Max counters never decrease on their own.
@@ -3762,7 +3762,7 @@ A NaN loss names no culprit. The only cheap evidence is the first invalid value 
 1. Under detect_anomaly, (x / x).backward() at x = 0 names DivBackward0. What does that name identify?
    - The backward function whose output went NaN, hence the forward division. The mode also prints the traceback of that forward call.
 2. torch.log of -1.0 gives NaN forward and grad -1.0 with no anomaly error. Why silent?
-   - check_nan fires on NaN generated by backward computation. Here backward computed the finite value 1/x, so there is nothing to report.
+   - check_nan fires on NaN generated by backward computation. Here backward computed the finite value $`1/x`$, so there is nothing to report.
 3. (A@B)[0] equaled A[0]@B[0] bitwise on your machine. May a test assert == across batchings?
    - No. Bitwise identity across batched and unbatched paths is not guaranteed, so assert allclose with an explicit tolerance.
 4. Times look bad with anomaly detection and the profiler enabled. What is the first correction?
@@ -3861,7 +3861,7 @@ Resume bugs waste entire training runs: the loss looks fine while the data order
 
 **Practice**
 
-- [TrenTorch: Resume-from-checkpoint](https://trentorch.com/ide/txf-llmeng-resume-from-checkpoint) - Implement save_checkpoint, train_n_steps, resume_from_full_checkpoint and resume_from_weights_only around an Adam step. Restoring m, v and t reproduces the uninterrupted weights; a weights-only resume restarts Adam's bias correction and diverges. The section mini-project then adds resume equivalence and interruption handling with declared tolerances.
+- [TrenTorch: Resume-from-checkpoint](https://trentorch.com/ide/txf-llmeng-resume-from-checkpoint) - Implement save_checkpoint, train_n_steps, resume_from_full_checkpoint and resume_from_weights_only around an Adam step. Restoring $`m`$, $`v`$ and $`t`$ reproduces the uninterrupted weights; a weights-only resume restarts Adam's bias correction and diverges. The section mini-project then adds resume equivalence and interruption handling with declared tolerances.
 
 **Stop when:** Your disk-roundtrip resume matches the continuous run (exactly on CPU, or within a declared tolerance elsewhere), and a changed-seed or unrestored-RNG resume is caught by your own equivalence check.
 

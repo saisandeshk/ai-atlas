@@ -94,7 +94,7 @@ Assume Programming's layout-alignment-locality and profiling-benchmarking units.
 1. In an ideal five-stage pipeline with no stalls, how many cycles complete ten instructions?
    - Four fill cycles plus ten completions: 14 cycles. This is a model, not a measurement of the host CPU.
 2. Why does chain not have the same independent lanes as bump?
-   - Iteration i needs the value written by iteration i-1. A simple widening would read the wrong predecessor; a different algorithm such as a parallel scan is needed.
+   - Iteration $`i`$ needs the value written by iteration $`i-1`$. A simple widening would read the wrong predecessor; a different algorithm such as a parallel scan is needed.
 3. Does a vectorization remark prove the vector loop ran for a particular call?
    - No. A small length, tail or runtime alias check can select a scalar path. Inspect the call's inputs and generated control flow.
 4. Can a predictable branch be cheaper than computing both arms?
@@ -148,7 +148,7 @@ Assume Programming's layout-alignment-locality unit, including its AoS/SoA exper
 <summary>Self-test</summary>
 
 1. For an aligned array of four-byte integers and an inspected 64-byte line, how much of each line does a stride-16 pass use?
-   - One integer, or 4/64 = 1/16 of the line, before any later reuse. This is useful-byte utilization, not a measured memory-traffic multiplier.
+   - One integer, or $`4/64 = 1/16`$ of the line, before any later reuse. This is useful-byte utilization, not a measured memory-traffic multiplier.
 2. Why can two race-free counters still contend in hardware?
    - Separate counters can share one cache line. Writes on different cores repeatedly require ownership of that line even though neither counter has multiple writers.
 3. Does a working set smaller than cache capacity guarantee hits?
@@ -251,7 +251,7 @@ Assume Programming's shell-processes-environment unit, including signal exit con
 
 - Keeping a spare write descriptor open and waiting for EOF forever. Inheritance and duplication both retain references.
 - Assuming Python's newly created descriptors survive exec. They are non-inheritable by default; deliberate dup2 onto standard I/O is inheritable unless requested otherwise.
-- Calling arbitrary logging or allocation from a native signal handler, or assuming shell status 128+signal is the raw wait status.
+- Calling arbitrary logging or allocation from a native signal handler, or assuming shell status $`128+\text{signal}`$ is the raw wait status.
 
 **Practice**
 
@@ -323,9 +323,9 @@ Assume Programming's integers-pointers-spans and ownership-raii-move units. A va
 <summary>Self-test</summary>
 
 1. With 4096-byte pages, VA 0x12345 and a valid VPN-to-frame mapping 18 -> 7, what is the physical byte address?
-   - VPN is 0x12 = 18, offset is 0x345 = 837, and PA is 7*4096+837 = 29509 = 0x7345, provided the access permissions allow it.
+   - VPN is $`0x12 = 18`$, offset is $`0x345 = 837`$, and PA is $`7 \times 4096+837 = 29509 = 0x7345`$, provided the access permissions allow it.
 2. How large is a linear table for a full 32-bit virtual space with 4 KiB pages and four-byte PTEs?
-   - 2^20 entries times four bytes = 4 MiB. This excludes extra metadata and is not a claim about the host's multi-level x86-64 tables.
+   - $`2^{20}`$ entries times four bytes = 4 MiB. This excludes extra metadata and is not a claim about the host's multi-level x86-64 tables.
 3. Can a resident file page cause a minor fault?
    - Yes. The page can be in the page cache while this process still lacks a usable PTE. Installing the mapping needs no storage read.
 4. Does flushing a private file mapping publish its private writes into the file?
@@ -381,7 +381,7 @@ Assume Programming's profiling-benchmarking unit; Python object-allocation profi
 1. Does malloc success prove every page has physical backing already?
    - No. Address-space reservation and allocator bookkeeping can succeed before first-touch backing is supplied. Overcommit and later resource pressure can still cause failure.
 2. In a toy model, two processes each map 8 MiB private and the same 4 MiB shared resident pages. What are RSS and PSS per process?
-   - RSS is 12 MiB each; PSS is 8+4/2 = 10 MiB each. Their represented physical footprint is 20 MiB, not the 24 MiB RSS sum.
+   - RSS is 12 MiB each; PSS is $`8+4/2 = 10`$ MiB each. Their represented physical footprint is 20 MiB, not the 24 MiB RSS sum.
 3. Why might freeing alternate chunks leave residency high?
    - Live chunks can pin the surrounding arena pages or prevent region release, and the allocator can retain free chunks. The exact behavior depends on allocator policy and layout.
 4. Can a stable peak RSS prove stable current memory after freeing?
@@ -495,11 +495,11 @@ Assume Programming's data-formats-ingestion and profiling-benchmarking units. Ke
 1. Why does stride 17 visit all 4096 block indices?
    - 17 and 4096 are coprime. Multiplication by 17 modulo 4096 is a permutation, so the pass covers each block exactly once.
 2. What is the sampled checksum for the file?
-   - There are 16 repeats of bytes 0 through 255: 16*(255*256/2) = 522240. The file length is 4096*4096 = 16777216 bytes = 16 MiB.
+   - There are 16 repeats of bytes 0 through 255: $`16 \times (255 \times 256/2) = 522240`$. The file length is $`4096 \times 4096 = 16777216`$ bytes = 16 MiB.
 3. Does a faster warm-cache random pass show that random SSD reads beat sequential reads?
    - No. It measures this application's warm-cache path, including syscall/copy or mapping costs. No device read or throughput claim follows without device-level evidence and cache controls.
-4. For four equal D-byte disks, what are ideal usable RAID 0, 5 and 6 capacities?
-   - 4D, 3D and 2D respectively, ignoring metadata. They tolerate zero, one and two disk failures in the ideal level model; none protects against all corruption or deletion.
+4. For four equal $`D`$-byte disks, what are ideal usable RAID 0, 5 and 6 capacities?
+   - $`4D`$, $`3D`$ and $`2D`$ respectively, ignoring metadata. They tolerate zero, one and two disk failures in the ideal level model; none protects against all corruption or deletion.
 
 </details>
 
@@ -588,7 +588,7 @@ This is optional repair, not a second systems curriculum. Assume Programming's i
 - Mult uses repeated addition with a loop invariant; Fill repeatedly examines the keyboard and updates screen words. Neither task models a host CPU pipeline or operating system.
 - Use entry-check failure to justify this detour. Exit as soon as the selected official tests and explanation pass; do not follow the full hardware/software sequence.
 
-**Reproduce:** Closed book, define n(a,b)=1-(a&b) for bits. Derive Not=n(a,a), And=n(n(a,b),n(a,b)), Or=n(n(a,a),n(b,b)); for XOR set t=n(a,b), then n(n(a,t),n(b,t)). Enumerate all four (a,b) pairs in a small Python oracle and assert agreement with bitwise not/and/or/xor. Then write Mult.asm: clear R2, copy R1 into a count variable; at LOOP exit to END when count is zero, otherwise add R0 into R2, decrement count and jump to LOOP; END jumps to itself. Trace (R0,R1)=(0,7),(6,7),(1,0),(181,181), expecting R2=0,42,0,32761 with R0/R1 preserved. Check those traces with a small interpreter of your own covering exactly the used A/C instructions, including 16-bit arithmetic and label addresses; run taskset -c 2 python3 -I logic-oracle.py. State that this is a subset oracle you wrote, not the official simulator. For actual project completion, run the named official tests in practice and retain their results; no official simulator run is claimed here.
+**Reproduce:** Closed book, define $`n(a,b)=1-(a\&b)`$ for bits. Derive $`\text{Not}=n(a,a)`$, $`\text{And}=n(n(a,b),n(a,b))`$, $`\text{Or}=n(n(a,a),n(b,b))`$; for $`\text{XOR}`$ set $`t=n(a,b)`$, then $`n(n(a,t),n(b,t))`$. Enumerate all four $`(a,b)`$ pairs in a small Python oracle and assert agreement with bitwise not/and/or/xor. Then write Mult.asm: clear R2, copy R1 into a count variable; at LOOP exit to END when count is zero, otherwise add R0 into R2, decrement count and jump to LOOP; END jumps to itself. Trace (R0,R1)=(0,7),(6,7),(1,0),(181,181), expecting R2=0,42,0,32761 with R0/R1 preserved. Check those traces with a small interpreter of your own covering exactly the used A/C instructions, including 16-bit arithmetic and label addresses; run taskset -c 2 python3 -I logic-oracle.py. State that this is a subset oracle you wrote, not the official simulator. For actual project completion, run the named official tests in practice and retain their results; no official simulator run is claimed here.
 
 **Traps**
 
@@ -607,11 +607,11 @@ This is optional repair, not a second systems curriculum. Assume Programming's i
 <summary>Self-test</summary>
 
 1. What are XOR outputs for (0,0),(0,1),(1,0),(1,1)?
-   - 0,1,1,0. The four-Nand construction uses t=Nand(a,b), then Nand(Nand(a,t),Nand(b,t)).
+   - 0,1,1,0. The four-Nand construction uses $`t=\text{Nand}(a,b)`$, then $`\text{Nand}(\text{Nand}(a,t),\text{Nand}(b,t))`$.
 2. After the entry-check instructions, what are A, D and RAM[3], and is JEQ taken?
    - A holds the END label's ROM address, D is 7 and RAM[3] is 7. JEQ is not taken because D is not zero. END's numeric address depends on the complete program.
 3. What invariant proves the repeated-addition loop?
-   - After k additions, R2=k*R0 and count=original R1-k. At count zero, R2=R0*original R1. The stated bounds keep the result within the nonnegative Hack contract.
+   - After $`k`$ additions, $`R2=k \times R0`$ and $`\text{count}=\text{original }R1-k`$. At count zero, $`R2=R0 \times \text{original }R1`$. The stated bounds keep the result within the nonnegative Hack contract.
 4. Why does Fill keep polling the keyboard after painting the screen?
    - The input can change. The program must repeatedly choose black or white and repaint; one keyboard read or one screen write cannot implement the continuing contract.
 
@@ -964,7 +964,7 @@ Programming's hazards unit staged a lock-order deadlock in Python. This unit pro
 - Try-and-back-off breaks hold-and-wait but can livelock: six runs of vector-try-wait retried 0.8 to 3.1 million times each. Backoff calms the storm; ordering removes it.
 - Starvation is unfair scheduling over time with no cycle and no progress for one thread. Priority inversion is a low-priority holder blocking a high-priority waiter, as in the lesson's Mars Pathfinder case. Livelock is active retry with no progress.
 
-**Reproduce:** Build the two-mutex opposite-order program with a pthread barrier forcing the overlap (gcc 15.2 -O2 -pthread): show it hangs past a 5 s timeout (four of four reference runs on an i9-12900K with Linux 7.0). Draw its two-node wait-for cycle. Then impose one global order (always A before B) and show both threads print and exit 0. State compiler, flags, timeout and repeats.
+**Reproduce:** Build the two-mutex opposite-order program with a pthread barrier forcing the overlap (gcc 15.2 -O2 -pthread): show it hangs past a 5 s timeout (four of four reference runs on an i9-12900K with Linux 7.0). Draw its two-node wait-for cycle. Then impose one global order (always $`A`$ before $`B`$) and show both threads print and exit 0. State compiler, flags, timeout and repeats.
 
 **Traps**
 
@@ -982,8 +982,8 @@ Programming's hazards unit staged a lock-order deadlock in Python. This unit pro
 <details>
 <summary>Self-test</summary>
 
-1. T1 holds A and wants B; T2 holds B and wants A. Draw the graph and name the broken condition for each standard fix.
-   - Cycle T1 to B to T2 to A to T1, so deadlock is possible. A global order breaks circular wait; try-and-release breaks hold-and-wait; timeouts break no-preemption.
+1. $`T_1`$ holds $`A`$ and wants $`B`$; $`T_2`$ holds $`B`$ and wants $`A`$. Draw the graph and name the broken condition for each standard fix.
+   - Cycle $`T_1`$ to $`B`$ to $`T_2`$ to $`A`$ to $`T_1`$, so deadlock is possible. A global order breaks circular wait; try-and-release breaks hold-and-wait; timeouts break no-preemption.
 2. How do you tell deadlock from livelock from the outside?
    - Deadlock: threads blocked (futex waits, gdb __lll_lock_wait), near-zero CPU. Livelock: threads running and retrying, high CPU, no progress. Starvation: others progress while one thread does not.
 3. Why does acquiring the smaller key first prevent deadlock for any pair order?
@@ -1331,7 +1331,7 @@ Every later diagnosis in this section starts by asking which layer broke. Layers
 - Routing is longest-prefix match on the destination, per packet, per hop. The default route is only the shortest prefix that matches.
 - Sending adds transport, internet and link headers around application data in that order; receiving strips them in reverse.
 
-**Reproduce:** Run dig +short example.com twice and compare the answer sets. Then closed-book, write the cold-lookup chain (stub to recursive to root to TLD to authoritative) and evaluate the TTL rule on store(api.example, 192.0.2.10, TTL 10, t=100): resolve at t=109 hits, at t=110 misses.
+**Reproduce:** Run dig +short example.com twice and compare the answer sets. Then closed-book, write the cold-lookup chain (stub to recursive to root to TLD to authoritative) and evaluate the TTL rule on store(api.example, 192.0.2.10, TTL 10, t=100): resolve at $`t=109`$ hits, at $`t=110`$ misses.
 
 **Traps**
 
@@ -1341,15 +1341,15 @@ Every later diagnosis in this section starts by asking which layer broke. Layers
 
 **Practice**
 
-- [AlgoMaster: Implement a DNS TTL Cache](https://algomaster.io/practice/system-design/implement-a-dns-ttl-cache) - store and resolve with TTL expiry (now < t + d), case-insensitive names, cached NXDOMAIN. Do not refresh expiry on resolve; the 109-hit 110-miss boundary in Reproduce is the first case to pass.
+- [AlgoMaster: Implement a DNS TTL Cache](https://algomaster.io/practice/system-design/implement-a-dns-ttl-cache) - store and resolve with TTL expiry ($`\text{now} < t + d`$), case-insensitive names, cached NXDOMAIN. Do not refresh expiry on resolve; the 109-hit 110-miss boundary in Reproduce is the first case to pass.
 
 **Stop when:** You place a refused connection, an NXDOMAIN and a wrong route at the right layer on the first guess, and your TTL cache passes the 109-hit 110-miss boundary.
 
 <details>
 <summary>Self-test</summary>
 
-1. A record stored at t=100 with TTL 10 is resolved at t=110. Hit or miss, and why?
-   - Miss. It is valid only while now < 100 + 10, and resolving does not refresh the expiry.
+1. A record stored at $`t=100`$ with TTL 10 is resolved at $`t=110`$. Hit or miss, and why?
+   - Miss. It is valid only while $`\text{now} < 100 + 10`$, and resolving does not refresh the expiry.
 2. Entries cover 10.0.0.0/8 and 10.1.2.0/24. Which carries a packet for 10.1.2.9?
    - 10.1.2.0/24. Longest-prefix match wins; the /24 is more specific than the /8.
 3. Why can two applications on one host share one IP address without conflict?
@@ -1389,7 +1389,7 @@ Sockets expose streams, not messages. Misreading TCP as a message protocol cause
 - Flow control (receiver window) and congestion control (sender network estimate) are independent limits; the sender obeys the smaller.
 - UDP preserves message boundaries and promises nothing else. Loss, duplication and reordering are normal and must be handled above it.
 
-**Reproduce:** Closed-book, write the three handshake messages with initial sequence numbers (client c, server s) and the ACK numbers c+1 and s+1. Then, on loopback with CPython 3.14.4, run a server thread that accepts and closes, and time 100 create_connection plus close calls after 10 warm-up ones; then time 200 round trips of a 4-byte length-prefixed echo (TCP_NODELAY, 20 warm-up) at 64 bytes and 64 KiB. Pinned to two performance cores with taskset -c 2,4 on an i9-12900K with Linux 7.0, three runs gave connect plus close medians of 12 to 16 us, a 64 B echo p50 of about 9 us and a 64 KiB p50 of about 29 us; unpinned runs that landed on efficiency cores were up to about twice as slow. Record yours with the same setup and say which cores ran it.
+**Reproduce:** Closed-book, write the three handshake messages with initial sequence numbers (client $`c`$, server $`s`$) and the ACK numbers $`c+1`$ and $`s+1`$. Then, on loopback with CPython 3.14.4, run a server thread that accepts and closes, and time 100 create_connection plus close calls after 10 warm-up ones; then time 200 round trips of a 4-byte length-prefixed echo (TCP_NODELAY, 20 warm-up) at 64 bytes and 64 KiB. Pinned to two performance cores with taskset -c 2,4 on an i9-12900K with Linux 7.0, three runs gave connect plus close medians of 12 to 16 us, a 64 B echo p50 of about 9 us and a 64 KiB p50 of about 29 us; unpinned runs that landed on efficiency cores were up to about twice as slow. Record yours with the same setup and say which cores ran it.
 
 **Traps**
 
@@ -1406,7 +1406,7 @@ Sockets expose streams, not messages. Misreading TCP as a message protocol cause
 <details>
 <summary>Self-test</summary>
 
-1. Segments [0,3) and [5,7) arrived. Which byte does the receiver ACK next?
+1. Segments $`[0,3)`$ and $`[5,7)`$ arrived. Which byte does the receiver ACK next?
    - Byte 3. The ACK covers only the contiguous prefix from 0; bytes 5 and 6 wait behind the gap at 3 and 4.
 2. The client advertised a zero window for five seconds, then the transfer resumed with no retransmissions. Where was the stall?
    - At the receiving endpoint: its buffer stayed full because the application stopped reading. The network and server were waiting on window updates.
@@ -1570,7 +1570,7 @@ Schemas and status codes are the contract clients program against; trace context
 **Practice**
 
 - [AlgoMaster: Audit Correlation ID Propagation](https://algomaster.io/practice/system-design/audit-correlation-id-propagation) - brokenHops and firstBrokenHop over receive-forward chains; regenerated IDs break the boundary rule. A later hop that preserves a regenerated ID is not itself broken; only the regenerating hop is.
-- [AlgoMaster: Calculate Trace Span Exclusive Time](https://algomaster.io/practice/system-design/calculate-trace-span-exclusive-time) - Exclusive time as duration minus the union of direct-child intervals; ties break by smaller ID. Subtract the union [10,80), not the sum of overlapping children.
+- [AlgoMaster: Calculate Trace Span Exclusive Time](https://algomaster.io/practice/system-design/calculate-trace-span-exclusive-time) - Exclusive time as duration minus the union of direct-child intervals; ties break by smaller ID. Subtract the union $`[10,80)`$, not the sum of overlapping children.
 
 **Stop when:** You evolve a schema without breaking an old reader, classify an RPC failure by its status code, and trace one request across two hops without dropping its ID.
 
@@ -2025,16 +2025,16 @@ Assume Programming's indexes-query-plans unit and its scattered-versus-clustered
 
 **Focus**
 
-- An internal node with f children needs f pointers but only f-1 separator keys. Leaves store entries and links for ordered traversal.
+- An internal node with $`f`$ children needs $`f`$ pointers but only $`f-1`$ separator keys. Leaves store entries and links for ordered traversal.
 - A range scan descends once to its first leaf, then follows leaf links. Fetching table tuples is additional work unless the index contains the required data and visibility can be established.
 - Hashing supports exact-key lookup but gives no key order. Collisions need key comparison; resizing and overflow are part of the storage cost.
 - Selectivity is the fraction of rows matching a predicate, not a promise that an index wins. Page occupancy, heap fetches, ordering and cache state also matter.
 
-**Reproduce:** Derive a deliberately simplified, fully packed B+tree with 4096-byte pages, a 64-byte header including sibling-link space, 16-byte keys and 8-byte pointers or record IDs. Internal capacity obeys 64+8f+16(f-1)<=4096, so f=168. Leaf capacity is floor((4096-64)/24)=168. For 1,000,000 unique entries, ceil(1000000/168)=5953 leaves, ceil(5953/168)=36 parents and one root: three index-page visits per uncached point lookup, excluding heap access. This is a model, not PostgreSQL's format or a measured I/O count. Then draw a separate tiny tree with at most three keys per leaf: insert 1,2,3,4, split it into [1,2] and [3,4], and copy separator 3 into the root while retaining 3 in the leaf.
+**Reproduce:** Derive a deliberately simplified, fully packed B+tree with 4096-byte pages, a 64-byte header including sibling-link space, 16-byte keys and 8-byte pointers or record IDs. Internal capacity obeys $`64+8f+16(f-1)\le4096`$, so $`f=168`$. Leaf capacity is $`\left\lfloor(4096-64)/24\right\rfloor=168`$. For 1,000,000 unique entries, $`\left\lceil1000000/168\right\rceil=5953`$ leaves, $`\left\lceil5953/168\right\rceil=36`$ parents and one root: three index-page visits per uncached point lookup, excluding heap access. This is a model, not PostgreSQL's format or a measured I/O count. Then draw a separate tiny tree with at most three keys per leaf: insert 1,2,3,4, split it into [1,2] and [3,4], and copy separator 3 into the root while retaining 3 in the leaf.
 
 **Traps**
 
-- Using f separator keys for f children, or applying full-occupancy height as a worst-case bound.
+- Using $`f`$ separator keys for $`f`$ children, or applying full-occupancy height as a worst-case bound.
 - Counting an index lookup as the complete query cost when result tuples require heap fetches.
 - Deleting the promoted separator from a leaf split. B+tree data entries remain in leaves.
 
@@ -2048,7 +2048,7 @@ Assume Programming's indexes-query-plans unit and its scattered-versus-clustered
 <summary>Self-test</summary>
 
 1. Why is fan-out 168 rather than 169 in the model?
-   - 169 children need 64+169*8+168*16=4104 bytes. 168 children need 4080 bytes and fit.
+   - 169 children need $`64+169\times 8+168\times 16=4104`$ bytes. 168 children need 4080 bytes and fit.
 2. Does halving occupancy necessarily add a level?
    - No. Recompute leaf and parent counts with the new capacities; height changes only when the next level can no longer cover them.
 3. Why cannot a hash index answer a key interval by walking adjacent buckets?
@@ -2084,7 +2084,7 @@ Assume Programming's indexes-query-plans unit. The next step is explaining join 
 - Estimated cost is not milliseconds. Actual rows are per-loop averages; parent costs and buffer totals include children, so summing the whole tree double-counts work.
 - A shared-buffer read can be served by the OS cache. Report logical accesses and observed buffer misses separately from physical device work; stock EXPLAIN does not prove cold NVMe reads.
 
-**Reproduce:** First derive block nested-loop cost M+ceil(M/(B-2))*N for M=1000 outer pages, N=500 inner pages and B=102 frames: 6000 input-page transfers. One-level Grace hash join costs 3*(M+N)=4500 if partitions fit, with uniform partitioning, no extra pass and output writes excluded. Then use the section PostgreSQL setup: CREATE TABLE r AS SELECT i AS k FROM generate_series(1,1000) i; CREATE TABLE s AS SELECT i%1000+1 AS k FROM generate_series(1,10000) i; CREATE INDEX ON s(k); ANALYZE r; ANALYZE s. Set jit=off, max_parallel_workers_per_gather=0 and work_mem='4MB'. For SELECT count(*) FROM r JOIN s USING(k), save EXPLAIN (ANALYZE,BUFFERS,TIMING OFF,SUMMARY OFF) with exactly one of enable_hashjoin, enable_mergejoin, enable_nestloop on and the other two off. Each query counts 10000 joined pairs. Record the chosen operators, per-loop rows, loops, shared hits/reads and any spills; flags discourage alternatives, so inspect rather than assume. Run each plan once to warm it, then save three repetitions. Record lscpu, uname -r, SELECT version(), psql --version and all settings; report cache state as warmed, not guaranteed cold. No timing or memory value is a target.
+**Reproduce:** First derive block nested-loop cost $`M+\left\lceil M/(B-2)\right\rceil\cdot N`$ for $`M=1000`$ outer pages, $`N=500`$ inner pages and $`B=102`$ frames: 6000 input-page transfers. One-level Grace hash join costs $`3(M+N)=4500`$ if partitions fit, with uniform partitioning, no extra pass and output writes excluded. Then use the section PostgreSQL setup: CREATE TABLE r AS SELECT i AS k FROM generate_series(1,1000) i; CREATE TABLE s AS SELECT i%1000+1 AS k FROM generate_series(1,10000) i; CREATE INDEX ON s(k); ANALYZE r; ANALYZE s. Set jit=off, max_parallel_workers_per_gather=0 and work_mem='4MB'. For SELECT count(*) FROM r JOIN s USING(k), save EXPLAIN (ANALYZE,BUFFERS,TIMING OFF,SUMMARY OFF) with exactly one of enable_hashjoin, enable_mergejoin, enable_nestloop on and the other two off. Each query counts 10000 joined pairs. Record the chosen operators, per-loop rows, loops, shared hits/reads and any spills; flags discourage alternatives, so inspect rather than assume. Run each plan once to warm it, then save three repetitions. Record lscpu, uname -r, SELECT version(), psql --version and all settings; report cache state as warmed, not guaranteed cold. No timing or memory value is a target.
 
 **Traps**
 
@@ -2101,14 +2101,14 @@ Assume Programming's indexes-query-plans unit. The next step is explaining join 
 <details>
 <summary>Self-test</summary>
 
-1. Where do the three reads/writes in 3*(M+N) come from?
+1. Where do the three reads/writes in $`3(M+N)`$ come from?
    - Read both inputs and write their partitions, then read those partitions for build/probe. This excludes result writes and assumes no repartitioning.
 2. An inner node reports actual rows=10, loops=1000. How many rows did it emit in total?
    - 10000, subject to display rounding. The row count is an average per loop.
 3. Why can smaller work_mem increase physical work without changing the result?
    - A sort or hash operation may spill and perform extra transfers. Its logical semantics remain the same.
 4. For 1000 pages and 102 sort buffers, how many passes does materialized external merge sort need?
-   - Two: form ceil(1000/102)=10 runs, then merge them using at most 101 inputs. Reading and writing every page each pass costs 4000 transfers; a pipelined final output can change that accounting.
+   - Two: form $`\left\lceil1000/102\right\rceil=10`$ runs, then merge them using at most 101 inputs. Reading and writing every page each pass costs 4000 transfers; a pipelined final output can change that accounting.
 
 </details>
 
@@ -2196,7 +2196,7 @@ Assume Programming's transactions-isolation and synchronization-hazards units. T
 - MVCC is version storage plus visibility rules, not an isolation level. Tuple xmin/xmax need transaction status, snapshot membership and special-case handling; a nonzero xmax does not prove a row is invisible.
 - Timestamp ordering enforces a chosen serial order, often using a logical counter. PostgreSQL XIDs are neither wall-clock times nor commit-order counters; long-lived snapshots can prevent reclamation.
 
-**Reproduce:** Derive the fixed-object schedule R1(A),R2(B),W1(B),W2(A): R2(B) precedes W1(B), giving T2->T1; R1(A) precedes W2(A), giving T1->T2. The cycle rules out conflict serializability. If a timestamp protocol chose TS(T1)<TS(T2), it could not accept the T2->T1 dependency. Then use the section PostgreSQL setup: create visibility(id int PRIMARY KEY,v int), insert (1,10). Session A: BEGIN; UPDATE visibility SET v=20 WHERE id=1; leave it uncommitted. Session B, in default READ COMMITTED: SELECT v,xmin,xmax,ctid FROM visibility; SELECT pg_current_snapshot(); it sees the old value 10 although its xmax is nonzero in this simple update. Record A's in-progress XID and explain the snapshot bounds; equality of the snapshot's xmin and xmax bounds is possible. Commit A, then rerun B's SELECT: value 20 comes from a new tuple version with a different xmin and ctid. Exact XIDs and offsets are not targets. Draw visibility before and after commit without relying on numeric XID comparison alone.
+**Reproduce:** Derive the fixed-object schedule $`R_1(A), R_2(B), W_1(B), W_2(A)`$: $`R_2(B)`$ precedes $`W_1(B)`$, giving $`T_2\to T_1`$; $`R_1(A)`$ precedes $`W_2(A)`$, giving $`T_1\to T_2`$. The cycle rules out conflict serializability. If a timestamp protocol chose $`\operatorname{TS}(T_1)<\operatorname{TS}(T_2)`$, it could not accept the $`T_2\to T_1`$ dependency. Then use the section PostgreSQL setup: create visibility(id int PRIMARY KEY,v int), insert (1,10). Session A: BEGIN; UPDATE visibility SET v=20 WHERE id=1; leave it uncommitted. Session B, in default READ COMMITTED: SELECT v,xmin,xmax,ctid FROM visibility; SELECT pg_current_snapshot(); it sees the old value 10 although its xmax is nonzero in this simple update. Record A's in-progress XID and explain the snapshot bounds; equality of the snapshot's xmin and xmax bounds is possible. Commit A, then rerun B's SELECT: value 20 comes from a new tuple version with a different xmin and ctid. Exact XIDs and offsets are not targets. Draw visibility before and after commit without relying on numeric XID comparison alone.
 
 **Traps**
 
@@ -2253,7 +2253,7 @@ Build on Systems' files-fsync-durability unit rather than repeat its rename expe
 - Before flushing a dirty page, durable WAL must cover its pageLSN. Before acknowledging a durable commit, durable WAL must cover its commit record; data pages can follow later.
 - ARIES repeats history, including loser updates, then undoes losers. A single-writer append-only store can instead replay complete committed records into a rebuildable index; its recovery protocol is smaller.
 - A checksum detects many corruptions, not intent, lost whole records or adversarial changes. Bound lengths before allocating; distinguish incomplete EOF from a complete frame with a bad checksum.
-- For a snapshot at log offset K, flush the new snapshot, durably publish its name, flush a new manifest, atomically replace the old manifest and fsync its directory. Retain the old generation and required log until publication is durable.
+- For a snapshot at log offset $`K`$, flush the new snapshot, durably publish its name, flush a new manifest, atomically replace the old manifest and fsync its directory. Retain the old generation and required log until publication is durable.
 
 **Reproduce:** With CPython 3.14.4 (python3 -I), print sqlite3.sqlite_version and inspect PRAGMA journal_mode on a fresh on-disk database with one connection: the tested SQLite 3.46.1 returned delete, not wal. Then implement a single-writer log with struct.pack('>II',length,crc) followed by payload; length is the payload byte count, capped at 1024, and crc is zlib.crc32(struct.pack('>I',length)+payload). Use payloads b'a=1', b'b=2', b'a=3'. Each frame is 11 bytes. Append all bytes with short-write handling and fsync before acknowledging; for a newly created log, fsync its parent directory too. Rebuild the latest-key index by scanning validated frames. Test every byte-prefix truncation from 0 through 33: recover exactly the complete prefix and return its ending offset, giving 34 cases. Incomplete EOF is an uncommitted tail under this model; a complete frame with a bad CRC or an excessive length is an error, not silently discarded. Flip byte 9 in the complete log and require a corruption error. The full log gives a=3,b=2, and rebuilding twice gives the same state. Finally draw crashes before and after durable manifest publication: recovery must select a complete old or new generation and retain the log needed by that generation. These are deterministic fault-model tests, not evidence of surviving a real power cut.
 
@@ -2310,7 +2310,7 @@ Assume Programming's schema-evolution-migrations unit. Stored encodings outlive 
 - Write amplification needs a byte or operation denominator and a layer boundary. Count log writes, flushes and compaction separately; engine bytes are not flash-controller bytes.
 - Bloom filters can rule out a missing key, but a positive answer still needs lookup. The no-false-negative property assumes correct construction and publication with the matching run; ordinary membership filters do not answer arbitrary intervals.
 
-**Reproduce:** Closed-book, merge old sorted run [(1,1),(2,1),(3,1)] and newer run [(1,2),(2,2),(4,1)], where each pair is (key,value), and keep the newer duplicate: [(1,2),(2,2),(3,1),(4,1)]. Encode each pair using struct.pack('>QQ',key,value), exactly 16 bytes. Count only run-file writes: the two initial runs total 96 bytes and compaction writes 64, so total writes/input update bytes is 160/96=5/3. Keeping both inputs until output publication uses 160/64=2.5 times the compacted live-record bytes. These are exact model byte counts, excluding WAL, manifests, filters, filesystem blocks and device GC, not measured device amplification. Then specify a JSON record v1 with key and value, and a compatible v2 that adds optional expires_at defaulting to null. Test all four old/new writer-reader combinations in Python; the old reader must preserve unknown fields if it rewrites records, and the new reader must fill the absent default. Changing value from an integer to an object is a separate breaking change, not the optional-field case.
+**Reproduce:** Closed-book, merge old sorted run [(1,1),(2,1),(3,1)] and newer run [(1,2),(2,2),(4,1)], where each pair is (key,value), and keep the newer duplicate: [(1,2),(2,2),(3,1),(4,1)]. Encode each pair using struct.pack('>QQ',key,value), exactly 16 bytes. Count only run-file writes: the two initial runs total 96 bytes and compaction writes 64, so total writes/input update bytes is $`160/96=5/3`$. Keeping both inputs until output publication uses $`160/64=2.5`$ times the compacted live-record bytes. These are exact model byte counts, excluding WAL, manifests, filters, filesystem blocks and device GC, not measured device amplification. Then specify a JSON record v1 with key and value, and a compatible v2 that adds optional expires_at defaulting to null. Test all four old/new writer-reader combinations in Python; the old reader must preserve unknown fields if it rewrites records, and the new reader must fill the absent default. Changing value from an integer to an object is a separate breaking change, not the optional-field case.
 
 **Traps**
 
@@ -2327,8 +2327,8 @@ Assume Programming's schema-evolution-migrations unit. Stored encodings outlive 
 <details>
 <summary>Self-test</summary>
 
-1. Why is the compaction model's write amplification 5/3 rather than 64/96?
-   - The numerator includes both initial run writes and the compaction output: 96+64. Counting only the output omits the initial writes.
+1. Why is the compaction model's write amplification $`5/3`$ rather than $`64/96`$?
+   - The numerator includes both initial run writes and the compaction output: $`96+64`$. Counting only the output omits the initial writes.
 2. Why can temporary space exceed final live data even though compaction removes duplicates?
    - Old input runs must coexist with the new output until safe publication and reader release. The final output is smaller, but the peak includes both.
 3. Can a correct Bloom filter's positive answer establish that a value exists?
@@ -2345,7 +2345,7 @@ Assume Programming's schema-evolution-migrations unit. Stored encodings outlive 
 1. Store every write in kv/store.py as a frame: struct.pack(">II", length, crc) plus the payload, with crc = zlib.crc32 of the packed length and the payload, as in the WAL unit; the payload is a versioned record (v, tenant, key, value or tombstone, idem). Append with a short-write loop and fsync before the server acknowledges, and fsync the directory when a log file is created. If fsync fails, stop accepting writes and acknowledge nothing more: a later fsync can succeed without the lost pages having reached the disk. Recovery scans validated frames; an incomplete tail is truncated as never acknowledged, and a complete frame with a bad CRC or an oversized length is corruption that stops recovery with an error.
 2. Rebuild the index from the log at start: a dict from key to the offset of its newest record for point reads and a sorted key list (bisect) for range reads. Test point, missing-key, range-boundary and tombstone fixtures against a dict oracle replayed from the same records. In the README, derive with the unit's model what an ordered on-disk index over 1,000,000 keys would need (fanout 168: 5953 leaves, 36 parents and a root, three page visits per uncached lookup) and why the in-memory hash index needs no pages but must be rebuilt on every start.
 3. Test every boundary against an acknowledged-prefix oracle. Run numbered writes in a child process and crash it with os._exit at each injected point (mid-payload, after write before fsync, after fsync before the acknowledgement, after the acknowledgement), and truncate a log at every byte offset (for the unit's three 11-byte frames, offsets 0 to 33: 34 cases). After each recovery, the state must equal the oracle replay of a prefix of the attempted writes that contains every acknowledged one, and a flipped payload byte must raise a corruption error. Call these process-exit and truncation tests, not power-loss tests. Rerun the fault matrix's restart row: it now passes.
-4. Compact by writing a new generation that keeps the newest record per key, tombstones included, publish a manifest naming the live generation with lab/publish.py, and delete the old generation only after the manifest is durable. Crash before, during and after publication and show recovery always opens a complete old or new generation. Drop a tombstone only when no older generation or retained snapshot could still hold the key, and keep a test showing the deleted key coming back when it is dropped early. Count logical bytes separately for appends, flushes and compaction rewrites; the unit's toy runs give 160/96 = 5/3.
+4. Compact by writing a new generation that keeps the newest record per key, tombstones included, publish a manifest naming the live generation with lab/publish.py, and delete the old generation only after the manifest is durable. Crash before, during and after publication and show recovery always opens a complete old or new generation. Drop a tombstone only when no older generation or retained snapshot could still hold the key, and keep a test showing the deleted key coming back when it is dropped early. Count logical bytes separately for appends, flushes and compaction rewrites; the unit's toy runs give $`160/96=5/3`$.
 5. Version the record: v1 holds key and value, v2 adds an optional expires_at that defaults to null. Test all four writer and reader combinations; an old reader that rewrites a v2 record during compaction must keep the field it does not know. Treat a change to the type of value as a new field, not as v2.
 6. Model a buffer pool in front of the read path: four frames with pin counts, dirty bits and a clock or LRU victim choice. Test the two hard cases: with every frame pinned there is no victim and the request fails with a typed error, and a failed write-back of a dirty victim keeps its mapping and dirty bit and surfaces the error. Choose the layout for this store's reads (point gets by key, short range scans) and say why a row-oriented log fits and when a columnar copy would.
 7. In postgres:18, create the catalog: tenant, credential (tenant, role, active, expires_at), segment (generation, path, sha256, published_at) and usage (tenant, event_at, available_at, puts), with keys, NOT NULL and CHECK constraints doing the validation, and test each rejection. Rewrite one join with its filter moved into a subquery and test bag equivalence (EXCEPT ALL both ways is empty), plus COUNT of a join against EXISTS. Export the as-served usage rows at a cutoff (event_at and available_at at or before it, ties broken by a unique key), with tests for NULL puts, tied event times and rows exactly at the cutoff, inside a read-only REPEATABLE READ transaction, store the SQL, cutoff and SHA-256, backfill a late row and show the saved export still verifies.
@@ -2452,7 +2452,7 @@ Assume Programming's cancellation-timeouts-retries unit. Here the question is wh
 - Happens-before follows process order, send-to-receive edges and transitivity. A smaller Lamport timestamp does not prove a causal dependency.
 - Distinguish scalar clocks that order events from vectors that can expose concurrency. Neither provides consensus or elapsed seconds.
 
-**Reproduce:** Closed-book, trace five events in this order: A sends m to B; C performs an unrelated local event; B receives m; B sends a reply to A; A receives it. Start all counters at zero, increment on each local/send event, and set a receive counter to max(local, received)+1. Get counters 1, 1, 2, 3, 4. Label the A-to-B-to-A chain and C's concurrent event. Use (counter, node ID) to break ties, but do not infer causality from that tie-break. Then draw two executions with the same caller history: P invokes write(x,1) and times out; in one the request is dropped, in the other S applies it and the reply is dropped. Check the clocks and indistinguishability by hand; the numbers are logical counters, not measured time.
+**Reproduce:** Closed-book, trace five events in this order: A sends m to B; C performs an unrelated local event; B receives m; B sends a reply to A; A receives it. Start all counters at zero, increment on each local/send event, and set a receive counter to $`\max(\text{local}, \text{received})+1`$. Get counters 1, 1, 2, 3, 4. Label the A-to-B-to-A chain and C's concurrent event. Use $`(\text{counter}, \text{node ID})`$ to break ties, but do not infer causality from that tie-break. Then draw two executions with the same caller history: P invokes write(x,1) and times out; in one the request is dropped, in the other S applies it and the reply is dropped. Check the clocks and indistinguishability by hand; the numbers are logical counters, not measured time.
 
 **Traps**
 
@@ -2463,7 +2463,7 @@ Assume Programming's cancellation-timeouts-retries unit. Here the question is wh
 **Practice**
 
 - [Gossip Glomers Challenge 1: Echo](https://fly.io/dist-sys/1/) - Specification; Installing Maelstrom; Running our node in Maelstrom with the one-node echo workload. First build the JSON-line node harness and correlate replies with in_reply_to; Unique ID Generation and Broadcast reuse it. It is protocol setup, not a new socket-framing exercise. Maelstrom needs OpenJDK, Graphviz and gnuplot, and the challenges were tested against Maelstrom 0.2.3; a JDK container such as eclipse-temurin:21 avoids a host Java install. Nodes can be written in Python; the tutorial's Go code needs a Go toolchain.
-- [Gossip Glomers Challenge 2: Unique ID Generation](https://fly.io/dist-sys/2/) - Specification, RPC generate, and Evaluation with the unique-ids workload. After Echo, implement IDs without assuming synchronized clocks, with the same Maelstrom setup. Explain why (node ID, counter) needs persistent counters or fresh incarnation IDs if restarts are added; the challenge does not crash nodes. Its workload tests uniqueness and total availability under partitions, not monotonicity or fencing.
+- [Gossip Glomers Challenge 2: Unique ID Generation](https://fly.io/dist-sys/2/) - Specification, RPC generate, and Evaluation with the unique-ids workload. After Echo, implement IDs without assuming synchronized clocks, with the same Maelstrom setup. Explain why $`(\text{node ID}, \text{counter})`$ needs persistent counters or fresh incarnation IDs if restarts are added; the challenge does not crash nodes. Its workload tests uniqueness and total availability under partitions, not monotonicity or fencing.
 
 **Stop when:** You recover the five counters without the source, distinguish the two timeout executions, and defend your ID scheme's uniqueness and restart assumptions.
 
@@ -2472,9 +2472,9 @@ Assume Programming's cancellation-timeouts-retries unit. Here the question is wh
 
 1. Can the caller tell a dropped request from a dropped reply after a timeout?
    - Not from silence alone. The operation may have executed, so its outcome is unknown.
-2. If L(a) < L(b), must a happen before b?
+2. If $`L(a) < L(b)`$, must $`a`$ happen before $`b`$?
    - No. Causal order implies increasing Lamport counters, but unrelated events can also have different counters.
-3. What do vectors (2,1) and (1,2) tell you?
+3. What do vectors $`(2,1)`$ and $`(1,2)`$ tell you?
    - Neither dominates the other componentwise. Under the vector algorithm's causal tracking assumptions, the represented events are concurrent.
 4. Does a monotonic clock make an expired lease safe?
    - No. A process can pause or a request can be delayed after a lease check. The receiving resource must enforce ownership.
@@ -2503,11 +2503,11 @@ Copies alone do not define which writes survive or which reads are fresh. Quorum
 **Focus**
 
 - State whether an acknowledgement means receipt, persistence or application at each replica. Asynchronous failover can discard acknowledged writes that never reached the promoted follower.
-- For a fixed replica universe of size n, |W intersect R| is at least w+r-n. This proves overlap, not a complete linearizability protocol.
+- For a fixed replica universe of size $`n`$, $`|W \cap R|`$ is at least $`w+r-n`$. This proves overlap, not a complete linearizability protocol.
 - Membership changes, forgotten acknowledged data, concurrent writes and faulty timestamp resolution can break the freshness argument.
 - Consensus agreement, integrity and validity are safety properties. Progress requires the protocol's fault and timing assumptions; a timeout supplies suspicion, not knowledge.
 
-**Reproduce:** By hand derive |W intersect R| >= w+r-n from |W union R| <= n. In Python 3.14, enumerate all size-three subsets of ABCDE and all 100 write/read pairs; the minimum intersection is one. Now construct this explicit history with initial x=0 everywhere: event 1, P invokes write(x,1) using old membership ABC; event 2, A and B persist 1 and P receives OK; event 3, Q invokes read(x) using new membership CDE, before state transfer; event 4, D and E reply 0 and Q returns 0. Both configurations have n=3,w=2,r=2, but W={A,B} and R={D,E} do not intersect. Check by hand that this violates linearizability: the completed write precedes the stale read. State why a coordinated membership transition is missing.
+**Reproduce:** By hand derive $`|W \cap R| \ge w+r-n`$ from $`|W \cup R| \le n`$. In Python 3.14, enumerate all size-three subsets of ABCDE and all 100 write/read pairs; the minimum intersection is one. Now construct this explicit history with initial $`x=0`$ everywhere: event 1, P invokes write(x,1) using old membership ABC; event 2, A and B persist 1 and P receives OK; event 3, Q invokes read(x) using new membership CDE, before state transfer; event 4, D and E reply 0 and Q returns 0. Both configurations have $`n=3`$,$`w=2`$,$`r=2`$, but $`W=\{A,B\}`$ and $`R=\{D,E\}`$ do not intersect. Check by hand that this violates linearizability: the completed write precedes the stale read. State why a coordinated membership transition is missing.
 
 **Traps**
 
@@ -2524,9 +2524,9 @@ Copies alone do not define which writes survive or which reads are fresh. Quorum
 <details>
 <summary>Self-test</summary>
 
-1. For n=5,w=3,r=3, what overlap is guaranteed?
+1. For $`n=5`$,$`w=3`$,$`r=3`$, what overlap is guaranteed?
    - At least one replica, provided both sets belong to the same five-member configuration.
-2. Does w+r>n alone prove linearizability?
+2. Does $`w+r>n`$ alone prove linearizability?
    - No. It proves set intersection. Version ordering, concurrent operations, read behavior, persistence and membership transitions still need a correct protocol.
 3. What happens if an asynchronous leader acknowledges a write, dies, and a follower without it is promoted?
    - The acknowledged write can be lost from the surviving history. Local persistence on the old leader does not guarantee survival of that failover.
@@ -2561,7 +2561,7 @@ Assume Programming's transactions-isolation unit. This unit moves from database 
 - Eventual convergence needs propagation and a resolution policy. Read-your-writes and monotonic reads are session guarantees; causal consistency also preserves dependencies across clients.
 - LWW converges with a deterministic total timestamp order, but discards acknowledged updates. Sibling merge must preserve application meaning, especially deletion.
 
-**Reproduce:** Closed-book, check these register histories by hand, initially x=0 with no other writes. H1: P1 invokes write(x,1) at event 1 and receives OK at 2; P2 invokes read(x) at 3 and receives 0 at 4. It is not linearizable; if each operation is its own transaction, serializability alone permits the order read, write. H2: P1 invokes write(x,1) at 1 and receives OK at 4; P2 invokes read(x) at 2 and receives 0 at 3. It is linearizable in the order read, write. Separately, simulate two concurrent writes (timestamp=100,node=A,value=red) and (90,B,blue), comparing (timestamp,node): both arrival orders converge to red and discard blue. Merge cart siblings {book} and {dvd} by union after each device removed the other item from {book,dvd}; both deleted items reappear. Explain why convergence is not preservation of intent. Event numbers and timestamps are synthetic, not elapsed-time measurements.
+**Reproduce:** Closed-book, check these register histories by hand, initially $`x=0`$ with no other writes. H1: P1 invokes write(x,1) at event 1 and receives OK at 2; P2 invokes read(x) at 3 and receives 0 at 4. It is not linearizable; if each operation is its own transaction, serializability alone permits the order read, write. H2: P1 invokes write(x,1) at 1 and receives OK at 4; P2 invokes read(x) at 2 and receives 0 at 3. It is linearizable in the order read, write. Separately, simulate two concurrent writes $`(\text{timestamp}=100, \text{node}=A, \text{value}=\text{red})`$ and $`(90, B, \text{blue})`$, comparing $`(\text{timestamp}, \text{node})`$: both arrival orders converge to red and discard blue. Merge cart siblings $`\{\text{book}\}`$ and $`\{\text{dvd}\}`$ by union after each device removed the other item from $`\{\text{book}, \text{dvd}\}`$; both deleted items reappear. Explain why convergence is not preservation of intent. Event numbers and timestamps are synthetic, not elapsed-time measurements.
 
 **Traps**
 
@@ -2615,7 +2615,7 @@ Moving bytes does not transfer exclusive ownership by itself. Partition placemen
 - Routing metadata can be stale during transfer. Record an ownership epoch and decide when the new owner and receiving resource have installed it.
 - A resource that remembers the greatest accepted fencing token rejects lower tokens only after learning the newer one. Persist that fence with the protected mutation; equal-token retries still need operation deduplication.
 
-**Reproduce:** By hand or in Python 3.14, use integer keys 0 through 11 and the toy hash h(k)=k. Changing node assignment from k%3 to k%4 moves nine keys. Instead keep 12 fixed shards, initially owned by shard%3, and move only shards 3,7,11 to new node 3: three keys move and each node owns three keys. For a separate workload of 90 requests for key 0 and one for each key 1 through 11, k%3 gives request counts [93,4,4]. Then trace writes at one shared resource with initial maximum token 7: A writes (token 7,x=old) and receives OK; B installs token 8 and writes x=new; delayed A writes (7,x=old) and is rejected. Remove the token check and A overwrites new. Also test A arriving before the resource sees token 8: a greatest-seen-token check still accepts 7. Check these counts and orders directly, not as a benchmark; issuance of token 8 elsewhere is not instantaneous revocation at this resource.
+**Reproduce:** By hand or in Python 3.14, use integer keys 0 through 11 and the toy hash $`h(k)=k`$. Changing node assignment from $`k \% 3`$ to $`k \% 4`$ moves nine keys. Instead keep 12 fixed shards, initially owned by $`\text{shard} \% 3`$, and move only shards 3,7,11 to new node 3: three keys move and each node owns three keys. For a separate workload of 90 requests for key 0 and one for each key 1 through 11, $`k \% 3`$ gives request counts [93,4,4]. Then trace writes at one shared resource with initial maximum token 7: A writes $`(\text{token } 7, x=\text{old})`$ and receives OK; B installs token 8 and writes $`x=\text{new}`$; delayed A writes $`(7, x=\text{old})`$ and is rejected. Remove the token check and A overwrites new. Also test A arriving before the resource sees token 8: a greatest-seen-token check still accepts 7. Check these counts and orders directly, not as a benchmark; issuance of token 8 elsewhere is not instantaneous revocation at this resource.
 
 **Traps**
 
@@ -2669,7 +2669,7 @@ Assume Programming's http-apis-idempotency and transactions-isolation units. Her
 - For a single in-order consumer, store effect and next offset atomically in the same database. Concurrent owners require fencing or transactional serialization as well.
 - Kafka transactions can couple Kafka output records with input offsets. External email, payments or another database do not join that transaction merely because the producer is idempotent.
 
-**Reproduce:** Write a small program with Python 3.14's sqlite3 module; Kafka is not needed. Model one retained input partition as the immutable record (offset 0, delta +5), with database tables effect(total=0) and progress(pos=0), where pos is the next offset. Use a fresh on-disk database per case, journal_mode=DELETE and synchronous=FULL. In a child process, inject os._exit(9) after committing pos=1 but before the effect; reopening gives (total,pos)=(0,1), so restart skips the effect. Inject exit after committing the increment but before pos: reopening gives (5,0), and normal replay gives (10,1). Finally put both updates in BEGIN IMMEDIATE/COMMIT: exit before COMMIT reopens at (0,0), exit after COMMIT at (5,1), and restart from the stored pos ends at (5,1) in both cases. Close and reopen connections, replay only offset >= pos, and assert all four outcomes. These are process-exit tests with CPython 3.14.4 and SQLite 3.46.1, not a power-loss durability claim. Extend the model to two independent groups with separate progress; neither group advances the other's checkpoint.
+**Reproduce:** Write a small program with Python 3.14's sqlite3 module; Kafka is not needed. Model one retained input partition as the immutable record $`(\text{offset } 0, \delta +5)`$, with database tables effect(total=0) and progress(pos=0), where $`\text{pos}`$ is the next offset. Use a fresh on-disk database per case, journal_mode=DELETE and synchronous=FULL. In a child process, inject os._exit(9) after committing $`\text{pos}=1`$ but before the effect; reopening gives $`(\text{total}, \text{pos})=(0,1)`$, so restart skips the effect. Inject exit after committing the increment but before $`\text{pos}`$: reopening gives $`(5,0)`$, and normal replay gives $`(10,1)`$. Finally put both updates in BEGIN IMMEDIATE/COMMIT: exit before COMMIT reopens at $`(0,0)`$, exit after COMMIT at $`(5,1)`$, and restart from the stored $`\text{pos}`$ ends at $`(5,1)`$ in both cases. Close and reopen connections, replay only $`\text{offset} \ge \text{pos}`$, and assert all four outcomes. These are process-exit tests with CPython 3.14.4 and SQLite 3.46.1, not a power-loss durability claim. Extend the model to two independent groups with separate progress; neither group advances the other's checkpoint.
 
 **Traps**
 
@@ -2723,7 +2723,7 @@ Assume Programming's backpressure-graceful-shutdown unit. This unit moves beyond
 - A watermark is a progress claim or estimate with assumptions, not proof that no delayed event exists. State the input scope, idle-input policy and handling of events below it.
 - A snapshot needs the exact log position that its state represents. Latest-value compaction works for replacement updates, not arbitrary increment events; tombstone expiry can invalidate rebuilding an old nonempty snapshot.
 
-**Reproduce:** In Python 3.14, feed event timestamps [2,12,4] in that arrival order, using width-10 half-open tumbling windows, initial watermark -infinity, and watermark=max timestamp seen minus 3 after each arrival. Before updating the watermark, send any timestamp strictly below the previous watermark to a late side output. Get one event in [0,10), one in [10,20), late output [4], and final watermark 9. This is a declared toy lateness policy, not a measured clock bound. Separately replay replacement records (offset,key,value): (0,a,1),(1,b,2),(2,a,3),(3,b,null),(4,c,4), where null deletes. Snapshot after offset 2 is {a:3,b:2} with next offset 3; snapshot plus suffix and full replay both yield {a:3,c:4}. Compact by retaining the highest-offset record per key, including b's tombstone and original offsets, and rebuild the same final state from empty. Use exact dictionary assertions. Explain why deleting b's tombstone before replaying into the old snapshot leaves b incorrectly present, and why latest-only compaction of two increment(+1) events loses one increment.
+**Reproduce:** In Python 3.14, feed event timestamps [2,12,4] in that arrival order, using width-10 half-open tumbling windows, initial watermark $`-\infty`$, and $`\text{watermark}=\max(\text{timestamp seen})-3`$ after each arrival. Before updating the watermark, send any timestamp strictly below the previous watermark to a late side output. Get one event in $`[0,10)`$, one in $`[10,20)`$, late output [4], and final watermark 9. This is a declared toy lateness policy, not a measured clock bound. Separately replay replacement records $`(\text{offset}, \text{key}, \text{value})`$: $`(0, a, 1), (1, b, 2), (2, a, 3), (3, b, \text{null}), (4, c, 4)`$, where null deletes. Snapshot after offset 2 is $`\{a:3, b:2\}`$ with next offset 3; snapshot plus suffix and full replay both yield $`\{a:3, c:4\}`$. Compact by retaining the highest-offset record per key, including $`b`$'s tombstone and original offsets, and rebuild the same final state from empty. Use exact dictionary assertions. Explain why deleting $`b`$'s tombstone before replaying into the old snapshot leaves $`b`$ incorrectly present, and why latest-only compaction of two increment(+1) events loses one increment.
 
 **Traps**
 
@@ -2778,7 +2778,7 @@ Assume Programming's debugging-hypotheses and synchronization-hazards units. Her
 - Control scheduling, clock reads, randomness, iteration order and I/O completions. A random seed alone does not make an uncontrolled concurrent program deterministic.
 - Separate durable state from volatile state on restart. A bad completed read is a finite safety witness; no progress during a bounded observation interval is a stall, not proof of permanent nontermination.
 
-**Reproduce:** Write a Python 3.14 event scheduler with explicit integer ticks, a stable insertion-order tie-break, durable registers L=F=0, and a partition that initially drops L-to-F replication. Run this schedule: tick 1 P1 invokes write(x,1), L persists 1; 2 P1 receives OK; 3 P2 invokes a read served by F; 4 P2 receives 0; 5 F crashes, losing only volatile state; 6 F restarts with durable 0; 7 heal the link; 8 deliver a repair assigning F=1; 9 deliver that repair again; 10 P2 invokes another read from F; 11 it returns 1. Preserve the client events as JSON. A closed-book checker enumerating complete-operation permutations, enforcing response-before-invocation edges and the register rule, must reject the first read under linearizability. Fix this specific schedule by routing reads to the reachable, unchanged L; responses become [1,1] rather than [0,1]. Repeat each version three times and assert byte-identical traces within each version. Count stale responses, not wall-clock latency. These are synthetic logical ticks, not network timings. Add a pending read that waits during a partition, then completes after repair; report the bounded wait as a liveness stall, not a safety violation or proof of nontermination.
+**Reproduce:** Write a Python 3.14 event scheduler with explicit integer ticks, a stable insertion-order tie-break, durable registers $`L=F=0`$, and a partition that initially drops L-to-F replication. Run this schedule: tick 1 P1 invokes write(x,1), L persists 1; 2 P1 receives OK; 3 P2 invokes a read served by F; 4 P2 receives 0; 5 F crashes, losing only volatile state; 6 F restarts with durable 0; 7 heal the link; 8 deliver a repair assigning $`F=1`$; 9 deliver that repair again; 10 P2 invokes another read from F; 11 it returns 1. Preserve the client events as JSON. A closed-book checker enumerating complete-operation permutations, enforcing response-before-invocation edges and the register rule, must reject the first read under linearizability. Fix this specific schedule by routing reads to the reachable, unchanged $`L`$; responses become $`[1,1]`$ rather than $`[0,1]`$. Repeat each version three times and assert byte-identical traces within each version. Count stale responses, not wall-clock latency. These are synthetic logical ticks, not network timings. Add a pending read that waits during a partition, then completes after repair; report the bounded wait as a liveness stall, not a safety violation or proof of nontermination.
 
 **Traps**
 
@@ -2832,7 +2832,7 @@ This optional unit connects local process and RPC mechanisms to a distributed ba
 - Retries may run the same logical task more than once. Attempt outputs must remain private until one successful attempt is selected for publication.
 - Lost local intermediate files require recomputation or another surviving copy. Deterministic tasks over immutable inputs support replay; arbitrary external side effects do not become safe automatically.
 
-**Reproduce:** Closed-book, trace word count for two input shards, 'a b a' and 'b c'. Emit (word,1), route a and c to reducer 0 and b to reducer 1, group by word and sum: a=2,b=2,c=1. Place each map on a node holding its input replica, then fail the first map's node after it produces private intermediate output but before publication. Retry from an unchanged surviving input replica and publish only the accepted attempt for each logical map task. A Python Counter oracle gives the same counts. If you instead publish both first-map attempts, the wrong result is a=4,b=3,c=1. Label which bytes are input replicas, local intermediate output and published final output. This is a trace and counter model, not a measured locality speedup.
+**Reproduce:** Closed-book, trace word count for two input shards, 'a b a' and 'b c'. Emit $`(\text{word},1)`$, route $`a`$ and $`c`$ to reducer 0 and $`b`$ to reducer 1, group by word and sum: $`a=2`$,$`b=2`$,$`c=1`$. Place each map on a node holding its input replica, then fail the first map's node after it produces private intermediate output but before publication. Retry from an unchanged surviving input replica and publish only the accepted attempt for each logical map task. A Python Counter oracle gives the same counts. If you instead publish both first-map attempts, the wrong result is $`a=4`$,$`b=3`$,$`c=1`$. Label which bytes are input replicas, local intermediate output and published final output. This is a trace and counter model, not a measured locality speedup.
 
 **Traps**
 
@@ -2864,14 +2864,14 @@ This optional unit connects local process and RPC mechanisms to a distributed ba
 
 **About 14 to 20 hours.** Simulate the service slice replicated and consumed, in one process with logical ticks: a leader and followers with configuration IDs, ownership transfer with fencing, and a consumer group that replays the log into derived state. Drive it through lag, duplicates, a stale read, an ownership change, replay and node loss, then defend the contract with one history it permits and one it rejects.
 
-1. Write kv/sim/scheduler.py: an event loop over integer ticks with a stable insertion-order tie-break and one seeded random source owned by the scheduler. A schedule delivers, delays, drops or duplicates messages, and crashes nodes, which lose volatile state, keep what they persisted and can restart. Every run writes the client history (process, operation ID, object, input, invocation tick, response tick, result) as JSON, and the same seed must give a byte-identical history three times.
+1. Write kv/sim/scheduler.py: an event loop over integer ticks with a stable insertion-order tie-break and one seeded random source owned by the scheduler. A schedule delivers, delays, drops or duplicates messages, and crashes nodes, which lose volatile state, keep what they persisted and can restart. Every run writes the client history $`(\text{process}, \text{operation ID}, \text{object}, \text{input}, \text{invocation tick}, \text{response tick}, \text{result})`$ as JSON, and the same seed must give a byte-identical history three times.
 2. Model three replicas of the service log. The leader acknowledges according to a declared mode, after its own fsync or after a majority has persisted, and every operation records the configuration ID it used. Reproduce asynchronous-failover loss (the leader acknowledges, dies, and a follower without the write is promoted) and the unit's stale-membership read (write through A, B, C; read through C, D, E before state transfer returns 0). Then show that majority persistence with a membership change that blocks reads in the new configuration until state transfer completes keeps the acknowledged write in the same schedules.
 3. Write kv/sim/check.py: a brute-force linearizability checker for one register over small histories that enumerates orders respecting response-before-invocation and treats a timed-out write as possibly applied. It must reject the unit's H1 and the stale-follower read, and accept H2 and the leader-read repair. Add checks for read-your-writes and monotonic reads, and classify every history you produce as linearizable, session consistent only, or neither.
-4. Add a multi-writer mode with last-write-wins on (timestamp, node) and reproduce the lost update: two concurrent writes converge to one value in both arrival orders, and the other acknowledged write is gone. Write an application merge for a set with removals (tombstoned elements or an observed-remove set) and test the unit's cart case: removed items stay removed, where plain union brings them back.
-5. Partition keys over 12 fixed shards owned by nodes. Move shards 3, 7 and 11 to a new node (three keys move, where remapping k%3 to k%4 moves nine) and count requests per node under a hot key (90 requests for key 0 give [93, 4, 4] over three nodes). Transfer ownership with a fencing token persisted at the log resource with the mutation: a delayed write from the old owner with token 7 is rejected after the resource has seen token 8 and accepted before. Keep both schedules, and the overwrite when the check is removed.
+4. Add a multi-writer mode with last-write-wins on $`(\text{timestamp}, \text{node})`$ and reproduce the lost update: two concurrent writes converge to one value in both arrival orders, and the other acknowledged write is gone. Write an application merge for a set with removals (tombstoned elements or an observed-remove set) and test the unit's cart case: removed items stay removed, where plain union brings them back.
+5. Partition keys over 12 fixed shards owned by nodes. Move shards 3, 7 and 11 to a new node (three keys move, where remapping $`k \% 3`$ to $`k \% 4`$ moves nine) and count requests per node under a hot key (90 requests for key 0 give [93, 4, 4] over three nodes). Transfer ownership with a fencing token persisted at the log resource with the mutation: a delayed write from the old owner with token 7 is rejected after the resource has seen token 8 and accepted before. Keep both schedules, and the overwrite when the check is removed.
 6. Treat each replica log as a retained partition and write a consumer group that applies records to derived state in SQLite, storing the next offset in the same transaction, one checkpoint per group and partition. Crash it at each boundary (offset before effect, effect before offset, inside and after the transaction) and show only the atomic version matches a sequential oracle; two groups keep independent checkpoints. Mark an external effect (an email stub) as outside the transaction and give it its own idempotency key.
 7. Add event time: records carry event_at, the watermark is the maximum seen minus a declared lateness, windows are width-10 tumbling, and late events go to a side output (with lateness 3, the unit's [2, 12, 4] gives late [4] and watermark 9). Retry a poison record a bounded number of times, then move it to a durable dead-letter table with its offset, reason and replay policy, and mark the window output incomplete. Report offset lag (end offset minus the group's next offset) apart from event-time lateness. Snapshot with the next offset, compact keeping tombstones, kill the consumer node and show snapshot plus suffix equals full replay; then show an expired tombstone bringing back a deleted key.
-8. Run one scenario through lag, a duplicate, a stale read, an ownership change, a replay and a node loss, and write the contract on one page: what an acknowledgement means, which consistency reads get in each mode, the consumer's delivery guarantee and what is excluded. Give one history it permits and one it rejects, each checked by kv/sim/check.py. Optionally trace a two-map word count over the log with one failed attempt kept private and a retry checked against a Counter oracle (a=2, b=2, c=1; a=4, b=3, c=1 if both attempts publish).
+8. Run one scenario through lag, a duplicate, a stale read, an ownership change, a replay and a node loss, and write the contract on one page: what an acknowledgement means, which consistency reads get in each mode, the consumer's delivery guarantee and what is excluded. Give one history it permits and one it rejects, each checked by kv/sim/check.py. Optionally trace a two-map word count over the log with one failed attempt kept private and a retry checked against a Counter oracle ($`a=2`$, $`b=2`$, $`c=1`$; $`a=4`$, $`b=3`$, $`c=1`$ if both attempts publish).
 
 **Deliverables**
 
@@ -2974,7 +2974,7 @@ The Programming stage already instrumented a pipeline with OpenTelemetry, bounde
 **Focus**
 
 - White-box metrics expose internals and imminent failure; black-box checks prove user-visible symptoms. Page on symptoms, debug with causes.
-- One label-value combination is one stored series. At 3 services x 5 endpoints x 3 codes x 4 instances the metric holds 180 series; adding a 200,000-value user label takes it to 9,000,000.
+- One label-value combination is one stored series. At $`3 \text{ services} \times 5 \text{ endpoints} \times 3 \text{ codes} \times 4 \text{ instances}`$ the metric holds 180 series; adding a 200,000-value user label takes it to 9,000,000.
 - Head sampling decides from the trace ID before the outcome is known, so it cannot keep every error. Tail sampling waits for completed spans and pays stateful cost.
 - Keep what the Programming unit enforced: bounded label values, no secrets in attributes, and raw records retained behind every aggregate.
 
@@ -3032,9 +3032,9 @@ Every SLO and capacity number later in this section reads a latency distribution
 - Latency is a distribution. The SRE example (mean 100 ms, 1% at 5 s) and the Figure 4-1 bands show why one mean plus one threshold cannot describe user experience.
 - Goodput counts useful completions; throughput counts all completions; errors by policy can turn slow successes into failures. Saturation is the fraction of the most constrained resource, and most systems degrade before 100%.
 - Separate service time from queue wait in every measurement. Utilization explains which one dominates.
-- Percentiles need raw samples and n. Report n with the value, never a bare p99.
+- Percentiles need raw samples and $`n`$. Report $`n`$ with the value, never a bare p99.
 
-**Reproduce:** With CPython 3.14.4's random module and random.seed(7), draw 5000 samples: if random.random() < 0.02 take max(1, random.gauss(400, 80)), else max(1, random.gauss(40, 8)), in ms. With nearest-rank percentiles (rank ceil(p x n / 100)) you should get mean 48.19 ms, p50 40.16 ms, p95 55.16 ms, p99 421.05 ms and max 627.33 ms. Count the samples above 200 ms (108) and above 400 ms (60), and explain why a dashboard showing mean 48 ms and p95 55 ms shows none of them.
+**Reproduce:** With CPython 3.14.4's random module and random.seed(7), draw 5000 samples: if random.random() < 0.02 take max(1, random.gauss(400, 80)), else max(1, random.gauss(40, 8)), in ms. With nearest-rank percentiles (rank $`\operatorname{ceil}(p \times n / 100)`$) you should get mean 48.19 ms, p50 40.16 ms, p95 55.16 ms, p99 421.05 ms and max 627.33 ms. Count the samples above 200 ms (108) and above 400 ms (60), and explain why a dashboard showing mean 48 ms and p95 55 ms shows none of them.
 
 **Traps**
 
@@ -3044,7 +3044,7 @@ Every SLO and capacity number later in this section reads a latency distribution
 
 **Practice**
 
-- The section mini-project covers this: a load sweep through saturation on the learner's service reporting p50, p95 and p99 from retained raw samples with n, plus throughput, goodput, queue depth, utilization, errors and recovery.
+- The section mini-project covers this: a load sweep through saturation on the learner's service reporting p50, p95 and p99 from retained raw samples with $`n`$, plus throughput, goodput, queue depth, utilization, errors and recovery.
 
 **Stop when:** Your script prints the five stated numbers, and you can explain the hidden 2% tail and name the saturation signal you would alert on.
 
@@ -3089,10 +3089,10 @@ SLOs turn monitoring into decisions: ship or freeze, page or ticket. Readiness a
 
 - SLI is good events over total events; SLO is the target; the error budget is 100% minus the SLO times the window event count.
 - A 99.9% SLO over 30 days allows 43.2 minutes of full outage; over 3 million requests it allows 3,000 errors. The same budget reads both ways.
-- Series availability multiplies (0.999 x 0.995 = 0.99401) only for independent failures. Shared power, zones or deploys break the multiplication.
+- Series availability multiplies ($`0.999 \times 0.995 = 0.99401`$) only for independent failures. Shared power, zones or deploys break the multiplication.
 - RPO bounds data loss (backup freshness); RTO bounds downtime (restore plus failover). MTBF 720 h with MTTR 1 h gives 0.99861, and holding 0.999 needs MTTR at most 0.72072 h.
 
-**Reproduce:** Closed-book, derive the 30-day 99.9% budget (30 x 24 x 60 x 0.001 = 43.2 minutes), the series product 0.999 x 0.995 = 0.99401 with independence stated, and the MTBF/MTTR pair 720/721 = 0.99861 with maximum MTTR 720 x 0.001/0.999 = 0.72072 h. Then state the RPO check a restore drill must pass: the newest restorable record is no older than the RPO.
+**Reproduce:** Closed-book, derive the 30-day 99.9% budget ($`30 \times 24 \times 60 \times 0.001 = 43.2`$ minutes), the series product $`0.999 \times 0.995 = 0.99401`$ with independence stated, and the MTBF/MTTR pair $`720/721 = 0.99861`$ with maximum MTTR $`720 \times 0.001/0.999 = 0.72072`$ h. Then state the RPO check a restore drill must pass: the newest restorable record is no older than the RPO.
 
 **Traps**
 
@@ -3103,7 +3103,7 @@ SLOs turn monitoring into decisions: ship or freeze, page or ticket. Readiness a
 **Practice**
 
 - [AlgoMaster: Calculate System Availability](https://algomaster.io/practice/system-design/calculate-system-availability) - AvailabilityCalculator.calculate: series product versus parallel 1-minus-product-of-failures, rounded to 5 places. Attempt only after your own series and parallel estimates. Compare the platform answer with the independence assumption written down.
-- [AlgoMaster: Plan Reliability Recovery Targets](https://algomaster.io/practice/system-design/plan-reliability-recovery-targets) - availability (MTBF/(MTBF+MTTR)), maximumMttr and meetsTarget on unrounded availability. Attempt only after your own MTBF and MTTR numbers. Check meetsTarget against the unrounded value, not the rounded one.
+- [AlgoMaster: Plan Reliability Recovery Targets](https://algomaster.io/practice/system-design/plan-reliability-recovery-targets) - availability ($`\text{MTBF}/(\text{MTBF}+\text{MTTR})`$), maximumMttr and meetsTarget on unrounded availability. Attempt only after your own MTBF and MTTR numbers. Check meetsTarget against the unrounded value, not the rounded one.
 
 **Stop when:** You derive all four numbers without notes and can defend one SLO choice with its window, budget and policy action.
 
@@ -3137,28 +3137,28 @@ Admission bounds and queue sizes from the Programming backpressure-graceful-shut
 
 **Study**
 
-1. [M/M/1 stability and closed forms](https://en.wikipedia.org/wiki/M/M/1_queue) (M/M/1 queue - model definition and stationary analysis) - Model definition (Poisson arrivals, exponential service, single server, infinite buffer, FIFO); Stationary analysis (stability lambda < mu, rho = lambda/mu); Average number of customers in the system (L = rho/(1 - rho)); Response time (W = 1/(mu - lambda) via Little's Law). Depth: Use the closed forms as approximations only. Your service is not proven Poisson or exponential; the simulation in Reproduce is the check.
+1. [M/M/1 stability and closed forms](https://en.wikipedia.org/wiki/M/M/1_queue) (M/M/1 queue - model definition and stationary analysis) - Model definition (Poisson arrivals, exponential service, single server, infinite buffer, FIFO); Stationary analysis (stability $`\lambda < \mu`$, $`\rho = \lambda/\mu`$); Average number of customers in the system ($`L = \rho/(1 - \rho)`$); Response time ($`W = 1/(\mu - \lambda)`$ via Little's Law). Depth: Use the closed forms as approximations only. Your service is not proven Poisson or exponential; the simulation in Reproduce is the check.
 2. [Capacity in resources, not queries](https://sre.google/sre-book/handling-overload/) (Google Site Reliability Engineering - selected core chapters) - The Pitfalls of 'Queries per Second' (cost per request varies; model capacity directly in CPU time and memory).
 3. [Conservative capacity and scaling bounds](https://sre.google/workbook/managing-load/) (Google SRE Workbook - SLO, load, incident and canary exercises) - Autoscaling (Configuring Conservatively: stay far from bottlenecks, spare capacity for overload and redundancy; Setting Constraints: minimum and maximum bounds); Avoiding Overloading Backends.
 
 **Focus**
 
-- L = lambda W needs matching units: (requests/s) x s = requests. It holds for long-run averages in a stable system; it predicts nothing about tails.
-- Utilization rho = lambda/mu governs the wait. At rho 0.5, 0.8 and 0.95 the M/D/1 mean wait is 0.5x, 2x and 9.5x the service time; a seeded 60 s simulation at 10 ms service measured 4.86, 19.97 and 80.87 ms against theory 5, 20 and 95 ms.
-- Capacity is per resource. The bottleneck is the smallest capacity-over-work ratio: 12000/1, 5000/2 and 20000/0.5 give 2500 rps at the database.
+- $`L = \lambda W`$ needs matching units: $`(\text{requests}/\text{s}) \times \text{s} = \text{requests}`$. It holds for long-run averages in a stable system; it predicts nothing about tails.
+- Utilization $`\rho = \lambda/\mu`$ governs the wait. At $`\rho`$ 0.5, 0.8 and 0.95 the M/D/1 mean wait is 0.5x, 2x and 9.5x the service time; a seeded 60 s simulation at 10 ms service measured 4.86, 19.97 and 80.87 ms against theory 5, 20 and 95 ms.
+- Capacity is per resource. The bottleneck is the smallest capacity-over-work ratio: $`12000/1`$, $`5000/2`$ and $`20000/0.5`$ give 2500 rps at the database.
 - Approximations carry ranges. M/M/1 assumes Poisson arrivals and exponential service; burstier arrivals or heavier-tailed service widen the real wait. Report the assumption beside the number.
 
-**Reproduce:** Simulate a single FIFO server with CPython 3.14.4: random.seed(11), Poisson arrivals at 80/s from random.expovariate for 60 s, deterministic 10 ms service. The mean queue wait should be 20.475 ms against M/D/1 theory rho x S / (2 x (1 - rho)) = 20.000 ms, so the mean time in system is 30.475 ms and Little's Law gives L = 80 x 0.030475 = 2.44. Check the law directly: the time-average number in system over 5 to 55 s is 2.52, against lambda W 2.49 for the arrivals in that window. Then size servers: 0.8 average busy, so one server runs at rho 0.8 and two at 0.4.
+**Reproduce:** Simulate a single FIFO server with CPython 3.14.4: random.seed(11), Poisson arrivals at 80/s from random.expovariate for 60 s, deterministic 10 ms service. The mean queue wait should be 20.475 ms against M/D/1 theory $`\rho \times S / (2 \times (1 - \rho)) = 20.000`$ ms, so the mean time in system is 30.475 ms and Little's Law gives $`L = 80 \times 0.030475 = 2.44`$. Check the law directly: the time-average number in system over 5 to 55 s is 2.52, against $`\lambda W`$ 2.49 for the arrivals in that window. Then size servers: 0.8 average busy, so one server runs at $`\rho`$ 0.8 and two at 0.4.
 
 **Traps**
 
-- Applying L = lambda W to percentiles or to a draining queue. It relates long-run averages in a stable system only.
-- Quoting lambda without a window. Poisson bursts exceed the average; size the bound for the peak window, not the daily mean.
+- Applying $`L = \lambda W`$ to percentiles or to a draining queue. It relates long-run averages in a stable system only.
+- Quoting $`\lambda`$ without a window. Poisson bursts exceed the average; size the bound for the peak window, not the daily mean.
 - Treating the M/M/1 number as measured. It is a prediction under strong assumptions; the simulation or load run is the check.
 
 **Practice**
 
-- [AlgoMaster: Solve Little's Law](https://algomaster.io/practice/system-design/solve-littles-law) - LittlesLawCalculator.solve: detect the -1 argument and rearrange L = lambda W, rounded to 5 places (examples: 100 rps x 0.05 s = 5; 5/0.05 = 100 rps). Attempt only after your own three-way derivations. Keep units attached: throughput in requests/s, latency in seconds.
+- [AlgoMaster: Solve Little's Law](https://algomaster.io/practice/system-design/solve-littles-law) - LittlesLawCalculator.solve: detect the -1 argument and rearrange $`L = \lambda W`$, rounded to 5 places (examples: $`100 \text{ rps} \times 0.05 \text{ s} = 5`$; $`5/0.05 = 100`$ rps). Attempt only after your own three-way derivations. Keep units attached: throughput in requests/s, latency in seconds.
 - [AlgoMaster: Analyze Capacity Bottlenecks](https://algomaster.io/practice/system-design/analyze-capacity-bottlenecks) - maxThroughput (minimum of capacity/work ratios) and bottleneck (name of the smallest ratio; alphabetical on ties). Attempt only after your own per-resource ratios. Select the bottleneck from unrounded ratios.
 
 **Stop when:** You solve all three Little's Law directions without notes and can size one server count from a stated workload with the model assumptions listed.
@@ -3167,13 +3167,13 @@ Admission bounds and queue sizes from the Programming backpressure-graceful-shut
 <summary>Self-test</summary>
 
 1. 100 rps with 50 ms in system: average concurrency?
-   - 5 requests (100 x 0.05). Units: (requests/s) x s = requests.
-2. Single server at rho 0.95: mean wait as a multiple of service time?
-   - M/D/1 gives rho/(2 x (1 - rho)) = 9.5x; M/M/1 gives rho/(1 - rho) = 19x. State which model you used.
-3. Capacities 12000/1, 5000/2 and 20000/0.5 per request: max throughput and bottleneck?
-   - 2500 rps at the database (5000/2), the smallest ratio.
-4. The simulation gives 80.87 ms at rho 0.95 against theory 95 ms. Contradiction?
-   - No. Near rho 1 the queue relaxes slowly and the run starts empty, so a 60 s run reads low. Lengthen it, drop a warm-up, repeat with several seeds and report the spread beside the theory.
+   - 5 requests ($`100 \times 0.05`$). Units: $`(\text{requests}/\text{s}) \times \text{s} = \text{requests}`$.
+2. Single server at $`\rho`$ 0.95: mean wait as a multiple of service time?
+   - M/D/1 gives $`\rho/(2 \times (1 - \rho)) = 9.5`$x; M/M/1 gives $`\rho/(1 - \rho) = 19`$x. State which model you used.
+3. Capacities $`12000/1`$, $`5000/2`$ and $`20000/0.5`$ per request: max throughput and bottleneck?
+   - 2500 rps at the database ($`5000/2`$), the smallest ratio.
+4. The simulation gives 80.87 ms at $`\rho`$ 0.95 against theory 95 ms. Contradiction?
+   - No. Near $`\rho`$ 1 the queue relaxes slowly and the run starts empty, so a 60 s run reads low. Lengthen it, drop a warm-up, repeat with several seeds and report the spread beside the theory.
 
 </details>
 
@@ -3202,7 +3202,7 @@ Capacity math predicts; load proves. Assumed background: the Programming profili
 - Open-loop sends on a schedule whether or not replies returned; closed-loop waits for each reply. Past the knee, closed-loop self-throttles and reports flat latency while the queue explodes.
 - Seeded simulation (CPython 3.14.4, seed 21, 10 ms service, 500 ms stall every 200th request, 30 s): capacity is about 80.3 rps. Open loop at 60, 80 and 90 rps gives mean 96.3, 341.1 and 1843.1 ms and p99 502.8, 759.1 and 3727.5 ms, and the 90 rps numbers keep growing with run length. Closed loop with 5 clients gives mean 62.1 ms at 80.5 completed rps. Same server, different stories.
 - The first saturation point is where queue wait passes service time and goodput stops rising with offered load. Past it the bottleneck migrates: server CPU, then queue memory, then the dependency.
-- Keep every raw sample. Percentiles come from the retained records with n; the generator log is part of the evidence.
+- Keep every raw sample. Percentiles come from the retained records with $`n`$; the generator log is part of the evidence.
 
 **Reproduce:** Write a small open-loop generator with CPython 3.14.4 (random.seed(21), Poisson schedule via random.expovariate, latency counted from the intended send time, one FIFO server with 10 ms service and a 500 ms stall on every 200th request, 30 s) and confirm the 80 rps row: mean 341.1 ms, p50 341.1 ms, p95 649.5 ms, p99 759.1 ms with nearest-rank percentiles. Then run the closed-loop twin (5 clients, next request on completion: mean 62.1 ms, p99 540.0 ms, 80.5 completed rps) and state which run to trust for tail latency and why.
 
@@ -3214,7 +3214,7 @@ Capacity math predicts; load proves. Assumed background: the Programming profili
 
 **Practice**
 
-- The section mini-project covers this: an open-loop sweep of the learner's service through the predicted knee with retained raw records, measured p50, p95 and p99 with n, queue depth, utilization, errors and recovery, reconciled against the Little's Law prediction.
+- The section mini-project covers this: an open-loop sweep of the learner's service through the predicted knee with retained raw records, measured p50, p95 and p99 with $`n`$, queue depth, utilization, errors and recovery, reconciled against the Little's Law prediction.
 
 **Stop when:** Both generators run from your file, their latency pictures disagree as stated, and you can point at the knee with the bottleneck named.
 
@@ -3224,7 +3224,7 @@ Capacity math predicts; load proves. Assumed background: the Programming profili
 1. Open-loop p99 is 759 ms and closed-loop p99 is 540 ms on the same server. Which is honest?
    - Open-loop. Closed-loop skips the requests it never sent; the missing samples are the omitted coordination.
 2. Throughput rises with offered load, then flattens while p95 climbs. What happened?
-   - First saturation: the bottleneck server reached rho near 1. Extra offered load becomes queue wait and errors, not completions.
+   - First saturation: the bottleneck server reached $`\rho`$ near 1. Extra offered load becomes queue wait and errors, not completions.
 3. Why record intended send time, not just start and end?
    - A request that should have gone out earlier was already waiting from the user's point of view. Measuring from the intended send time keeps that wait; measuring from the actual send drops it.
 
@@ -3246,18 +3246,18 @@ Assumed background: the Programming cancellation-timeouts-retries unit (deadline
 
 **Study**
 
-1. [Throttling, quotas and overload errors](https://sre.google/sre-book/handling-overload/) (Google Site Reliability Engineering - selected core chapters) - Per-Customer Limits; Client-Side Throttling (adaptive throttling, requests = 2 x accepts cutoff, local rejection); Criticality; Utilization Signals; Handling Overload Errors (Deciding to Retry).
+1. [Throttling, quotas and overload errors](https://sre.google/sre-book/handling-overload/) (Google Site Reliability Engineering - selected core chapters) - Per-Customer Limits; Client-Side Throttling (adaptive throttling, $`\text{requests} = 2 \times \text{accepts}`$ cutoff, local rejection); Criticality; Utilization Signals; Handling Overload Errors (Deciding to Retry).
 2. [Shedding, retries and deadlines](https://sre.google/sre-book/addressing-cascading-failures/) (Google Site Reliability Engineering - selected core chapters) - Queue Management; Load Shedding and Graceful Degradation; Retries; Latency and Deadlines (Picking a deadline; Deadline propagation; Cancellation propagation; Bimodal latency).
 3. [Slow starts and cascading tests](https://sre.google/sre-book/addressing-cascading-failures/) (Google Site Reliability Engineering - selected core chapters) - Slow Startup and Cold Caching; Testing for Cascading Failures (Test Until Failure and Beyond). Depth: Read once for vocabulary. The fault harness itself runs in the incidents unit.
 
 **Focus**
 
 - Retries multiply per layer: 2 retries at each of 3 layers turn 1 user request into at most 27 backend attempts. Budgets cap attempts per request or per window, with jitter to de-synchronize them.
-- Adaptive throttling decides at the client from local accept and reject history (cutoff at requests = 2 x accepts); per-customer quotas keep one bad customer from spending the whole backend.
+- Adaptive throttling decides at the client from local accept and reject history (cutoff at $`\text{requests} = 2 \times \text{accepts}`$); per-customer quotas keep one bad customer from spending the whole backend.
 - Shed early and cheaply: reject above the bound before doing work, serve degraded answers while possible, and propagate deadlines plus cancellation so shed work actually stops.
 - Bimodal latency (fast rejects mixed with slow successes) is the signature of a shedding or partially overloaded path. Average it and you see neither mode.
 
-**Reproduce:** Closed-book, derive the 27x worst case above ((1 + 2)^3). Then set a budget for a service at 1000 rps that caps retries at 5% of requests (50 retry rps) with per-customer shares, and state where the breaker opens (client, server, or both) and what the fallback serves.
+**Reproduce:** Closed-book, derive the 27x worst case above ($`(1 + 2)^3`$). Then set a budget for a service at 1000 rps that caps retries at 5% of requests (50 retry rps) with per-customer shares, and state where the breaker opens (client, server, or both) and what the fallback serves.
 
 **Traps**
 
@@ -3275,7 +3275,7 @@ Assumed background: the Programming cancellation-timeouts-retries unit (deadline
 <summary>Self-test</summary>
 
 1. 3 layers with 1 retry each: worst-case attempts per user request?
-   - 8 (2^3). Retries compose multiplicatively across layers.
+   - 8 ($`2^3`$). Retries compose multiplicatively across layers.
 2. The backend spends as much CPU rejecting as serving. What changes?
    - Lower the adaptive multiplier toward 1.1 and throttle at the client. Server-side rejection alone still overloads the backend.
 3. p50 falls while p99 climbs during overload. Explain.
@@ -3310,11 +3310,11 @@ Container readiness, liveness and SIGTERM drains from the Programming health-con
 **Focus**
 
 - Replicas in one zone are one failure. API across two zones survives; a database with both copies in us-east-1a does not. Count zones per component, not replicas.
-- Safe quorums need R + W > N and 2 x W > N. N=5, R=3, W=3 holds; N=4, R=2, W=2 lets two disjoint halves both take writes.
+- Safe quorums need $`R + W > N`$ and $`2 \times W > N`$. $`N=5`$, $`R=3`$, $`W=3`$ holds; $`N=4`$, $`R=2`$, $`W=2`$ lets two disjoint halves both take writes.
 - Canary metrics must indicate user-visible problems and attribute to the change: reuse SLIs, prefer crash and failure signals in the small first stage, split canary from control in monitoring, and distrust before/after comparisons across time.
 - Health says the process answers; correctness signals say the answers are right. A serving-but-wrong version passes readiness and needs a domain check (output quality, freshness watermark, reconciliation count).
 
-**Reproduce:** Closed-book, map components api (zones a, b), db (a, a) and cache (c): at-risk components are db and cache (under two zones), and the dead set after zone a fails is db. Then take a five-replica store with N=5, R=3, W=3 spread 2, 2 and 1 over zones a, b and c: walk zone-a loss plus a bad canary on 5% of traffic, and state what still serves reads and writes and what the canary metrics must show before rollback.
+**Reproduce:** Closed-book, map components api (zones a, b), db (a, a) and cache (c): at-risk components are db and cache (under two zones), and the dead set after zone a fails is db. Then take a five-replica store with $`N=5`$, $`R=3`$, $`W=3`$ spread 2, 2 and 1 over zones a, b and c: walk zone-a loss plus a bad canary on 5% of traffic, and state what still serves reads and writes and what the canary metrics must show before rollback.
 
 **Traps**
 
@@ -3325,7 +3325,7 @@ Container readiness, liveness and SIGTERM drains from the Programming health-con
 **Practice**
 
 - [AlgoMaster: Audit Failure Domains](https://algomaster.io/practice/system-design/audit-failure-domains) - atRiskComponents (under two distinct zones) and unavailableAfter (every replica in the failed zone), sorted without duplicates. Attempt only after your own zone map. Two replicas in one zone still share that zone.
-- [AlgoMaster: Simulate Partition Quorums](https://algomaster.io/practice/system-design/simulate-partition-quorums) - partitionStatus (READ_WRITE, READ_ONLY, WRITE_ONLY, UNAVAILABLE) and hasSafeQuorums (R + W > N and 2W > N). Attempt only after your own quorum arithmetic. A reachable majority is not a safe quorum.
+- [AlgoMaster: Simulate Partition Quorums](https://algomaster.io/practice/system-design/simulate-partition-quorums) - partitionStatus (READ_WRITE, READ_ONLY, WRITE_ONLY, UNAVAILABLE) and hasSafeQuorums ($`R + W > N`$ and $`2W > N`$). Attempt only after your own quorum arithmetic. A reachable majority is not a safe quorum.
 
 **Stop when:** You map zones, quorums and canary result without notes and can state which simultaneous pair your design survives.
 
@@ -3334,8 +3334,8 @@ Container readiness, liveness and SIGTERM drains from the Programming health-con
 
 1. db replicas live in a and a; cache has one copy in c. At-risk? Dead after a fails?
    - At-risk: db and cache (each under two zones). Dead after a fails: db only.
-2. N=4, R=2, W=2: safe quorums?
-   - No. R+W and 2W equal N instead of exceeding it, so disjoint halves can both take writes.
+2. $`N=4`$, $`R=2`$, $`W=2`$: safe quorums?
+   - No. $`R+W`$ and $`2W`$ equal $`N`$ instead of exceeding it, so disjoint halves can both take writes.
 3. Canary errors are flat but p95 is up 10%. Promote?
    - Not on error rate alone. Latency SLIs indicate user-visible harm; hold or roll back per the metric policy, then check attribution.
 4. Readiness passes but answers are wrong. What is missing?
@@ -3427,7 +3427,7 @@ Reliability without cost is a wish. This unit turns the saturation and capacity 
 - 10x (800 rps) is 8 CPU-seconds of work per second, so about 11.4 CPUs at the same 0.7 target, or shedding, degrading or removing work. Amdahl bounds splitting one request or job across CPUs: 90% parallel on 4 CPUs gives 3.08x, not 4x.
 - The simpler alternative (one process, no cache, fewer moving parts) wins unless the complex design names the failure or cost it removes.
 
-**Reproduce:** Closed-book, derive from 10 ms service and 80 rps: 0.8 CPU used, about 1.14 CPUs provisioned at a 0.7 target. Show the 10x table (800 rps is 8 CPUs busy, about 11.4 provisioned at 0.7, or shed, degrade or simplify), and the Amdahl check for parallelizing one job: 1/(0.1 + 0.9/4) = 3.07692.
+**Reproduce:** Closed-book, derive from 10 ms service and 80 rps: 0.8 CPU used, about 1.14 CPUs provisioned at a 0.7 target. Show the 10x table (800 rps is 8 CPUs busy, about 11.4 provisioned at 0.7, or shed, degrade or simplify), and the Amdahl check for parallelizing one job: $`1/(0.1 + 0.9/4) = 3.07692`$.
 
 **Traps**
 
@@ -3444,8 +3444,8 @@ Reliability without cost is a wish. This unit turns the saturation and capacity 
 <details>
 <summary>Self-test</summary>
 
-1. 80 rps at 10 ms service with target rho 0.7: provision?
-   - 0.8/0.7 = about 1.14 CPUs. Round up to whole CPUs, set the autoscale minimum and bound the maximum.
+1. 80 rps at 10 ms service with target $`\rho`$ 0.7: provision?
+   - $`0.8/0.7 = \text{about } 1.14`$ CPUs. Round up to whole CPUs, set the autoscale minimum and bound the maximum.
 2. Amdahl with 0.9 parallel on 4 CPUs: speedup? What does it say about 10x load?
    - 3.07692, and never above 10x with any CPU count. That caps speeding up one job. Serving 10x more independent requests needs 10x the CPU-seconds, or less work per request, shedding or degradation.
 3. A simpler single-process design handles 3x but not 10x. Keep the complex one?
@@ -3458,10 +3458,10 @@ Reliability without cost is a wish. This unit turns the saturation and capacity 
 **About 12 to 16 hours.** Make the service slice measurable and keep it upright past its capacity: instrument the request path, predict the knee from measured service time, sweep through it with an open-loop generator, add overload controls, then inject one incident, recover from the runbook and write the postmortem. The SLO, capacity and 10x plan go into the dossier.
 
 1. Instrument every request with request ID, trace context, queue wait, handler time, storage time (write plus fsync), status and bounded labels (operation, status class, protocol version). Write telemetry to JSON Lines files: one raw record per request kept for the whole run, plus counters and fixed-bucket latency histograms (for example 1, 3, 10, 30 ms and so on to 3 s). Enforce a cardinality budget in a test: the product of label value counts must stay under your declared limit, so adding a client ID label fails it; client IDs live on sampled trace records only.
-2. Predict before measuring. From the mean service time S measured at one worker, capacity is at most workers / S, and lower if fsync calls serialize on the one log file; batching acknowledgements behind one fsync (group commit) raises it. Write the predicted knee and the queue length Little's Law gives at 50%, 80% and 95% of that capacity.
-3. Write an open-loop generator: a seeded Poisson schedule computed in advance, latency measured from the intended send time, every raw record kept. Sweep at least five offered rates from well below to past the predicted knee, drop a warm-up and repeat each rate three times. Report p50, p95 and p99 from raw samples with n, throughput, goodput, queue depth, utilization and errors, check L = lambda W against sampled queue depth, and measure recovery time after the overload stops. Run the closed-loop twin at one rate and explain why it hides the tail.
+2. Predict before measuring. From the mean service time $`S`$ measured at one worker, capacity is at most $`\text{workers}/S`$, and lower if fsync calls serialize on the one log file; batching acknowledgements behind one fsync (group commit) raises it. Write the predicted knee and the queue length Little's Law gives at 50%, 80% and 95% of that capacity.
+3. Write an open-loop generator: a seeded Poisson schedule computed in advance, latency measured from the intended send time, every raw record kept. Sweep at least five offered rates from well below to past the predicted knee, drop a warm-up and repeat each rate three times. Report p50, p95 and p99 from raw samples with $`n`$, throughput, goodput, queue depth, utilization and errors, check $`L = \lambda W`$ against sampled queue depth, and measure recovery time after the overload stops. Run the closed-loop twin at one rate and explain why it hides the tail.
 4. Write the SLO: an availability SLI (good over valid requests) and a latency SLI (the fraction under a threshold), a 30-day target with its budget (99.9% allows 43.2 minutes), the alert you would page on and the failure domains the single node shares (disk, host, power). Derive capacity at a 0.7 utilization target now and at 10x load, and what you would shed, degrade or remove instead of only adding machines.
-5. Add overload controls and show each one under the same injected overload, with goodput and p99 with and without it: bounded admission with an overloaded error, client-side adaptive throttling from the client's own request and accept counts (K = 2 as in the SRE book), a per-client retry budget (the unit uses 5% of requests) with jittered backoff, a breaker on the store call whose fallback serves cached reads marked stale, and deadline propagation with cancellation.
+5. Add overload controls and show each one under the same injected overload, with goodput and p99 with and without it: bounded admission with an overloaded error, client-side adaptive throttling from the client's own request and accept counts ($`K = 2`$ as in the SRE book), a per-client retry budget (the unit uses 5% of requests) with jittered backoff, a breaker on the store call whose fallback serves cached reads marked stale, and deadline propagation with cancellation.
 6. Add a version flag and a canary split: send a declared fraction of requests to the new version, compare its error rate and p99 with the stable version over the same window, and roll back automatically when either crosses its threshold. Test the rollback with a deliberately slow version.
 7. Inject one incident whose cause a script picks from a seeded list, so you do not know it in advance: a corrupted log record, slow fsync from a container started with --device-write-bps, or a bad canary. Work it from the telemetry and the runbook: a timeline with detection, diagnosis, mitigation and recovery times, a restore from the last verified backup with measured RTO and counted RPO loss (writes acknowledged after the backup), a blameless postmortem with owned actions and one merged regression guard.
 
@@ -3479,7 +3479,7 @@ Reliability without cost is a wish. This unit turns the saturation and capacity 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Telemetry | Every request has a raw record with request ID, queue wait, handler and storage time and status, and the cardinality test fails on an unbounded label. | Percentiles come only from raw samples or merged histogram counts, never from averaged percentiles, and the report says which. |
-| Load and capacity | The knee was predicted before the sweep, and the sweep reports percentiles with n, goodput, queue depth and utilization at every rate with the Little's Law check. | The measured knee is explained against the prediction, including any fsync serialization the prediction missed. |
+| Load and capacity | The knee was predicted before the sweep, and the sweep reports percentiles with $`n`$, goodput, queue depth and utilization at every rate with the Little's Law check. | The measured knee is explained against the prediction, including any fsync serialization the prediction missed. |
 | Overload | Each control is shown under the same injected overload, with goodput and p99 with and without it. | The retry budget and throttle are shown stopping a retry storm that the plain retrying client starts. |
 | Incident | The incident has a timeline, a runbook-driven recovery, measured RTO, counted RPO loss and a merged regression guard. | The postmortem is blameless with owned, dated actions, and the runbook was followed cold by someone else or by you a day later. |
 | SLO and planning | The SLO, error budget, alert and 10x plan are written with the arithmetic shown. | The plan names the failure domains the single node shares and what the SLO cannot promise because of them. |
@@ -3494,7 +3494,7 @@ Feeds into: Capstone dossier: the SLO and capacity estimate against load and the
 - **Support - Practice:** [AlgoMaster System Design - quantitative and failure drills](https://algomaster.io/practice/system-design) - Use Solve Little's Law, Calculate System Availability, Plan Reliability Recovery Targets, Calculate Amdahl's Law Speedup, Analyze Capacity Bottlenecks, Simulate Partition Quorums and Audit Failure Domains only after producing your own estimates. Compare the platform answer with measured service behavior.
 - **Support - Project:** [Python Experimental Systems Kit - measurement slice](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/python-experimental-systems-kit.md) - Use its artifact, bounded-pipeline, failure-injection, profiling and reproducibility requirements as the evidence checklist. Reuse the current service instead of building the full project again.
 - **Support - Reference:** [Gil Tene - How NOT to Measure Latency (talk)](https://www.youtube.com/watch?v=lJ8ydIuPFeU) - Use for coordinated-omission vocabulary only: closed-loop testers that wait for each reply, the missing samples under queueing, and the correction concept of recording intended send time. Do not adopt wrk, hey or ab; write the small Python generator in the saturation unit instead.
-- **Reference - Reference:** [M/M/1 queue - model definition and stationary analysis](https://en.wikipedia.org/wiki/M/M/1_queue) - Read Model definition (Poisson arrivals, exponential service, single server, infinite buffer, FIFO) and Stationary analysis (stability lambda < mu, rho = lambda/mu, L = rho/(1 - rho), response time 1/(mu - lambda) via Little's Law). Use the closed forms as approximations with assumptions stated, checked by your own simulation.
+- **Reference - Reference:** [M/M/1 queue - model definition and stationary analysis](https://en.wikipedia.org/wiki/M/M/1_queue) - Read Model definition (Poisson arrivals, exponential service, single server, infinite buffer, FIFO) and Stationary analysis (stability $`\lambda < \mu`$, $`\rho = \lambda/\mu`$, $`L = \rho/(1 - \rho)`$, response time $`1/(\mu - \lambda)`$ via Little's Law). Use the closed forms as approximations with assumptions stated, checked by your own simulation.
 
 ### Exit checkpoint
 
@@ -3529,7 +3529,7 @@ Predict the first saturation point, then run the service through it and explain 
 - [ ] Membership inference, model extraction and inversion _(Required)_
 - [ ] Data poisoning, backdoors and training-serving exfiltration _(Required)_
 - [ ] Differential privacy adjacency and unit of privacy _(Required)_
-- [ ] Sensitivity, clipping, epsilon, delta and calibrated noise _(Required)_
+- [ ] Sensitivity, clipping, $`\epsilon`$, $`\delta`$ and calibrated noise _(Required)_
 - [ ] Composition, subsampling intuition and accounting inputs _(Required)_
 - [ ] Privacy utility trade-offs and unprotected system boundaries _(Required)_
 - [ ] Schema and protocol compatibility during migration _(Required)_
@@ -3810,7 +3810,7 @@ Models exposed as endpoints leak through their outputs. This unit measures how m
 <summary>Self-test</summary>
 
 1. What does a loss-threshold attack output, and how is the threshold picked?
-   - Member when the point loss is below tau. Tau can come from published train-loss statistics; the demo avoids picking one by reporting threshold-free AUC.
+   - Member when the point loss is below $`\tau`$. $`\tau`$ can come from published train-loss statistics; the demo avoids picking one by reporting threshold-free AUC.
 2. Why does extraction rank samples by perplexity?
    - Memorized sequences get high predicted probability token by token, hence low perplexity. Sampling proposes candidates; ranking selects likely members.
 3. A defense drops the attack AUC from 0.9 to 0.6. Is the leak fixed?
@@ -3824,55 +3824,55 @@ Models exposed as endpoints leak through their outputs. This unit measures how m
 
 **About 5 h** · **Target:** Derive + Implement
 
-Topics: Differential privacy adjacency and unit of privacy; Sensitivity, clipping, epsilon, delta and calibrated noise; Composition, subsampling intuition and accounting inputs; Privacy utility trade-offs and unprotected system boundaries
+Topics: Differential privacy adjacency and unit of privacy; Sensitivity, clipping, $`\epsilon`$, $`\delta`$ and calibrated noise; Composition, subsampling intuition and accounting inputs; Privacy utility trade-offs and unprotected system boundaries
 
 The only privacy claim in this stage with a proof. Everything outside the stated mechanism, adjacency and budget keeps no promise.
 
 **You can now**
 
-- Define adjacency, unit of privacy, sensitivity and the (epsilon, delta) guarantee for one aggregate.
-- Build a clamped Laplace release, derive its epsilon from sensitivity over scale, and compose two releases.
+- Define adjacency, unit of privacy, sensitivity and the $`(\epsilon, \delta)`$ guarantee for one aggregate.
+- Build a clamped Laplace release, derive its $`\epsilon`$ from sensitivity over scale, and compose two releases.
 - Measure utility loss against the true aggregate and list every component outside the guarantee.
 
 **Study**
 
-1. [Adjacency, sensitivity and privacy maps](https://docs.opendp.org/en/v0.16.0/api/user-guide/framework-api/a-framework-to-understand-dp.html) (OpenDP theory - one bounded privacy mechanism) - A Framework to Understand DP: Distance Between Datasets - Adjacency (symmetric distance); Definition of Privacy; Distance Between Aggregates - Sensitivity (clamped sum); Stability Maps and Privacy Maps (chained Laplace sum with epsilon 0.48).
+1. [Adjacency, sensitivity and privacy maps](https://docs.opendp.org/en/v0.16.0/api/user-guide/framework-api/a-framework-to-understand-dp.html) (OpenDP theory - one bounded privacy mechanism) - A Framework to Understand DP: Distance Between Datasets - Adjacency (symmetric distance); Definition of Privacy; Distance Between Aggregates - Sensitivity (clamped sum); Stability Maps and Privacy Maps (chained Laplace sum with $`\epsilon`$ 0.48).
 2. [Clamp, sum and Laplace chaining in code](https://docs.opendp.org/en/v0.16.0/api/user-guide/framework-api/dp-with-opendp.html) (OpenDP theory - one bounded privacy mechanism) - Differential Privacy with OpenDP: The Laplace Mechanism; Transformation Example: Sum; Transformation Example: Clamp; Chaining (clamp, bounded sum and Laplace composed with the privacy map); Retrospective. Depth: Run the examples with OpenDP 0.16.0, the version these pages document. make_sequential_composition groups releases under one budget.
-3. [Accuracy limits of noisy releases](https://docs.opendp.org/en/v0.15.1/theory/accuracy-pitfalls.html) (OpenDP theory - one bounded privacy mechanism) - Accuracy: Pitfalls and Edge Cases: Accuracy vs Confidence Intervals; What is D (preprocessing and resize effects on the guarantee target).
-4. [The (epsilon, delta) definition and DP-SGD](https://dcai.csail.mit.edu/2023/data-privacy-security) (Data Privacy and Security (MIT Data-Centric AI)) - Towards a solution: differential privacy (the (epsilon, delta) inequality over adjacent datasets; DP-SGD as the training analogue; parameter-setting and utility challenges).
+3. [Accuracy limits of noisy releases](https://docs.opendp.org/en/v0.15.1/theory/accuracy-pitfalls.html) (OpenDP theory - one bounded privacy mechanism) - Accuracy: Pitfalls and Edge Cases: Accuracy vs Confidence Intervals; What is $`D`$ (preprocessing and resize effects on the guarantee target).
+4. [The $`(\epsilon, \delta)`$ definition and DP-SGD](https://dcai.csail.mit.edu/2023/data-privacy-security) (Data Privacy and Security (MIT Data-Centric AI)) - Towards a solution: differential privacy (the $`(\epsilon, \delta)`$ inequality over adjacent datasets; DP-SGD as the training analogue; parameter-setting and utility challenges).
 
 **Focus**
 
-- Adjacency is the whole promise: symmetric distance 1 means adding or removing one record, and multi-row contributors scale the bound by k.
-- Clamping sets sensitivity before noise means anything: with bounds (0, 10) one record moves the sum by at most 10, so Laplace scale 10 buys epsilon about 1.
+- Adjacency is the whole promise: symmetric distance 1 means adding or removing one record, and multi-row contributors scale the bound by $`k`$.
+- Clamping sets sensitivity before noise means anything: with bounds (0, 10) one record moves the sum by at most 10, so Laplace scale 10 buys $`\epsilon`$ about 1.
 - Chaining multiplies the reasoning: the clamp map fed into the noise map gives the release map, and sequential composition adds epsilons across releases.
 - Accuracy utilities bound noise error only: the guarantee covers the release minus the true aggregate, never the sample minus the population.
 
-**Reproduce:** With OpenDP 0.16.0 (contrib enabled) on CPython 3.14.4, chain clamp to (0, 10), sum and Laplace scale 10 over float vectors under symmetric distance. map(1) returns 1.000000009313226: the sum reports sensitivity 10.00000009313226 to cover float rounding, and the Laplace map alone turns 10 into exactly 1.0. Draw 200 values uniform on [0, 10] with NumPy default_rng(7) (true clamped sum 1005.9) and make 2000 releases. OpenDP draws noise from its own unseeded generator, so the mean absolute error changes per run: three runs gave 9.79, 9.96 and 10.03 against the Laplace mean absolute deviation of 10 (standard error about 0.22). Then derive that two such releases compose to epsilon about 2.0.
+**Reproduce:** With OpenDP 0.16.0 (contrib enabled) on CPython 3.14.4, chain clamp to (0, 10), sum and Laplace scale 10 over float vectors under symmetric distance. map(1) returns 1.000000009313226: the sum reports sensitivity 10.00000009313226 to cover float rounding, and the Laplace map alone turns 10 into exactly 1.0. Draw 200 values uniform on [0, 10] with NumPy default_rng(7) (true clamped sum 1005.9) and make 2000 releases. OpenDP draws noise from its own unseeded generator, so the mean absolute error changes per run: three runs gave 9.79, 9.96 and 10.03 against the Laplace mean absolute deviation of 10 (standard error about 0.22). Then derive that two such releases compose to $`\epsilon`$ about 2.0.
 
 **Traps**
 
-- Quoting epsilon without adjacency, bounds and delta. The number is meaningless until the unit of privacy and the clamp are stated.
+- Quoting $`\epsilon`$ without adjacency, bounds and $`\delta`$. The number is meaningless until the unit of privacy and the clamp are stated.
 - Reading accuracy output as a confidence interval for the population. It covers noise around this dataset aggregate only.
 - Assuming the guarantee covers the pipeline. Ingestion, bounds choice, budget accounting and the served model sit outside unless each is modeled.
 
 **Practice**
 
-- The section mini-project covers this: one clipped and noised aggregate with stated adjacency, epsilon and delta inputs, measured utility and a residual-risk statement.
+- The section mini-project covers this: one clipped and noised aggregate with stated adjacency, $`\epsilon`$ and $`\delta`$ inputs, measured utility and a residual-risk statement.
 
-**Stop when:** You can derive epsilon from bounds and scale, quote measured error with its setup, and name everything the guarantee excludes.
+**Stop when:** You can derive $`\epsilon`$ from bounds and scale, quote measured error with its setup, and name everything the guarantee excludes.
 
 <details>
 <summary>Self-test</summary>
 
 1. Bounds are (0, 10) and one person contributes one row. What is the clamped-sum sensitivity?
    - 10. Removing or adding one clamped record changes the sum by at most the clamp range.
-2. Scale is 10 and sensitivity is 10. What epsilon, and what changes with scale 5?
-   - About 1.0. Scale 5 doubles it to about 2.0 and halves the noise: epsilon equals sensitivity divided by scale.
-3. Two epsilon-1.0 releases run on the same data. What is the pair budget?
+2. Scale is 10 and sensitivity is 10. What $`\epsilon`$, and what changes with scale 5?
+   - About 1.0. Scale 5 doubles it to about 2.0 and halves the noise: $`\epsilon`$ equals sensitivity divided by scale.
+3. Two $`\epsilon`$-1.0 releases run on the same data. What is the pair budget?
    - About 2.0 by basic sequential composition. Each release spends separately against the same adjacency.
-4. Delta is 0 for this Laplace release. What does delta allow in general?
-   - An additive slack in the guarantee, informally a small probability that the epsilon bound does not hold, as with the Gaussian mechanism. Pure Laplace keeps delta at 0.
+4. $`\delta`$ is 0 for this Laplace release. What does $`\delta`$ allow in general?
+   - An additive slack in the guarantee, informally a small probability that the $`\epsilon`$ bound does not hold, as with the Gaussian mechanism. Pure Laplace keeps $`\delta`$ at 0.
 
 </details>
 
@@ -3909,7 +3909,7 @@ Assumes the Programming units on schema migrations with Alembic and idempotency-
 
 - Rolling back to a version with a known hole to fix an outage. Minimum acceptable versions exist for exactly this moment.
 - Depending on accurate time during revocation. Clocks are an external dependency; cached revocation data removes it.
-- Migrating privacy bounds or budgets silently. Bounds, epsilon and delta inputs and the spent budget are versioned configuration and state, not code constants.
+- Migrating privacy bounds or budgets silently. Bounds, $`\epsilon`$ and $`\delta`$ inputs and the spent budget are versioned configuration and state, not code constants.
 
 **Practice**
 
@@ -3940,7 +3940,7 @@ Assumes the Programming units on schema migrations with Alembic and idempotency-
 3. Make the tenant part of every key and query, taken from the authenticated credential and never from a request field: the store prefixes keys by tenant, idempotency keys are scoped by tenant and client, and catalog queries are parameterized and tenant-scoped. Test cross-tenant reads and writes on the normal path, the retry path (a retried write whose idempotency key matches another tenant's must not replay that tenant's response), the stale-read fallback and the restore path. Keep the injection fixture (acme' OR '1'='1 returns both tenants when interpolated, one row when parameterized) and a test that the protocol never unpickles input.
 4. Write security events (authentication failures, scope denials, cross-tenant attempts, admin actions) to a hash-chained audit log in which each record holds the hash of the previous one and tokens are redacted before hashing. Test that every rejected attempt from the previous steps leaves exactly one audit record and that editing or deleting a record fails verification. When the authorization policy cannot load, deny, and write down what that costs in availability.
 5. Back up the store and catalog with a manifest of SHA-256 digests, restore into a fresh directory and database, and verify digests, the record count from the log, tenant predicates and the audit chain before serving. Test that a corrupted backup is refused.
-6. Release one differentially private aggregate from the usage data, such as total writes per day across tenants with each tenant's daily count clamped. With OpenDP 0.16.0, state the privacy unit and adjacency (one tenant-day added or removed), clamp bounds, sensitivity, noise scale, epsilon, delta and the budget spent across releases, kept in a ledger that blocks a release over budget. OpenDP noise is not seeded, so measure utility over at least 1000 releases in several runs and report the spread. Write the residual-risk statement: values lost to clamping, releases beyond the budget, and data outside the privacy unit.
+6. Release one differentially private aggregate from the usage data, such as total writes per day across tenants with each tenant's daily count clamped. With OpenDP 0.16.0, state the privacy unit and adjacency (one tenant-day added or removed), clamp bounds, sensitivity, noise scale, $`\epsilon`$, $`\delta`$ and the budget spent across releases, kept in a ledger that blocks a release over budget. OpenDP noise is not seeded, so measure utility over at least 1000 releases in several runs and report the spread. Write the residual-risk statement: values lost to clamping, releases beyond the budget, and data outside the privacy unit.
 7. Migrate the record format from v1 to v2 behind a canary: read both versions, write v2 only for the canary fraction, compare error rate and p99, and roll back with v1 readers still able to read every record written. Practise the rollback once on purpose. Then revoke a credential while the issuer is down: the server keeps enforcing its cached revocation list instead of failing open, and a test shows the revoked token rejected during the outage.
 
 **Deliverables**
@@ -3960,7 +3960,7 @@ Assumes the Programming units on schema migrations with Alembic and idempotency-
 | Threat model | Every abuse case ends in a passing test or a residual-risk sentence, and the model covers backup, restore and migration paths. | The insider case names what the audit log can and cannot show about it. |
 | Least privilege | Missing, forged, expired, out-of-scope and wrong-tenant credentials are rejected by tests, and the admin path is separate and logged. | Tenant scope comes from the credential on every path, with tests for the retry, cache and restore paths as well as the normal one. |
 | Integrity | The audit chain detects an edited or deleted record, tokens are redacted, and a corrupted backup is refused before serving. | Restore verification checks tenant predicates and the audit chain, not only file digests. |
-| Privacy | The release states unit, adjacency, clamp, sensitivity, epsilon, delta and spent budget, with measured utility. | The residual-risk statement names concrete cases outside the guarantee, and the ledger blocks an over-budget release. |
+| Privacy | The release states unit, adjacency, clamp, sensitivity, $`\epsilon`$, $`\delta`$ and spent budget, with measured utility. | The residual-risk statement names concrete cases outside the guarantee, and the ledger blocks an over-budget release. |
 | Safe evolution | The canary migration ran with a rollback that left every record readable, and revocation held while the issuer was down. | The drill has a timeline, and the rollback fired from metrics rather than by hand. |
 
 Feeds into: Capstone dossier: the threat model, least-privilege tests, safe migration and rollback, and the bounded private aggregate with its limits.
@@ -3968,11 +3968,11 @@ Feeds into: Capstone dossier: the threat model, least-privilege tests, safe migr
 ### Resource route
 
 - **Primary - Course:** [Building Secure and Reliable Systems - selected design route](https://google.github.io/building-secure-and-reliable-systems/raw/toc.html) - Read Chapters 1, 2, 4-9 and 12-14: adversaries, trade-offs, least privilege, understandability, changing landscapes, resilience, recovery, code, tests and deployment. Apply the chapter questions to the same RPC, store, tenant and migration boundary.
-- **Required - Theory:** [OpenDP theory - one bounded privacy mechanism](https://docs.opendp.org/en/v0.15.1/theory/index.html) - Read A Framework to Understand DP and Differential Privacy with OpenDP (in the 0.16.0 user guide, Framework API), then Accuracy: Pitfalls and Edge Cases and the Differencing, Membership and Reconstruction attack notebooks. Define one privacy unit, clamp an aggregate, add calibrated noise, record epsilon and delta inputs, measure utility and list everything outside the guarantee.
+- **Required - Theory:** [OpenDP theory - one bounded privacy mechanism](https://docs.opendp.org/en/v0.15.1/theory/index.html) - Read A Framework to Understand DP and Differential Privacy with OpenDP (in the 0.16.0 user guide, Framework API), then Accuracy: Pitfalls and Edge Cases and the Differencing, Membership and Reconstruction attack notebooks. Define one privacy unit, clamp an aggregate, add calibrated noise, record $`\epsilon`$ and $`\delta`$ inputs, measure utility and list everything outside the guarantee.
 - **Required - Reference:** [OWASP Threat Modeling Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html) - Model trust boundaries, data flows, data stores, processes and external entities, and list the assets they carry. Write misuse cases for unauthorized mutation, cross-tenant reads, stale credentials, sensitive logs and restore or migration paths, then turn each into a test or explicit residual risk.
 - **Support - Theory:** [OSTEP - introductory security chapters](https://pages.cs.wisc.edu/~remzi/OSTEP/) - Use Chapters 53-56 for introductory security, authentication, access control and cryptography vocabulary. Connect process and container isolation to the threat model and state where those boundaries do not protect the system.
 - **Support - Assessment:** [Systems Foundations Checkpoint - security and privacy slice](https://github.com/saisandeshk/Roadmap-Final/blob/main/checkpoints/systems-foundations.md) - Use only the tenant-access, privacy aggregate, abuse, migration, backup and residual-risk requirements as the final assessment. A toy privacy mechanism is evidence for its stated aggregate, not a claim that the service or model is private.
-- **Support - Course:** [Data Privacy and Security (MIT Data-Centric AI)](https://dcai.csail.mit.edu/2023/data-privacy-security) - Read the threat-model examples, shadow-training and metrics-based membership attacks, extraction by sampling plus perplexity ranking, empirical-defense evaluation, and the (epsilon, delta) definition with DP-SGD.
+- **Support - Course:** [Data Privacy and Security (MIT Data-Centric AI)](https://dcai.csail.mit.edu/2023/data-privacy-security) - Read the threat-model examples, shadow-training and metrics-based membership attacks, extraction by sampling plus perplexity ranking, empirical-defense evaluation, and the $`(\epsilon, \delta)`$ definition with DP-SGD.
 - **Support - Theory:** [A Survey of Privacy Attacks in Machine Learning](https://arxiv.org/abs/2007.07646) - Use the attack taxonomy and threat model (adversarial knowledge, assets under attack) plus the causes of leaks and the defenses overview; skip the per-paper catalog.
 - **Support - Theory:** [Targeted Backdoor Attacks on Deep Learning Systems Using Data Poisoning](https://arxiv.org/abs/1712.05526) - Read the weak threat model (no model or training-set knowledge, about 50 poisoning samples) and the reported result of above 90 percent attack success; skip the optimization details.
 - **Support - Reference:** [OWASP Input Validation Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html) - Apply allowlist validation, parse-safely-then-validate, structured-data rules, and the common pitfalls (client-only checks, trusted internal sources, denylisting, logging rejected input).

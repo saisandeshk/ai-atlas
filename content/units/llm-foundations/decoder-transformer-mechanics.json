@@ -256,7 +256,7 @@
         }
       ],
       "focus": [
-        "With \\(D=H*d\\), split \\([B, T, D]\\) to \\([B, T, H, d]\\), then transpose to \\([B, H, T, d]\\). A reshape alone does not exchange \\(T\\) and \\(H\\).",
+        "With \\(D=H \\cdot d\\), split \\([B, T, D]\\) to \\([B, T, H, d]\\), then transpose to \\([B, H, T, d]\\). A reshape alone does not exchange \\(T\\) and \\(H\\).",
         "Each head normalizes its own \\([T, T]\\) score matrix. Concatenate head outputs before applying the output projection.",
         "Reverse the transpose before merging. A transposed tensor may need contiguous storage or reshape rather than view.",
         "Transfer identical weights into a per-head loop and the batched path. Backpropagate the same scalar contraction of outputs and compare gradients, not just shapes."
@@ -341,12 +341,12 @@
         }
       ],
       "focus": [
-        "Let \\(D=Hq*d\\) and \\(Hkv\\) divide \\(Hq\\). \\(Q\\) is \\([B, Hq, T, d]\\); unexpanded \\(K\\) and \\(V\\) are \\([B, Hkv, T, d]\\). MHA has \\(Hkv=Hq\\); MQA has \\(Hkv=1\\).",
-        "In PyTorch weight layout, \\(Wq\\) and \\(Wo\\) are \\([D, D]\\), while \\(Wk\\) and \\(Wv\\) are \\([Hkv*d, D]\\). The bias-free total is \\(2D^2 + 2D*Hkv*d\\).",
-        "SDPA maps query head \\(h\\) to KV head \\(\\operatorname{floor}(h/(Hq/Hkv))\\). The notebook's expand-then-reshape instead interleaves KV heads; choose one convention and make weight ordering and the oracle agree.",
+        "Let \\(D=H_q \\cdot d\\) and \\(H_{\\mathrm{kv}}\\) divide \\(H_q\\). \\(Q\\) is \\([B, H_q, T, d]\\); unexpanded \\(K\\) and \\(V\\) are \\([B, H_{\\mathrm{kv}}, T, d]\\). MHA has \\(H_{\\mathrm{kv}}=H_q\\); MQA has \\(H_{\\mathrm{kv}}=1\\).",
+        "In PyTorch weight layout, \\(W_q\\) and \\(W_o\\) are \\([D, D]\\), while \\(W_k\\) and \\(W_v\\) are \\([H_{\\mathrm{kv}} \\cdot d, D]\\). The bias-free total is \\(2D^2 + 2D \\cdot H_{\\mathrm{kv}} \\cdot d\\).",
+        "SDPA maps query head \\(h\\) to KV head \\(\\lfloor h/(H_q/H_{\\mathrm{kv}}) \\rfloor\\). The notebook's expand-then-reshape instead interleaves KV heads; choose one convention and make weight ordering and the oracle agree.",
         "Optional comparison: allocate unexpanded \\(K\\) and \\(V\\) at the same \\(B\\), \\(T\\), \\(d\\) and dtype for MHA and GQA, then compare numel()*element_size(). Do not count expanded temporary tensors as compact cache storage."
       ],
-      "reproduce": "Implement a causal grouped-head loop and batched path for \\(D=16\\), \\(Hq=4\\) and \\(Hkv=2\\), using contiguous groups. Derive 768 projection parameters versus MHA's 1024, and show that compact KV tensors use half the bytes at matched \\(B\\), \\(T\\) and dtype.",
+      "reproduce": "Implement a causal grouped-head loop and batched path for \\(D=16\\), \\(H_q=4\\) and \\(H_{\\mathrm{kv}}=2\\), using contiguous groups. Derive 768 projection parameters versus MHA's 1024, and show that compact KV tensors use half the bytes at matched \\(B\\), \\(T\\) and dtype.",
       "traps": [
         "Using repeat rather than repeat_interleave while assuming contiguous groups. Shapes match, but queries read the wrong KV head.",
         "Storing expanded K and V as the cache. That loses the compact representation's memory saving.",
@@ -354,12 +354,12 @@
       ],
       "selfTest": [
         {
-          "q": "With \\(Hq=8\\) and \\(Hkv=2\\) under contiguous grouping, which query heads share KV head 1?",
-          "a": "Zero-based query heads 4, 5, 6 and 7. Each group contains \\(Hq/Hkv=4\\) query heads."
+          "q": "With \\(H_q=8\\) and \\(H_{\\mathrm{kv}}=2\\) under contiguous grouping, which query heads share KV head 1?",
+          "a": "Zero-based query heads 4, 5, 6 and 7. Each group contains \\(H_q/H_{\\mathrm{kv}}=4\\) query heads."
         },
         {
-          "q": "For \\(D=1024\\), \\(Hq=16\\) and \\(Hkv=4\\), what are the \\(K\\) weight shape and total projection parameters?",
-          "a": "\\(d=64\\), so \\(Wk\\) is \\([256, 1024]\\). The four bias-free projections total 2,621,440 parameters, versus MHA's 4,194,304."
+          "q": "For \\(D=1024\\), \\(H_q=16\\) and \\(H_{\\mathrm{kv}}=4\\), what are the \\(K\\) weight shape and total projection parameters?",
+          "a": "\\(d=64\\), so \\(W_k\\) is \\([256, 1024]\\). The four bias-free projections total 2,621,440 parameters, versus MHA's 4,194,304."
         },
         {
           "q": "Does four times fewer KV heads imply four times less \\(QK\\) attention work?",
@@ -375,7 +375,7 @@
           "name": "Modern LLM Notebook: Exercise 3, How much KV Cache does GQA save",
           "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb",
           "locator": "Exercises: Exercise 3, How much KV Cache does GQA save; complete the three quantities and pass its assertions",
-          "note": "Extend the exercise in your own repository with the reproduce task. Compare outputs and shared-KV gradients against a head loop for \\(Hkv=Hq\\), \\(Hkv=1\\) and an intermediate group count. Reject invalid divisibility."
+          "note": "Extend the exercise in your own repository with the reproduce task. Compare outputs and shared-KV gradients against a head loop for \\(H_{\\mathrm{kv}}=H_q\\), \\(H_{\\mathrm{kv}}=1\\) and an intermediate group count. Reject invalid divisibility."
         }
       ],
       "stopWhen": "The named exercise passes, your grouped outputs and gradients match the explicit loop for all three head structures, and you derive compact KV bytes and projection counts without notes.",
@@ -533,7 +533,7 @@
       "focus": [
         "Write \\(y=x+\\operatorname{Attn}(\\operatorname{RMSNorm}(x))\\), then \\(z=y+\\operatorname{FFN}(\\operatorname{RMSNorm}(y))\\). Normalize the branch input, not the residual sum; final stack normalization comes later.",
         "LayerNorm subtracts the feature mean and divides by feature standard deviation. RMSNorm divides by \\(\\sqrt{\\operatorname{mean}(x^2)+\\mathrm{eps}}\\), without centering, and uses one learned gain per feature.",
-        "SwiGLU is \\(W_{\\mathrm{down}}(\\operatorname{SiLU}(W_{\\mathrm{gate}}*x) * (W_{\\mathrm{up}}*x))\\). Its gate is not bounded to \\([0, 1]\\). Three bias-free matrices cost \\(3D*F\\) parameters; a two-matrix GELU FFN costs \\(2D*F\\) at the same hidden width.",
+        "SwiGLU is \\(W_{\\mathrm{down}}(\\operatorname{SiLU}(W_{\\mathrm{gate}} x) \\odot (W_{\\mathrm{up}} x))\\). Its gate is not bounded to \\([0, 1]\\). Three bias-free matrices cost \\(3DF\\) parameters; a two-matrix GELU FFN costs \\(2DF\\) at the same hidden width.",
         "CS336 specifies truncated-normal component weights and unit RMSNorm gains. nanoGPT instead uses base \\(\\mathrm{std}=0.02\\) and residual-projection \\(\\mathrm{std}=0.02/\\sqrt{2L}\\); that scales initial branch weights, not the residual identity path."
       ],
       "reproduce": "From a blank file, implement a pre-norm RMSNorm-SwiGLU block with the causal attention you already own. Zero the attention output projection and FFN down projection: the block must return \\(x\\) and give the identity input gradient, with dropout disabled.",
@@ -549,7 +549,7 @@
         },
         {
           "q": "Why does SwiGLU often use \\(F\\) near \\(8D/3\\) instead of \\(4D\\)?",
-          "a": "Three matrices give \\(3D*F\\) weights. Setting \\(F=8D/3\\) matches the \\(8D^2\\) weights of a two-matrix FFN with hidden width \\(4D\\), before rounding or biases."
+          "a": "Three matrices give \\(3DF\\) weights. Setting \\(F=8D/3\\) matches the \\(8D^2\\) weights of a two-matrix FFN with hidden width \\(4D\\), before rounding or biases."
         },
         {
           "q": "What is the clean gradient path supplied by \\(x+f(\\operatorname{norm}(x))\\)?",
@@ -648,7 +648,7 @@
       "focus": [
         "One configuration owns \\(V\\), \\(D\\), layer count \\(L\\), query and KV head counts, FFN width \\(F\\), RoPE \\(\\theta\\), context policy and tying. Validate divisibility before creating weights; different layers share a design, not all their parameters.",
         "A tied head uses the same \\([V, D]\\) Parameter as input lookup and computes \\(h @ E^\\top\\). Equal initial values in separate Parameters are not tying; gradients from lookup and classification must accumulate into one weight.",
-        "For bias-free MHA with two RMSNorms and SwiGLU per block, untied parameters are \\(2VD + L*(4D^2 + 3DF + 2D) + D\\). Tying subtracts \\(VD\\); standard RoPE adds no learned parameters.",
+        "For bias-free MHA with two RMSNorms and SwiGLU per block, untied parameters are \\(2VD + L(4D^2 + 3DF + 2D) + D\\). Tying subtracts \\(VD\\); standard RoPE adds no learned parameters.",
         "List dense forward terms: per layer \\(8BTD^2\\) for MHA projections, \\(4BT^2D\\) for \\(QK\\) and \\(AV\\), and \\(6BTDF\\) for SwiGLU matrices; the vocabulary head adds \\(2BTDV\\). Use the slow per-head oracle and suffix interventions to check causality, not a loss curve."
       ],
       "reproduce": "Build a two-layer decoder with \\(V=32\\), \\(D=16\\), \\(H=4\\) and \\(F=48\\), using bias-free MHA, RoPE, two RMSNorms per block and one final RMSNorm. Derive 7,760 untied or 7,248 tied parameters, reconcile with unique registered weights, and verify unchanged prefix logits after replacing every suffix token.",

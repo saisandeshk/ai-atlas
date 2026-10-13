@@ -93,7 +93,7 @@ Interrupt and resume a tiny run with identical data order and optimizer trajecto
 - [ ] Synchronous calls, asynchronous handles and completion _(Required)_
 - [ ] CUDA streams, events and dependency ordering _(Required)_
 - [ ] Ring and tree collective algorithms _(Required)_
-- [ ] Latency, bandwidth and alpha-beta cost models _(Required)_
+- [ ] Latency, bandwidth and $`\alpha`$-$`\beta`$ cost models _(Required)_
 - [ ] Per-rank byte volume and critical-path derivation _(Required)_
 - [ ] PCIe, NVLink, NVSwitch, NIC and node topology vocabulary _(Required)_
 - [ ] NCCL and Gloo backend roles and constraints _(Required)_

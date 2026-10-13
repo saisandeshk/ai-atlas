@@ -232,7 +232,7 @@ Leakage is the usual cause of scores that are too good to deploy. Each kind has 
 **Focus**
 
 - Leakage is any use of information unavailable at prediction time (section 12.2). The repair never varies: split first, fit on train only, transform both, preferably inside a Pipeline.
-- The SelectKBest demo quantifies it. Selecting on all of 200 by 10000 random features then splitting scores 0.76 against chance near 0.50; selecting on train only scores 0.50 with pipeline cross-validation at 0.43 +/- 0.05. Distance above chance on random labels is the alarm.
+- The SelectKBest demo quantifies it. Selecting on all of $`200 \times 10000`$ random features then splitting scores 0.76 against chance near 0.50; selecting on train only scores 0.50 with pipeline cross-validation at 0.43 +/- 0.05. Distance above chance on random labels is the alarm.
 - Bike cnt is defined as casual plus registered on every row, so both are target parts, never features. A linear model on the two scores RMSE 0.0 with coefficients [1, 1] and intercept 0; the label-free 12-feature linear baseline on the same chronological split scores 192.3.
 - Delay, selection, and feedback are leakage over time and policy: late labels need freshness limits and a human labeling pipeline, selected training rows need the sampling discipline of unit 3, and predictions that reshape future labels need input monitoring and pre-export checks. Production feedback control stays excluded per leaveForLater.
 
@@ -253,8 +253,8 @@ Leakage is the usual cause of scores that are too good to deploy. Each kind has 
 <details>
 <summary>Self-test</summary>
 
-1. SelectKBest on all 200 by 10000 random features then split scores 0.76. Why is that proof of leakage rather than signal?
-   - X and y are independent by construction, so chance sits near 0.50: the clean run scores 0.50 and pipeline cross-validation gives 0.43 +/- 0.05. Only the selector seeing test labels explains 0.76.
+1. SelectKBest on all $`200 \times 10000`$ random features then split scores 0.76. Why is that proof of leakage rather than signal?
+   - $`X`$ and $`y`$ are independent by construction, so chance sits near 0.50: the clean run scores 0.50 and pipeline cross-validation gives 0.43 +/- 0.05. Only the selector seeing test labels explains 0.76.
 2. Predicting bike cnt from casual and registered gives RMSE 0.0. Good model?
    - No. cnt is defined as their sum on every row, so the model recites label construction with coefficients [1, 1]. Drop both; the label-free 12-feature linear baseline scores 192.3.
 3. Scaling bike weather on all rows versus train only leaves a LinearRegression RMSE at 200.95 both ways. Leak or not?
@@ -299,7 +299,7 @@ Audits turn data hunches into checked facts. Every leakage repair in this sectio
 **Traps**
 
 - Trusting info and describe alone. describe skips strings (ocean_proximity needs value_counts) and hides the dteday-as-string problem; check dtypes explicitly.
-- Reading normalized columns as raw units. temp 0.24 is not 0.24 C; invert (t-tmin)/(tmax-tmin) with the stated hourly minima and maxima (about 3.3 C for 0.24) before any physical claim.
+- Reading normalized columns as raw units. temp 0.24 is not 0.24 C; invert $`(t-t_{\min})/(t_{\max}-t_{\min})`$ with the stated hourly minima and maxima (about 3.3 C for 0.24) before any physical claim.
 - Counting the landing page as the audit. The page states 17389 instances with no missing values; verify both against the download (17379 rows, 0 nulls) and record version and date.
 
 **Practice**
@@ -586,30 +586,30 @@ Least squares is the baseline every later model is compared against. Its two fai
 
 **Study**
 
-1. [Linear regression: model, squared loss, analytic solution and minibatch SGD](https://d2l.ai/chapter_linear-regression/linear-regression.html) (Dive into Deep Learning - linear models slice) - Sections 3.1.1.1 to 3.1.1.4 (model, squared-error loss with the 1/2 factor, analytic solution, minibatch SGD update) and 3.1.3 (Gaussian noise makes squared loss maximum likelihood).
+1. [Linear regression: model, squared loss, analytic solution and minibatch SGD](https://d2l.ai/chapter_linear-regression/linear-regression.html) (Dive into Deep Learning - linear models slice) - Sections 3.1.1.1 to 3.1.1.4 (model, squared-error loss with the $`\frac{1}{2}`$ factor, analytic solution, minibatch SGD update) and 3.1.3 (Gaussian noise makes squared loss maximum likelihood).
 2. [Linear regression from scratch](https://d2l.ai/chapter_linear-regression/linear-regression-scratch.html) (Dive into Deep Learning - linear models slice) - Sections 3.4: Defining the Model, Defining the Loss Function, Defining the Optimization Algorithm, Training. Depth: D2L shows framework tabs only; there is no plain NumPy tab. Implement in NumPy first, as the section use note asks, and read the PyTorch tab only as a differential reference.
 3. [Simple and multiple linear regression](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 3, Sections 3.1 to 3.2 (pp. 70-90): the RSS objective, least squares coefficient estimates and the multiple-regression setup.
-4. [Linear regression lab](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch03-linreg-lab.ipynb) (An Introduction to Statistical Learning with Python) - Simple Linear Regression and Multiple Linear Regression sections on the Boston data: fit with statsmodels OLS and read coefficients, standard errors and R-squared.
-5. [Ordinary least squares semantics and solver](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.1 including 1.1.1.2: LinearRegression minimizes the residual sum of squares, stores coef_ and intercept_, and solves through the SVD of X at O(n p^2) cost.
+4. [Linear regression lab](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch03-linreg-lab.ipynb) (An Introduction to Statistical Learning with Python) - Simple Linear Regression and Multiple Linear Regression sections on the Boston data: fit with statsmodels OLS and read coefficients, standard errors and $`R^2`$.
+5. [Ordinary least squares semantics and solver](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.1 including 1.1.1.2: LinearRegression minimizes the residual sum of squares, stores coef_ and intercept_, and solves through the SVD of $`X`$ at $`O(n p^2)`$ cost.
 6. [Normal equation and batch gradient descent](https://github.com/ageron/handson-mlp/blob/main/04_training_linear_models.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 4: The Normal Equation (printed pp. 138-141) and Batch Gradient Descent (pp. 145-148). Notebook 04 cells: The Normal Equation section (theta_best with the explicit inverse, then the np.linalg.lstsq and pseudoinverse cross-checks) and Gradient Descent (the batch loop: gradient 2/m X_b'(X_b theta - y), eta 0.1, 1000 epochs from a random start).
 
 **Focus**
 
-- D2L scales its per-example loss by 1/2 while HoML differentiates the plain mean of squares with a 2/m gradient. The minimizer is identical but the largest stable learning rate differs by that constant.
-- X'Xw = X'y has a unique solution only when X has full column rank. With duplicate or nearly collinear columns the fitted values stay well determined but the coefficients do not: in the 1e-4 demo below both solvers return slopes near 229 and -228, and only their sum, 1.012, is pinned by the data.
+- D2L scales its per-example loss by $`\frac{1}{2}`$ while HoML differentiates the plain mean of squares with a $`\frac{2}{m}`$ gradient. The minimizer is identical but the largest stable learning rate differs by that constant.
+- $`X^\top Xw = X^\top y`$ has a unique solution only when $`X`$ has full column rank. With duplicate or nearly collinear columns the fitted values stay well determined but the coefficients do not: in the 1e-4 demo below both solvers return slopes near 229 and -228, and only their sum, 1.012, is pinned by the data.
 - The course notebooks show inv(X'X)@X'y to teach the formula; sklearn never forms that inverse and solves through the SVD instead.
 
-**Reproduce:** From ||y - Xw||^2, derive X'Xw = X'y on paper. Then build the near-collinear demo in NumPy: default_rng(1), n = 200, x1 standard normal, x2 = x1 + 1e-4 times standard normal noise, an intercept column, y = 3 + 2 x1 - x2 + 0.1 noise, drawn in that order. Show cond(X) = 2.08e4 and cond(X'X) = 4.34e8, its square. The explicit inverse and lstsq agree to about 1e-5, but both return about [3.002, 229.2, -228.2], not [3, 2, -1]. Then rebuild with default_rng(0), n = 60, x2 = x1 + 1e-8 noise and y = 3 + 2 x1 + 0.5 noise: cond(X) = 1.8e8 and cond(X'X) = 3.25e15, and the explicit inverse stops at residual norm 3.8314 while lstsq reaches the minimum, 3.7978.
+**Reproduce:** From $`\|y - Xw\|^2`$, derive $`X^\top Xw = X^\top y`$ on paper. Then build the near-collinear demo in NumPy: default_rng(1), $`n = 200`$, $`x_1`$ standard normal, $`x_2 = x_1 + 10^{-4}`$ times standard normal noise, an intercept column, $`y = 3 + 2x_1 - x_2 + 0.1\,\text{noise}`$, drawn in that order. Show $`\operatorname{cond}(X)`$ = 2.08e4 and $`\operatorname{cond}(X^\top X)`$ = 4.34e8, its square. The explicit inverse and lstsq agree to about 1e-5, but both return about [3.002, 229.2, -228.2], not [3, 2, -1]. Then rebuild with default_rng(0), $`n = 60`$, $`x_2 = x_1 + 10^{-8}\,\text{noise}`$ and $`y = 3 + 2x_1 + 0.5\,\text{noise}`$: $`\operatorname{cond}(X)`$ = 1.8e8 and $`\operatorname{cond}(X^\top X)`$ = 3.25e15, and the explicit inverse stops at residual norm 3.8314 while lstsq reaches the minimum, 3.7978.
 
 **Traps**
 
-- Shipping inv(X'X)@X'y as the solver. Forming X'X squares the condition number, so a design with cond(X) near 1e8 makes X'X numerically singular near 1/eps in float64 while lstsq still minimizes the residual.
+- Shipping inv(X'X)@X'y as the solver. Forming $`X^\top X`$ squares the condition number, so a design with $`\operatorname{cond}(X)`$ near 1e8 makes $`X^\top X`$ numerically singular near $`1/\epsilon`$ in float64 while lstsq still minimizes the residual.
 - Hand-rolling a bias column while the differential test keeps fit_intercept=True. sklearn centers the columns, so your ones column becomes all zeros: it gets coefficient 0 and intercept_ takes the offset. Predictions agree but a coefficient-by-coefficient comparison fails. Drop the column or pass fit_intercept=False.
 - Reading the second Deep-ML 15 test as the exact solution. It expects [2.9699, 2.0078], the gradient-descent iterate after 1000 steps at lr 0.05; the exact minimizer is [3, 2]. Zero initialization and the exact update decide it.
 
 **Practice**
 
-- [Deep-ML 15: Linear Regression Using Gradient Descent](https://www.deep-ml.com/problems/15) - Gradient descent on the 1/(2m) mean squared error from zero initialization. Test 1 expects [1, 2]; test 2 pins the 1000-step iterate [2.9699, 2.0078] at lr 0.05 rather than the exact [3, 2]. Pass both tests, then show your lstsq solution agrees with test 1 and explain why it cannot match test 2 exactly.
+- [Deep-ML 15: Linear Regression Using Gradient Descent](https://www.deep-ml.com/problems/15) - Gradient descent on the $`\frac{1}{2m}`$ mean squared error from zero initialization. Test 1 expects [1, 2]; test 2 pins the 1000-step iterate [2.9699, 2.0078] at lr 0.05 rather than the exact [3, 2]. Pass both tests, then show your lstsq solution agrees with test 1 and explain why it cannot match test 2 exactly.
 - [NeetCode ML: Linear Regression Forward and Linear Regression Training](https://neetcode.io/practice/machine-learning) - Math Foundations pair: implement the forward pass, then full training cold. After the section gate, compare the learned weights against your lstsq fit on the same data before moving on.
 
 **Stop when:** Your normal-equation and lstsq fits agree to 1e-8 on well-conditioned data, minibatch SGD with a decaying step lands within 1e-3 of them (a constant step leaves it rattling about 1e-2 away), a float64 gradient check passes, and you can say for each Deep-ML 15 test whether it pins the optimum or the optimization path.
@@ -617,12 +617,12 @@ Least squares is the baseline every later model is compared against. Its two fai
 <details>
 <summary>Self-test</summary>
 
-1. D2L multiplies its loss by 1/2 and HoML does not. Why is the minimizer unchanged but the stable learning rate different?
-   - The constant scales the loss and every gradient without moving the stationary point, so the optimum is identical. A fixed step size moves half as far per step under the 1/2 convention, so its stability limit on eta is twice as large.
-2. Two columns of X are identical. What happens to X'X, the coefficients and the predictions?
-   - X'X is singular so the coefficients are not unique. The fitted values Xw stay unique as the projection onto the column space, and SVD-based solvers return the minimum-norm coefficient vector.
-3. cond(X) is 2.08e4. What is cond(X'X), and at what point does the explicit inverse break down?
-   - About 4.34e8, the square of cond(X). The explicit inverse loses all precision once cond(X'X) approaches 1/eps, about 4.5e15 in float64, which needs only cond(X) near 7e7. At 1.8e8 it no longer reaches the least-squares minimum.
+1. D2L multiplies its loss by $`\frac{1}{2}`$ and HoML does not. Why is the minimizer unchanged but the stable learning rate different?
+   - The constant scales the loss and every gradient without moving the stationary point, so the optimum is identical. A fixed step size moves half as far per step under the $`\frac{1}{2}`$ convention, so its stability limit on $`\eta`$ is twice as large.
+2. Two columns of $`X`$ are identical. What happens to $`X^\top X`$, the coefficients and the predictions?
+   - $`X^\top X`$ is singular so the coefficients are not unique. The fitted values $`Xw`$ stay unique as the projection onto the column space, and SVD-based solvers return the minimum-norm coefficient vector.
+3. $`\operatorname{cond}(X)`$ is 2.08e4. What is $`\operatorname{cond}(X^\top X)`$, and at what point does the explicit inverse break down?
+   - About 4.34e8, the square of $`\operatorname{cond}(X)`$. The explicit inverse loses all precision once $`\operatorname{cond}(X^\top X)`$ approaches $`1/\epsilon`$, about 4.5e15 in float64, which needs only $`\operatorname{cond}(X)`$ near 7e7. At 1.8e8 it no longer reaches the least-squares minimum.
 4. One label is corrupted upward by 100. Why does the squared-loss fit move far, and which single change to the loss limits the damage?
    - The quadratic penalty lets that one residual dominate the objective. An absolute-error loss grows only linearly with it, so the fit moves far less.
 
@@ -639,25 +639,25 @@ An unpenalized fit trusts every column equally, so one rescaled feature or one d
 **You can now**
 
 - Derive the ridge closed form and predict how standardization changes the penalized solution.
-- Contrast L1 and L2 penalties on correlated features: selection and sparsity versus shrinkage and stability.
+- Contrast $`L_1`$ and $`L_2`$ penalties on correlated features: selection and sparsity versus shrinkage and stability.
 - Measure coefficient paths and validation error across the penalty strength on fixed splits and select it from evidence.
 
 **Study**
 
-1. [Polynomial fitting and model complexity](https://d2l.ai/chapter_linear-regression/generalization.html) (Dive into Deep Learning - linear models slice) - Section 3.6.1.1 Model Complexity, then 3.6.2.1 Polynomial Curve Fitting (with distinct x values, a polynomial whose degree equals the number of examples fits the training set exactly) and Fig. 3.6.1, the underfitting-overfitting curve.
-2. [Weight decay and the high-dimensional demo](https://d2l.ai/chapter_linear-regression/weight-decay.html) (Dive into Deep Learning - linear models slice) - Section 3.7: Norms and Weight Decay, then High-Dimensional Linear Regression with d = 200 features on 20 training examples at noise std 0.01.
+1. [Polynomial fitting and model complexity](https://d2l.ai/chapter_linear-regression/generalization.html) (Dive into Deep Learning - linear models slice) - Section 3.6.1.1 Model Complexity, then 3.6.2.1 Polynomial Curve Fitting (with distinct $`x`$ values, a polynomial whose degree equals the number of examples fits the training set exactly) and Fig. 3.6.1, the underfitting-overfitting curve.
+2. [Weight decay and the high-dimensional demo](https://d2l.ai/chapter_linear-regression/weight-decay.html) (Dive into Deep Learning - linear models slice) - Section 3.7: Norms and Weight Decay, then High-Dimensional Linear Regression with $`d = 200`$ features on 20 training examples at noise std 0.01.
 3. [Polynomial and interaction bases, then ridge, lasso and tuning](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 3, Section 3.3.2 (pp. 94-99) for polynomial and interaction extensions; Chapter 6, Sections 6.2.1 to 6.2.3 (pp. 240-252) for ridge, the lasso and tuning-parameter selection.
 4. [Regularization lab on the Hitters data](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch06-varselect-lab.ipynb) (An Introduction to Statistical Learning with Python) - Ridge Regression and the Lasso sections: solution paths on Hitters Salary with 5-fold cross-validation of the tuning parameter.
-5. [Ridge, lasso, elastic net and polynomial objectives](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Sections 1.1.2 (Ridge minimizes RSS plus alpha times squared norm), 1.1.3 (Lasso minimizes 1/(2n) RSS plus alpha times L1 norm, coordinate descent), 1.1.5 (Elastic-Net objective and the correlated-features guidance) and 1.1.16 (PolynomialFeatures basis expansion).
+5. [Ridge, lasso, elastic net and polynomial objectives](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Sections 1.1.2 (Ridge minimizes RSS plus $`\alpha`$ times squared norm), 1.1.3 (Lasso minimizes $`\frac{1}{2n}`$ RSS plus $`\alpha`$ times L1 norm, coordinate descent), 1.1.5 (Elastic-Net objective and the correlated-features guidance) and 1.1.16 (PolynomialFeatures basis expansion).
 6. [Polynomial regression and regularized linear models](https://github.com/ageron/handson-mlp/blob/main/04_training_linear_models.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 4: Polynomial Regression (printed pp. 153-154) and Regularized Linear Models (pp. 159-167). Notebook 04 cells: Polynomial Regression, Ridge Regression, Lasso Regression, Elastic Net and Early Stopping sections, including the scale-and-regularization warning in the chapter Q and A.
 
 **Focus**
 
-- Ridge adds alpha ||w||^2 to the raw RSS, while Lasso and ElasticNet add their alpha penalty to RSS/(2n), so alpha = 1 means very different strengths. Compare paths or CV errors, never raw alphas.
+- Ridge adds $`\alpha\|w\|^2`$ to the raw RSS, while Lasso and ElasticNet add their $`\alpha`$ penalty to $`\text{RSS}/(2n)`$, so $`\alpha = 1`$ means very different strengths. Compare paths or CV errors, never raw alphas.
 - Penalties tax raw coefficient size. A feature with small numeric values, such as kilometers instead of meters, needs a larger weight for the same effect, so it pays more penalty and is shrunk harder. Standardize before penalizing and leave the intercept free.
-- Lasso lands on corners: the sklearn guide says it is likely to pick one of several correlated features at random, while elastic net is likely to keep both. D2L's d = 200, n = 20 demo shows weight decay rescuing a fit with more features than samples.
+- Lasso lands on corners: the sklearn guide says it is likely to pick one of several correlated features at random, while elastic net is likely to keep both. D2L's $`d = 200`$, $`n = 20`$ demo shows weight decay rescuing a fit with more features than samples.
 
-**Reproduce:** Derive w = (X'X + alpha I)^{-1} X'y for centered data. Build the correlated demo: default_rng(2), n = 100, x1 and x2 standard normal, x3 = x1 + 0.1 noise, y = 2 x1 - 3 x2 + standard normal noise, drawn in that order. Show Ridge(alpha=1.0) matches the centered closed form to 1e-14 at [1.33909931, -3.06183881, 0.64520852]. Then show Lasso returns all zeros once alpha reaches max|Xc'yc|/n = 2.74, the x2 entry; just below it only x2 enters (-0.146 at alpha = 2.6). Ridge at any finite alpha keeps every coefficient nonzero here.
+**Reproduce:** Derive $`w = (X^\top X + \alpha I)^{-1}X^\top y`$ for centered data. Build the correlated demo: default_rng(2), $`n = 100`$, $`x_1`$ and $`x_2`$ standard normal, $`x_3 = x_1 + 0.1\,\text{noise}`$, $`y = 2x_1 - 3x_2`$ plus standard normal noise, drawn in that order. Show Ridge(alpha=1.0) matches the centered closed form to 1e-14 at [1.33909931, -3.06183881, 0.64520852]. Then show Lasso returns all zeros once $`\alpha`$ reaches $`\max|X_c^\top y_c|/n`$ = 2.74, the $`x_2`$ entry; just below it only $`x_2`$ enters (-0.146 at $`\alpha = 2.6`$). Ridge at any finite $`\alpha`$ keeps every coefficient nonzero here.
 
 **Traps**
 
@@ -667,21 +667,21 @@ An unpenalized fit trusts every column equally, so one rescaled feature or one d
 
 **Practice**
 
-- [D2L 3.7 Exercise 1: lambda sweep on the high-dimensional demo](https://d2l.ai/chapter_linear-regression/weight-decay.html) - Exercises, problem 1: vary lambda and plot training and validation error; then problem 3 for the L1 update equations. Keep the d = 200, n = 20 demo fixed, record where validation error bottoms out, and state the update change the L1 penalty forces.
+- [D2L 3.7 Exercise 1: $`\lambda`$ sweep on the high-dimensional demo](https://d2l.ai/chapter_linear-regression/weight-decay.html) - Exercises, problem 1: vary $`\lambda`$ and plot training and validation error; then problem 3 for the $`L_1`$ update equations. Keep the $`d = 200`$, $`n = 20`$ demo fixed, record where validation error bottoms out, and state the update change the L1 penalty forces.
 - [ISLP Lab 6.5.2: Ridge Regression and the Lasso](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch06-varselect-lab.ipynb) - Ridge Regression and the Lasso sections on the Hitters Salary data with 5-fold CV selection of the tuning parameter. Compare the selected strengths and explain any disagreement on which coefficients survive.
 
-**Stop when:** Your ridge closed form matches sklearn to 1e-12, your lambda sweep shows validation error falling then rising, and you can explain any lasso-versus-ridge selection disagreement on correlated features.
+**Stop when:** Your ridge closed form matches sklearn to 1e-12, your $`\lambda`$ sweep shows validation error falling then rising, and you can explain any lasso-versus-ridge selection disagreement on correlated features.
 
 <details>
 <summary>Self-test</summary>
 
 1. Ridge(alpha=1) and Lasso(alpha=1) disagree sharply on standardized data. Is one implementation wrong?
-   - No. Ridge adds alpha ||w||^2 to the raw RSS, while Lasso adds alpha ||w||_1 to RSS/(2n), so the same number applies very different pressure. Sweep a path for each and compare by validation error.
-2. D2L 3.7 fits d = 200 features on 20 examples. Why does plain least squares break, and what does the L2 term change algebraically?
-   - With 200 features and 20 rows, X'X has rank at most 20, so infinitely many weight vectors fit training exactly. Adding alpha I makes X'X + alpha I invertible, so the solution is unique, and it trades some training fit for a smaller norm; as alpha goes to 0 it tends to the minimum-norm interpolant.
+   - No. Ridge adds $`\alpha\|w\|^2`$ to the raw RSS, while Lasso adds $`\alpha\|w\|_1`$ to $`\text{RSS}/(2n)`$, so the same number applies very different pressure. Sweep a path for each and compare by validation error.
+2. D2L 3.7 fits $`d = 200`$ features on 20 examples. Why does plain least squares break, and what does the $`L_2`$ term change algebraically?
+   - With 200 features and 20 rows, $`X^\top X`$ has rank at most 20, so infinitely many weight vectors fit training exactly. Adding $`\alpha I`$ makes $`X^\top X + \alpha I`$ invertible, so the solution is unique, and it trades some training fit for a smaller norm; as $`\alpha`$ goes to 0 it tends to the minimum-norm interpolant.
 3. Two features correlate at 0.999. Lasso keeps one with a large weight while ridge keeps both, shrunken. Why?
-   - When x1 and x2 are nearly equal, the loss depends almost only on w1 + w2. For a fixed sum with both weights positive, the L1 norm is the same for every split, so the lasso is nearly indifferent and small differences in the data tip it to a corner with one weight at zero. The L2 norm is smallest at an equal split, so ridge shares the weight.
-4. With 10 distinct x values, a degree-9 polynomial fits the training data exactly. Is it the best model?
+   - When $`x_1`$ and $`x_2`$ are nearly equal, the loss depends almost only on $`w_1 + w_2`$. For a fixed sum with both weights positive, the $`L_1`$ norm is the same for every split, so the lasso is nearly indifferent and small differences in the data tip it to a corner with one weight at zero. The $`L_2`$ norm is smallest at an equal split, so ridge shares the weight.
+4. With 10 distinct $`x`$ values, a degree-9 polynomial fits the training data exactly. Is it the best model?
    - No. Zero training error does not imply low validation error: the exact fit can swing wildly between and beyond the points. That gap is what the underfitting-overfitting curve diagnoses.
 
 </details>
@@ -696,35 +696,35 @@ Logistic regression turns a linear score into a probability claim, and its likel
 
 **You can now**
 
-- Derive the binary log likelihood, its prediction-error-times-input gradient, and the L2-penalized objective from a Gaussian prior.
+- Derive the binary log likelihood, its prediction-error-times-input gradient, and the $`L_2`$-penalized objective from a Gaussian prior.
 - Implement binary cross-entropy on logits that stays finite for extreme scores, with a gradient check.
 - Explain why there is no closed form, why concavity still guarantees a global optimum, and what C controls in sklearn.
 
 **Study**
 
-1. [Logistic regression: likelihood, gradient and regularization](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Sections 3.2 (conditional log likelihood with the gradient-ascent update from zero weights at eta 0.01) and 3.3 (L2-penalized log likelihood, Gaussian-prior MAP reading, penalized gradient rule 26). Depth: Read the likelihood and gradient derivations fully. Section 3.1 writes P(Y = 1|X) = 1/(1 + exp(w0 + sum wi Xi)), the opposite sign convention, and 3.2 flips Y in (24)-(25) to the usual form, so check signs when you compare. Skim 3.1; its Gaussian-to-sigmoid bridge returns in the LDA unit.
+1. [Logistic regression: likelihood, gradient and regularization](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Sections 3.2 (conditional log likelihood with the gradient-ascent update from zero weights at $`\eta`$ 0.01) and 3.3 ($`L_2`$-penalized log likelihood, Gaussian-prior MAP reading, penalized gradient rule 26). Depth: Read the likelihood and gradient derivations fully. Section 3.1 writes $`P(Y = 1 \mid X) = 1/(1 + \exp(w_0 + \sum w_i X_i))`$, the opposite sign convention, and 3.2 flips $`Y`$ in (24)-(25) to the usual form, so check signs when you compare. Skim 3.1; its Gaussian-to-sigmoid bridge returns in the LDA unit.
 2. [The logistic model and maximum likelihood](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Sections 4.3.1 to 4.3.3 (pp. 139-141): the logistic model, likelihood (4.5) preferred over nonlinear least squares, and the Default-data arithmetic (balance $2,000 gives 58.6%).
 3. [Maximum likelihood and gradient-based fitting](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/maximum-likelihood.html) (Dive into Deep Learning - linear models slice) - Section 22.7: The Maximum Likelihood Principle, then Numerical Optimization and the Negative Log-Likelihood with its set-up, initialize, descend and check-output worked example.
-4. [Binary logistic loss, C semantics and solvers](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11 with 1.1.11.1 (expit form, averaged binary cross-entropy plus r(w)/(S C); C = inf means no penalty) and 1.1.11.3 (solver-versus-penalty table; lbfgs is the default).
-5. [Estimating probabilities and decision boundaries](https://github.com/ageron/handson-mlp/blob/main/04_training_linear_models.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 4: Estimating Probabilities through Decision Boundaries (printed pp. 168-174). Notebook 04 cells: Estimating Probabilities (iris virginica detector on petal width) and Decision Boundaries (boundary contour with C = 2).
+4. [Binary logistic loss, C semantics and solvers](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11 with 1.1.11.1 (expit form, averaged binary cross-entropy plus $`r(w)/(S C)`$; $`C = \infty`$ means no penalty) and 1.1.11.3 (solver-versus-penalty table; lbfgs is the default).
+5. [Estimating probabilities and decision boundaries](https://github.com/ageron/handson-mlp/blob/main/04_training_linear_models.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 4: Estimating Probabilities through Decision Boundaries (printed pp. 168-174). Notebook 04 cells: Estimating Probabilities (iris virginica detector on petal width) and Decision Boundaries (boundary contour with $`C = 2`$).
 
 **Focus**
 
-- The gradient is prediction error times input, summed over rows. Mitchell ascends the summed log likelihood from zero weights; sklearn minimizes averaged cross-entropy plus an L2 term (C = 1.0 by default) with lbfgs. Their optima agree only when the penalties match, for example C = np.inf against Mitchell's unpenalized rule.
-- sklearn regularizes by default at C = 1.0 on an averaged loss, so its C is not a textbook lambda: smaller C means stronger penalty, and C = inf recovers the unpenalized fit.
-- Never exponentiate before logging. In float64 the sigmoid rounds to exactly 1.0 once z passes about 36.7, but to exactly 0 only below about -709.8, so the naive loss for y = 0 is already inf at z = 37, and at z = 36 it returns 36.044 instead of 36.0. The form max(z,0) - z y + log1p(exp(-|z|)) stays exact.
+- The gradient is prediction error times input, summed over rows. Mitchell ascends the summed log likelihood from zero weights; sklearn minimizes averaged cross-entropy plus an $`L_2`$ term ($`C = 1.0`$ by default) with lbfgs. Their optima agree only when the penalties match, for example $`C`$ = np.inf against Mitchell's unpenalized rule.
+- sklearn regularizes by default at $`C = 1.0`$ on an averaged loss, so its $`C`$ is not a textbook $`\lambda`$: smaller $`C`$ means stronger penalty, and $`C = \infty`$ recovers the unpenalized fit.
+- Never exponentiate before logging. In float64 the sigmoid rounds to exactly 1.0 once $`z`$ passes about 36.7, but to exactly 0 only below about -709.8, so the naive loss for $`y = 0`$ is already $`\infty`$ at $`z = 37`$, and at $`z = 36`$ it returns 36.044 instead of 36.0. The form $`\max(z,0) - zy + \operatorname{log1p}(\exp(-|z|))`$ stays exact.
 
-**Reproduce:** Derive the (p - y) x gradient from the binary log likelihood. In float64 show the naive loss returns inf for (z = -800, y = 1) and already for (z = 40, y = 0), while max(z,0) - z y + log1p(exp(-|z|)) returns 800.0 and 40.0. Match your analytic gradient to central differences to 1e-8 on a 3-point demo.
+**Reproduce:** Derive the $`(p - y)x`$ gradient from the binary log likelihood. In float64 show the naive loss returns $`\infty`$ for $`(z = -800, y = 1)`$ and already for $`(z = 40, y = 0)`$, while $`\max(z,0) - zy + \operatorname{log1p}(\exp(-|z|))`$ returns 800.0 and 40.0. Match your analytic gradient to central differences to 1e-8 on a 3-point demo.
 
 **Traps**
 
-- Equating sklearn C with a textbook lambda. C is inverse strength on an averaged loss, so doubling C halves the penalty; sample and class weights rescale the effective C through the total weight S.
+- Equating sklearn $`C`$ with a textbook $`\lambda`$. $`C`$ is inverse strength on an averaged loss, so doubling $`C`$ halves the penalty; sample and class weights rescale the effective $`C`$ through the total weight $`S`$.
 - Trusting probabilities from a near-unpenalized fit on nearly separable data. The likelihood keeps rewarding larger weights, so scores saturate toward exactly 0 and 1 without becoming more accurate.
 - Starting gradient ascent from large random weights for symmetry breaking. The objective is concave with one global optimum and Mitchell starts at zero; large starts only waste steps or overflow the first sigmoid.
 
 **Practice**
 
-- [Deep-ML 106: Train Logistic Regression with Gradient Descent](https://www.deep-ml.com/problems/106) - Gradient descent on binary cross-entropy returning coefficients plus 10 per-iteration losses rounded to 4 decimals. Both tests open at 6.9315 = 10 ln 2: the reference prepends a bias column, starts from zero weights, sums (not averages) loss and gradient over the 10 rows, and records the loss before each update. Implement the stable logit form; the naive probability form risks inf on confident rows.
+- [Deep-ML 106: Train Logistic Regression with Gradient Descent](https://www.deep-ml.com/problems/106) - Gradient descent on binary cross-entropy returning coefficients plus 10 per-iteration losses rounded to 4 decimals. Both tests open at 6.9315 = $`10\ln 2`$: the reference prepends a bias column, starts from zero weights, sums (not averages) loss and gradient over the 10 rows, and records the loss before each update. Implement the stable logit form; the naive probability form risks inf on confident rows.
 - [NeetCode ML: Sigmoid and ReLU plus Cross-Entropy Loss](https://neetcode.io/practice/machine-learning) - Math Foundations pair: activation values first, then the loss that consumes them. After the section gate, solve cold after Deep-ML 106 and state the input range where each saturates.
 
 **Stop when:** Your logit loss matches central differences, stays finite on the (-800, 1), (40, 0) and (800, 0) probes, and your Deep-ML 106 losses open at 6.9315 and track the reference through all 10 iterations.
@@ -733,13 +733,13 @@ Logistic regression turns a linear score into a probability claim, and its likel
 <summary>Self-test</summary>
 
 1. Why does logistic regression need iterative fitting when linear regression has a closed form?
-   - The sigmoid makes the log likelihood nonlinear in w with no analytic maximizer. The objective is concave, so gradient ascent still reaches the one global optimum.
+   - The sigmoid makes the log likelihood nonlinear in $`w`$ with no analytic maximizer. The objective is concave, so gradient ascent still reaches the one global optimum.
 2. sklearn at default C = 1.0 disagrees with your zero-penalty NumPy fit. Which one is right?
-   - Both solve their stated objectives: sklearn minimizes averaged cross-entropy plus an L2 term at C = 1.0. Set C to inf or a very large value to recover the unpenalized fit.
+   - Both solve their stated objectives: sklearn minimizes averaged cross-entropy plus an $`L_2`$ term at $`C = 1.0`$. Set $`C`$ to $`\infty`$ or a very large value to recover the unpenalized fit.
 3. Training loss prints inf on the first epoch for a positive example with logit near -800. What happened, and what is the fix?
-   - The sigmoid underflowed to exactly 0 and log(0) is inf. A negative example fails much sooner: at logit 37 the sigmoid rounds to exactly 1 and log(1 - 1) is inf. Score in logits with max(z,0) - z y + log1p(exp(-|z|)) instead of exponentiating first.
+   - The sigmoid underflowed to exactly 0 and $`\log(0)`$ is $`\infty`$. A negative example fails much sooner: at logit 37 the sigmoid rounds to exactly 1 and $`\log(1 - 1)`$ is $`\infty`$. Score in logits with $`\max(z,0) - zy + \operatorname{log1p}(\exp(-|z|))`$ instead of exponentiating first.
 4. Recompute ISLP's 58.6% default risk for balance $2,000 from Table 4.1.
-   - z = -10.6513 + 0.0055 x 2000 = 0.3487; 1/(1 + exp(-0.3487)) = 0.586. A one-unit balance rise adds 0.0055 to the log odds.
+   - $`z = -10.6513 + 0.0055 \times 2000 = 0.3487`$; $`1/(1 + \exp(-0.3487)) = 0.586`$. A one-unit balance rise adds 0.0055 to the log odds.
 
 </details>
 
@@ -753,7 +753,7 @@ Most real decisions choose among more than two outcomes. Softmax generalizes the
 
 **You can now**
 
-- Derive the softmax from K linear scores, its cross-entropy loss, and the prediction-error-times-input gradient.
+- Derive the softmax from $`K`$ linear scores, its cross-entropy loss, and the prediction-error-times-input gradient.
 - Implement max-subtracted softmax and multiclass cross-entropy that stay finite on extreme logits.
 - Contrast joint multinomial fitting with one-versus-rest on parameter counts, calibration and solver limits.
 
@@ -761,18 +761,18 @@ Most real decisions choose among more than two outcomes. Softmax generalizes the
 
 1. [Softmax, vectorization caution and cross-entropy loss](https://d2l.ai/chapter_linear-classification/softmax-regression.html) (Dive into Deep Learning - linear models slice) - Section 4.1: The Softmax (ordering preservation, argmax needs no exponentials), Vectorization (row-wise softmax with the overflow-underflow caution), Loss Function with Log-Likelihood and Softmax and Cross-Entropy Loss.
 2. [Softmax from scratch, including the instability warning](https://d2l.ai/chapter_linear-classification/softmax-regression-scratch.html) (Dive into Deep Learning - linear models slice) - Section 4.4: The Softmax (naive implementation with the do-not-use-verbatim caution), The Model, The Cross-Entropy Loss, Training, Prediction. Depth: Read the naive softmax as the failure demo. Use the framework softmax with built-in protections for every real fit.
-3. [Multinomial logistic regression](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Section 4.3.5 (p. 144): the K-class extension (4.13) with log odds linear in x (4.14).
-4. [Multiclass logistic form and gradient](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Section 3.4 (K - 1 linear functions in equations 27-28, regularized gradient rule 29).
-5. [Multinomial geometry, OvR solvers and calibration](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11.2 (deliberate K-vector overparameterization, non-unique unpenalized solutions) and 1.1.11.3 with its solver table and Solvers' details (liblinear cannot fit a multinomial model, so multiclass use wraps it in OneVsRestClassifier; the multinomial loss is expected to calibrate better than one-versus-rest).
+3. [Multinomial logistic regression](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Section 4.3.5 (p. 144): the $`K`$-class extension (4.13) with log odds linear in $`x`$ (4.14).
+4. [Multiclass logistic form and gradient](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Section 3.4 ($`K - 1`$ linear functions in equations 27-28, regularized gradient rule 29).
+5. [Multinomial geometry, OvR solvers and calibration](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11.2 (deliberate $`K`$-vector overparameterization, non-unique unpenalized solutions) and 1.1.11.3 with its solver table and Solvers' details (liblinear cannot fit a multinomial model, so multiclass use wraps it in OneVsRestClassifier; the multinomial loss is expected to calibrate better than one-versus-rest).
 6. [One-versus-rest in practice](https://github.com/ageron/handson-mlp/blob/main/03_classification.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 3: Multiclass Classification (printed pp. 124-126). Notebook 03 cells: Multiclass Classification section: the SVC OvO-training note, OneVsRestClassifier with its 10 estimators, and the SGDClassifier multiclass run.
 
 **Focus**
 
-- Softmax preserves order, so argmax needs no exponentials. Probabilities still need the max-subtracted form, because exp(1000) overflows to inf and inf divided by inf is nan.
-- sklearn fits K vectors for K classes on purpose, for symmetry under regularization. Without penalty that redundancy makes the solution non-unique, which is one more reason the default L2 matters.
-- One-versus-rest trains K binary problems and compares uncalibrated margins, while multinomial optimizes one joint loss. Expect worse-calibrated probabilities from the OvR scheme.
+- Softmax preserves order, so $`\operatorname{argmax}`$ needs no exponentials. Probabilities still need the max-subtracted form, because $`\exp(1000)`$ overflows to $`\infty`$ and $`\infty`$ divided by $`\infty`$ is nan.
+- sklearn fits $`K`$ vectors for $`K`$ classes on purpose, for symmetry under regularization. Without penalty that redundancy makes the solution non-unique, which is one more reason the default $`L_2`$ matters.
+- One-versus-rest trains $`K`$ binary problems and compares uncalibrated margins, while multinomial optimizes one joint loss. Expect worse-calibrated probabilities from the OvR scheme.
 
-**Reproduce:** Derive the (p_k - y_k) x gradient from the multiclass negative log likelihood. In NumPy show naive softmax of [1000, 1001, 999] returns [nan, nan, nan] while the max-subtracted form returns [0.2447, 0.6652, 0.0900]. Then do the D2L 4.4 exercise in float32, the dtype of D2L's PyTorch code: naive softmax of [-110, -111] returns [nan, nan] because both exponentials underflow to 0, and [-100, -101] gives 0.7297 instead of 0.7311 from subnormal rounding. In float64 both inputs still work; the cliff sits near -745.
+**Reproduce:** Derive the $`(p_k - y_k)x`$ gradient from the multiclass negative log likelihood. In NumPy show naive softmax of [1000, 1001, 999] returns [nan, nan, nan] while the max-subtracted form returns [0.2447, 0.6652, 0.0900]. Then do the D2L 4.4 exercise in float32, the dtype of D2L's PyTorch code: naive softmax of [-110, -111] returns [nan, nan] because both exponentials underflow to 0, and [-100, -101] gives 0.7297 instead of 0.7311 from subnormal rounding. In float64 both inputs still work; the cliff sits near -745.
 
 **Traps**
 
@@ -792,10 +792,10 @@ Most real decisions choose among more than two outcomes. Softmax generalizes the
 
 1. Why can argmax skip the softmax entirely?
    - Softmax is monotone in each logit and preserves their order, so the largest logit is always the most probable class. Computing probabilities still needs the stable form.
-2. sklearn fits 3 vectors for 3 classes while Mitchell fits K - 1 = 2 linear functions. Is one of them wrong?
-   - No. K vectors deliberately overparameterize for symmetry under regularization, while K - 1 suffices because probabilities sum to one. Without penalty the K-vector solution is not unique.
+2. sklearn fits 3 vectors for 3 classes while Mitchell fits $`K - 1 = 2`$ linear functions. Is one of them wrong?
+   - No. $`K`$ vectors deliberately overparameterize for symmetry under regularization, while $`K - 1`$ suffices because probabilities sum to one. Without penalty the $`K`$-vector solution is not unique.
 3. Naive softmax of [1000, 1001, 999] returns nan. Show the exact failure and the fix.
-   - Each exponential overflows to inf and inf/inf is nan. Subtract the row maximum first: exp([-1, 0, -2]) over its sum gives [0.2447, 0.6652, 0.0900] with the same argmax.
+   - Each exponential overflows to $`\infty`$ and $`\infty/\infty`$ is nan. Subtract the row maximum first: $`\exp([-1, 0, -2])`$ over its sum gives [0.2447, 0.6652, 0.0900] with the same $`\operatorname{argmax}`$.
 4. liblinear is your only allowed solver on a 5-class problem. Which scheme, and what do you lose?
    - One-versus-rest: wrap it in OneVsRestClassifier, which fits 5 binary estimators, because in sklearn 1.9 liblinear raises a ValueError on three or more classes. You lose the joint multinomial objective and should expect worse-calibrated probabilities.
 
@@ -819,17 +819,17 @@ A fit that converges is not a fit that is right. Diagnostics separate a broken m
 
 1. [Potential problems in the regression model](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 3, Section 3.3.3 (pp. 100-108): nonlinearity, correlation of error terms, heteroscedasticity, outliers, high-leverage points and collinearity with the variance inflation factor.
 2. [Separation instability of logistic estimates](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Section 4.4 opening (p. 146): logistic parameter estimates turn surprisingly unstable under substantial class separation, which motivates the generative alternatives.
-3. [Penalty strength as the separation lever](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11 Binary Case: the penalty enters as r(w)/(S C), so relaxing C toward inf recovers the unpenalized fit whose weights are unbounded under separation.
+3. [Penalty strength as the separation lever](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11 Binary Case: the penalty enters as $`r(w)/(S C)`$, so relaxing $`C`$ toward $`\infty`$ recovers the unpenalized fit whose weights are unbounded under separation.
 4. [Learning curves for bias-variance diagnosis](https://github.com/ageron/handson-mlp/blob/main/04_training_linear_models.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 4: Learning Curves (printed pp. 154-159). Notebook 04 cells: Learning Curves section: sklearn learning_curve with RMSE on the linear fit, then the degree-10 polynomial pipeline, train versus validation error against training-set size.
 5. [Error-only confusion views](https://github.com/ageron/handson-mlp/blob/main/03_classification.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 3: Error Analysis (printed pp. 126-130). Notebook 03 cells: Error Analysis section: row-normalized matrices, then error-only views with sample_weight, normalized by row and by column.
 
 **Focus**
 
-- Leverage measures position in x-space, not wrongness. The x = 10 point in a 0-to-2 design carries leverage 0.98 out of p = 2 while anchoring the slope; residuals measure wrongness, and influence needs both.
+- Leverage measures position in $`x`$-space, not wrongness. The $`x = 10`$ point in a 0-to-2 design carries leverage 0.98 out of $`p = 2`$ while anchoring the slope; residuals measure wrongness, and influence needs both.
 - Patterns have signatures. Curvature in residual-versus-fitted means nonlinearity, a funnel means heteroscedasticity, and isolated large standardized residuals mean outliers; each prescribes a different repair.
-- Separation shows as coefficients that keep growing as C is relaxed, with probabilities glued to 0 and 1. On x = 0,1,2,3 with y = 0,0,1,1 the slope is 0.96 at C = 1 and 9.31 at C = 1e3. At C = 1e6 lbfgs stops at 16.57 under its default tol = 1e-4 with no warning, while tol = 1e-12 reaches 21.50. The fix is a finite penalty, not more iterations.
+- Separation shows as coefficients that keep growing as $`C`$ is relaxed, with probabilities glued to 0 and 1. On $`x = 0,1,2,3`$ with $`y = 0,0,1,1`$ the slope is 0.96 at $`C = 1`$ and 9.31 at $`C`$ = 1e3. At $`C`$ = 1e6 lbfgs stops at 16.57 under its default tol = 1e-4 with no warning, while tol = 1e-12 reaches 21.50. The fix is a finite penalty, not more iterations.
 
-**Reproduce:** From a blank file compute hat diagonals on the design [[1,0],[1,1],[1,2],[1,10]] and match leverages [0.4183, 0.3307, 0.2749, 0.9761] summing to p = 2. Then fit LogisticRegression on x = [0,1,2,3] with y = [0,0,1,1] at C = 1, 1e3 and 1e6 with scikit-learn 1.9.1 defaults and match slopes [0.9583], [9.3057] and [16.5719]. Refit C = 1e6 with tol=1e-12 and watch the slope move to 21.4953: under separation the stopping rule, not the data, sets the weights.
+**Reproduce:** From a blank file compute hat diagonals on the design [[1,0],[1,1],[1,2],[1,10]] and match leverages [0.4183, 0.3307, 0.2749, 0.9761] summing to $`p = 2`$. Then fit LogisticRegression on x = [0,1,2,3] with y = [0,0,1,1] at $`C = 1`$, 1e3 and 1e6 with scikit-learn 1.9.1 defaults and match slopes [0.9583], [9.3057] and [16.5719]. Refit $`C`$ = 1e6 with tol=1e-12 and watch the slope move to 21.4953: under separation the stopping rule, not the data, sets the weights.
 
 **Traps**
 
@@ -842,17 +842,17 @@ A fit that converges is not a fit that is right. Diagnostics separate a broken m
 - [HoML 04 Learning Curves: bias-variance diagnosis from error curves](https://github.com/ageron/handson-mlp/blob/main/04_training_linear_models.ipynb) - Learning Curves section: RMSE train and validation curves from learning_curve for the linear fit and the degree-10 polynomial pipeline. Rebuild both curve pairs from a blank script and name which regime, bias or variance dominated, each pair shows.
 - [HoML 03 Error Analysis: error-only confusion views](https://github.com/ageron/handson-mlp/blob/main/03_classification.ipynb) - Error Analysis section: row-normalized matrix, then the sample_weight error-only views normalized by row and by column. List the three most confused digit pairs from the error-only views and inspect sample images for each.
 
-**Stop when:** You can name the violated assumption from any residual plot, reproduce the leverage table from a blank file, and catch separation from a C sweep before looking at accuracy.
+**Stop when:** You can name the violated assumption from any residual plot, reproduce the leverage table from a blank file, and catch separation from a $`C`$ sweep before looking at accuracy.
 
 <details>
 <summary>Self-test</summary>
 
 1. Residual-versus-fitted shows a U shape. What is wrong, and what changes?
    - Nonlinearity the linear form cannot express. Add polynomial or interaction terms rather than collecting more data for the same line.
-2. The x = 10 point has leverage 0.98 out of p = 2. Should it be deleted?
+2. The $`x = 10`$ point has leverage 0.98 out of $`p = 2`$. Should it be deleted?
    - Not on leverage alone. It dominates the slope estimate but a small residual there is informative. Check influence by refitting without it before deciding.
 3. Logistic coefficients keep growing as C is relaxed (0.96, 9.31, 16.57 at C = 1, 1e3, 1e6) and the probabilities print as 0 or 1. Diagnose and repair.
-   - Complete separation: the maximum likelihood weights are unbounded and only the penalty keeps them finite, so the penalized optimum moves outward roughly in proportion to log C. Keep C finite, confirm the weights hold under a tighter tol, and look for overlapping cases to collect.
+   - Complete separation: the maximum likelihood weights are unbounded and only the penalty keeps them finite, so the penalized optimum moves outward roughly in proportion to $`\log C`$. Keep $`C`$ finite, confirm the weights hold under a tighter tol, and look for overlapping cases to collect.
 4. Standardized residuals fan out as fitted values grow. Name the violation and one valid response.
    - Heteroscedasticity, non-constant error variance. Transform the response, model the variance, or use variance-robust inference; adding polynomial terms does not fix it.
 
@@ -876,23 +876,23 @@ LDA, QDA, naive Bayes and logistic regression all draw linear-or-quadratic bound
 
 1. [LDA for one and many predictors](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Sections 4.4.1 to 4.4.2 (pp. 147-155): Bayes theorem for classification, Gaussian class conditionals, the shared-covariance assumption and the linear discriminant.
 2. [QDA and the analytical comparison of classifiers](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Section 4.4.3 (p. 156) for QDA, then Section 4.5.1 (pp. 161-164): the linear, quadratic and additive log-odds forms and which method nests inside which.
-3. [Generative versus discriminative classifiers](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Sections 1 (Bayes-rule learning and the 2(2n - 1) parameter count), 2.1-2.2 (conditional independence and the naive Bayes derivation), 3.1 (Gaussian naive Bayes implies the logistic form) and 4 (discriminative versus generative, asymptotic identity, Ng and Jordan rates).
+3. [Generative versus discriminative classifiers](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Sections 1 (Bayes-rule learning and the $`2(2n - 1)`$ parameter count), 2.1-2.2 (conditional independence and the naive Bayes derivation), 3.1 (Gaussian naive Bayes implies the logistic form) and 4 (discriminative versus generative, asymptotic identity, Ng and Jordan rates).
 4. [LDA and QDA formulation and solvers](https://scikit-learn.org/stable/modules/lda_qda.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.2.2 (Bayes rule, Gaussian class conditionals, QDA log-posterior, LDA linear form with coef_ and intercept_, and the QDA-with-diagonal-covariance equals GaussianNB note) and 1.2.5 (svd is the default solver).
 5. [LDA and QDA lab on the Smarket data](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch04-classification-lab.ipynb) (An Introduction to Statistical Learning with Python) - Linear Discriminant Analysis and Quadratic Discriminant Analysis sections: fits, posterior values and confusion matrices beside the logistic fit.
 
 **Focus**
 
-- LDA log odds are linear in x because the shared covariance cancels every quadratic term; QDA keeps one covariance per class, so its boundary is quadratic with cross terms.
+- LDA log odds are linear in $`x`$ because the shared covariance cancels every quadratic term; QDA keeps one covariance per class, so its boundary is quadratic with cross terms.
 - Gaussian naive Bayes is QDA with diagonal class covariances. If each feature's variance is also shared across classes, it becomes LDA with a diagonal shared covariance (ISLP 4.5.1). Naive Bayes in general, with any per-feature densities, and QDA do not nest: naive Bayes log odds are additive in the features, while QDA's contain products of feature pairs.
 - Logistic regression and LDA posit the same linear log-odds form but fit it differently: LDA estimates class Gaussians and priors while logistic maximizes the conditional likelihood. Expect LDA to win when normality holds and logistic when it does not.
 
-**Reproduce:** Write the LDA discriminant delta_k(x) = x' Sigma^{-1} mu_k - mu_k' Sigma^{-1} mu_k / 2 + log pi_k from the Gaussian log posterior. Build the two-Gaussian demo with default_rng(3): 40 standard normal points around [0,0], then 40 around [2,2]. Match sklearn LDA priors [0.5, 0.5], training score 0.95, coefficients [1.927, 2.229] and intercept -4.070.
+**Reproduce:** Write the LDA discriminant $`\delta_k(x) = x^\top\Sigma^{-1}\mu_k - \mu_k^\top\Sigma^{-1}\mu_k/2 + \log\pi_k`$ from the Gaussian log posterior. Build the two-Gaussian demo with default_rng(3): 40 standard normal points around [0,0], then 40 around [2,2]. Match sklearn LDA priors [0.5, 0.5], training score 0.95, coefficients [1.927, 2.229] and intercept -4.070.
 
 **Traps**
 
 - Fitting QDA with too few rows per class. Each class covariance comes from that class's rows alone, and with p or fewer rows per class (the class mean uses one) it is singular. Use QDA's reg_param or shrinkage with the eigen solver, or LDA with shrinkage.
 - Calling LDA parameter-free. It exposes no tuning knob by default but still estimates K means, a shared covariance and priors, which overfit small samples.
-- Assuming discriminative always wins with enough data. Logistic regression often has the lower asymptotic error under misspecification, but per Ng and Jordan naive Bayes approaches its own asymptote in order log n examples versus order n for logistic regression, where n is the number of features. So LDA and naive Bayes often win when training data are scarce.
+- Assuming discriminative always wins with enough data. Logistic regression often has the lower asymptotic error under misspecification, but per Ng and Jordan naive Bayes approaches its own asymptote in order $`\log n`$ examples versus order $`n`$ for logistic regression, where $`n`$ is the number of features. So LDA and naive Bayes often win when training data are scarce.
 
 **Practice**
 
@@ -904,13 +904,13 @@ LDA, QDA, naive Bayes and logistic regression all draw linear-or-quadratic bound
 <summary>Self-test</summary>
 
 1. Write the two-class LDA decision rule and name each estimated quantity.
-   - Assign argmax over k of x' Sigma^{-1} mu_k - mu_k' Sigma^{-1} mu_k/2 + log pi_k: class means, one shared covariance and priors. The x-quadratic terms cancel because Sigma is shared, leaving a linear boundary.
+   - Assign $`\operatorname{argmax}`$ over $`k`$ of $`x^\top\Sigma^{-1}\mu_k - \mu_k^\top\Sigma^{-1}\mu_k/2 + \log\pi_k`$: class means, one shared covariance and priors. The $`x`$-quadratic terms cancel because $`\Sigma`$ is shared, leaving a linear boundary.
 2. When does QDA collapse to Gaussian naive Bayes, and when does Gaussian naive Bayes collapse toward LDA?
    - QDA restricted to diagonal class covariances is Gaussian naive Bayes. Gaussian naive Bayes whose per-feature variances are shared across classes is LDA with a diagonal shared covariance. General naive Bayes and QDA do not nest: one is additive, the other has pairwise products.
 3. 50 training points, 20 features, roughly Gaussian classes. LDA, QDA or logistic first?
    - LDA, possibly with shrinkage. QDA must estimate two 20-by-20 covariances from about 25 points each, and logistic fits 21 weights discriminatively with higher variance. Revisit logistic if normality is badly violated and more data arrives.
 4. State the Ng and Jordan sample-complexity contrast and its practical consequence.
-   - Naive Bayes approaches its asymptotic error in order log n training examples and logistic regression needs order n, where n is the number of features, not samples. So naive Bayes often wins on small training sets, while logistic regression, with its usually lower asymptotic error, wins once data are plentiful.
+   - Naive Bayes approaches its asymptotic error in order $`\log n`$ training examples and logistic regression needs order $`n`$, where $`n`$ is the number of features, not samples. So naive Bayes often wins on small training sets, while logistic regression, with its usually lower asymptotic error, wins once data are plentiful.
 
 </details>
 
@@ -930,19 +930,19 @@ Naive Bayes is the smallest complete probabilistic classifier: counting, smoothi
 
 **Study**
 
-1. [Naive Bayes: independence, smoothing and parameter counts](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Sections 2.1-2.3 (conditional independence, the naive Bayes derivation, discrete inputs with the smoothed estimate (7) and Laplace at l = 1, prior smoothing (9), n(J - 1)K plus K - 1 free parameters) and 2.4 (Gaussian naive Bayes with 2nK mean and variance parameters).
+1. [Naive Bayes: independence, smoothing and parameter counts](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) (Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression) - Sections 2.1-2.3 (conditional independence, the naive Bayes derivation, discrete inputs with the smoothed estimate (7) and Laplace at $`l = 1`$, prior smoothing (9), $`n(J - 1)K`$ plus $`K - 1`$ free parameters) and 2.4 (Gaussian naive Bayes with $`2nK`$ mean and variance parameters).
 2. [Naive Bayes in the generative family](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Section 4.4.4 (p. 158): the naive Bayes model beside LDA and QDA.
 3. [Naive Bayes on binary MNIST pixels](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/naive-bayes.html) (Dive into Deep Learning - linear models slice) - Section 22.9: The Probabilistic Model for Classification, The Naive Bayes Classifier, Training on pixels binarized at 128, then Exercises 1 (XOR failure) and 2 (unseen values without smoothing).
-4. [Event models, smoothing and estimator limits](https://scikit-learn.org/stable/modules/naive_bayes.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.9 (MAP rule, the bad-estimator warning on predict_proba), 1.9.1 (GaussianNB), 1.9.2 (MultinomialNB smoothing formula, Laplace at alpha = 1 versus Lidstone below 1) and 1.9.4 (BernoulliNB decision rule, explicit penalty on non-occurrence, binarize behavior).
+4. [Event models, smoothing and estimator limits](https://scikit-learn.org/stable/modules/naive_bayes.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.9 (MAP rule, the bad-estimator warning on predict_proba), 1.9.1 (GaussianNB), 1.9.2 (MultinomialNB smoothing formula, Laplace at $`\alpha = 1`$ versus Lidstone below 1) and 1.9.4 (BernoulliNB decision rule, explicit penalty on non-occurrence, binarize behavior).
 5. [Gaussian naive Bayes lab on Smarket](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch04-classification-lab.ipynb) (An Introduction to Statistical Learning with Python) - Naive Bayes section: GaussianNB fit on Smarket with classes_ and class_prior_ readouts.
 
 **Focus**
 
-- Smoothing is a MAP estimate under a Dirichlet prior, not a hack. Mitchell's (count + l)/(total + lJ) at l = 1 is Laplace, and BernoulliNB's alpha = 1.0 is the same add-one per value; without it one unseen value zeroes the whole product.
+- Smoothing is a MAP estimate under a Dirichlet prior, not a hack. Mitchell's $`(\text{count} + l)/(\text{total} + lJ)`$ at $`l = 1`$ is Laplace, and BernoulliNB's $`\alpha = 1.0`$ is the same add-one per value; without it one unseen value zeroes the whole product.
 - Bernoulli penalizes absent indicator features while multinomial ignores absent counts. That is why occurrence vectors can beat count vectors on short documents, and why the two models are not interchangeable.
-- Score in log space always. A product of 1100 halves is exactly 0.0 in float64 while the log sum stays finite at -762.46; argmax needs only the sums.
+- Score in log space always. A product of 1100 halves is exactly 0.0 in float64 while the log sum stays finite at -762.46; $`\operatorname{argmax}`$ needs only the sums.
 
-**Reproduce:** Derive the MAP rule argmax_y P(y) prod_i P(x_i|y) from conditional independence. From a blank file implement Bernoulli naive Bayes with alpha = 1.0: on X = [[1,0],[1,1],[0,0],[0,1]] with y = [1,1,0,0] match sklearn feature_log_prob_ rows [-1.3863, -0.6931] for class 0 and [-0.2877, -0.6931] for class 1, predict [1] for [[1,0]], and return the majority class when trained on one class only.
+**Reproduce:** Derive the MAP rule $`\operatorname{argmax}_y P(y)\prod_i P(x_i \mid y)`$ from conditional independence. From a blank file implement Bernoulli naive Bayes with $`\alpha = 1.0`$: on X = [[1,0],[1,1],[0,0],[0,1]] with y = [1,1,0,0] match sklearn feature_log_prob_ rows [-1.3863, -0.6931] for class 0 and [-0.2877, -0.6931] for class 1, predict [1] for [[1,0]], and return the majority class when trained on one class only.
 
 **Traps**
 
@@ -961,11 +961,11 @@ Naive Bayes is the smallest complete probabilistic classifier: counting, smoothi
 <summary>Self-test</summary>
 
 1. A test word never appeared in training. What happens with and without smoothing?
-   - Without smoothing its likelihood is 0 and the whole class product is 0 regardless of other evidence. With Laplace alpha = 1 it contributes a small nonzero factor that rarely decides the argmax alone.
+   - Without smoothing its likelihood is 0 and the whole class product is 0 regardless of other evidence. With Laplace $`\alpha = 1`$ it contributes a small nonzero factor that rarely decides the $`\operatorname{argmax}`$ alone.
 2. When does Bernoulli beat multinomial on text, and why?
    - With occurrence vectors on short documents: Bernoulli explicitly penalizes the non-occurrence of indicator words while multinomial ignores absent counts. sklearn advises evaluating both when time permits.
 3. Write the smoothed discrete likelihood and name its prior.
-   - (count + l)/(class total + lJ): the MAP estimate under a symmetric Dirichlet prior with parameters l + 1, equivalently the posterior mean under parameters l; l = 1 is Laplace. Priors smooth the same way with lK in the denominator.
+   - $`(\text{count} + l)/(\text{class total} + lJ)`$: the MAP estimate under a symmetric Dirichlet prior with parameters $`l + 1`$, equivalently the posterior mean under parameters $`l`$; $`l = 1`$ is Laplace. Priors smooth the same way with $`lK`$ in the denominator.
 4. XOR data with labels [0,1,1,0]. Does naive Bayes succeed, and which assumption fails?
    - No. Each feature alone is uninformative about the label, so conditional independence destroys the interaction. Allowing explicit dependence between the inputs fixes it.
 
@@ -990,15 +990,15 @@ A probability is not a decision. The same fitted scores need different threshold
 1. [Precision-recall tradeoff and ROC thresholds](https://github.com/ageron/handson-mlp/blob/main/03_classification.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models) - Book Chapter 3: The Precision/Recall Trade-Off and The ROC Curve (printed pp. 115-124). Notebook 03 cells: Precision/Recall Trade-off section (precision_recall_curve on the MNIST 5-detector, the threshold-3000 demo, idx_for_90_precision) and The ROC Curve section with the 90%-precision operating point.
 2. [Predicted probabilities and dummy encoding](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (An Introduction to Statistical Learning with Python) - Chapter 4, Section 4.3.3 (pp. 141-142): probabilities computed from fitted coefficients with the balance arithmetic, plus dummy variables for qualitative predictors.
 3. [Default threshold, weights and calibration limits](https://scikit-learn.org/stable/modules/linear_model.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.1.11 introduction (predicted probability becomes a classifier at a threshold, by default 0.5), Binary Case (sample and class weights rescale the effective C through S) and Solvers details (joint multinomial loss calibrates better than OvR).
-4. [Priors inside the discriminant scores](https://scikit-learn.org/stable/modules/lda_qda.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.2.2 (posteriors combine class conditionals with P(y = k); LDA adds log P(y = k) to the discriminant) and 1.2.4 (shrinkage as the small-sample stabilizer for those estimates).
+4. [Priors inside the discriminant scores](https://scikit-learn.org/stable/modules/lda_qda.html) (scikit-learn - linear models, discriminant analysis and naive Bayes) - Section 1.2.2 (posteriors combine class conditionals with $`P(y = k)`$; LDA adds $`\log P(y = k)`$ to the discriminant) and 1.2.4 (shrinkage as the small-sample stabilizer for those estimates).
 
 **Focus**
 
-- sklearn predicts the positive class at 0.5 by default. That bakes in equal costs and matched priors; any asymmetric cost matrix moves the optimal threshold to C_FP/(C_FP + C_FN).
+- sklearn predicts the positive class at 0.5 by default. That bakes in equal costs and matched priors; any asymmetric cost matrix moves the optimal threshold to $`C_{\text{FP}}/(C_{\text{FP}} + C_{\text{FN}})`$.
 - Naive Bayes scores rank well but estimate badly, and OvR margins are not calibrated across classifiers. Thresholding an uncalibrated score encodes its bias as policy.
 - Priors shift without refitting: multiply the posterior odds by the new-over-old prior-odds ratio. Thresholds move with prevalence even when the feature evidence stays fixed.
 
-**Reproduce:** Derive t = C_FP/(C_FP + C_FN) from predicting 1 exactly when p times C_FN exceeds (1 - p) times C_FP, and show costs of 1 and 9 give t = 0.1. From a blank script recompute precisions, recalls and thresholds with precision_recall_curve on binary scores and implement the first-index rule that finds the 90%-precision threshold.
+**Reproduce:** Derive $`t = C_{\text{FP}}/(C_{\text{FP}} + C_{\text{FN}})`$ from predicting 1 exactly when $`p`$ times $`C_{\text{FN}}`$ exceeds $`(1 - p)`$ times $`C_{\text{FP}}`$, and show costs of 1 and 9 give $`t = 0.1`$. From a blank script recompute precisions, recalls and thresholds with precision_recall_curve on binary scores and implement the first-index rule that finds the 90%-precision threshold.
 
 **Traps**
 
@@ -1017,7 +1017,7 @@ A probability is not a decision. The same fitted scores need different threshold
 <summary>Self-test</summary>
 
 1. False negatives cost 9 times false positives. Which threshold, and why not 0.5?
-   - t = 1/(1 + 9) = 0.1: predict positive whenever p exceeds 0.1. The 0.5 default assumes equal costs and would miss cheap-to-catch positives.
+   - $`t = 1/(1 + 9) = 0.1`$: predict positive whenever $`p`$ exceeds 0.1. The 0.5 default assumes equal costs and would miss cheap-to-catch positives.
 2. Deployment prevalence of positives halves with the same feature evidence. How do the optimal decisions change without refitting?
    - Posterior odds are the likelihood ratio times the prior odds, so every case's posterior odds are multiplied by the new-over-old prior-odds ratio, about one half when positives are rare. Fewer cases clear any fixed threshold; recompute posteriors with the new priors, or move the threshold equivalently, instead of reusing the old cutoff.
 3. Two detectors both report 90% precision, one at margin 3000 and one at probability 0.42. Which threshold is better?
@@ -1032,10 +1032,10 @@ A probability is not a decision. The same fitted scores need different threshold
 **About 10 to 14 hours.** Implement least squares, ridge, logistic regression and one naive Bayes variant in NumPy in your own repository, prove each against scikit-learn and finite differences, then diagnose one numerical failure and one assumption failure on changed datasets you construct.
 
 1. Implement least squares three ways: normal equations, an SVD-based solve and minibatch gradient descent with a decaying step. Pass a float64 gradient check and match LinearRegression, handling the intercept the same way on both sides.
-2. Add ridge with the centered closed form and a penalty path. Match Ridge to 1e-12 and report validation error across alpha on a fixed split.
-3. Implement logistic regression on logits with the stable loss max(z,0) - z y + log1p(exp(-|z|)) and an L2 penalty. Pass a gradient check, then match LogisticRegression on its own objective (C times the summed loss plus half the squared norm) with tol tightened.
+2. Add ridge with the centered closed form and a penalty path. Match Ridge to 1e-12 and report validation error across $`\alpha`$ on a fixed split.
+3. Implement logistic regression on logits with the stable loss $`\max(z,0) - zy + \operatorname{log1p}(\exp(-|z|))`$ and an $`L_2`$ penalty. Pass a gradient check, then match LogisticRegression on its own objective ($`C`$ times the summed loss plus half the squared norm) with tol tightened.
 4. Implement Bernoulli or multinomial naive Bayes with Laplace smoothing in log space. Match scikit-learn's feature_log_prob_ to 1e-8 and handle unseen values and single-class training data.
-5. Numerical failure: build a changed dataset that breaks one naive path, such as a near-collinear design for the normal equations, logits past 37 for a naive y = 0 loss, or a separable set under a relaxed C. Show the failure, the measurement that discriminates its cause, the repair and a regression test.
+5. Numerical failure: build a changed dataset that breaks one naive path, such as a near-collinear design for the normal equations, logits past 37 for a naive $`y = 0`$ loss, or a separable set under a relaxed $`C`$. Show the failure, the measurement that discriminates its cause, the repair and a regression test.
 6. Assumption failure: build a dataset that violates one model assumption, such as XOR-labeled binary features for naive Bayes, heteroscedastic noise for least squares, or non-Gaussian classes for LDA. Show the diagnostic that reveals it and the response, validated on held-out data.
 7. Turn one fitted logistic model into a decision: derive the cost-optimal threshold for stated costs, apply it on validation, and move it for a stated prevalence change without refitting.
 
@@ -1054,7 +1054,7 @@ A probability is not a decision. The same fitted scores need different threshold
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Correctness against oracles | Each implementation matches its scikit-learn counterpart within a stated tolerance. | Property tests vary seeds, shapes and penalties, and every analytic gradient matches central differences in float64. |
-| Numerical stability | The logit loss stays finite on the (-800, 1), (40, 0) and (800, 0) probes, and ill-conditioned designs use an SVD-based solve. | The notes show where each naive form breaks, such as the sigmoid rounding to 1.0 near z = 36.7, and why the stable form is exact. |
+| Numerical stability | The logit loss stays finite on the (-800, 1), (40, 0) and (800, 0) probes, and ill-conditioned designs use an SVD-based solve. | The notes show where each naive form breaks, such as the sigmoid rounding to 1.0 near $`z = 36.7`$, and why the stable form is exact. |
 | Numerical failure diagnosis | One failure is reproduced, explained, repaired and guarded by a test. | The discriminating measurement rules out a rival cause, for example a tighter tol showing that lbfgs stopped early rather than converged. |
 | Assumption failure | One violated assumption is shown with a diagnostic and a response. | The response is validated on held-out data and the report states what it still cannot fix. |
 | Decision | The threshold follows from stated costs and is chosen on validation data. | The prevalence adjustment is derived from prior odds and checked against a refit on resampled data. |
@@ -1069,7 +1069,7 @@ Feeds into: Milestone artifact 2, the mechanisms suite: the regularized linear o
 - **Support - Implementation:** [Hands-On Machine Learning with Scikit-Learn and PyTorch - classification and linear models](https://github.com/ageron/handson-mlp) - Read the Chapter 3 and 4 sections each unit names, then run notebooks 03 and 04 for classification diagnostics, linear and polynomial regression, regularization and logistic regression. Recreate the target mechanism independently before inspecting worked exercise code.
 - **Support - Practice:** [NeetCode ML - linear-model closing drill](https://neetcode.io/practice/machine-learning) - After the section gate, solve Gradient Descent, Sigmoid and ReLU, Softmax, Cross-Entropy Loss, Linear Regression Forward and Linear Regression Training cold. Repeat only failed items from a blank file with changed values.
 - **Support - Practice:** [Deep-ML - linear and probabilistic model problems](https://www.deep-ml.com/problems) - Use 15 Linear Regression Using Gradient Descent, 106 Train Logistic Regression with Gradient Descent and 140 Bernoulli Naive Bayes Classifier as unit checks after the local implementation passes. Their tests were read in review; each card states what they pin. The local implementation remains the evidence.
-- **Required - Theory:** [Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) - Read Sections 2 (naive Bayes, the smoothed estimates (7) and (9), parameter counts), 3 (Gaussian naive Bayes implies the logistic form, gradient ascent, the L2 penalty, the K-class rules) and 4 (generative versus discriminative, Ng and Jordan rates). This is the CS446 reading for Lectures 6-8; rework each derivation on a hand-sized dataset.
+- **Required - Theory:** [Tom Mitchell - Generative and Discriminative Classifiers: Naive Bayes and Logistic Regression](https://www.cs.cmu.edu/~tom/mlbook/NBayesLogReg.pdf) - Read Sections 2 (naive Bayes, the smoothed estimates (7) and (9), parameter counts), 3 (Gaussian naive Bayes implies the logistic form, gradient ascent, the $`L_2`$ penalty, the $`K`$-class rules) and 4 (generative versus discriminative, Ng and Jordan rates). This is the CS446 reading for Lectures 6-8; rework each derivation on a hand-sized dataset.
 
 ### Exit checkpoint
 
@@ -1133,12 +1133,12 @@ Trees decide by recursive splits, so every later ensemble inherits their split l
 
 **Focus**
 
-- Split quality is the weighted child impurity G = (nL/n) H(L) + (nR/n) H(R). The parent impurity is the same for every candidate at a node, so minimizing G is the same as maximizing the impurity decrease.
+- Split quality is the weighted child impurity $`G = (n_L/n) H(L) + (n_R/n) H(R)`$. The parent impurity is the same for every candidate at a node, so minimizing $`G`$ is the same as maximizing the impurity decrease.
 - sklearn tries midpoints between sorted distinct values with greedy exhaustive search, while Deep-ML 138 scores the raw values: the same four points yield threshold 3.0 under sklearn and 2.5 in problem 138.
 - Gini and entropy are numerically close and either works for growing; ISLP reserves the classification error rate for pruning toward accuracy.
 - ccp_alpha penalizes leaf count and prunes the weakest link first, which produces the nested candidate path that cross-validation then selects from.
 
-**Reproduce:** By hand on ordered labels A, B, A, A, A: parent Gini 0.32, split after the 2nd instance gives 2/5 times 0.5 + 3/5 times 0 = 0.2, split after the 1st gives 0.3. Then implement a midpoint scan with first-in-scan tie wins and match sklearn threshold 1.5 on X = [0, 1, 2, 3] with y = [0, 0, 1, 1] at max_depth = 1.
+**Reproduce:** By hand on ordered labels A, B, A, A, A: parent Gini 0.32, split after the 2nd instance gives $`(2/5) \times 0.5 + (3/5) \times 0 = 0.2`$, split after the 1st gives 0.3. Then implement a midpoint scan with first-in-scan tie wins and match sklearn threshold 1.5 on X = [0, 1, 2, 3] with y = [0, 0, 1, 1] at max_depth = 1.
 
 **Traps**
 
@@ -1157,13 +1157,13 @@ Trees decide by recursive splits, so every later ensemble inherits their split l
 <summary>Self-test</summary>
 
 1. A node holds 3 positives and 1 negative. What are its Gini impurity and its entropy in bits?
-   - Gini = 1 - 0.75^2 - 0.25^2 = 0.375. Entropy = -(0.75 log2 0.75 + 0.25 log2 0.25) = 0.311 + 0.5 = 0.811 bits.
+   - $`\text{Gini} = 1 - 0.75^2 - 0.25^2 = 0.375`$. $`\text{Entropy} = -(0.75 \log_2 0.75 + 0.25 \log_2 0.25) = 0.311 + 0.5 = 0.811`$ bits.
 2. Why does ISLP call the error rate weak for growing but prefer it for pruning?
    - Growing needs sensitivity to purity shifts that leave the majority label unchanged. Pruning selects the final tree for accuracy, which is exactly what the error rate measures.
 3. The same data and code give different trees under a new random_state. Is that a bug?
    - No. Tied splits can resolve differently across seeds, as the identical-feature test shows. Fix the seed for reproducibility and define your own deterministic tie rule.
 4. One leaf holds one vote for each of three classes. What does sklearn predict and with what probabilities?
-   - It predicts classes_[0], the lowest index, with probabilities [1/3, 1/3, 1/3]. Argmax takes the first maximum.
+   - It predicts classes_[0], the lowest index, with probabilities $`\left[\begin{smallmatrix}1/3&1/3&1/3\end{smallmatrix}\right]`$. Argmax takes the first maximum.
 
 </details>
 
@@ -1184,18 +1184,18 @@ Single trees have high variance: the same algorithm learns visibly different mod
 **Study**
 
 1. [HoML Chapter 6: voting, bagging and forests](https://github.com/ageron/handson-mlp/blob/main/06_ensemble_learning_and_random_forests.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - nonlinear classical models) - Book Chapter 6, from Voting Classifiers through Extra-Trees (printed pp. 196-206). Notebook 06 cells: Voting Classifiers, Bagging and Pasting in Scikit-Learn, Out-of-Bag evaluation with the exp(-1) cells, Random Forests, Extra-Trees.
-2. [ISLP Chapter 8: bagging, forests and the ensemble summary](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 8.2.1, 8.2.2 and 8.2.5 (pp. 343 to 347, and 353): bootstrap aggregation, OOB as a valid test-error estimate with around B/3 predictions per point, and m near sqrt(p).
+2. [ISLP Chapter 8: bagging, forests and the ensemble summary](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 8.2.1, 8.2.2 and 8.2.5 (pp. 343 to 347, and 353): bootstrap aggregation, OOB as a valid test-error estimate with around $`B/3`$ predictions per point, and $`m`$ near $`\sqrt{p}`$.
 3. [sklearn forests: parameters and parallelization](https://scikit-learn.org/stable/modules/ensemble.html#random-forests-and-other-randomized-tree-ensembles) (scikit-learn - neighbors, SVMs, trees and ensembles) - Random Forests through Parameters (max_features sqrt for classifiers versus 1.0 for regressors, bootstrap True versus ExtraTrees False) and Parallelization with oob_score.
 4. [sklearn bagging meta-estimator](https://scikit-learn.org/stable/modules/ensemble.html#bagging) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.11.3 Bagging: bootstrap versus pasting, max_samples, max_features and oob_score.
 
 **Focus**
 
-- A bootstrap covers about 63.2 percent of unique points since (1 - 1/n)^n tends to 1/e. Each point is predicted by the trees that missed it. On make_moons(2000, noise 0.25, seed 0) with a 25 percent test split, 200 trees give OOB 0.934 against held-out 0.932.
+- A bootstrap covers about 63.2 percent of unique points since $`(1 - 1/n)^n`$ tends to $`1/e`$. Each point is predicted by the trees that missed it. On make_moons(2000, noise 0.25, seed 0) with a 25 percent test split, 200 trees give OOB 0.934 against held-out 0.932.
 - Bagging helps unstable learners because averaging kills variance while bias stays put. Adding trees stabilizes the error; unlike boosting it has no residual-chasing loop to overfit with.
-- Forests force different top splits by sampling m near sqrt(p) predictors per split, which decorrelates trees that would otherwise copy one strong predictor.
+- Forests force different top splits by sampling $`m`$ near $`\sqrt{p}`$ predictors per split, which decorrelates trees that would otherwise copy one strong predictor.
 - sklearn defaults differ by task: the regressor uses max_features 1.0, which is plain bagging, and ExtraTrees uses bootstrap False with random splits.
 
-**Reproduce:** Derive P(missed) = (1 - 1/n)^n tending to 1/e near 0.368, simulate n = 1000 to see about 63.4 percent unique, then fit RandomForestClassifier(n_estimators=200, oob_score=True, random_state=0) on make_moons(n_samples=2000, noise=0.25, random_state=0) split with test_size=0.25 and random_state=0, and show OOB 0.934 against held-out 0.932.
+**Reproduce:** Derive $`P(\text{missed}) = (1 - 1/n)^n`$ tending to $`1/e`$ near 0.368, simulate $`n = 1000`$ to see about 63.4 percent unique, then fit RandomForestClassifier(n_estimators=200, oob_score=True, random_state=0) on make_moons(n_samples=2000, noise=0.25, random_state=0) split with test_size=0.25 and random_state=0, and show OOB 0.934 against held-out 0.932.
 
 **Traps**
 
@@ -1205,21 +1205,21 @@ Single trees have high variance: the same algorithm learns visibly different mod
 
 **Practice**
 
-- [Deep-ML 307: Implement Bagging Classifier from Scratch](https://www.deep-ml.com/problems/307) - Implement bagging_classifier with decision stumps and majority vote; the visible tests check [0 1] with 5 stumps at seed 42 and [0 1 1] with 10 stumps at seed 0. Bootstrap n samples with replacement per stump, minimize stump misclassification error, combine by majority vote. The statement sets no even-vote tie rule, so keep yours explicit and match the visible outputs.
+- [Deep-ML 307: Implement Bagging Classifier from Scratch](https://www.deep-ml.com/problems/307) - Implement bagging_classifier with decision stumps and majority vote; the visible tests check [0 1] with 5 stumps at seed 42 and [0 1 1] with 10 stumps at seed 0. Bootstrap $`n`$ samples with replacement per stump, minimize stump misclassification error, combine by majority vote. The statement sets no even-vote tie rule, so keep yours explicit and match the visible outputs.
 
 **Stop when:** You derive the 0.368 fraction, your moons OOB lands within about a point of held-out error, and problem 307 passes.
 
 <details>
 <summary>Self-test</summary>
 
-1. From n = 200 points, how many land out of bag and how many trees predict each one?
-   - About 0.368 times 200 = 74 points are missed per tree, and each point is predicted by the roughly B/3 trees whose samples skipped it.
+1. From $`n = 200`$ points, how many land out of bag and how many trees predict each one?
+   - About $`0.368 \times 200 = 74`$ points are missed per tree, and each point is predicted by the roughly $`B/3`$ trees whose samples skipped it.
 2. Ten bagged trees give red probabilities 0.1, 0.15, 0.2, 0.2, 0.55, 0.6, 0.6, 0.65, 0.7 and 0.75. What do majority vote and probability averaging predict?
    - Majority vote says red with 6 of 10 above 0.5. Averaging gives 0.45 and says green. The combination rule changes the answer.
 3. Is a default RandomForestRegressor closer to a sqrt forest or to bagged trees?
    - Bagged trees, because its max_features default is 1.0. The sqrt default applies to classifiers only.
-4. Why does raising B not overfit bagging while it can overfit boosting?
-   - Bagging averages fixed-complexity trees fit on resamples, so variance shrinks and bias holds. Boosting keeps fitting residuals, so late trees can chase noise; choose B by validation.
+4. Why does raising $`B`$ not overfit bagging while it can overfit boosting?
+   - Bagging averages fixed-complexity trees fit on resamples, so variance shrinks and bias holds. Boosting keeps fitting residuals, so late trees can chase noise; choose $`B`$ by validation.
 
 </details>
 
@@ -1240,18 +1240,18 @@ Boosting turns weak rules into strong models by fitting what is left over. The s
 **Study**
 
 1. [HoML Chapter 6: AdaBoost and gradient boosting](https://github.com/ageron/handson-mlp/blob/main/06_ensemble_learning_and_random_forests.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - nonlinear classical models) - Book Chapter 6: AdaBoost and Gradient Boosting (printed pp. 207-214). Notebook 06 cells: AdaBoost with the step-by-step weight update cells, Gradient Boosting with the residual-fitting chain and the learning_rate 1.0 versus 0.05 comparison. Depth: Drop algorithm='SAMME' from the AdaBoost cell: sklearn 1.9 removed the argument and raises TypeError, and SAMME is now the only mode.
-2. [ISLP Chapter 8: boosting regression trees](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Section 8.2.3 with Algorithm 8.2 and the three tuning parameters B, shrinkage lambda and interaction depth d (pp. 347 to 350).
+2. [ISLP Chapter 8: boosting regression trees](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Section 8.2.3 with Algorithm 8.2 and the three tuning parameters $`B`$, shrinkage $`\lambda`$ and interaction depth $`d`$ (pp. 347 to 350).
 3. [sklearn AdaBoost usage](https://scikit-learn.org/stable/modules/ensemble.html#adaboost) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.11.7 AdaBoost with 1.11.7.1 Usage: SAMME for classification, default decision stumps, and n_estimators with learning_rate as the main knobs.
 4. [sklearn gradient boosting: loss, shrinkage and subsampling](https://scikit-learn.org/stable/modules/ensemble.html#shrinkage-via-learning-rate) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.11.1.2.5 Shrinkage via learning rate (learning_rate at or below 0.1 with large n_estimators) and 1.11.1.2.6 Subsampling (subsample 0.5, OOB pessimistic so prefer cross-validation).
 
 **Focus**
 
-- AdaBoost scores the round by the weighted error r, pays the learner alpha = learning_rate times ln((1 - r)/r), multiplies wrong-point weights by exp(alpha) and renormalizes. The hand round gives r = 0.25, alpha = 0.5493 and weights [0.2113, 0.2113, 0.366, 0.2113], matching estimator_weights_.
+- AdaBoost scores the round by the weighted error $`r`$, pays the learner $`\alpha = \text{learning\_rate} \times \ln((1 - r)/r)`$, multiplies wrong-point weights by $`\exp(\alpha)`$ and renormalizes. The hand round gives $`r = 0.25`$, $`\alpha = 0.5493`$ and weights $`\left[\begin{smallmatrix}0.2113&0.2113&0.366&0.2113\end{smallmatrix}\right]`$, matching estimator_weights_.
 - Gradient boosting fits each tree to pseudo-residuals, the negative gradients of the loss. For squared loss those are ordinary residuals, and the target mean plus a depth-2 tree fit on the residuals exactly equals a one-tree GBM at learning rate 1.0.
-- Shrinkage, depth and count interact: small lambda needs large B with typical values 0.01 or 0.001, depth-1 stumps give additive single-variable terms, and subsample 0.5 adds bagging noise.
-- Boosting uses no bootstrap and each tree depends on its predecessors, so B is a genuine overfitting knob. Choose it by validation or early stopping, unlike bagging counts.
+- Shrinkage, depth and count interact: small $`\lambda`$ needs large $`B`$ with typical values 0.01 or 0.001, depth-1 stumps give additive single-variable terms, and subsample 0.5 adds bagging noise.
+- Boosting uses no bootstrap and each tree depends on its predecessors, so $`B`$ is a genuine overfitting knob. Choose it by validation or early stopping, unlike bagging counts.
 
-**Reproduce:** Run one AdaBoost round by hand on X = [0, 1, 2, 3] with y = [0, 1, 0, 1] and learning_rate 0.5: stump threshold 0.5 (2.5 ties; sklearn picks 0.5), r = 0.25, alpha = 0.5493, new weights [0.2113, 0.2113, 0.366, 0.2113]. Confirm alpha against AdaBoostClassifier estimator_weights_. Then show GradientBoostingRegressor with learning_rate 1.0, one tree and max_depth 2 equals the target mean plus a depth-2 DecisionTreeRegressor fit on the residuals, on 50 points with x uniform on [0, 4) and y = sin(x) plus noise 0.05 at seed 0.
+**Reproduce:** Run one AdaBoost round by hand on X = [0, 1, 2, 3] with y = [0, 1, 0, 1] and learning_rate 0.5: stump threshold 0.5 (2.5 ties; sklearn picks 0.5), $`r = 0.25`$, $`\alpha = 0.5493`$, new weights $`\left[\begin{smallmatrix}0.2113&0.2113&0.366&0.2113\end{smallmatrix}\right]`$. Confirm $`\alpha`$ against AdaBoostClassifier estimator_weights_. Then show GradientBoostingRegressor with learning_rate 1.0, one tree and max_depth 2 equals the target mean plus a depth-2 DecisionTreeRegressor fit on the residuals, on 50 points with $`x`$ uniform on $`[0, 4)`$ and $`y = \sin(x)`$ plus noise 0.05 at seed 0.
 
 **Traps**
 
@@ -1269,7 +1269,7 @@ Boosting turns weak rules into strong models by fitting what is left over. The s
 <summary>Self-test</summary>
 
 1. A stump has weighted error 0.25 with learning_rate 0.5. What learner weight does AdaBoost assign, and what happens to a wrong point starting at 0.25?
-   - alpha = 0.5 ln(3) = 0.5493. The wrong point goes to 0.25 times exp(0.5493) = 0.433 before renormalization, which is 0.366 after.
+   - $`\alpha = 0.5 \ln(3) = 0.5493`$. The wrong point goes to $`0.25 \times \exp(0.5493) = 0.433`$ before renormalization, which is 0.366 after.
 2. Why does boosting depth-1 stumps produce an additive model?
    - Each stump splits on one variable, so each term is a function of one variable only. The sum over rounds is a sum of single-variable terms.
 3. A GBM with 5000 trees, learning_rate 0.5 and no validation set scores perfectly in training but poorly on new data. What broke and what is the fix?
@@ -1358,18 +1358,18 @@ kNN is the purest similarity classifier: no training, all geometry. It punishes 
 
 **Focus**
 
-- The vote is a majority under uniform weights and an inverse-distance vote under distance weights. On the toy, query 2.5 has x = 0 and x = 5 tied for third place. sklearn warns that such ties depend on training order: in the given order x = 0 joins, so uniform predicts 0 and distance weights give 1 at probability 0.652; reorder the rows and x = 5 joins, so uniform predicts 1.
-- Scale is the model. With an informative feature on [0, 1] (label x0 > 0.5) and a nuisance feature on [0, 1000], 5-NN scores 0.47 unscaled and 0.995 standardized (400 train and 200 test points, seed 0). Standardize inside a Pipeline so test data meets the same transform.
-- Distances concentrate fast: for 50 uniform points in the unit cube, the (max - min)/min ratio of pairwise distances falls from 101.9 at d = 2 to 0.13 at d = 1000, so fixed neighborhoods stop being local.
-- Trees win at low dimension and lose at high dimension. Timing fit plus 200 queries at k = 5 on n = 20000 uniform points: at d = 5 ball tree takes 0.007 seconds against brute 0.02, while at d = 50 brute takes 0.007 against KD 0.196 (one run on an i9-12900K, sklearn 1.9.1).
+- The vote is a majority under uniform weights and an inverse-distance vote under distance weights. On the toy, query 2.5 has $`x = 0`$ and $`x = 5`$ tied for third place. sklearn warns that such ties depend on training order: in the given order $`x = 0`$ joins, so uniform predicts 0 and distance weights give 1 at probability 0.652; reorder the rows and $`x = 5`$ joins, so uniform predicts 1.
+- Scale is the model. With an informative feature on $`[0, 1]`$ (label $`x_0 > 0.5`$) and a nuisance feature on $`[0, 1000]`$, 5-NN scores 0.47 unscaled and 0.995 standardized (400 train and 200 test points, seed 0). Standardize inside a Pipeline so test data meets the same transform.
+- Distances concentrate fast: for 50 uniform points in the unit cube, the $`(\text{max} - \text{min})/\text{min}`$ ratio of pairwise distances falls from 101.9 at $`d = 2`$ to 0.13 at $`d = 1000`$, so fixed neighborhoods stop being local.
+- Trees win at low dimension and lose at high dimension. Timing fit plus 200 queries at $`k = 5`$ on $`n = 20000`$ uniform points: at $`d = 5`$ ball tree takes 0.007 seconds against brute 0.02, while at $`d = 50`$ brute takes 0.007 against KD 0.196 (one run on an i9-12900K, sklearn 1.9.1).
 
-**Reproduce:** From a blank file, implement brute-force kNN with uniform and distance weights and match sklearn on X = [0, 1, 2, 5, 6] with y = [0, 0, 1, 1, 1] at query 2.5 and k = 3. Make your tie rule explicit (lower training index wins), then reorder the training rows and show sklearn's uniform answer flip from 0 to 1. Rerun the scaling pair and report 0.47 unscaled against 0.995 standardized.
+**Reproduce:** From a blank file, implement brute-force kNN with uniform and distance weights and match sklearn on X = [0, 1, 2, 5, 6] with y = [0, 0, 1, 1, 1] at query 2.5 and $`k = 3`$. Make your tie rule explicit (lower training index wins), then reorder the training rows and show sklearn's uniform answer flip from 0 to 1. Rerun the scaling pair and report 0.47 unscaled against 0.995 standardized.
 
 **Traps**
 
-- Tuning k on train error always picks k = 1. Memorization looks perfect and generalizes worst, so tune k by cross-validation.
+- Tuning $`k`$ on train error always picks $`k = 1`$. Memorization looks perfect and generalizes worst, so tune $`k`$ by cross-validation.
 - Scaling before the split leaks test ranges into the train transform. Fit the scaler on train only and apply it to test.
-- algorithm auto is not a promise of trees. Sparse input, high dimension or k above half of n silently selects brute force, so confirm with timing rather than the parameter name.
+- algorithm auto is not a promise of trees. Sparse input, high dimension or $`k`$ above half of $`n`$ silently selects brute force, so confirm with timing rather than the parameter name.
 
 **Practice**
 
@@ -1380,13 +1380,13 @@ kNN is the purest similarity classifier: no training, all geometry. It punishes 
 <details>
 <summary>Self-test</summary>
 
-1. At query 2.5 with k = 3, which third neighbor joins x = 2 and x = 1, and what does uniform voting predict?
-   - x = 0 and x = 5 tie at distance 2.5. In the given order sklearn takes x = 0, so votes are 1, 0, 0 and uniform predicts 0; with the rows reordered it takes x = 5 and predicts 1. A tie at the k-th place makes the answer depend on data order, so state your rule.
+1. At query 2.5 with $`k = 3`$, which third neighbor joins $`x = 2`$ and $`x = 1`$, and what does uniform voting predict?
+   - $`x = 0`$ and $`x = 5`$ tie at distance 2.5. In the given order sklearn takes $`x = 0`$, so votes are 1, 0, 0 and uniform predicts 0; with the rows reordered it takes $`x = 5`$ and predicts 1. A tie at the $`k`$-th place makes the answer depend on data order, so state your rule.
 2. Why does the unscaled toy score 0.47 while the standardized one scores 0.995?
    - The nuisance feature spans 1000x the informative one, so Euclidean neighborhoods are chosen by noise. Standardizing restores the informative axis.
-3. The concentration ratio reads 101.9 at d = 2 and 0.13 at d = 1000. What breaks for kNN?
-   - Relative distance contrasts vanish, so the nearest and farthest points sit almost equally far. Fixed-k neighborhoods cover non-local regions and the vote carries little signal.
-4. At n = 20000 and d = 50, which search algorithm wins and why?
+3. The concentration ratio reads 101.9 at $`d = 2`$ and 0.13 at $`d = 1000`$. What breaks for kNN?
+   - Relative distance contrasts vanish, so the nearest and farthest points sit almost equally far. Fixed-$`k`$ neighborhoods cover non-local regions and the vote carries little signal.
+4. At $`n = 20000`$ and $`d = 50`$, which search algorithm wins and why?
    - Brute force at 0.007 seconds against 0.196 for KD-tree. Partitioning overhead and dimensionality defeat the trees while blocked matrix distance stays cheap.
 
 </details>
@@ -1397,51 +1397,51 @@ kNN is the purest similarity classifier: no training, all geometry. It punishes 
 
 Topics: Hard and soft margins, hinge loss, slack and support vectors
 
-The margin turns classification into geometry with a price list: violations cost C, dimensions cost kernels, probabilities cost calibration. Every later kernel and calibration discussion assumes this pricing.
+The margin turns classification into geometry with a price list: violations cost $`C`$, dimensions cost kernels, probabilities cost calibration. Every later kernel and calibration discussion assumes this pricing.
 
 **You can now**
 
-- Derive the hard-margin width 2 over ||w||, the hinge loss and the slack budget, and connect C to margin width and support-vector count.
+- Derive the hard-margin width $`2/\|w\|`$, the hinge loss and the slack budget, and connect $`C`$ to margin width and support-vector count.
 - Classify any training point as support vector or not from its margin position and read dual coefficients on a toy.
-- Defend scaling, C choice and LinearSVC-versus-SVC selection from measurements, and state what SVC probabilities mean in sklearn 1.9.
+- Defend scaling, $`C`$ choice and LinearSVC-versus-SVC selection from measurements, and state what SVC probabilities mean in sklearn 1.9.
 
 **Study**
 
-1. [ISLP Chapter 9: maximal margin and support vector classifiers](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 9.1 and 9.2 (pp. 367 to 376): hyperplanes, the maximal margin classifier, the non-separable case, and the SVC optimization with C, slack variables and support vectors.
+1. [ISLP Chapter 9: maximal margin and support vector classifiers](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 9.1 and 9.2 (pp. 367 to 376): hyperplanes, the maximal margin classifier, the non-separable case, and the SVC optimization with $`C`$, slack variables and support vectors.
 2. [ISLP Chapter 9: multiclass extensions and the hinge loss](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 9.4 and 9.5 (pp. 383 to 386): one-versus-one against one-versus-all, and the Loss plus Penalty form with hinge versus logistic loss.
 3. [HoML Appendix C: linear and soft-margin SVMs](https://github.com/ageron/handson-mlp/blob/main/Appendix_C_support_vector_machines.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - nonlinear classical models) - Linear SVM Classification, Soft Margin Classification, Under the hood with the hinge plots, and the LinearSVC versus SVC versus SGDClassifier exercise.
 4. [sklearn SVM: classification, imbalance and probabilities](https://scikit-learn.org/stable/modules/svm.html#svm-classification) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.4.1 Classification with 1.4.1.2 Scores and probabilities and 1.4.1.3 Unbalanced problems. Depth: The probability=True path is deprecated in sklearn 1.9 and warns with FutureWarning toward removal in 1.11. A default SVC has no predict_proba; use CalibratedClassifierCV with SVC and ensemble False for probabilities.
 5. [sklearn SVM: tips, complexity and math](https://scikit-learn.org/stable/modules/svm.html#tips-on-practical-use) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.4.5 Tips on practical use (scale features, C default 1.0, cache_size) with 1.4.4 Complexity and 1.4.7 Mathematical formulation.
-6. [ISLP lab: support vector classifier cost demo](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch09-svm-lab.ipynb) (ISLP - tree-based methods and support vector machines) - Support Vector Classifier: C 10 versus C 0.1 on the 2D example with wider margin and more support vectors at small C, then grid search selecting C 1 at 0.74 CV accuracy.
+6. [ISLP lab: support vector classifier cost demo](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch09-svm-lab.ipynb) (ISLP - tree-based methods and support vector machines) - Support Vector Classifier: $`C`$ 10 versus $`C`$ 0.1 on the 2D example with wider margin and more support vectors at small $`C`$, then grid search selecting $`C`$ 1 at 0.74 CV accuracy.
 
 **Focus**
 
-- The gutter constraints fix the margin width at 2 over ||w||. The toy gives w = 1, b = 0, width 2.0, support vectors at x = -1 and x = 1 with dual coefficients -0.5 and 0.5. Only points on or inside the margin enter the solution.
-- C is the violation budget. On negatives at -2, -1 and 2.4 and positives at 0.5, 1 and 2, C 0.05 gives width 9.756 with all 6 points as support vectors, while C 100 gives width 2.0 with 4. Train accuracy is 5 of 6 at both, because the point at 2.4 breaks linear separability.
+- The gutter constraints fix the margin width at $`2/\|w\|`$. The toy gives $`w = 1`$, $`b = 0`$, width 2.0, support vectors at $`x = -1`$ and $`x = 1`$ with dual coefficients -0.5 and 0.5. Only points on or inside the margin enter the solution.
+- $`C`$ is the violation budget. On negatives at -2, -1 and 2.4 and positives at 0.5, 1 and 2, $`C`$ 0.05 gives width 9.756 with all 6 points as support vectors, while $`C`$ 100 gives width 2.0 with 4. Train accuracy is 5 of 6 at both, because the point at 2.4 breaks linear separability.
 - Hinge loss is exactly 0 past the margin, so safe points vanish from the fit. Logistic loss never reaches 0, so every point keeps pulling, which is why only support vectors matter for the SVC.
-- Scale before fitting. With features on [0, 1] and [0, 100] and the label x0 + x1/100 > 1, a default RBF SVC scores 0.75 unscaled against 0.97 standardized (200 train and 100 test points, seed 2). SVC defaults to RBF with gamma scale and C 1.0; LinearSVC defaults to squared_hinge and exposes no support vectors.
+- Scale before fitting. With features on $`[0, 1]`$ and $`[0, 100]`$ and the label $`x_0 + x_1/100 > 1`$, a default RBF SVC scores 0.75 unscaled against 0.97 standardized (200 train and 100 test points, seed 2). SVC defaults to RBF with gamma scale and $`C`$ 1.0; LinearSVC defaults to squared_hinge and exposes no support vectors.
 
-**Reproduce:** Derive the width 2 over ||w|| from the plus-minus-1 gutter constraints. Solve X = [-2, -1, 1, 2] with y = [0, 0, 1, 1] by hand to w = 1, b = 0 with support vectors at -1 and 1, and confirm with SVC and kernel linear at large C.
+**Reproduce:** Derive the width $`2/\|w\|`$ from the plus-minus-1 gutter constraints. Solve $`X = [-2, -1, 1, 2]`$ with $`y = [0, 0, 1, 1]`$ by hand to $`w = 1`$, $`b = 0`$ with support vectors at -1 and 1, and confirm with SVC and kernel linear at large $`C`$.
 
 **Traps**
 
 - Promising SVC probabilities from older tutorials now warns in sklearn 1.9 and disappears in 1.11. Never ship predict_proba without the calibrator wrapper.
-- Reusing a C value between SVC and LinearSVC. LinearSVC uses squared hinge and, through liblinear, also regularizes the intercept, so the same C gives a different model; compare decisions, not parameter values.
-- Skipping scaling is the classic SVM bug. Gamma and the margin both assume comparable units, and the mixed-scale example loses 22 points of accuracy without it.
+- Reusing a $`C`$ value between SVC and LinearSVC. LinearSVC uses squared hinge and, through liblinear, also regularizes the intercept, so the same $`C`$ gives a different model; compare decisions, not parameter values.
+- Skipping scaling is the classic SVM bug. $`\gamma`$ and the margin both assume comparable units, and the mixed-scale example loses 22 points of accuracy without it.
 
 **Practice**
 
-- [Deep-ML 21: Pegasos Kernel SVM Implementation](https://www.deep-ml.com/problems/21) - Implement deterministic pegasos_kernel_svm; the visible tests check ([2.0, 2.0, 6.0, 1.0], 36.2027) for linear and ([1.0, 1.0, 1.0, 1.0], 0.0) for RBF with sigma 0.5. Labels are plus-minus 1. The update rule is in the problem's learn section: follow it literally, updating alpha_i and b in place sample by sample within each iteration (a batch update fails test one), with the RBF kernel exp(-||x - y||^2 / (2 sigma^2)). Note that eta_t lambda is 1 at t = 1, so that step resets every alpha.
+- [Deep-ML 21: Pegasos Kernel SVM Implementation](https://www.deep-ml.com/problems/21) - Implement deterministic pegasos_kernel_svm; the visible tests check ([2.0, 2.0, 6.0, 1.0], 36.2027) for linear and ([1.0, 1.0, 1.0, 1.0], 0.0) for RBF with sigma 0.5. Labels are plus-minus 1. The update rule is in the problem's learn section: follow it literally, updating $`\alpha_i`$ and $`b`$ in place sample by sample within each iteration (a batch update fails test one), with the RBF kernel $`\exp(-\|x - y\|^2 / (2 \sigma^2))`$. Note that $`\eta_t \lambda`$ is 1 at $`t = 1`$, so that step resets every $`\alpha`$.
 
-**Stop when:** You derive the width, reproduce the toy coefficients, predict the C effect before running, and problem 21 passes.
+**Stop when:** You derive the width, reproduce the toy coefficients, predict the $`C`$ effect before running, and problem 21 passes.
 
 <details>
 <summary>Self-test</summary>
 
-1. For w = [1] and b = 0, what is the margin width and which toy points are support vectors?
-   - Width 2.0 with support vectors at x = -1 and x = 1, carrying dual coefficients -0.5 and 0.5.
-2. C 0.05 gives width 9.756 with 6 support vectors while C 100 gives width 2.0 with 4. Explain both changes.
-   - Small C tolerates violations, so the margin grows wide and every point sits on or inside it. Large C punishes violations, so the margin narrows onto 4 points.
+1. For $`w = [1]`$ and $`b = 0`$, what is the margin width and which toy points are support vectors?
+   - Width 2.0 with support vectors at $`x = -1`$ and $`x = 1`$, carrying dual coefficients -0.5 and 0.5.
+2. $`C`$ 0.05 gives width 9.756 with 6 support vectors while $`C`$ 100 gives width 2.0 with 4. Explain both changes.
+   - Small $`C`$ tolerates violations, so the margin grows wide and every point sits on or inside it. Large $`C`$ punishes violations, so the margin narrows onto 4 points.
 3. A 4-class problem goes to SVC. How many internal classifiers fit, and what does decision_function_shape ovr change?
    - Six one-versus-one pairs fit inside libsvm. The ovr shape only reshapes the output scores, not the fits.
 4. A far-correct point contributes what to hinge versus logistic loss, and what follows for sparsity?
@@ -1455,52 +1455,52 @@ The margin turns classification into geometry with a price list: violations cost
 
 Topics: Polynomial and RBF kernels, bandwidth and similarity geometry; Kernel matrix time and memory cost
 
-Kernels buy nonlinearity without paying for explicit features, then charge it back as a dense n-by-n matrix. The same similarity-versus-cost trade returns in every neighbor and attention method.
+Kernels buy nonlinearity without paying for explicit features, then charge it back as a dense $`n \times n`$ matrix. The same similarity-versus-cost trade returns in every neighbor and attention method.
 
 **You can now**
 
-- Derive the kernel-trick substitution with the polynomial and RBF forms, and predict how degree and gamma move bias and locality.
-- Explain the RBF similarity geometry: far points contribute near zero and gamma sets the meaning of far.
-- Measure kernel matrix time and memory scaling and state the largest n you would run dense.
+- Derive the kernel-trick substitution with the polynomial and RBF forms, and predict how degree and $`\gamma`$ move bias and locality.
+- Explain the RBF similarity geometry: far points contribute near zero and $`\gamma`$ sets the meaning of far.
+- Measure kernel matrix time and memory scaling and state the largest $`n`$ you would run dense.
 
 **Study**
 
-1. [ISLP Chapter 9: kernels and the radial basis function](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 9.3.1 and 9.3.2 (pp. 377 to 382): feature enlargement, the kernel trick with equations 9.18 to 9.23, the polynomial kernel 9.22, the radial kernel 9.24 and gamma locality.
+1. [ISLP Chapter 9: kernels and the radial basis function](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Sections 9.3.1 and 9.3.2 (pp. 377 to 382): feature enlargement, the kernel trick with equations 9.18 to 9.23, the polynomial kernel 9.22, the radial kernel 9.24 and $`\gamma`$ locality.
 2. [HoML Appendix C: polynomial, similarity and RBF kernels](https://github.com/ageron/handson-mlp/blob/main/Appendix_C_support_vector_machines.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - nonlinear classical models) - Polynomial Kernel, Similarity Features with the gaussian_rbf gamma 0.3 cells, Gaussian RBF Kernel with the gamma and C grid, Under the hood.
 3. [sklearn SVM kernel functions and RBF parameters](https://scikit-learn.org/stable/modules/svm.html#kernel-functions) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.4.6 Kernel functions with 1.4.6.1 Parameters of the RBF Kernel: C for smoothness against gamma for influence, with exponential grid search over both.
-4. [sklearn SVM complexity](https://scikit-learn.org/stable/modules/svm.html#complexity) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.4.4 Complexity: libsvm quadratic to cubic in n with cache dependence, against near-linear LinearSVC.
-5. [ISLP lab: nonlinear support vector machines](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch09-svm-lab.ipynb) (ISLP - tree-based methods and support vector machines) - 9.6.2 Support Vector Machine: the radial kernel at gamma 1 and C 1e5 overfitting, then the C and gamma grid choosing C 1 and gamma 0.5; 9.6.3 ROC Curves: the tuned model against gamma 50 on training and test data.
+4. [sklearn SVM complexity](https://scikit-learn.org/stable/modules/svm.html#complexity) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.4.4 Complexity: libsvm quadratic to cubic in $`n`$ with cache dependence, against near-linear LinearSVC.
+5. [ISLP lab: nonlinear support vector machines](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch09-svm-lab.ipynb) (ISLP - tree-based methods and support vector machines) - 9.6.2 Support Vector Machine: the radial kernel at $`\gamma`$ 1 and $`C`$ 1e5 overfitting, then the $`C`$ and $`\gamma`$ grid choosing $`C`$ 1 and $`\gamma`$ 0.5; 9.6.3 ROC Curves: the tuned model against $`\gamma`$ 50 on training and test data.
 
 **Focus**
 
-- The trick replaces every inner product with K, so f(x) equals bias plus a sum of alpha_i K(x, x_i) over support vectors only. The RBF form exp(-gamma ||x - z||^2) makes far points contribute near zero, which is what locality means.
-- Gamma sets the ruler: large values spike the similarity and overfit, small values smooth everything toward underfit. The HoML grid crosses gamma 0.1 with 5 against C 0.001 with 1000 to show both failures.
+- The trick replaces every inner product with $`K`$, so $`f(x)`$ equals bias plus a sum of $`\alpha_i K(x, x_i)`$ over support vectors only. The RBF form $`\exp(-\gamma \|x - z\|^2)`$ makes far points contribute near zero, which is what locality means.
+- $`\gamma`$ sets the ruler: large values spike the similarity and overfit, small values smooth everything toward underfit. The HoML grid crosses $`\gamma`$ 0.1 with 5 against $`C`$ 0.001 with 1000 to show both failures.
 - gamma scale equals 1 over (n_features times X.var()), verified exactly against sklearn internals. It is data-dependent, so rescaling silently retunes the kernel.
-- The Gram matrix holds n^2 floats: 10000 rows in float64 need 763 MiB. Measured on the reference i9 CPU under sklearn 1.9.1, n = 1000 takes 0.025 seconds and 7.6 MiB while n = 4000 takes 0.171 seconds and 122.1 MiB.
+- The Gram matrix holds $`n^2`$ floats: 10000 rows in float64 need 763 MiB. Measured on the reference i9 CPU under sklearn 1.9.1, $`n = 1000`$ takes 0.025 seconds and 7.6 MiB while $`n = 4000`$ takes 0.171 seconds and 122.1 MiB.
 
-**Reproduce:** Hand-compute the Deep-ML 280 first test with gamma 0.5: exp(-4) = 0.0183 and exp(-1) = 0.3679 give [[1.0, 0.0183], [0.3679, 0.3679]]. Verify against pairwise.rbf_kernel, then time the Gram matrix at n = 1000 and n = 4000 and confirm the 16x memory step.
+**Reproduce:** Hand-compute the Deep-ML 280 first test with $`\gamma`$ 0.5: $`\exp(-4) = 0.0183`$ and $`\exp(-1) = 0.3679`$ give $`\left[\begin{smallmatrix}1.0&0.0183\\0.3679&0.3679\end{smallmatrix}\right]`$. Verify against pairwise.rbf_kernel, then time the Gram matrix at $`n = 1000`$ and $`n = 4000`$ and confirm the 16x memory step.
 
 **Traps**
 
-- sklearn gamma is 1 over 2 sigma^2, not sigma. Porting sigma 0.5 from problem 21 means setting gamma 2.0.
-- Kernel methods inherit the scaling requirement twice: distances and gamma both assume comparable units.
-- Tiny gamma makes every point similar to every other through a near-constant Gram matrix and underfits. Read the grid, never the default alone.
+- sklearn $`\gamma`$ is $`1/(2 \sigma^2)`$, not $`\sigma`$. Porting $`\sigma`$ 0.5 from problem 21 means setting $`\gamma`$ 2.0.
+- Kernel methods inherit the scaling requirement twice: distances and $`\gamma`$ both assume comparable units.
+- Tiny $`\gamma`$ makes every point similar to every other through a near-constant Gram matrix and underfits. Read the grid, never the default alone.
 
 **Practice**
 
-- [Deep-ML 280: Implement RBF (Gaussian) Kernel Function](https://www.deep-ml.com/problems/280) - Implement rbf_kernel(X1, X2, gamma); the visible tests check the 2x2 gamma 0.5 matrix and the 1x1 gamma 1.0 case at 4 decimals. Use the squared-norm identity with no Python loops. Identical inputs must give exactly 1.0 on the diagonal.
+- [Deep-ML 280: Implement RBF (Gaussian) Kernel Function](https://www.deep-ml.com/problems/280) - Implement rbf_kernel(X1, X2, gamma); the visible tests check the $`2 \times 2`$ $`\gamma`$ 0.5 matrix and the $`1 \times 1`$ $`\gamma`$ 1.0 case at 4 decimals. Use the squared-norm identity with no Python loops. Identical inputs must give exactly 1.0 on the diagonal.
 
 **Stop when:** You reproduce the test matrix by hand, your timings show the quadratic memory step, and problem 280 passes.
 
 <details>
 <summary>Self-test</summary>
 
-1. Write the RBF matrix for X1 = [[0, 0], [1, 1]] against X2 = [[0, 0], [2, 2]] at gamma 0.5.
-   - Squared distances are 0, 8, 2 and 2, so the matrix is [[1.0, 0.0183], [0.3679, 0.3679]].
-2. How much memory does a float64 Gram matrix need at n = 10000, and about how many rows fill 16 GiB?
-   - 10000^2 times 8 bytes = 763 MiB. 16 GiB holds about 46000 rows, since 46000^2 times 8 bytes is near 15.8 GiB.
-3. Same data, gamma 5 versus gamma 0.1. Which risks overfitting and why?
-   - Gamma 5: similarity decays within tiny radii, so each point predicts itself and noise becomes boundary. Gamma 0.1 smooths distant points together and risks underfitting.
+1. Write the RBF matrix for $`X_1 = \left[\begin{smallmatrix}0&0\\1&1\end{smallmatrix}\right]`$ against $`X_2 = \left[\begin{smallmatrix}0&0\\2&2\end{smallmatrix}\right]`$ at $`\gamma`$ 0.5.
+   - Squared distances are 0, 8, 2 and 2, so the matrix is $`\left[\begin{smallmatrix}1.0&0.0183\\0.3679&0.3679\end{smallmatrix}\right]`$.
+2. How much memory does a float64 Gram matrix need at $`n = 10000`$, and about how many rows fill 16 GiB?
+   - $`10000^2 \times 8`$ bytes = 763 MiB. 16 GiB holds about 46000 rows, since $`46000^2 \times 8`$ bytes is near 15.8 GiB.
+3. Same data, $`\gamma`$ 5 versus $`\gamma`$ 0.1. Which risks overfitting and why?
+   - $`\gamma`$ 5: similarity decays within tiny radii, so each point predicts itself and noise becomes boundary. $`\gamma`$ 0.1 smooths distant points together and risks underfitting.
 4. Why not expand RBF features explicitly instead of using the kernel?
    - The RBF expansion is infinite-dimensional. The kernel evaluates that inner product in closed form from pairwise distances.
 
@@ -1524,18 +1524,18 @@ Importance rankings and weighted losses drive real decisions about features and 
 
 1. [sklearn forest feature importance evaluation](https://scikit-learn.org/stable/modules/ensemble.html#feature-importance-evaluation) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.11.2.5 Feature importance evaluation: mean decrease in impurity, the train-only and high-cardinality flaws, the permutation alternative, and scores summing to 1.0.
 2. [HoML Chapter 6: feature importance in practice](https://github.com/ageron/handson-mlp/blob/main/06_ensemble_learning_and_random_forests.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - nonlinear classical models) - Book Chapter 6: Feature Importance (printed pp. 206-207). Notebook 06 cells: Feature Importance: the iris importance ranking loop and the MNIST pixel importance heatmap.
-3. [ISLP Chapter 8: random forests and variable importance](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Section 8.2.1, Variable Importance Measures with Figure 8.9 (pp. 345 to 346): mean-decrease-Gini importance; then Section 8.2.2 (pp. 346 to 347): the decorrelation rationale with m near sqrt(p).
+3. [ISLP Chapter 8: random forests and variable importance](https://hastie.su.domains/ISLP/ISLP_website.pdf.download.html) (ISLP - tree-based methods and support vector machines) - Section 8.2.1, Variable Importance Measures with Figure 8.9 (pp. 345 to 346): mean-decrease-Gini importance; then Section 8.2.2 (pp. 346 to 347): the decorrelation rationale with $`m`$ near $`\sqrt{p}`$.
 4. [sklearn SVM unbalanced problems](https://scikit-learn.org/stable/modules/svm.html#unbalanced-problems) (scikit-learn - neighbors, SVMs, trees and ensembles) - 1.4.1.3 Unbalanced problems: class_weight multipliers including the balanced mode.
 5. [HoML Chapter 3: precision and recall tradeoff](https://github.com/ageron/handson-mlp/blob/main/03_classification.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - nonlinear classical models) - Book Chapter 3: The Precision/Recall Trade-Off (printed pp. 115-120). Notebook 03 cells: Precision/Recall Trade-off: retuning the decision threshold with precision_score and recall_score instead of trusting 0.5.
 
 **Focus**
 
 - Impurity importance multiplies split impurity decrease by sample fraction, averages over trees and normalizes to 1. It is computed on train statistics and favors many-unique-value features, so treat it as a hypothesis, not a verdict.
-- Correlated features break both rankings. With x0 uniform, a near-copy x1 = x0 plus 0.01 noise, a noise column and the label x0 > 0.5, a 200-tree forest splits impurity importance 0.498 and 0.498, while held-out permutation gives x0 0.511 and x1 0.0. Every tree needs an x0 split to finish the boundary, so x0 rescues points that a shuffled x1 misroutes but not the reverse. Yet x1 alone still scores 0.995: zero permutation importance does not mean useless.
-- class_weight balanced multiplies by n over (2 times class count), here [0.546, 5.957] at 8.5 percent prevalence (two standard-normal features, label x0 + x1 + 0.5 noise > 2, n 4000, 30 percent test split, seed 0). Recall rises 0.64 to 0.95 while mean predicted probability doubles from 0.082 to 0.171 against a true rate of 0.086: weighting buys recall with miscalibration.
+- Correlated features break both rankings. With $`x_0`$ uniform, a near-copy $`x_1 = x_0`$ plus 0.01 noise, a noise column and the label $`x_0 > 0.5`$, a 200-tree forest splits impurity importance 0.498 and 0.498, while held-out permutation gives $`x_0`$ 0.511 and $`x_1`$ 0.0. Every tree needs an $`x_0`$ split to finish the boundary, so $`x_0`$ rescues points that a shuffled $`x_1`$ misroutes but not the reverse. Yet $`x_1`$ alone still scores 0.995: zero permutation importance does not mean useless.
+- class_weight balanced multiplies by $`n/(2 \times \text{class count})`$, here $`\left[\begin{smallmatrix}0.546&5.957\end{smallmatrix}\right]`$ at 8.5 percent prevalence (two standard-normal features, label $`x_0 + x_1 + 0.5\,\text{noise} > 2`$, $`n`$ 4000, 30 percent test split, seed 0). Recall rises 0.64 to 0.95 while mean predicted probability doubles from 0.082 to 0.171 against a true rate of 0.086: weighting buys recall with miscalibration.
 - After weighting or resampling, 0.5 is no longer the neutral threshold. Retune it on held-out data or recalibrate before shipping decisions.
 
-**Reproduce:** Rerun the twin-plus-noise demo (2000 points, seed 0, 30 percent test split, 200 trees at seed 0) and report impurity [0.498, 0.498, 0.004] with permutation [0.511, 0.0, 0.0] at spread 0.017 on held-out data; then drop x0 and show x1 alone scores 0.995. Rerun the 8.5-percent-prevalence logistic pair and report the recall gain with the doubled mean probability.
+**Reproduce:** Rerun the twin-plus-noise demo (2000 points, seed 0, 30 percent test split, 200 trees at seed 0) and report impurity $`\left[\begin{smallmatrix}0.498&0.498&0.004\end{smallmatrix}\right]`$ with permutation $`\left[\begin{smallmatrix}0.511&0.0&0.0\end{smallmatrix}\right]`$ at spread 0.017 on held-out data; then drop $`x_0`$ and show $`x_1`$ alone scores 0.995. Rerun the 8.5-percent-prevalence logistic pair and report the recall gain with the doubled mean probability.
 
 **Traps**
 
@@ -1553,9 +1553,9 @@ Importance rankings and weighted losses drive real decisions about features and 
 <summary>Self-test</summary>
 
 1. Twins read 0.498 and 0.498 in impurity but 0.511 and 0.0 in permutation. What happened?
-   - Trees split interchangeably on either twin, so impurity mass halves across them. The label is exactly x0 > 0.5, so every tree also needs an x0 split near the boundary: shuffling x0 breaks those splits, while x0 repairs anything a shuffled x1 misroutes. Permutation measures loss given the other features, not usefulness alone; x1 by itself scores 0.995.
+   - Trees split interchangeably on either twin, so impurity mass halves across them. The label is exactly $`x_0 > 0.5`$, so every tree also needs an $`x_0`$ split near the boundary: shuffling $`x_0`$ breaks those splits, while $`x_0`$ repairs anything a shuffled $`x_1`$ misroutes. Permutation measures loss given the other features, not usefulness alone; $`x_1`$ by itself scores 0.995.
 2. What multipliers does class_weight balanced assign at 8.5 percent prevalence, and from what formula?
-   - About [0.546, 5.957] from n_samples over (n_classes times class count). The minority multiplier is roughly the inverse prevalence ratio.
+   - About $`\left[\begin{smallmatrix}0.546&5.957\end{smallmatrix}\right]`$ from $`\text{n\_samples}/(\text{n\_classes} \times \text{class count})`$. The minority multiplier is roughly the inverse prevalence ratio.
 3. After weighting, mean predicted probability doubles while true prevalence stays fixed. Did accuracy necessarily improve, and what must change before deciding at 0.5?
    - Not necessarily. The weighted loss trades precision and calibration for recall, so accuracy can fall. Retune the threshold on held-out data or recalibrate the scores first.
 4. A noise feature reads 0.004 impurity against 0.0 permutation. Keep or drop it?
@@ -1568,7 +1568,7 @@ Importance rankings and weighted losses drive real decisions about features and 
 **About 12 to 16 hours.** Implement a deterministic CART core with one ensemble and one neighbor or kernel mechanism in NumPy in your own repository, test them against hand cases and scikit-learn, configure the boosting libraries on one fixed split, and defend a family choice from geometry, uncertainty, interpretability, fit cost and prediction cost.
 
 1. Build the CART core: Gini and entropy impurity, an exhaustive split scan with a stated threshold and tie rule, growth limits (max_depth, min_samples_leaf) and prediction. Match hand cases, then DecisionTreeClassifier predictions on tie-free data with matching limits.
-2. Prune by cost complexity: take the alpha path and choose alpha by cross-validation on the training split only.
+2. Prune by cost complexity: take the $`\alpha`$ path and choose $`\alpha`$ by cross-validation on the training split only.
 3. Add bagging or a random forest over your core. Show validation error and its spread over seeds against the number of trees, next to a single tree.
 4. Add one neighbor or kernel mechanism: kNN with a stated tie rule and a scaled-versus-unscaled test, a Pegasos kernel SVM, or an RBF kernel matrix with a positive semidefinite check. Compare predictions with KNeighborsClassifier or SVC on a fixed split.
 5. On one fixed tabular split, configure HistGradientBoosting and XGBoost, LightGBM and CatBoost from their parameter pages with early stopping on a validation split. State each library's categorical handling and record the best iteration, validation score, fit time and predict time.
@@ -1778,11 +1778,11 @@ PCA is the baseline representation for wide tabular data and the preprocessing s
 **Focus**
 
 - PCA centers but does not scale. Features in larger units dominate the first components; standardize first when units differ.
-- Component variance is s_j squared over n-1; the ratio divides by the total. Randomized solvers approximate both.
+- Component variance is $`s_j^2/(n-1)`$; the ratio divides by the total. Randomized solvers approximate both.
 - Component signs are arbitrary: flipping a component with its scores leaves every reconstruction unchanged. Tests must use absolute values or reconstruction error.
 - The cumsum rule at 0.95 is a budget, not an optimum. Downstream error and cost decide the count.
 
-**Reproduce:** Closed-book, center [[1,2],[3,4],[5,6]], run the SVD, and report first component [0.7071, 0.7071], singular value 4 and explained ratio 1.0. Then state the sign-flip invariant and the reconstruction from one component.
+**Reproduce:** Closed-book, center $`\left[\begin{smallmatrix}1&2\\3&4\\5&6\end{smallmatrix}\right]`$, run the SVD, and report first component $`\left[\begin{smallmatrix}0.7071&0.7071\end{smallmatrix}\right]`$, singular value 4 and explained ratio 1.0. Then state the sign-flip invariant and the reconstruction from one component.
 
 **Traps**
 
@@ -1792,16 +1792,16 @@ PCA is the baseline representation for wide tabular data and the preprocessing s
 
 **Practice**
 
-- [Deep-ML 19: Principal Component Analysis Implementation](https://www.deep-ml.com/problems/19) - Problem 19: implement pca(X, k) with standardization, covariance, eigh and the stated sign rule. The two tests check k=1 components [[0.7071],[0.7071]] and [[0.7071],[-0.7071]] on small matrices. Match the sign rule exactly: the first element with absolute value above 1e-10 is made positive.
+- [Deep-ML 19: Principal Component Analysis Implementation](https://www.deep-ml.com/problems/19) - Problem 19: implement pca(X, k) with standardization, covariance, eigh and the stated sign rule. The two tests check $`k=1`$ components $`\left[\begin{smallmatrix}0.7071\\0.7071\end{smallmatrix}\right]`$ and $`\left[\begin{smallmatrix}0.7071\\-0.7071\end{smallmatrix}\right]`$ on small matrices. Match the sign rule exactly: the first element with absolute value above 1e-10 is made positive.
 
 **Stop when:** Your blank-file PCA matches sklearn components up to sign and explained variance to 1e-6 on two datasets, and your tests still pass after negating any component.
 
 <details>
 <summary>Self-test</summary>
 
-1. Why do [[1,2],[3,4],[5,6]] yield ratio 1.0 on one component?
-   - Centered rows are multiples of [1,1], so the matrix has rank one. The single singular value 4 carries all variance. Verified with NumPy: s=[4,0].
-2. Two runs give components [0.7,0.7] and [-0.7,-0.7] with mirrored scores. Which one is wrong?
+1. Why do $`\left[\begin{smallmatrix}1&2\\3&4\\5&6\end{smallmatrix}\right]`$ yield ratio 1.0 on one component?
+   - Centered rows are multiples of $`\left[\begin{smallmatrix}1&1\end{smallmatrix}\right]`$, so the matrix has rank one. The single singular value 4 carries all variance. Verified with NumPy: s=[4,0].
+2. Two runs give components $`\left[\begin{smallmatrix}0.7&0.7\end{smallmatrix}\right]`$ and $`\left[\begin{smallmatrix}-0.7&-0.7\end{smallmatrix}\right]`$ with mirrored scores. Which one is wrong?
    - Neither. A joint sign flip of a component with its scores preserves projections and reconstructions; only mixed or unmirrored comparisons fail.
 3. Two features have variances 1 and 10000. What happens without scaling, and what changes with it?
    - Without scaling the first component follows the large-variance feature almost entirely. Standardizing puts both on equal footing; do it when units are arbitrary.
@@ -1816,32 +1816,32 @@ PCA is the baseline representation for wide tabular data and the preprocessing s
 
 Topics: k-means objective, assignment, update and initialization; Empty clusters, inertia and seed instability
 
-k-means is the first clustering mechanism and the initializer inside Gaussian mixtures. Its objective only descends, never to a global promise, so seeds and k decide the answer.
+k-means is the first clustering mechanism and the initializer inside Gaussian mixtures. Its objective only descends, never to a global promise, so seeds and $`k`$ decide the answer.
 
 **You can now**
 
 - Derive the assignment and centroid updates and show each step cannot increase the inertia.
 - Implement Lloyd iterations from a blank file with k-means++ seeding and a fixed iteration cap.
-- Diagnose empty clusters, seed instability and k choice with inertia, silhouette and repeated runs.
+- Diagnose empty clusters, seed instability and $`k`$ choice with inertia, silhouette and repeated runs.
 
 **Study**
 
 1. [k-means mechanics and k search](https://github.com/ageron/handson-mlp/blob/main/08_unsupervised_learning.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - dimensionality reduction and unsupervised learning) - Book Chapter 8: k-Means Clustering (printed pp. 249-258). Notebook 08 cells: K-Means through Finding the optimal number of clusters: blob demo, the max_iter assignment and update walk, Inertia, Multiple Initializations with the n_init auto rule, k-means++ seeding, elbow plot and silhouette_score with the silhouette diagram. Depth: Skim Accelerated K-Means and Mini-Batch K-Means; keep the max_iter walk and the k-search plots.
-2. [k-means objective and cluster evaluation](https://scikit-learn.org/stable/modules/clustering.html) (scikit-learn - decomposition, clustering and outlier detection) - 2.3.2 K-means: inertia objective, local minima with repeated initializations, k-means++ default; 2.3.11 cluster evaluation: silhouette coefficient s=(b-a)/max(a,b) with its convex-cluster bias and the adjusted Rand index correcting for chance.
-3. [k-means on simulated data](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch12-unsup-lab.ipynb) (ISLP - Unsupervised Learning) - K-Means Clustering: K=2 separation on the simulated 50-point data with random_state, K=3 splitting behavior, and inertia_ as within-cluster sum of squares. Depth: The lab says the n_init default is 10; that predates scikit-learn 1.4. The default is now auto, one run under k-means++, which is why the lab passes n_init=20 explicitly.
+2. [k-means objective and cluster evaluation](https://scikit-learn.org/stable/modules/clustering.html) (scikit-learn - decomposition, clustering and outlier detection) - 2.3.2 K-means: inertia objective, local minima with repeated initializations, k-means++ default; 2.3.11 cluster evaluation: silhouette coefficient $`s=(b-a)/\max(a,b)`$ with its convex-cluster bias and the adjusted Rand index correcting for chance.
+3. [k-means on simulated data](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch12-unsup-lab.ipynb) (ISLP - Unsupervised Learning) - K-Means Clustering: $`K=2`$ separation on the simulated 50-point data with random_state, $`K=3`$ splitting behavior, and inertia_ as within-cluster sum of squares. Depth: The lab says the n_init default is 10; that predates scikit-learn 1.4. The default is now auto, one run under k-means++, which is why the lab passes n_init=20 explicitly.
 
 **Focus**
 
 - Each assignment step and each mean update cannot increase the inertia, so Lloyd iterations converge, usually to a local minimum. Restarts pick among minima.
 - Since version 1.4 the default n_init=auto runs once under k-means++ and ten times under random init. One k-means++ run is not ten restarts.
-- Inertia always falls as k grows. Read k from elbows, silhouette and repeated-seed stability, never from one inertia value.
+- Inertia always falls as $`k`$ grows. Read $`k`$ from elbows, silhouette and repeated-seed stability, never from one inertia value.
 - Empty clusters happen when a center loses every point. Know the repair: re-seed, drop, or error.
 
-**Reproduce:** Closed-book, run one Lloyd round on [[0,0],[0,1],[5,0],[5,1]] from centers [[0,0],[5,1]]: labels [0,0,1,1], new centers [[0,0.5],[5,0.5]], inertia 2.0 down to 1.0. State why the next round cannot raise it.
+**Reproduce:** Closed-book, run one Lloyd round on $`\left[\begin{smallmatrix}0&0\\0&1\\5&0\\5&1\end{smallmatrix}\right]`$ from centers $`\left[\begin{smallmatrix}0&0\\5&1\end{smallmatrix}\right]`$: labels $`\left[\begin{smallmatrix}0&0&1&1\end{smallmatrix}\right]`$, new centers $`\left[\begin{smallmatrix}0&0.5\\5&0.5\end{smallmatrix}\right]`$, inertia 2.0 down to 1.0. State why the next round cannot raise it.
 
 **Traps**
 
-- Comparing inertia across different k or seeds as quality. Inertia is comparable only for fixed data, fixed k and best-of-restarts.
+- Comparing inertia across different k or seeds as quality. Inertia is comparable only for fixed data, fixed $`k`$ and best-of-restarts.
 - Assuming n_init=10 always. Under the default k-means++ the auto default is a single run; set n_init=10 explicitly when stability matters.
 - Requesting more clusters than samples. scikit-learn 1.9 raises an error for n_samples=3 with n_clusters=5; it does not return empty clusters silently.
 
@@ -1849,19 +1849,19 @@ k-means is the first clustering mechanism and the initializer inside Gaussian mi
 
 - [Deep-ML 17: K-Means Clustering](https://www.deep-ml.com/problems/17) - Problem 17: implement k_means_clustering(points, k, initial_centroids, max_iterations) returning centroids rounded to 4 decimals. The tests check exact centroids on a 2D two-group set and a 3D set from fixed starts. Re-derive one update by hand first, then match.
 
-**Stop when:** Your implementation reproduces the hand round exactly, matches both Deep-ML centroid sets, and reports inertia spread across ten seeds for your k.
+**Stop when:** Your implementation reproduces the hand round exactly, matches both Deep-ML centroid sets, and reports inertia spread across ten seeds for your $`k`$.
 
 <details>
 <summary>Self-test</summary>
 
 1. Why do Lloyd iterations terminate?
    - Assignments are finite and the inertia never increases: neither the assignment step nor the mean update can raise the objective, so the loop ends at a fixed assignment or max_iter.
-2. Two seeds give inertia 120 and 95 at k=5. Which clustering wins on the objective, and what stays unknown?
-   - The 95 run wins on inertia. Whether either is near the global optimum or the right k stays unknown; check silhouette and seed spread.
+2. Two seeds give inertia 120 and 95 at $`k=5`$. Which clustering wins on the objective, and what stays unknown?
+   - The 95 run wins on inertia. Whether either is near the global optimum or the right $`k`$ stays unknown; check silhouette and seed spread.
 3. A center gets no points in one iteration. Name two sound repairs.
-   - Re-seed it at a far point such as the highest-inertia contributor, or drop it and continue with k-1. Either way record the event.
-4. Silhouette prefers k=2 on two stretched blobs while the task needs subgroups. What do you do?
-   - Keep the task k and justify it downstream. Silhouette rewards convex separation; it does not know the use.
+   - Re-seed it at a far point such as the highest-inertia contributor, or drop it and continue with $`k-1`$. Either way record the event.
+4. Silhouette prefers $`k=2`$ on two stretched blobs while the task needs subgroups. What do you do?
+   - Keep the task $`k`$ and justify it downstream. Silhouette rewards convex separation; it does not know the use.
 
 </details>
 
@@ -1875,47 +1875,47 @@ Mixtures turn distance into probability: overlapping groups get graded membershi
 
 **You can now**
 
-- Explain responsibilities as posterior component membership and the EM loop as alternating E and M steps.
+- Explain responsibilities as posterior component membership and the EM loop as alternating $`E`$ and $`M`$ steps.
 - Derive the 1D M-step updates for means, variances and weights from weighted maximum likelihood.
 - Select the component count with BIC or AIC and state why a plain GaussianMixture always uses every component.
 
 **Study**
 
-1. [Mixture fits, covariances and component count](https://github.com/ageron/handson-mlp/blob/main/08_unsupervised_learning.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - dimensionality reduction and unsupervised learning) - Book Chapter 8: Gaussian Mixtures through Selecting the Number of Clusters (printed pp. 269-278). Notebook 08 cells: Gaussian Mixtures: EM-fitted weights, means and covariances on the three-ellipsoid data with the covariance_type full, tied, spherical and diag comparison; Selecting the Number of Clusters with the BIC and AIC formulas and the minimum at k=3. Depth: Skim Bayesian Gaussian Mixture Models; variational inference is later work. Keep the BIC and AIC minimum plot.
+1. [Mixture fits, covariances and component count](https://github.com/ageron/handson-mlp/blob/main/08_unsupervised_learning.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - dimensionality reduction and unsupervised learning) - Book Chapter 8: Gaussian Mixtures through Selecting the Number of Clusters (printed pp. 269-278). Notebook 08 cells: Gaussian Mixtures: EM-fitted weights, means and covariances on the three-ellipsoid data with the covariance_type full, tied, spherical and diag comparison; Selecting the Number of Clusters with the BIC and AIC formulas and the minimum at $`k=3`$. Depth: Skim Bayesian Gaussian Mixture Models; variational inference is later work. Keep the BIC and AIC minimum plot.
 2. [EM estimation, init and failure modes](https://scikit-learn.org/stable/modules/mixture.html) (scikit-learn - decomposition, clustering and outlier detection) - 2.1.1 Gaussian Mixture: EM E-step and M-step description, covariance options, the singularity and always-uses-all-components cons, and the BIC asymptotic note; Choice of the Initialization method with the k-means default.
 
 **Focus**
 
 - Responsibilities are posteriors that sum to one per point. The M-step refits each Gaussian to responsibility-weighted data.
 - Likelihood rises every EM round but only to a local optimum. Starts matter; the sklearn default starts from k-means.
-- Full covariance needs d(d+1)/2 parameters per component. Few points per component invite singular covariances; reg_covar (1e-6 by default) adds to the diagonal to keep them invertible.
-- BIC penalizes parameters with log(m) times p. It recovers the true count only asymptotically under a true mixture; on real data it is a guide, not proof.
+- Full covariance needs $`d(d+1)/2`$ parameters per component. Few points per component invite singular covariances; reg_covar (1e-6 by default) adds to the diagonal to keep them invertible.
+- BIC penalizes parameters with $`\log(m) \times p`$. It recovers the true count only asymptotically under a true mixture; on real data it is a guide, not proof.
 
-**Reproduce:** Closed-book, write the 1D E-step responsibility formula and the M-step updates for mean, variance with MLE denominator, and weight. Run the K=1 case on [2,4,6]: mean 4.0 and variance 8/3=2.6667.
+**Reproduce:** Closed-book, write the 1D E-step responsibility formula and the M-step updates for mean, variance with MLE denominator, and weight. Run the $`K=1`$ case on $`\left[\begin{smallmatrix}2&4&6\end{smallmatrix}\right]`$: mean 4.0 and variance 8/3=2.6667.
 
 **Traps**
 
-- Dividing the M-step variance by n-1. Mixture MLE divides by the responsibility sum, which is n for K=1, giving 2.6667 on [2,4,6], not 4.0.
+- Dividing the M-step variance by $`n-1`$. Mixture MLE divides by the responsibility sum, which is $`n`$ for $`K=1`$, giving 2.6667 on $`\left[\begin{smallmatrix}2&4&6\end{smallmatrix}\right]`$, not 4.0.
 - Reading converged likelihood as a global optimum. Different starts converge differently; report spread, not one run.
 - Trusting the BIC minimum as truth on misspecified data. The docs note asymptotic recovery needs data truly drawn from a mixture.
 
 **Practice**
 
-- [Deep-ML 341: Gaussian Mixture Model with EM Algorithm](https://www.deep-ml.com/problems/341) - Problem 341: implement fit_gmm_1d with E and M steps for n_iterations, rounding means, variances and weights to 4 decimals. Test one checks the K=1 closed form with means [4.0], variances [2.6667] and weights [1.0]; test two checks a symmetric K=2 case stays at means [0.5, 9.5] with variances [0.25, 0.25]. Derive both by hand first.
+- [Deep-ML 341: Gaussian Mixture Model with EM Algorithm](https://www.deep-ml.com/problems/341) - Problem 341: implement fit_gmm_1d with $`E`$ and $`M`$ steps for n_iterations, rounding means, variances and weights to 4 decimals. Test one checks the $`K=1`$ closed form with means $`\left[\begin{smallmatrix}4.0\end{smallmatrix}\right]`$, variances $`\left[\begin{smallmatrix}2.6667\end{smallmatrix}\right]`$ and weights $`\left[\begin{smallmatrix}1.0\end{smallmatrix}\right]`$; test two checks a symmetric $`K=2`$ case stays at means $`\left[\begin{smallmatrix}0.5&9.5\end{smallmatrix}\right]`$ with variances $`\left[\begin{smallmatrix}0.25&0.25\end{smallmatrix}\right]`$. Derive both by hand first.
 
-**Stop when:** You derive the K=1 numbers by hand, pass both Deep-ML tests, and can predict how tied versus full covariance changes the parameter count.
+**Stop when:** You derive the $`K=1`$ numbers by hand, pass both Deep-ML tests, and can predict how tied versus full covariance changes the parameter count.
 
 <details>
 <summary>Self-test</summary>
 
-1. What does responsibility 0.9 of point x under component 2 mean?
-   - Posterior membership: under current parameters the probability is 0.9 that component 2 generated x. It is not a hard label.
-2. K=1 EM on [2,4,6] gives variance 2.6667. Derive it.
+1. What does responsibility 0.9 of point $`x`$ under component 2 mean?
+   - Posterior membership: under current parameters the probability is 0.9 that component 2 generated $`x`$. It is not a hard label.
+2. $`K=1`$ EM on $`\left[\begin{smallmatrix}2&4&6\end{smallmatrix}\right]`$ gives variance 2.6667. Derive it.
    - Mean 4.0; squared deviations 4+0+4=8; MLE divides by 3. The unbiased 4.0 answers a different question.
-3. Weights converge to [0.99, 0.01] on two overlapping groups. What do you conclude?
-   - One component explains nearly everything. Try K=1, check BIC, and consider that the small component fits outliers.
-4. Full covariance on 50 points in 10 dimensions with K=5. What breaks?
-   - Each full covariance needs 55 parameters from about 10 effective points. Expect singularities; use tied or diag, regularize, or cut K.
+3. Weights converge to $`\left[\begin{smallmatrix}0.99&0.01\end{smallmatrix}\right]`$ on two overlapping groups. What do you conclude?
+   - One component explains nearly everything. Try $`K=1`$, check BIC, and consider that the small component fits outliers.
+4. Full covariance on 50 points in 10 dimensions with $`K=5`$. What breaks?
+   - Each full covariance needs 55 parameters from about 10 effective points. Expect singularities; use tied or diag, regularize, or cut $`K`$.
 
 </details>
 
@@ -1935,17 +1935,17 @@ Real groups are rarely spheres. Density and merge views find moons and hierarchi
 
 **Study**
 
-1. [DBSCAN contrast and agglomerative example](https://github.com/ageron/handson-mlp/blob/main/08_unsupervised_learning.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - dimensionality reduction and unsupervised learning) - Book Chapter 8: DBSCAN and Other Clustering Algorithms (printed pp. 265-269). Notebook 08 cells: DBSCAN: make_moons(1000, noise=0.05) at eps=0.05 (7 clusters, many points labeled -1) versus eps=0.2 (two clusters, no noise), core_sample_indices_, components_, and KNN on the cores with a 0.2 distance cutoff to label new points; Other Clustering Algorithms: AgglomerativeClustering with complete linkage on [0,2,5,8.5]. Depth: Skim the Spectral Clustering bonus code; keep the eps contrast and the linkage example.
+1. [DBSCAN contrast and agglomerative example](https://github.com/ageron/handson-mlp/blob/main/08_unsupervised_learning.ipynb) (Hands-On Machine Learning with Scikit-Learn and PyTorch - dimensionality reduction and unsupervised learning) - Book Chapter 8: DBSCAN and Other Clustering Algorithms (printed pp. 265-269). Notebook 08 cells: DBSCAN: make_moons(1000, noise=0.05) at eps=0.05 (7 clusters, many points labeled -1) versus eps=0.2 (two clusters, no noise), core_sample_indices_, components_, and KNN on the cores with a 0.2 distance cutoff to label new points; Other Clustering Algorithms: AgglomerativeClustering with complete linkage on $`\left[\begin{smallmatrix}0&2&5&8.5\end{smallmatrix}\right]`$. Depth: Skim the Spectral Clustering bonus code; keep the eps contrast and the linkage example.
 2. [Density, linkage and metric limits](https://scikit-learn.org/stable/modules/clustering.html) (scikit-learn - decomposition, clustering and outlier detection) - 2.3.7 DBSCAN: dense definition from eps and min_samples, core, border and outlier rules, the eps-must-be-tuned warning with all-noise and merged-cluster failures; 2.3.6 hierarchical clustering: Ward, complete, average and single linkage with the uneven-size guidance; 2.3.11 metrics: silhouette formula with its convex-cluster bias and the adjusted Rand index correcting for chance.
 
 **Focus**
 
 - eps sets the neighborhood radius and min_samples the density floor. On the notebook moons, eps=0.05 breaks the two moons into 7 clusters and labels 7.7 percent as noise, while 0.2 finds the two moons with no noise; always sweep eps.
-- Linkage defines merge distance: single follows chains, complete compacts, Ward prefers equal-variance merges. On [0,2,5,8.5] single splits off 8.5 while complete pairs neighbors.
+- Linkage defines merge distance: single follows chains, complete compacts, Ward prefers equal-variance merges. On $`\left[\begin{smallmatrix}0&2&5&8.5\end{smallmatrix}\right]`$ single splits off 8.5 while complete pairs neighbors.
 - DBSCAN labels new points only by extra machinery: the notebook trains KNN on cores. The clusterer itself has no predict.
 - Silhouette rewards dense convex separation and can punish correct density shapes. Pair it with stability and downstream checks.
 
-**Reproduce:** Closed-book, hand-run DBSCAN with eps=2.0 and min_samples=2 on [[1,1],[1.5,1.5],[2,1],[8,8],[8.5,8.5],[9,8]]: two core groups [0,0,0,1,1,1] with no noise. Then move one point to [100,100] and show it becomes -1.
+**Reproduce:** Closed-book, hand-run DBSCAN with eps=2.0 and min_samples=2 on $`\left[\begin{smallmatrix}1&1\\1.5&1.5\\2&1\\8&8\\8.5&8.5\\9&8\end{smallmatrix}\right]`$: two core groups $`\left[\begin{smallmatrix}0&0&0&1&1&1\end{smallmatrix}\right]`$ with no noise. Then move one point to $`\left[\begin{smallmatrix}100&100\end{smallmatrix}\right]`$ and show it becomes -1.
 
 **Traps**
 
@@ -1955,7 +1955,7 @@ Real groups are rarely spheres. Density and merge views find moons and hierarchi
 
 **Practice**
 
-- [Deep-ML 259: Implement DBSCAN Clustering Algorithm](https://www.deep-ml.com/problems/259) - Problem 259: implement dbscan(X, eps, min_samples) with Euclidean distance and -1 noise labels. Test one checks [0 0 0 1 1 1] on two triplets; test two checks the far point becomes -1. Count the point itself toward min_samples, as scikit-learn does; with min_samples=2 test two needs that, or the pair [8,8], [8.5,8.5] turns into noise. Expand clusters from core points only.
+- [Deep-ML 259: Implement DBSCAN Clustering Algorithm](https://www.deep-ml.com/problems/259) - Problem 259: implement dbscan(X, eps, min_samples) with Euclidean distance and -1 noise labels. Test one checks [0 0 0 1 1 1] on two triplets; test two checks the far point becomes -1. Count the point itself toward min_samples, as scikit-learn does; with min_samples=2 test two needs that, or the pair $`\left[\begin{smallmatrix}8&8\end{smallmatrix}\right]`$, $`\left[\begin{smallmatrix}8.5&8.5\end{smallmatrix}\right]`$ turns into noise. Expand clusters from core points only.
 
 **Stop when:** Your implementation matches both Deep-ML label vectors, your eps sweep on moons shows the noise-to-merged transition, and two linkages disagree on record with reasons.
 
@@ -1964,7 +1964,7 @@ Real groups are rarely spheres. Density and merge views find moons and hierarchi
 
 1. On the notebook moons, eps=0.05 gives 7 clusters and 7.7 percent noise, while eps=0.2 gives two clean moons. What went wrong at 0.05, and what does the -1 label mean?
    - The radius is too small for the sampling density. A core needs min_samples points within eps, counting itself, so sparse stretches of each moon lose their cores and the moons fragment. A -1 point is within eps of no core: not dense enough under these settings, which is not the same as anomalous.
-2. Single linkage gives [0,0,0,1] and complete gives [1,1,0,0] on [0,2,5,8.5]. Which is right?
+2. Single linkage gives $`\left[\begin{smallmatrix}0&0&0&1\end{smallmatrix}\right]`$ and complete gives $`\left[\begin{smallmatrix}1&1&0&0\end{smallmatrix}\right]`$ on $`\left[\begin{smallmatrix}0&2&5&8.5\end{smallmatrix}\right]`$. Which is right?
    - Both follow their definitions: single chains through small gaps, complete caps the largest within-cluster distance. The task decides which grouping is useful.
 3. On the notebook moons, KMeans(2) scores silhouette 0.49 and the true moon labels score 0.33. Which clustering is better?
    - The true moons. Silhouette rewards compact convex groups, so it ranks the wrong spherical split higher. Use stability, adjusted Rand against any known structure, and downstream checks.
@@ -1996,10 +1996,10 @@ Anomaly scores spend budgets: each alert costs review time. A threshold without 
 
 - Outlier methods fit on polluted data; novelty methods fit on clean data and judge new points. LOF with novelty=False has no predict for new data; refit with novelty=True.
 - contamination sets the score cutoff as a percentile through offset_. It declares the alert rate; it does not discover it.
-- IsolationForest isolates with random feature splits; anomalies need fewer splits. In the paper's score, near 1 means anomaly, well below 0.5 means normal, and all scores near 0.5 mean no distinct anomaly; scikit-learn's score_samples returns the negative. Trees stop at depth ceil(log2(n)) for n samples per tree.
+- IsolationForest isolates with random feature splits; anomalies need fewer splits. In the paper's score, near 1 means anomaly, well below 0.5 means normal, and all scores near 0.5 mean no distinct anomaly; scikit-learn's score_samples returns the negative. Trees stop at depth $`\lceil\log_2(n)\rceil`$ for $`n`$ samples per tree.
 - Rescale or re-encode and the ranking changes: LOF neighborhoods, elliptic envelopes and GMM densities all live in the given coordinates.
 
-**Reproduce:** Closed-book, fit IsolationForest with contamination=0.25 and random_state=42 on [[0],[0.1],[0.2],[10.0]]: predict gives [1,1,1,-1] with only the last decision_function negative. State the implied alert rate and why the cutoff is a policy.
+**Reproduce:** Closed-book, fit IsolationForest with contamination=0.25 and random_state=42 on $`\left[\begin{smallmatrix}0\\0.1\\0.2\\10.0\end{smallmatrix}\right]`$: predict gives [1,1,1,-1] with only the last decision_function negative. State the implied alert rate and why the cutoff is a policy.
 
 **Traps**
 
@@ -2009,7 +2009,7 @@ Anomaly scores spend budgets: each alert costs review time. A threshold without 
 
 **Practice**
 
-- [Deep-ML 367: Implement Isolation Forest for Anomaly Detection](https://www.deep-ml.com/problems/367) - Problem 367: implement isolation_forest(X, n_trees, sample_size, random_state) with random feature and uniform-split trees, depth cap ceil(log2(sample_size)) and BST-normalized scores. The tests check rounded score vectors on a 5-point set with one outlier at random_state=42 and a tight cluster at random_state=123. They match only the learn section's recipe taken literally: np.random.seed, legacy np.random calls, and c(n) = 2(ln(n-1) + 0.5772156649) - 2(n-1)/n for every leaf size above 1, so c(2) is about 0.154. The paper and scikit-learn set c(2) = 1, which fails these vectors; note that difference rather than treating it as a bug.
+- [Deep-ML 367: Implement Isolation Forest for Anomaly Detection](https://www.deep-ml.com/problems/367) - Problem 367: implement isolation_forest(X, n_trees, sample_size, random_state) with random feature and uniform-split trees, depth cap ceil(log2(sample_size)) and BST-normalized scores. The tests check rounded score vectors on a 5-point set with one outlier at random_state=42 and a tight cluster at random_state=123. They match only the learn section's recipe taken literally: np.random.seed, legacy np.random calls, and $`c(n) = 2(\ln(n-1) + 0.5772156649) - 2(n-1)/n`$ for every leaf size above 1, so $`c(2)`$ is about 0.154. The paper and scikit-learn set $`c(2) = 1`$, which fails these vectors; note that difference rather than treating it as a bug.
 
 **Stop when:** You match both Deep-ML score vectors, reproduce the [1,1,1,-1] contamination demo, and can flip a detector between outlier and novelty setups with the right predict calls.
 
@@ -2091,7 +2091,7 @@ Embeddings are maps for the eyes, not measurements. Unlabeled shapes become fals
 2. Implement PCA through the SVD of the centered data: components, explained variance ratio, projection and reconstruction. Compare with scikit-learn PCA through sign-invariant quantities.
 3. Implement k-means with k-means++ initialization. Test that inertia never rises across iterations, and compare with KMeans from the same initial centers through the adjusted Rand index, which ignores label order.
 4. Add one more method with its own failure mode: a DBSCAN eps sweep on moons, or a Gaussian mixture with its covariance type and reg_covar stated.
-5. Measure stability: rerun clustering over seeds and bootstrap resamples and report the adjusted Rand distribution. Choose k from stability and silhouette together, noting silhouette's bias toward convex clusters.
+5. Measure stability: rerun clustering over seeds and bootstrap resamples and report the adjusted Rand distribution. Choose $`k`$ from stability and silhouette together, noting silhouette's bias toward convex clusters.
 6. Test downstream value: feed the components or cluster ids to a supervised model on a fixed split and report the paired change.
 7. Fit an anomaly detector on clean data (IsolationForest, or LOF with novelty=True), set the threshold from a stated flag-rate budget, and report the flag rate on a shifted batch with counts and slices.
 
@@ -2111,7 +2111,7 @@ Embeddings are maps for the eyes, not measurements. Unlabeled shapes become fals
 | Fit state | All learned state comes from train only, and a schema test catches unexpected columns. | Unknown categories are counted per batch with an alert rule, and indicator columns survive get_feature_names_out. |
 | PCA | Components and explained variance match scikit-learn up to sign. | Tests assert only sign-invariant quantities, and they pass across solvers. |
 | Clustering | k-means matches scikit-learn from the same initial centers (adjusted Rand index 1 on separated blobs), and inertia never rises. | Tests are label-permutation invariant, and the second method's failure mode is shown and explained. |
-| Stability and claims | Stability over seeds and resamples is reported with the chosen k. | A downstream test shows whether the clusters or components help, and the report states what they do not justify. |
+| Stability and claims | Stability over seeds and resamples is reported with the chosen $`k`$. | A downstream test shows whether the clusters or components help, and the report states what they do not justify. |
 | Anomaly threshold | The threshold follows from a stated flag budget on clean data. | The flag-rate change on the shifted batch is reported with counts and slices before any threshold change. |
 
 Feeds into: Milestone artifact 2, the mechanisms suite: PCA and k-means come from here. The stability evidence feeds the decision dossier.
@@ -2179,14 +2179,14 @@ A validation score that guided model choice is optimistic. The sampling unit dec
 
 **You can now**
 
-- Choose K-fold, stratified, group or time-series resampling from the deployment dependence structure and name the sampling unit.
+- Choose $`K`$-fold, stratified, group or time-series resampling from the deployment dependence structure and name the sampling unit.
 - Run nested selection so the reported score never guided the choice it evaluates.
 - Keep preprocessing inside the resampling loop so no test information leaks into fitting.
 
 **Study**
 
 1. [Cross-validation: computing metrics and choosing iterators](https://scikit-learn.org/stable/modules/cross_validation.html) (scikit-learn - model selection and evaluation route) - Sections 3.1.1 (cross_validate versus cross_val_score, the Data transformation with held-out data note, 3.1.1.2 cross_val_predict and its warning) and 3.1.2 (K-fold, Stratified K-fold, Group K-fold, TimeSeriesSplit).
-2. [Nested versus non-nested cross-validation on iris](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html) (scikit-learn - model selection and evaluation route) - Whole example: inner GridSearchCV over C and gamma, outer cross_val_score; the non-nested best_score_ is optimistic next to the nested mean.
+2. [Nested versus non-nested cross-validation on iris](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html) (scikit-learn - model selection and evaluation route) - Whole example: inner GridSearchCV over $`C`$ and $`\gamma`$, outer cross_val_score; the non-nested best_score_ is optimistic next to the nested mean.
 3. [ISLP Chapter 5 lab: validation-set, LOOCV and k-fold errors](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch05-resample-lab.ipynb) (ISLP - resampling and multiple testing) - The Validation Set Approach (linear/quadratic/cubic MSE triple 23.62, 18.76, 18.80 on Auto) and Cross-Validation (LOOCV MSE 24.23, then the 10-fold KFold comparison). Depth: Skim the bootstrap half. It belongs to the uncertainty unit.
 
 **Focus**
@@ -2196,7 +2196,7 @@ A validation score that guided model choice is optimistic. The sampling unit dec
 - GroupKFold keeps whole groups out of training together; TimeSeriesSplit only ever tests on the future. The deployment unit picks the splitter.
 - Every fitted transform (scaling, imputation, selection) must sit inside a Pipeline under CV, or test statistics shape the training features.
 
-**Reproduce:** Closed-book, write the nested loop for an RBF SVC over C in {1, 10, 100} and gamma in {0.01, 0.1} on iris, with KFold(4, shuffle=True) inner (random_state=0) and outer (random_state=1) splits, and state which number is honest. Reference run: nested mean 0.9468 against non-nested best_score_ 0.9603. One trial is noisy: the docs example averages 30 trials and finds a mean gap of only 0.0076 (std 0.0078).
+**Reproduce:** Closed-book, write the nested loop for an RBF SVC over $`C \in \{1, 10, 100\}`$ and $`\gamma \in \{0.01, 0.1\}`$ on iris, with KFold(4, shuffle=True) inner (random_state=0) and outer (random_state=1) splits, and state which number is honest. Reference run: nested mean 0.9468 against non-nested best_score_ 0.9603. One trial is noisy: the docs example averages 30 trials and finds a mean gap of only 0.0076 (std 0.0078).
 
 **Traps**
 
@@ -2215,7 +2215,7 @@ A validation score that guided model choice is optimistic. The sampling unit dec
 
 1. When does an integer cv in cross_val_score stratify?
    - When the estimator is a classifier and y is binary or multiclass, it uses StratifiedKFold; otherwise plain KFold. Neither shuffles unless asked.
-2. You select C by CV and report the best CV score. What is wrong?
+2. You select $`C`$ by CV and report the best CV score. What is wrong?
    - Selection consumed the same scores, so the maximum is optimistic. Re-estimate with an outer loop (nested CV) or a sealed held-out set.
 3. Each patient contributes several rows. Why is plain KFold wrong, and what replaces it?
    - Rows from one patient land on both sides and leak identity. Split by patient with GroupKFold or LeaveOneGroupOut.
@@ -2234,23 +2234,23 @@ Accuracy and RMSE hide the errors that cost money. The matrix and the averaging 
 
 **You can now**
 
-- Derive MAE, RMSE, R2 and MAPE from residuals and state which error each one punishes.
+- Derive MAE, RMSE, $`R^2`$ and MAPE from residuals and state which error each one punishes.
 - Reconstruct precision, recall, F1 and support from a confusion matrix and choose macro, micro or weighted averaging deliberately.
 - Match the regression loss to the decision cost, including quantile (pinball) and relative-error losses.
 
 **Study**
 
-1. [Classification metrics: confusion matrix, report, precision and recall](https://scikit-learn.org/stable/modules/model_evaluation.html) (scikit-learn - model selection and evaluation route) - Sections 3.4.4.6 (confusion matrix rows are true classes, ravel order tn fp fn tp, normalize modes), 3.4.4.7 (classification report with support) and 3.4.4.9 (precision, recall, F measures and averaging rules). Depth: Skip top-k accuracy, kappa, Hamming and Jaccard unless your problem needs them.
-2. [Regression metrics including decision-weighted losses](https://scikit-learn.org/stable/modules/model_evaluation.html) (scikit-learn - model selection and evaluation route) - Sections 3.4.6.1 (R2, including the constant-mean 0.0 and negative cases), 3.4.6.2 and 3.4.6.3 (MAE, MSE, with RMSE via root_mean_squared_error), 3.4.6.5 (MAPE) and 3.4.6.10 (pinball loss). Depth: Skim Poisson, Gamma and Tweedie deviances. Read them fully only for count or skewed-positive targets.
+1. [Classification metrics: confusion matrix, report, precision and recall](https://scikit-learn.org/stable/modules/model_evaluation.html) (scikit-learn - model selection and evaluation route) - Sections 3.4.4.6 (confusion matrix rows are true classes, ravel order tn fp fn tp, normalize modes), 3.4.4.7 (classification report with support) and 3.4.4.9 (precision, recall, F measures and averaging rules). Depth: Skip top-$`k`$ accuracy, kappa, Hamming and Jaccard unless your problem needs them.
+2. [Regression metrics including decision-weighted losses](https://scikit-learn.org/stable/modules/model_evaluation.html) (scikit-learn - model selection and evaluation route) - Sections 3.4.6.1 ($`R^2`$, including the constant-mean 0.0 and negative cases), 3.4.6.2 and 3.4.6.3 (MAE, MSE, with RMSE via root_mean_squared_error), 3.4.6.5 (MAPE) and 3.4.6.10 (pinball loss). Depth: Skim Poisson, Gamma and Tweedie deviances. Read them fully only for count or skewed-positive targets.
 
 **Focus**
 
 - Rows of confusion_matrix are true classes; ravel gives tn, fp, fn, tp in that order.
-- R2 is 1 minus residual over total variance: 0.0 for the mean predictor, negative for worse-than-mean predictions.
+- $`R^2`$ is 1 minus residual over total variance: 0.0 for the mean predictor, negative for worse-than-mean predictions.
 - Macro averages classes equally, weighted averages by support, micro pools the counts. On imbalance they disagree, and the choice encodes costs.
-- Pinball loss at quantile tau prices over- and under-prediction asymmetrically; MAPE divides by the target, so near-zero targets dominate it.
+- Pinball loss at quantile $`\tau`$ prices over- and under-prediction asymmetrically; MAPE divides by the target, so near-zero targets dominate it.
 
-**Reproduce:** Closed-book, derive F1 as the harmonic mean of precision and recall and R2 as 1 minus SS_res over SS_tot. Compute F1 on y_true [0,0,0,1,1,1,1,1] with y_pred [0,1,0,1,0,1,0,1]: tn, fp, fn, tp is 2, 1, 2, 3, so precision is 0.75, recall is 0.6 and F1 is 0.667. Compute R2 on the guide's regression example, y_true [3, -0.5, 2, 7] with y_pred [2.5, 0.0, 2, 8]: 0.949.
+**Reproduce:** Closed-book, derive F1 as the harmonic mean of precision and recall and $`R^2`$ as 1 minus $`SS_{\text{res}}`$ over $`SS_{\text{tot}}`$. Compute F1 on y_true [0,0,0,1,1,1,1,1] with y_pred [0,1,0,1,0,1,0,1]: tn, fp, fn, tp is 2, 1, 2, 3, so precision is 0.75, recall is 0.6 and F1 is 0.667. Compute $`R^2`$ on the guide's regression example, y_true [3, -0.5, 2, 7] with y_pred [2.5, 0.0, 2, 8]: 0.949.
 
 **Traps**
 
@@ -2262,15 +2262,15 @@ Accuracy and RMSE hide the errors that cost money. The matrix and the averaging 
 
 - [scikit-learn worked examples: confusion matrix and classification report](https://scikit-learn.org/stable/modules/model_evaluation.html) - Reproduce the 3.4.4.6 ravel example (2, 1, 2, 3) and the 3.4.4.7 report (accuracy 0.60, macro average F1 0.49) by hand, then match with code. Do both by hand first. The macro average is the check that your averaging rule is right.
 
-**Stop when:** Your hand-computed matrix, report averages and R2 match sklearn on a fresh split, and you can defend the averaging rule from the class costs.
+**Stop when:** Your hand-computed matrix, report averages and $`R^2`$ match sklearn on a fresh split, and you can defend the averaging rule from the class costs.
 
 <details>
 <summary>Self-test</summary>
 
 1. tn, fp, fn, tp is 2, 1, 2, 3. What are precision, recall and F1?
-   - Precision 3/4 = 0.75, recall 3/5 = 0.6, F1 = 2(0.75)(0.6)/1.35 = 0.667.
-2. When is R2 negative, and what does that say?
-   - When SS_res exceeds SS_tot: the predictions are worse than the constant mean of the scored targets. On held-out data that can happen honestly, through overfitting or shift; in-sample, least squares with an intercept cannot go below 0.
+   - Precision $`3/4 = 0.75`$, recall $`3/5 = 0.6`$, $`\text{F1} = 2(0.75)(0.6)/1.35 = 0.667`$.
+2. When is $`R^2`$ negative, and what does that say?
+   - When $`SS_{\text{res}}`$ exceeds $`SS_{\text{tot}}`$: the predictions are worse than the constant mean of the scored targets. On held-out data that can happen honestly, through overfitting or shift; in-sample, least squares with an intercept cannot go below 0.
 3. Why can macro-F1 and weighted-F1 rank two models differently?
    - Macro weights classes equally so a rare class counts fully; weighted weights by support so the majority dominates. They encode different costs.
 4. Your target spans cents to millions. Why is RMSE alone a poor objective?
@@ -2325,7 +2325,7 @@ Ranking scores compare models across thresholds, but only proper scores judge th
 2. Prevalence drops 10x at fixed score distributions. What happens to ROC AUC and to average precision?
    - ROC AUC is unchanged because it conditions within each class. Precision at fixed recall falls, so average precision drops.
 3. Why does log loss explode on one confident error while Brier stays bounded?
-   - Log loss takes minus log of the true-class probability, unbounded as it goes to 0. Binary Brier is the squared error of the positive-class probability, at most 1 per item (the guide's halved form of the two-class sum).
+   - Log loss takes minus $`\log`$ of the true-class probability, unbounded as it goes to 0. Binary Brier is the squared error of the positive-class probability, at most 1 per item (the guide's halved form of the two-class sum).
 4. roc_curve returns thresholds starting at inf. Why is inf not an operating threshold?
    - The first point predicts nothing positive (FPR and TPR both 0). Inf sits above every score; the usable thresholds are the distinct scores.
 
@@ -2357,7 +2357,7 @@ Thresholds, costs and abstention all read probabilities. An uncalibrated 0.9 is 
 - Sigmoid fits a logistic slope and intercept: safe on small samples. Isotonic fits a free step function: stronger on large calibration sets, but flat steps tie scores and can move AUC.
 - Lower Brier or log loss does not prove better calibration. Both mix calibration with discrimination, so read the curve.
 
-**Reproduce:** Closed-book, simulate overconfident scores: default_rng(1), n = 4000, p uniform on [0.05, 0.95], y drawn as Bernoulli(p), score s = clip(0.5 + 2.2 (p - 0.5), 0.01, 0.99). Fit a one-feature logistic (Platt) map on the first 2000 rows and score the last 2000: Brier falls from 0.2130 to 0.1892 (slope 2.80, intercept -1.46 on the raw score). Bin the held-out half with sklearn.calibration.calibration_curve at 5 bins: the top bin predicts 0.964 while 0.776 are positive.
+**Reproduce:** Closed-book, simulate overconfident scores: default_rng(1), $`n = 4000`$, $`p`$ uniform on $`[0.05, 0.95]`$, $`y`$ drawn as $`\operatorname{Bernoulli}(p)`$, score $`s = \operatorname{clip}(0.5 + 2.2(p - 0.5), 0.01, 0.99)`$. Fit a one-feature logistic (Platt) map on the first 2000 rows and score the last 2000: Brier falls from 0.2130 to 0.1892 (slope 2.80, intercept -1.46 on the raw score). Bin the held-out half with sklearn.calibration.calibration_curve at 5 bins: the top bin predicts 0.964 while 0.776 are positive.
 
 **Traps**
 
@@ -2367,7 +2367,7 @@ Thresholds, costs and abstention all read probabilities. An uncalibrated 0.9 is 
 
 **Practice**
 
-- [Deep-ML 260: Calculate Expected Calibration Error (ECE)](https://www.deep-ml.com/problems/260) - Implement expected_calibration_error and pass both public tests ([0,1] with [0.0,1.0] gives 0.0; four 0.8-probability items with two positives give 0.3). Use equal-width bins, put p = 1.0 in the last bin, skip empty bins and weight by bin share. Then apply the same function to your Platt experiment above.
+- [Deep-ML 260: Calculate Expected Calibration Error (ECE)](https://www.deep-ml.com/problems/260) - Implement expected_calibration_error and pass both public tests ([0,1] with [0.0,1.0] gives 0.0; four 0.8-probability items with two positives give 0.3). Use equal-width bins, put $`p = 1.0`$ in the last bin, skip empty bins and weight by bin share. Then apply the same function to your Platt experiment above.
 
 **Stop when:** Your reliability table, ECE function and Platt versus isotonic comparison reproduce on held-out data, and the final test split is still sealed.
 
@@ -2395,7 +2395,7 @@ The default 0.5 threshold encodes equal costs that no deployment has. Imbalance 
 
 **You can now**
 
-- Derive the cost-optimal threshold t = C_FP / (C_FP + C_FN) for calibrated probabilities and set it with FixedThresholdClassifier.
+- Derive the cost-optimal threshold $`t = C_{\text{FP}} / (C_{\text{FP}} + C_{\text{FN}})`$ for calibrated probabilities and set it with FixedThresholdClassifier.
 - Tune a threshold with TunedThresholdClassifierCV without letting the tuning data leak into the report.
 - Specify a selective (reject-option) rule with a coverage target and report its risk-coverage tradeoff.
 - Predict how a prevalence shift moves precision, F1 and the operating threshold while ROC AUC stands still.
@@ -2408,12 +2408,12 @@ The default 0.5 threshold encodes equal costs that no deployment has. Imbalance 
 
 **Focus**
 
-- Predict positive when p times C_FN exceeds (1-p) times C_FP, so t = C_FP / (C_FP + C_FN). With miss cost 10 and false-alarm cost 1, the threshold is 1/11 = 0.091, not 0.5.
+- Predict positive when $`p`$ times $`C_{\text{FN}}`$ exceeds $`(1-p)`$ times $`C_{\text{FP}}`$, so $`t = C_{\text{FP}} / (C_{\text{FP}} + C_{\text{FN}})`$. With miss cost 10 and false-alarm cost 1, the threshold is 1/11 = 0.091, not 0.5.
 - TunedThresholdClassifierCV moves only the threshold by internal CV. When the vanilla model was fit on the same data with the same seed, predict_proba, and so the ROC and PR curves, are identical before and after.
-- The reject rule is a second threshold: abstain when max(p, 1-p) is below 1 minus reject-cost over error-cost, then report risk at the achieved coverage.
+- The reject rule is a second threshold: abstain when $`\max(p, 1-p)`$ is below 1 minus reject-cost over error-cost, then report risk at the achieved coverage.
 - At fixed class-conditional score distributions, a prevalence shift moves precision and F1 but not recall, FPR or ROC AUC. The cost-optimal cutoff on the old scores moves too, because the calibrated probabilities change with the base rate.
 
-**Reproduce:** Closed-book, derive t = C_FP / (C_FP + C_FN) and apply it at 10:1 costs (threshold 0.091). Then build make_classification(n_samples=4000, weights=[0.9, 0.1], class_sep=0.8, random_state=0), split 75/25 stratified with random_state=0, fit LogisticRegression on train and wrap it in FixedThresholdClassifier(FrozenEstimator(model), threshold=t). On the 1000 test rows (105 positives) recall rises from 0.238 at 0.5 to 0.714 at 0.2 and 0.848 at 1/11, while precision falls from 0.581 to 0.446 and 0.302.
+**Reproduce:** Closed-book, derive $`t = C_{\text{FP}} / (C_{\text{FP}} + C_{\text{FN}})`$ and apply it at 10:1 costs (threshold 0.091). Then build make_classification(n_samples=4000, weights=[0.9, 0.1], class_sep=0.8, random_state=0), split 75/25 stratified with random_state=0, fit LogisticRegression on train and wrap it in FixedThresholdClassifier(FrozenEstimator(model), threshold=t). On the 1000 test rows (105 positives) recall rises from 0.238 at 0.5 to 0.714 at 0.2 and 0.848 at 1/11, while precision falls from 0.581 to 0.446 and 0.302.
 
 **Traps**
 
@@ -2430,12 +2430,12 @@ The default 0.5 threshold encodes equal costs that no deployment has. Imbalance 
 <details>
 <summary>Self-test</summary>
 
-1. Miss cost 10, false-alarm cost 1, calibrated p = 0.2. Predict positive or not, and why?
+1. Miss cost 10, false-alarm cost 1, calibrated $`p = 0.2`$. Predict positive or not, and why?
    - Predict positive: the expected miss cost 0.2 times 10 = 2 exceeds the false-alarm cost 0.8 times 1 = 0.8. Equivalently, 0.2 exceeds 1/11.
 2. Why do the tuned and vanilla classifiers share ROC curves?
    - Tuning moves only the decision threshold while predict_proba is untouched, so every threshold sweep (ROC, PR) is identical.
 3. Reject cost 0.2, error cost 1. When do you abstain?
-   - When max(p, 1-p) is below 0.8: the cheapest guess has error probability above the price of abstaining.
+   - When $`\max(p, 1-p)`$ is below 0.8: the cheapest guess has error probability above the price of abstaining.
 4. Prevalence halves at fixed score quality. Which metrics move?
    - Precision and F1 fall; recall, FPR and ROC AUC hold. Any threshold tuned for the old base rate must be re-derived.
 
@@ -2458,8 +2458,8 @@ Two models sharing a test set produce correlated scores. Unpaired uncertainty is
 **Study**
 
 1. [The Bootstrap and paired-sample permutation tests](https://docs.scipy.org/doc/scipy/tutorial/stats/resampling.html) (SciPy - Resampling and Monte Carlo methods tutorials) - The notebooks linked from this page: Tutorial 3 (The Bootstrap: scipy.stats.bootstrap with paired=True, BCa and percentile intervals, standard errors) and Tutorial 2b (Paired-Sample Permutation Tests: permutation_test with permutation_type='samples'). Depth: Stay inside Tutorials 2b and 3. The independent-sample and Monte Carlo tutorials solve different comparisons.
-2. [ISLP Chapter 5 lab: the bootstrap standard error](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch05-resample-lab.ipynb) (ISLP - resampling and multiple testing) - The Bootstrap (Portfolio alpha standard error 0.0912 via boot_SE with B=1000 and seed 0, then the linear-regression coefficient SEs).
-3. [ISLP Chapter 13 lab: FWER, FDR and the double-dip](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch13-multiple-lab.ipynb) (ISLP - resampling and multiple testing) - Family-Wise Error Rate (Bonferroni rejects only Manager One; Holm rejects Managers One and Three at FWER 0.05; the best-versus-worst paired test at p = 0.038 rises to 0.186 under Tukey's method) and False Discovery Rate (Benjamini-Hochberg on all 2,000 managers).
+2. [ISLP Chapter 5 lab: the bootstrap standard error](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch05-resample-lab.ipynb) (ISLP - resampling and multiple testing) - The Bootstrap (Portfolio $`\alpha`$ standard error 0.0912 via boot_SE with B=1000 and seed 0, then the linear-regression coefficient SEs).
+3. [ISLP Chapter 13 lab: FWER, FDR and the double-dip](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch13-multiple-lab.ipynb) (ISLP - resampling and multiple testing) - Family-Wise Error Rate (Bonferroni rejects only Manager One; Holm rejects Managers One and Three at FWER 0.05; the best-versus-worst paired test at $`p = 0.038`$ rises to 0.186 under Tukey's method) and False Discovery Rate (Benjamini-Hochberg on all 2,000 managers).
 
 **Focus**
 
@@ -2468,17 +2468,17 @@ Two models sharing a test set produce correlated scores. Unpaired uncertainty is
 - Pairing shrinks intervals. In the reproduce simulation a 4.8-point gap on 500 items has a paired 95% interval about 0.038 wide, against about 0.120 when each model is resampled on its own, which then covers zero.
 - Every tuned, selected or re-run comparison spends error budget. Record the search history and report Holm (FWER) or BH (FDR) adjustments beside raw p-values and effect sizes.
 
-**Reproduce:** Closed-book, implement a paired bootstrap for an accuracy difference (one index stream for both models, 9999 resamples, percentile interval) plus a paired permutation test. Simulate shared difficulty: default_rng(0), u uniform on 500 items, model A right when u < 0.70 and model B when u < 0.65, so B's hits are a subset of A's, the strongest pairing. Accuracies are 0.662 and 0.614; expect a paired interval near [0.030, 0.068] against near [-0.010, 0.110] when each model is resampled independently.
+**Reproduce:** Closed-book, implement a paired bootstrap for an accuracy difference (one index stream for both models, 9999 resamples, percentile interval) plus a paired permutation test. Simulate shared difficulty: default_rng(0), $`u`$ uniform on 500 items, model $`A`$ right when $`u < 0.70`$ and model $`B`$ when $`u < 0.65`$, so $`B`$'s hits are a subset of $`A`$'s, the strongest pairing. Accuracies are 0.662 and 0.614; expect a paired interval near [0.030, 0.068] against near [-0.010, 0.110] when each model is resampled independently.
 
 **Traps**
 
 - Bootstrapping each model's scores with its own rng stream. Unpaired resampling destroys the pairing and inflates the interval.
 - Using permutation_type='pairings' (or 'independent') for a paired model comparison. That tests correlation (or cross-group exchangeability), not the mean paired difference.
-- Reporting the winning p-value after many seeds, splits or metrics. In the ISLP Fund lab the best-versus-worst managers, picked after looking, give p = 0.038; Tukey's method over the implied 10 comparisons raises it to 0.186.
+- Reporting the winning p-value after many seeds, splits or metrics. In the ISLP Fund lab the best-versus-worst managers, picked after looking, give $`p = 0.038`$; Tukey's method over the implied 10 comparisons raises it to 0.186.
 
 **Practice**
 
-- [ISLP Ch05 lab: bootstrap standard errors](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch05-resample-lab.ipynb) - Reproduce alpha SE 0.0912 (B=1000, seed 0) and the OLS bootstrap SEs from The Bootstrap
+- [ISLP Ch05 lab: bootstrap standard errors](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch05-resample-lab.ipynb) - Reproduce $`\alpha`$ SE 0.0912 (B=1000, seed 0) and the OLS bootstrap SEs from The Bootstrap
 - [ISLP Ch13 lab: Bonferroni, Holm and Benjamini-Hochberg](https://github.com/intro-stat-learning/ISLP_labs/blob/main/Ch13-multiple-lab.ipynb) - Reproduce the Bonferroni and Holm verdicts (only Manager One, then One plus Three at FWER 0.05), the Tukey adjustment from 0.038 to 0.186, and the Benjamini-Hochberg rejections on all 2,000 managers. Run both labs before your own paired comparison, then report it with an effect size and a comparison count.
 
 **Stop when:** Your paired bootstrap and permutation test agree on a model comparison, the interval uses one index stream, and every p-value ships with an effect size and a comparison count.
@@ -2490,10 +2490,10 @@ Two models sharing a test set produce correlated scores. Unpaired uncertainty is
    - Scores on the same items correlate through item difficulty. Identical indices keep the pairing, so shared difficulty cancels in the difference; independent streams add it as noise.
 2. Which permutation_type tests a paired accuracy difference, and what does it shuffle?
    - 'samples': within each pair it swaps the two models' outcomes (sign flips). The null is a zero mean paired difference.
-3. Your paired interval is [0.030, 0.068] and the permutation p is 0.0002 from 9999 resamples. What do you report?
-   - A 3.0-to-6.8 point gain (observed 4.8) separated from zero, the effect size, the count of comparisons that preceded it, and p below 0.001. With 9999 resamples 0.0002 is the smallest two-sided p the test can return, so it is a floor, not a measurement.
-4. After 20 metric looks, one comparison gives p = 0.03. Ship it?
-   - No. With 20 looks the family-wise error is near 1 minus 0.97^20 = 0.46. Adjust with Holm or BH, or pre-register the primary comparison, and report the effect size either way.
+3. Your paired interval is [0.030, 0.068] and the permutation $`p`$ is 0.0002 from 9999 resamples. What do you report?
+   - A 3.0-to-6.8 point gain (observed 4.8) separated from zero, the effect size, the count of comparisons that preceded it, and $`p`$ below 0.001. With 9999 resamples 0.0002 is the smallest two-sided $`p`$ the test can return, so it is a floor, not a measurement.
+4. After 20 metric looks, one comparison gives $`p = 0.03`$. Ship it?
+   - No. With 20 looks the family-wise error is near 1 minus $`0.97^{20}`$ = 0.46. Adjust with Holm or BH, or pre-register the primary comparison, and report the effect size either way.
 
 </details>
 
@@ -2520,10 +2520,10 @@ Aggregate scores average away the slice that fails. Curves say whether to buy da
 
 - Both scores low means bias (capacity or features); train high with validation low means variance. Validation above train is rare and usually means the two are measured differently: augmentation or dropout at train time, an easier or tiny validation split, or leakage.
 - Never tune on the validation curve's peak and report that peak. The curve diagnoses; a fresh split evaluates.
-- Every slice needs its support count beside the rate: 100% error on n=3 is a hint, not a finding.
+- Every slice needs its support count beside the rate: 100% error on $`n=3`$ is a hint, not a finding.
 - Slice by deployment axes (source, time, subgroup), not by the model's own confidence alone, or the taxonomy confirms itself.
 
-**Reproduce:** Closed-book, run learning_curve for LogisticRegression(max_iter=2000) on digits with train_sizes [0.1, 0.5, 1.0] and cv=3 (119, 599 and 1198 training rows) and read the regime. Reference run: train 1.00 at every size, validation 0.823, 0.918, 0.926, so variance at small n with a closing gap. Then tabulate one error slice with support counts.
+**Reproduce:** Closed-book, run learning_curve for LogisticRegression(max_iter=2000) on digits with train_sizes [0.1, 0.5, 1.0] and cv=3 (119, 599 and 1198 training rows) and read the regime. Reference run: train 1.00 at every size, validation 0.823, 0.918, 0.926, so variance at small $`n`$ with a closing gap. Then tabulate one error slice with support counts.
 
 **Traps**
 
@@ -2535,17 +2535,17 @@ Aggregate scores average away the slice that fails. Curves say whether to buy da
 
 - [scikit-learn learning-curve digits check](https://scikit-learn.org/stable/auto_examples/model_selection/plot_learning_curve.html) - Reproduce the Naive Bayes versus SVC learning-curve comparison on digits and state the bias or variance reading for each panel. Match the qualitative pattern (flat low Naive Bayes, converging SVM), not pixel values. Then repeat on your own data with support-counted slices.
 
-**Stop when:** Your curve reading names bias or variance with the numbers that show it, and every slice claim carries n and an interval.
+**Stop when:** Your curve reading names bias or variance with the numbers that show it, and every slice claim carries $`n`$ and an interval.
 
 <details>
 <summary>Self-test</summary>
 
-1. Train 1.00 with validation 0.82 at small n, then 1.00 with 0.93 at full n. Diagnosis?
+1. Train 1.00 with validation 0.82 at small $`n`$, then 1.00 with 0.93 at full $`n`$. Diagnosis?
    - Variance-dominated with a closing gap: more data helped and the model still memorizes train. Some overfit remains, so try regularization, not just data.
 2. Both curves sit flat at 0.70 from 10% to 100% of data. Next step?
    - Bias: capacity or features are the ceiling. More of the same data will not move it, so change the model or the representation.
 3. Slice A is 2/3 wrong. Slice B is 40/400 wrong. Which finding is stronger?
-   - B: 10% error on n=400 has a tight interval, while 67% on n=3 is noise. Report both with counts and intervals.
+   - B: 10% error on $`n=400`$ has a tight interval, while 67% on $`n=3`$ is noise. Report both with counts and intervals.
 4. Why slice by source or time rather than by low model confidence?
    - Confidence slices re-select the model's own failures and cannot show where deployment breaks. Source and time slices test the deployment axes.
 
@@ -2582,7 +2582,7 @@ Importance and dependence plots describe what the fitted model leans on, not wha
 **Traps**
 
 - Dropping unimportant correlated features one at a time. Partners cover for each other, so remove the cluster or nothing.
-- Reading a PDP slope as raising X raises Y. PDP shows model output on constructed rows with complement values borrowed from other rows; no intervention happened.
+- Reading a PDP slope as raising $`X`$ raises $`Y`$. PDP shows model output on constructed rows with complement values borrowed from other rows; no intervention happened.
 - Quoting MDI importances as feature truth. They are computed on training splits during fitting and biased toward fine-grained splitters.
 
 **Practice**
@@ -2594,7 +2594,7 @@ Importance and dependence plots describe what the fitted model leans on, not wha
 <details>
 <summary>Self-test</summary>
 
-1. Permutation importance of x1 and x2 (correlation 0.95) is near zero for both, yet dropping both tanks the score. Explain.
+1. Permutation importance of $`x_1`$ and $`x_2`$ (correlation 0.95) is near zero for both, yet dropping both tanks the score. Explain.
    - The fitted model reads the same signal through both columns, so shuffling one leaves the partner carrying most of it and each drop looks small. Removing both removes the signal. Cluster correlated features and judge the cluster.
 2. Why must permutation importance run on a held-out set with a decent model?
    - On training data it measures memorization leverage, and on a bad model the reference score is meaningless. Held-out drops measure reliance that generalizes.
@@ -2621,18 +2621,18 @@ Test error assumes tomorrow looks like yesterday. Each shift type breaks a diffe
 
 **Study**
 
-1. [D2L Section 4.7: shift types and corrections](https://d2l.ai/chapter_linear-classification/environment-and-distribution-shift.html) (D2L - Environment and Distribution Shift) - Types (covariate: P(y|x) fixed with p(x) moved; label: P(y) moved with P(x|y) fixed; concept: P(y|x) moved), Correction (importance weights beta = p(x)/q(x) via a domain classifier, the label-shift confusion-matrix solve) and Taxonomy (batch versus online deployment). Depth: Skim the anecdotes and fairness sections. Work the math in Correction.
+1. [D2L Section 4.7: shift types and corrections](https://d2l.ai/chapter_linear-classification/environment-and-distribution-shift.html) (D2L - Environment and Distribution Shift) - Types (covariate: $`P(y \mid x)`$ fixed with $`p(x)`$ moved; label: $`P(y)`$ moved with $`P(x \mid y)`$ fixed; concept: $`P(y \mid x)`$ moved), Correction (importance weights $`\beta = p(x)/q(x)`$ via a domain classifier, the label-shift confusion-matrix solve) and Taxonomy (batch versus online deployment). Depth: Skim the anecdotes and fairness sections. Work the math in Correction.
 2. [D2L 4.7 Exercises: detector and corrector](https://d2l.ai/chapter_linear-classification/environment-and-distribution-shift.html) (D2L - Environment and Distribution Shift) - Exercises 2 and 3: implement a covariate shift detector (hint: build a classifier) and a covariate shift corrector.
 3. [Shift probes, label delay and monitoring design](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/classical-ml-scientific-investigation.md#core-requirements) (Classical ML Scientific Investigation) - Milestones C (shift probes) and E (slices with paired uncertainty), failure injection (label delay, shifted prevalence, group overlap) and the monitoring-design stretch goal.
 
 **Focus**
 
-- Name the moving piece: covariate moves p(x), label moves p(y), concept moves P(y|x). The detector and the fix follow the name.
-- Covariate correction reweights by beta = p_test(x)/p_train(x), estimated as exp(h(x)) from a train-versus-test logistic domain classifier on equal sample counts (otherwise scale by the count ratio), capped as min(exp(h), c). It needs train support everywhere test reaches.
-- Label shift solves mean-test-predictions equals confusion-matrix times new priors. It needs P(x|y) fixed and a validated confusion matrix.
+- Name the moving piece: covariate moves $`p(x)`$, label moves $`p(y)`$, concept moves $`P(y \mid x)`$. The detector and the fix follow the name.
+- Covariate correction reweights by $`\beta = p_{\text{test}}(x)/p_{\text{train}}(x)`$, estimated as $`\exp(h(x))`$ from a train-versus-test logistic domain classifier on equal sample counts (otherwise scale by the count ratio), capped as $`\min(\exp(h), c)`$. It needs train support everywhere test reaches.
+- Label shift solves mean-test-predictions equals confusion-matrix times new priors. It needs $`P(x \mid y)`$ fixed and a validated confusion matrix.
 - Data drift without performance drift is a warning, not a failure. With label delay, performance drift stays unobservable until labels land, so monitor input drift and slice volumes meanwhile.
 
-**Reproduce:** Closed-book, simulate a covariate shift on a toy problem (train on one x-range, test shifted), train the domain classifier, compute capped weights beta = min(exp(h), c), and show the weighted error estimate moving toward the test error.
+**Reproduce:** Closed-book, simulate a covariate shift on a toy problem (train on one $`x`$-range, test shifted), train the domain classifier, compute capped weights $`\beta = \min(\exp(h), c)`$, and show the weighted error estimate moving toward the test error.
 
 **Traps**
 
@@ -2650,11 +2650,11 @@ Test error assumes tomorrow looks like yesterday. Each shift type breaks a diffe
 <summary>Self-test</summary>
 
 1. Cat photos train, cartoon cats test. Which shift, and what stays fixed?
-   - Covariate shift: P(y|x), what makes a cat a cat, is fixed while p(x) moved. Reweight or adapt features; the labeling rule stands.
+   - Covariate shift: $`P(y \mid x)`$, what makes a cat a cat, is fixed while $`p(x)`$ moved. Reweight or adapt features; the labeling rule stands.
 2. Disease prevalence doubles with identical symptoms per disease. Which shift, and what is the fix?
-   - Label shift: P(y) moved with P(x|y) fixed. Estimate the new priors with the confusion-matrix solve and reweight by the prior ratio.
+   - Label shift: $`P(y)`$ moved with $`P(x \mid y)`$ fixed. Estimate the new priors with the confusion-matrix solve and reweight by the prior ratio.
 3. Spammers keep crafting messages unlike anything seen before, month after month. Which kind of shift, and what helps?
-   - Nonstationary, adversarial drift, D2L's spam example. p(x) moves into regions training never covered, and where spam imitates normal mail P(y|x) moves too, so it is not a clean covariate shift. Reweighting cannot help without support; relabel recent data and retrain on a schedule.
+   - Nonstationary, adversarial drift, D2L's spam example. $`p(x)`$ moves into regions training never covered, and where spam imitates normal mail $`P(y \mid x)`$ moves too, so it is not a clean covariate shift. Reweighting cannot help without support; relabel recent data and retrain on a schedule.
 4. Input drift alarms fire but held-out accuracy holds. Ship or stop?
    - Neither yet: data drift without performance drift is a warning. Check slice volumes, label-delay horizons and support coverage before changing anything.
 

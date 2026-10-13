@@ -845,14 +845,14 @@ ML features and labels come from joins and aggregations. A misplaced WHERE turns
 7. [GROUP BY and HAVING](https://algomaster.io/learn/sql-interview/group-by-and-having) (AlgoMaster SQL - selected route) - The SELECT Rule with MySQL's Relaxed GROUP BY; HAVING: Filtering Groups; WHERE vs HAVING; SQL Execution Order with GROUP BY and HAVING; GROUP BY with Joins: What Gets Grouped.
 8. [Common Table Expressions](https://algomaster.io/learn/sql-interview/common-table-expressions) (AlgoMaster SQL - selected route) - CTE Syntax; Multiple CTEs; CTEs vs Subqueries vs Derived Tables; Materialization Behavior.
 9. [Introduction to Window Functions](https://algomaster.io/learn/sql-interview/introduction-to-window-functions) (AlgoMaster SQL - selected route) - Window Functions vs GROUP BY; PARTITION BY; Combining PARTITION BY and ORDER BY; Default Frame Behavior.
-10. [ROW_NUMBER](https://algomaster.io/learn/sql-interview/row-number) (AlgoMaster SQL - selected route) - Deduplication with ROW_NUMBER; Top-N Per Group; ROW_NUMBER vs RANK vs DENSE_RANK.
+10. [ROW_NUMBER](https://algomaster.io/learn/sql-interview/row-number) (AlgoMaster SQL - selected route) - Deduplication with ROW_NUMBER; Top-$`N`$ Per Group; ROW_NUMBER vs RANK vs DENSE_RANK.
 
 **Focus**
 
 - NULL never equals anything, not even NULL. Use IS NULL and IS NOT NULL; COUNT(column) skips nulls while COUNT(*) does not.
 - ON filters before the outer join adds its nulls, WHERE filters after. A WHERE condition on the right table silently converts LEFT JOIN to INNER JOIN.
 - GROUP BY grain decides counts: aggregate at the wrong grain and rows duplicate or vanish. HAVING filters groups after aggregation, WHERE filters rows before.
-- Window functions keep row identity while GROUP BY collapses rows. ROW_NUMBER with PARTITION BY gives top-N per group without losing the row.
+- Window functions keep row identity while GROUP BY collapses rows. ROW_NUMBER with PARTITION BY gives top-$`N`$ per group without losing the row.
 
 **Reproduce:** Closed-book, on artists, tracks and streams tables: return every track with its stream count including zeros, per-artist totals with HAVING, and the top track per artist with ROW_NUMBER. Predict each row count before running.
 
@@ -895,7 +895,7 @@ Concurrent writers share your tables. Without explicit transactions and a chosen
 
 - Explain commit, rollback, savepoints and the PostgreSQL isolation anomaly table, including where PostgreSQL exceeds the standard.
 - Demonstrate one isolation anomaly or prevented anomaly on the live database at a named isolation level with the interleaving written out.
-- Draw the ORM transaction boundary with Session, identity map and eager loading, and fix one N+1 with selectinload.
+- Draw the ORM transaction boundary with Session, identity map and eager loading, and fix one $`N+1`$ with selectinload.
 
 **Study**
 
@@ -923,13 +923,13 @@ Concurrent writers share your tables. Without explicit transactions and a chosen
 
 - REPEATABLE READ equals serializable. It does not: serialization anomalies are still possible, and only SERIALIZABLE plus retry logic on SQLSTATE 40001 prevents them.
 - No retry loop on serialization failures. Concurrent writers make these routine, not exceptional; abort and rerun the whole transaction.
-- Touching relationships after session close is free. Lazy loading fires one SELECT per parent (N+1) inside a session and fails outside it; use selectinload or joinedload and guard with raiseload.
+- Touching relationships after session close is free. Lazy loading fires one SELECT per parent ($`N+1`$) inside a session and fails outside it; use selectinload or joinedload and guard with raiseload.
 
 **Practice**
 
 - [PostgreSQL tutorial transactions: bank transfer with savepoints](https://www.postgresql.org/docs/current/tutorial-transactions.html) - Section 3.4: the transfer with BEGIN, COMMIT and ROLLBACK plus the savepoint example. Replay on a scratch PostgreSQL 18 database (a throwaway postgres:18 container works): wrap a three-statement transfer with one bad statement, roll back, and show balances unchanged. Then run the reproduce interleaving, record both reads, and have session A update the row to see the 40001 error.
 
-**Stop when:** The transfer rollback leaves balances unchanged, the REPEATABLE READ interleaving prints 100 then 200 and an update in session A raises 40001, and the N+1 conversion shows N+1 statements before and 2 after.
+**Stop when:** The transfer rollback leaves balances unchanged, the REPEATABLE READ interleaving prints 100 then 200 and an update in session A raises 40001, and the $`N+1`$ conversion shows $`N+1`$ statements before and 2 after.
 
 <details>
 <summary>Self-test</summary>
@@ -940,8 +940,8 @@ Concurrent writers share your tables. Without explicit transactions and a chosen
    - PostgreSQL READ UNCOMMITTED behaves as READ COMMITTED, and REPEATABLE READ has no phantom reads. Both guarantees are stronger than the standard minimums.
 3. A REPEATABLE READ update raises could not serialize access due to concurrent update. What does the application do?
    - Roll back and retry the whole transaction from the beginning. The retried transaction sees the committed change in its new snapshot.
-4. Loading N parents then touching children issues how many statements under lazy loading, and after selectinload?
-   - N+1 under lazy loading. With selectinload, one for the parents plus one IN query per 500 parent keys: 2 for 10 parents, 4 for 1200. Verified on SQLAlchemy 2.1.4.
+4. Loading $`N`$ parents then touching children issues how many statements under lazy loading, and after selectinload?
+   - $`N+1`$ under lazy loading. With selectinload, one for the parents plus one IN query per 500 parent keys: 2 for 10 parents, 4 for 1200. Verified on SQLAlchemy 2.1.4.
 
 </details>
 
@@ -964,7 +964,7 @@ A missing index turns a lookup into a full scan, and a wrong index taxes writes 
 1. [How Indexes Work](https://algomaster.io/learn/sql-interview/how-indexes-work) (AlgoMaster SQL - selected route) - How Databases Find Rows Without an Index; B-Tree Indexes (equality, range, sorted output); Hash Indexes; Index Overhead: The Trade-offs; Selectivity: When Indexes Actually Help; Common Mistakes.
 2. [Composite, Partial and Covering Indexes](https://algomaster.io/learn/sql-interview/composite-partial-covering-indexes) (AlgoMaster SQL - selected route) - Composite Indexes (The Leftmost Prefix Rule, Column Order Guidelines); Partial Indexes; Covering Indexes with INCLUDE; skim GIN and GiST Indexes.
 3. [EXPLAIN and Execution Plans](https://algomaster.io/learn/sql-interview/explain-and-execution-plans) (AlgoMaster SQL - selected route) - EXPLAIN vs EXPLAIN ANALYZE; Reading a Plan: Cost Fields; Scan Types (sequential, index, index only, bitmap); Join Strategies; Identifying Bottlenecks.
-4. [Query Optimization and Anti-Patterns](https://algomaster.io/learn/sql-interview/query-optimization-anti-patterns) (AlgoMaster SQL - selected route) - Anti-Patterns 1 to 4: Functions on Indexed Columns, Implicit Type Conversions, SELECT * in Production, OR Conditions That Prevent Index Usage; Anti-Pattern 6: The N+1 Query Problem.
+4. [Query Optimization and Anti-Patterns](https://algomaster.io/learn/sql-interview/query-optimization-anti-patterns) (AlgoMaster SQL - selected route) - Anti-Patterns 1 to 4: Functions on Indexed Columns, Implicit Type Conversions, SELECT * in Production, OR Conditions That Prevent Index Usage; Anti-Pattern 6: The $`N+1`$ Query Problem.
 5. [PostgreSQL 14.1 Using EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html#USING-EXPLAIN-BASICS) (PostgreSQL transactions and EXPLAIN) - 14.1.1 EXPLAIN Basics: the sequential-scan cost as pages times seq_page_cost plus rows times cpu_tuple_cost, plus cpu_operator_cost per row for a WHERE check; 14.1.2 EXPLAIN ANALYZE; 14.1.3 Caveats.
 
 **Focus**
@@ -1292,7 +1292,7 @@ Examples check the inputs you thought of. Properties check the inputs you did no
 - Shrinking minimizes the failing case automatically. The report shows the minimal input, not the first one found.
 - The database replays past failures before generating new ones. Pin durable cases with @example; a @reproduce_failure blob is opaque and version-fragile, so convert it promptly.
 
-**Reproduce:** Run a @given(st.integers(min_value=0)) test asserting n < 50 with max_examples=200: it fails and reports n=50, the minimal failure, in well under a second on a 12th Gen Intel Core i9-12900K with Python 3.14.4 and Hypothesis 6.169.0. Run it again and it replays n=50 from the .hypothesis database. Add derandomize=True, delete .hypothesis, rerun, and see the database stay empty. Then assert sorted(sorted(xs)) == sorted(xs) over st.lists(st.integers()) and count 200 examples.
+**Reproduce:** Run a @given(st.integers(min_value=0)) test asserting $`n < 50`$ with max_examples=200: it fails and reports $`n=50`$, the minimal failure, in well under a second on a 12th Gen Intel Core i9-12900K with Python 3.14.4 and Hypothesis 6.169.0. Run it again and it replays $`n=50`$ from the .hypothesis database. Add derandomize=True, delete .hypothesis, rerun, and see the database stay empty. Then assert sorted(sorted(xs)) == sorted(xs) over st.lists(st.integers()) and count 200 examples.
 
 **Traps**
 
@@ -1302,7 +1302,7 @@ Examples check the inputs you thought of. Properties check the inputs you did no
 
 **Practice**
 
-- [Hypothesis quickstart failing test](https://hypothesis.readthedocs.io/en/latest/quickstart.html) - Running in a test suite: the assert n < 50 example. Run it, read the shrunk n=50 report, then convert the case to @example.
+- [Hypothesis quickstart failing test](https://hypothesis.readthedocs.io/en/latest/quickstart.html) - Running in a test suite: the assert $`n < 50`$ example. Run it, read the shrunk $`n=50`$ report, then convert the case to @example.
 - [Hypothesis rule-based state machines: DatabaseComparison](https://hypothesis.readthedocs.io/en/latest/stateful.html) - Rule-based state machines: the DatabaseComparison example with add_key, save, delete and values_agree. Rebuild it against a dict-backed store of your own and run at least 50 examples.
 
 **Stop when:** Your property suite fails on a seeded bug with a one-line minimal case, and every durable failure exists as @example with the database replay passing.
@@ -1310,7 +1310,7 @@ Examples check the inputs you thought of. Properties check the inputs you did no
 <details>
 <summary>Self-test</summary>
 
-1. Hypothesis tried a large integer first but reports n=50. Why?
+1. Hypothesis tried a large integer first but reports $`n=50`$. Why?
    - Shrinking. After finding a failure it searches for the smallest input that still fails, so the report shows the minimal case.
 2. When should a failing case live in @example rather than the database?
    - For every durable regression. The database is a local directory that can go stale across versions, and derandomize=True, which the built-in ci profile sets, turns it off, while @example runs on every machine in the explicit phase.
@@ -1667,7 +1667,7 @@ A result that needs your laptop to reproduce is a rumor. Locks plus manifests pl
 1. Add params_hash(params), the SHA-256 of a canonical JSON form that keys a run's outputs, and a plan(tasks, deps) that orders tasks by dependency. Test params_hash with parametrized boundary cases (empty, nested, non-ASCII keys), use a tmp_path fixture for run directories and monkeypatch the TASKRUNNER_ environment. Check plan with an independent oracle: every dependency edge is respected and each task appears once, rather than one expected order, and plan rejects exactly the inputs graphlib.TopologicalSorter rejects with CycleError. Run each test alone by node id too.
 2. Seed the hashing defect: canonicalize with json.dumps(params) without sort_keys. Write the Hypothesis property that two dicts with the same items in different insertion order hash equally, over st.dictionaries(st.text(), st.integers()). On Hypothesis 6.169.0 it fails and shrinks to a two-key dict such as {'': 0, '0': 0}. Pin the shrunk case with @example, fix with sort_keys=True and fixed separators, and add a ci profile with derandomize=True.
 3. Seed a flaky test: taskrunner list returns list(set(names)), and the test expects list_tasks(['build', 'test', 'lint', 'build']) == ['build', 'lint', 'test']. Run it in 100 fresh processes: on CPython 3.14.4, 83 of 100 failed because string hashing is randomized per process. PYTHONHASHSEED=2 passes and PYTHONHASHSEED=0 fails, so pinning the seed makes the outcome repeatable, not correct. Mark the test xfail(strict=True), fix with sorted(), watch the XPASS fail the suite, remove the mark and record 0 failures in 100 runs.
-4. Seed an off-by-one in taskrunner tail -n N so it prints N - 1 records. Before touching the code, write three competing hypotheses in a debugging log, each with the observation that would kill it. Confirm which module file is imported, set one breakpoint, read the distinguishing variable, fix, and add the regression test. Quote the tool output beside each rejected hypothesis.
+4. Seed an off-by-one in taskrunner tail -n N so it prints $`N - 1`$ records. Before touching the code, write three competing hypotheses in a debugging log, each with the observation that would kill it. Confirm which module file is imported, set one breakpoint, read the distinguishing variable, fix, and add the regression test. Quote the tool output beside each rejected hypothesis.
 5. Rebuild a regression from history: on a branch, make at least seven small commits where one breaks tail or params_hash, with a check script that exits 0 on good commits, 1 on bad ones and 125 on commits it cannot test. Run git bisect run with the script and record the commits it tested and the first bad commit. Then delete a branch and recover its tip from git reflog.
 6. Write scripts/run.sh as the shell entry for one task: set -euo pipefail, quoted arguments that survive a filename with spaces, a temporary directory removed by an EXIT trap, INT and TERM traps that exit 130 and 143, the task run as a child with & and wait $! so a TERM is handled at once, and separate stdout and stderr logs. Show that kill -TERM ends it with 143 and leaves no temporary directory.
 7. Lock the environment with uv lock and make the gate uv sync --locked && uv run pytest && uv run mypy --strict src. Show that adding a dependency without relocking makes uv sync --locked fail while plain uv sync rewrites the lock. Have every run write manifest.json with the git commit and dirty flag, the resolved config, input checksums, the seed, the uv.lock SHA-256 and output checksums, and diff two manifests to explain an output change.
@@ -1872,7 +1872,7 @@ A task that outlives its caller still consumes capacity. A retry that ignores ow
 
 1. [Async task lifecycle first pass](https://algomaster.io/learn/concurrency-interview/python-asyncio-fundamentals) (AlgoMaster Concurrency) - Error Handling: TaskGroup for Structured Concurrency (Python 3.11+); Cancellation; Timeout with asyncio.timeout (Python 3.11+). Depth: Use the 3.14 reference below for exact failure and cancellation semantics, not older gather-based ownership patterns.
 2. [CPython 3.14 task ownership and deadlines](https://docs.python.org/3.14/library/asyncio-task.html#task-groups) (Python concurrency documentation) - Task cancellation; Task groups and version-change notes; Timeouts: timeout and timeout_at; Running in threads: to_thread.
-3. [Retries are additional load](https://builder.aws.com/content/3EumjoZascWd1oZiEgL8ORlv3qE/timeouts-retries-and-backoff-with-jitter) (Timeouts, retries, and backoff with jitter) - Timeouts; Retries and backoff; Jitter. Depth: The five-layer example's 243 is 3^5 total attempts. Its phrase 'three retries' is inconsistent with that arithmetic; four attempts per layer would give 4^5 = 1024.
+3. [Retries are additional load](https://builder.aws.com/content/3EumjoZascWd1oZiEgL8ORlv3qE/timeouts-retries-and-backoff-with-jitter) (Timeouts, retries, and backoff with jitter) - Timeouts; Retries and backoff; Jitter. Depth: The five-layer example's 243 is $`3^5`$ total attempts. Its phrase 'three retries' is inconsistent with that arithmetic; four attempts per layer would give $`4^5 = 1024`$.
 
 **Focus**
 
@@ -1903,7 +1903,7 @@ A task that outlives its caller still consumes capacity. A retry that ignores ow
 2. Where do you catch asyncio.timeout's TimeoutError?
    - Outside its async with block. Inside, expiry is delivered through cancellation of the current task.
 3. Three total attempts at each of five retrying layers yield what worst-case leaf load?
-   - 3^5 = 243 leaf attempts for one original request. Three retries plus the initial attempt would instead yield 4^5 = 1024.
+   - $`3^5 = 243`$ leaf attempts for one original request. Three retries plus the initial attempt would instead yield $`4^5 = 1024`$.
 4. Does a timed-out write prove the server did not commit it?
    - No. Its outcome may be unknown. Retry only with a valid idempotency contract or reconcile the result first.
 
@@ -1932,7 +1932,7 @@ A queue turns a capacity mismatch into waiting and memory use. Bounding only the
 
 **Focus**
 
-- For W workers taking one item each and queue capacity Q, admitted unfinished items are at most W + Q only if there are no extra prefetches, detached retries or unbounded admission waiters. Bound payload bytes as well as item count.
+- For $`W`$ workers taking one item each and queue capacity $`Q`$, admitted unfinished items are at most $`W + Q`$ only if there are no extra prefetches, detached retries or unbounded admission waiters. Bound payload bytes as well as item count.
 - If arrival rate exceeds service rate, excess work must wait elsewhere or be rejected. A semaphore limits simultaneous work, not starts per second; rate limits and retry budgets protect a different constraint.
 - Queue.shutdown arrived in 3.13. Graceful shutdown rejects puts, wakes blocked putters and lets existing items drain. Call task_done once per successful get after recording the item's outcome; join tracks unfinished accounting, not business success.
 - On SIGTERM stop admission first, drain within a monotonic deadline, then cancel and await workers and report unfinished IDs. Immediate shutdown discards queued items; it is an abort policy, not a successful drain.
@@ -1954,8 +1954,8 @@ A queue turns a capacity mismatch into waiting and memory use. Bounding only the
 <details>
 <summary>Self-test</summary>
 
-1. What changes when lambda exceeds mu for a sustained interval?
-   - Without rejection, backlog grows roughly at lambda - mu items per second while capacity stays fixed. A bounded queue moves that pressure to admission.
+1. What changes when $`\lambda`$ exceeds $`\mu`$ for a sustained interval?
+   - Without rejection, backlog grows roughly at $`\lambda - \mu`$ items per second while capacity stays fixed. A bounded queue moves that pressure to admission.
 2. Is Queue(maxsize=0) a zero-capacity rendezvous?
    - No. In asyncio it is unbounded. Use a positive capacity and a separate admission policy.
 3. Does join prove every accepted item succeeded?
@@ -2734,8 +2734,8 @@ A safe native change must survive a clean build, not just a working terminal ses
 **About 12 to 16 hours.** Move one piece of taskrunner's reporting, the run-duration histogram, into C++ behind a strict Python boundary. Build it with CMake in debug, release and sanitizer trees, test it against NumPy as an oracle, document its layout and ABI, and follow a seeded memory error from the sanitizer report to a regression test.
 
 1. Write the core as a library function histogram(std::span<const double> x, double lo, double hi, std::span<std::int64_t> bins) that rejects lo >= hi or zero bins with std::invalid_argument, skips NaN and out-of-range values, and puts a value equal to hi in the last bin. Add an owning Histogram class with a deep copy, a move that leaves the source empty and bin access that throws std::out_of_range, and test copy independence, both moves and self-assignment in a native test executable.
-2. Seed the defect: drop the clamp so a value equal to hi computes index n. In a clang++ 21.1 tree built with -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer, the input {0.0, 0.5, 1.0} over [0, 1] with four bins reports heap-buffer-overflow, READ of size 8, 0 bytes after the 32-byte bins region, with the source line of the increment. Keep that input as a regression test expecting {1, 0, 1, 1}, restore the clamp, and on a repaired -O0 -g build use gdb (break histogram, run, bt, step to the index and print it) to connect the report to the frame.
-3. Use numpy.histogram as the oracle. The plain index (v - lo) / (hi - lo) * n agrees with it on random values, but values on or next to a bin edge expose a difference: with values at each np.linspace edge and its two neighbors over 20,000 random non-dyadic ranges, it disagreed with NumPy 2.5.4 in 18,420. NumPy re-checks each index against its computed edges, k * ((hi - lo) / n) + lo with the last edge exactly hi. Port that check (step down when v is below the lower edge, up when it reaches the next edge and is not in the last bin) for 0 disagreements, or document and test your own edge rule.
+2. Seed the defect: drop the clamp so a value equal to hi computes index $`n`$. In a clang++ 21.1 tree built with -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer, the input {0.0, 0.5, 1.0} over [0, 1] with four bins reports heap-buffer-overflow, READ of size 8, 0 bytes after the 32-byte bins region, with the source line of the increment. Keep that input as a regression test expecting {1, 0, 1, 1}, restore the clamp, and on a repaired -O0 -g build use gdb (break histogram, run, bt, step to the index and print it) to connect the report to the frame.
+3. Use numpy.histogram as the oracle. The plain index $`(v - \text{lo})/(\text{hi} - \text{lo}) \times n`$ agrees with it on random values, but values on or next to a bin edge expose a difference: with values at each np.linspace edge and its two neighbors over 20,000 random non-dyadic ranges, it disagreed with NumPy 2.5.4 in 18,420. NumPy re-checks each index against its computed edges, $`k \times ((\text{hi} - \text{lo})/n) + \text{lo}`$ with the last edge exactly hi. Port that check (step down when $`v`$ is below the lower edge, up when it reaches the next edge and is not in the last bin) for 0 disagreements, or document and test your own edge rule.
 4. Bind it with pybind11 3.1: take py::array_t<double, py::array::c_style> with .noconvert(), reject ndim != 1 and a data pointer not aligned to alignof(double) with ValueError, let pybind11 turn std::invalid_argument into ValueError, release the GIL only around the core call, and return a new int64 array owned by Python. Test that float32 input, a list, a[::2] and a[::-1] raise TypeError, that a 2-D array and an unaligned float64 view over a byte buffer at offset 1 raise ValueError, and that the result survives deletion of the input.
 5. Build with CMake 4.2: the core library, the native tests registered with add_test, and the extension through pybind11_add_module, in build-debug, build-release and a clang++ build-asan tree that adds the sanitizer flags to compiling and linking. Run the sanitizer tree on the native tests, not on the extension inside an unsanitized Python. A deliberately false check must fail CTest in Debug and Release, and cmake --install must not install the tests.
 6. Document the boundary: nm output for the core object and the extension (the exported PyInit_ symbol beside mangled C++ symbols), the extension suffix and the libraries ldd lists for it. Diagnose one failure from its message: an undefined reference when the tests link without the core library, or a core built as a shared library and run without it on the loader path, which exits 127 with error while loading shared libraries: ... cannot open shared object file while ldd shows not found.
