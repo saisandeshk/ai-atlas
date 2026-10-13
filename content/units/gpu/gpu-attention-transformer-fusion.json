@@ -8,7 +8,7 @@
       "name": "PyTorch SDPA contracts and integration tutorial",
       "provider": "PyTorch",
       "access": "Free",
-      "use": "PyTorch 2.14 SDPA API: mask polarity, rectangular causal alignment, GQA and backend limitations. Tutorial read 2026-10-13: Explicit Dispatcher Control, Causal Self Attention, Using SDPA with torch.compile and Using SDPA with attn_bias subclasses. Correct the tutorial's evaluation-time causal flag before integration.",
+      "use": "PyTorch 2.14 SDPA API: mask polarity, rectangular causal alignment, GQA and backend limitations. Tutorial read 2026-10-13: Explicit Dispatcher Control, Causal Self Attention, Using SDPA with `torch.compile` and Using SDPA with `attn_bias` subclasses. Correct the tutorial's evaluation-time causal flag before integration.",
       "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html"
     },
     {
@@ -28,7 +28,7 @@
       "name": "vLLM serving latency and goodput definitions",
       "provider": "vLLM Project",
       "access": "Free",
-      "use": "Documentation read 2026-10-13: Benchmark CLI, Understanding the Latency Metrics and Load Pattern Configuration; bench serve CLI, --goodput. Use definitions to translate kernel evidence into request metrics, not as a required serving-engine installation.",
+      "use": "Documentation read 2026-10-13: Benchmark CLI, Understanding the Latency Metrics and Load Pattern Configuration; serving benchmark CLI, goodput service-level objectives. Use definitions to translate kernel evidence into request metrics, not as a required serving-engine installation.",
       "url": "https://docs.vllm.ai/en/latest/benchmarking/cli/#understanding-the-latency-metrics"
     }
   ],
@@ -74,8 +74,8 @@
       ],
       "focus": [
         "For batch size \\(B\\), query heads \\(H_q\\), query length \\(L\\), key length \\(S\\) and equal key/value head width \\(d\\), scores have shape \\(B \\times H_q \\times L \\times S\\). Attention is \\(O = \\operatorname{softmax}(QK^\\top/\\sqrt{d})V\\), with softmax over keys.",
-        "Count the two dense matrix products as \\(4BH_qLSd\\) FLOPs, counting each multiply-add as two. Scaling, masking and softmax are additional work. Prefill has many query rows; ordinary decode has one per request.",
-        "Algorithm 0 writes and reads both scores and probabilities. At \\(b\\) bytes per intermediate element this is \\(4bBH_qLS\\) requested bytes, not the complete kernel traffic or a hardware-counter measurement.",
+        "Count the two dense matrix products as \\(4 B H_q L S d\\) FLOPs, counting each multiply-add as two. Scaling, masking and softmax are additional work. Prefill has many query rows; ordinary decode has one per request.",
+        "Algorithm 0 writes and reads both scores and probabilities. At \\(b\\) bytes per intermediate element this is \\(4 b B H_q L S\\) requested bytes, not the complete kernel traffic or a hardware-counter measurement.",
         "Decode can reuse each KV head across grouped query heads, but cannot reuse it across a long query tile. Layout, cache residency and schedule determine whether that reuse is realized."
       ],
       "reproduce": "Closed-book, count noncausal MHA with \\(B = 1\\), \\(H_q = 8\\), \\(L = S = 1024\\), \\(d = 64\\), and two-byte score/probability storage. The two intermediates occupy 32 MiB and their write-read traffic is 64 MiB; the two matrix products require \\(2{,}147{,}483{,}648\\) FLOPs. For decode with \\(L = 1\\) and the same cache, one ideal read of keys and values is 2 MiB. Explain every excluded byte category.",
@@ -298,7 +298,11 @@
       "next": [
         {
           "unit": "gpu/gpu-attention-transformer-fusion/attention-backward-recompute",
-          "note": "Use recomputation to avoid saving quadratic state for training."
+          "note": "Optional: use recomputation to avoid saving quadratic state for training."
+        },
+        {
+          "unit": "gpu/gpu-attention-transformer-fusion/varlen-paged-decode-attention",
+          "note": "Continue the required path with request-local cache layouts and decode."
         }
       ],
       "study": [
@@ -595,7 +599,7 @@
         "rope-position-kernel"
       ],
       "outcomes": [
-        "Implement stable forward RMSNorm and LayerNorm with explicit epsilon, reduction width and accumulation dtype.",
+        "Implement stable forward RMSNorm and LayerNorm with explicit \\(\\epsilon\\), reduction width and accumulation dtype.",
         "Implement half-split and interleaved RoPE with correct request positions.",
         "Choose a legal norm/RoPE fusion boundary and validate it against separate operations."
       ],
@@ -619,7 +623,7 @@
           "title": "FlashInfer RMSNorm interface",
           "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/norm/__init__.py",
           "locator": "Commit f2794d5: `rmsnorm` docstring and `_rmsnorm_impl` dispatch",
-          "depth": "Read ordinary normalization, not quantized or architecture-specific variants. Pass epsilon explicitly when comparing libraries."
+          "depth": "Read ordinary normalization, not quantized or architecture-specific variants. Pass \\(\\epsilon\\) explicitly when comparing libraries."
         },
         {
           "resource": "flashinfer-gpu6",
@@ -636,7 +640,7 @@
       ],
       "reproduce": "Write CPU double-precision references for RMSNorm, centered LayerNorm and half-split RoPE. With input `[3., 3., 3., 3.]`, unit weights, zero LayerNorm bias and `eps=1e-5`, LayerNorm returns zero while RMSNorm does not. For input `[1., 2., 3., 4.]`, rotate half-split pairs by angles 0.3 and 0.7 radians using genuine sine/cosine tables; squared norm is preserved within `rtol=1e-12, atol=1e-12` in PyTorch 2.14.1. Implement the forward GPU kernels and compare fused head-norm then RoPE with the separate reference order.",
       "traps": [
-        "Using dtype-dependent default epsilon in one baseline and a fixed value in another. Pass the same explicit epsilon and affine parameters.",
+        "Using dtype-dependent default \\(\\epsilon\\) in one baseline and a fixed value in another. Pass the same explicit \\(\\epsilon\\) and affine parameters.",
         "Assuming the challenge's randomly generated `cos` and `sin` tables represent unit rotations. Its tests check the algebraic transform, not trigonometric identity or position generation.",
         "Squaring large finite values without a range policy. Float32 promotion prevents many half-precision overflows, not every possible float32 overflow; test or reject inputs outside your supported numerical range."
       ],
@@ -662,7 +666,7 @@
           "note": "Use your local harness and preserve `solve` as in challenge 6. These are half-split even-width cases with supplied tables, including zero and mixed values. Skip the million-row performance case on a small GPU. The section mini-project covers forward norms, generated positions, interleaved pairing, partial rotary width and fused head-norm/RoPE checks. This is the first of the pool's two selected transformer challenges."
         }
       ],
-      "stopWhen": "Challenge 61 passes, both norm kernels match explicit-epsilon references on odd-width and constant rows, and your legal fused path matches the separate operation order across positions and layouts.",
+      "stopWhen": "Challenge 61 passes, both norm kernels match references with explicit \\(\\epsilon\\) on odd-width and constant rows, and your legal fused path matches the separate operation order across positions and layouts.",
       "fit": {
         "verdict": "added",
         "note": "Coverage failed for stable LayerNorm in the selected pool. The opened Triton 3.8.0 forward tutorial fills it; FlashInfer and challenge 61 retain RMSNorm and RoPE coverage, with mini-project fusion tests."
@@ -801,7 +805,7 @@
           "resource": "vllm-serving-metrics-gpu6",
           "title": "Goodput service-level objectives",
           "url": "https://docs.vllm.ai/en/latest/cli/bench/serve/",
-          "locator": "Documentation read 2026-10-13: Arguments, `--goodput`, `--request-rate` and `--max-concurrency`",
+          "locator": "Documentation read 2026-10-13: Arguments, the descriptions of goodput service-level objectives, request rate and maximum concurrency",
           "depth": "Use the definitions, not a required CLI run. Full production-engine integration belongs to the next section."
         }
       ],
