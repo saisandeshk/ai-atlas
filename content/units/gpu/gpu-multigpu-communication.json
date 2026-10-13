@@ -511,47 +511,83 @@
         "fault-timeout-retry"
       ],
       "outcomes": [
-        "TODO"
+        "Attribute a slow collective to a straggler, congestion, CPU affinity or an ordering failure from rank-aligned timeline evidence.",
+        "Apply timeout, abort and retry contracts correctly, and mark the measurements a partial failure invalidates."
       ],
-      "why": "TODO",
+      "why": "Multi-rank runs fail as one unit: the slowest rank sets collective time and one mismatched call hangs all ranks. Aligned timelines are the only evidence that separates a slow peer from a slow fabric.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/comm-measurement-simulation",
+          "note": "Rerun the sweep contract after fixing the fault or placement."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/moe-all-to-all",
+          "note": "Carry timeout and balance discipline into all-to-all dispatch."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "NCCL failure modes and debugging",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, Multinode Communication Pitfalls; NCCL Communicator Lifecycle and Environment Gotchas; Profiling and Debugging NCCL"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Logging and subsystem filters",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting/logging.html",
+          "locator": "Logging levels with NCCL_DEBUG and filtering by subsystem (GRAPH, COLL, NET, TUNING): separate init hangs from network faults from performance issues"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Performance and affinity triage",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting/performance_and_tuning.html",
+          "locator": "Intra-node versus inter-node issues with CPU and memory affinity: pin NIC handling to the NUMA node beside the NIC and GPU before blaming the fabric"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Straggler injection demo",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch04/barrier_straggler_multigpu.py",
+          "locator": "barrier_straggler_multigpu.py: one slow rank stretches the collective; inspect how barrier timings isolate it",
+          "depth": "Inspect on the two-GPU workstation as an illustration. Full straggler statistics need more ranks; the section mini-project runs them."
         }
       ],
       "focus": [
-        "TODO"
+        "Correlate the same collective sequence across ranks: matching start-order with one late rank is a straggler, while all ranks slow together with switch counters rising is congestion. A barrier probe before the collective separates the two.",
+        "Collective mismatch (different counts, datatypes or call order on some rank) hangs rather than errors. Check the matched-call contract before the network whenever all ranks stall at the same call.",
+        "InfiniBand patience has a number: NCCL_IB_TIMEOUT 20 means about 4.3 seconds per attempt and 7 retries total about 30 seconds before a network error. Set timeouts from that product, not from habit.",
+        "Async errors surface through NCCL_ASYNC_ERROR_HANDLING with ncclCommGetAsyncError, and recovery goes through ncclCommAbort rather than reusing a suspect communicator. Timings collected across an abort are invalid results, not slow results."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From per-rank collective durations, name the straggler rank and compute the waiting time it imposes on the fastest rank. Then state the barrier experiment that confirms the attribution and the abort procedure that invalidates the run.",
       "traps": [
-        "TODO"
+        "Averaging rank times into one number. The mean hides the straggler that sets collective time; report per-rank durations with the max identified.",
+        "Blaming the fabric for an affinity fault. Unpinned NIC handling on the wrong NUMA node reproduces congestion-like symptoms with healthy links; the tuning page lists affinity before fabric claims.",
+        "Retrying on a suspect communicator after a fault. Abort it and rebuild; a reused communicator can hang the retry and convert one failure into a full-job stall."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Seven ranks finish a collective in 4 ms and one takes 40 ms. Straggler or congestion?",
+          "a": "Straggler. Congestion slows ranks together with fabric counters rising; one late rank with the rest aligned points at that peer, confirmed by a barrier probe that shows the same skew without data movement."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What does NCCL_DEBUG_SUBSYS=GRAPH show that WARN alone does not?",
+          "a": "The detected topology graph and algorithm selection reasoning: which paths and rings NCCL chose. WARN reports failures; GRAPH explains the plan that failed."
+        },
+        {
+          "q": "How long does NCCL wait on InfiniBand before raising a network error at defaults?",
+          "a": "About 30 seconds: timeout 20 gives about 4.3 seconds per attempt times 7 retries. Change either variable deliberately and record both."
+        },
+        {
+          "q": "All ranks hang inside the same all-reduce with healthy links. What do you check first?",
+          "a": "The matched-call contract: same count, datatype and call sequence on every rank. A mismatch hangs all ranks at that call with nothing wrong in the fabric."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: rank-aligned timelines, injected straggler and partial-failure runs, and congestion-versus-affinity attribution.",
+      "stopWhen": "Given any slow-collective timeline you name straggler, congestion, affinity or mismatch with the confirming experiment, and no invalid post-abort timing survives in your results.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Lifecycle and pitfall sections, NCCL logging and tuning docs and the straggler demo cover timelines, congestion and faults; integrated rank-trace practice belongs to the section mini-project."
       }
     },
     {
