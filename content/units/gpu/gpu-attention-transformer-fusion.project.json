@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "IO-aware attention with paged decode and fused transformer paths",
     "hours": "14 to 20",
-    "brief": "Implement bounded attention inside kernellab on the RTX 3050: traffic counts, tiled online softmax, causal and grouped masks, an IO ledger with a tile budget, an optional backward, a ragged and paged decode path with KV append and gather, fused norm and MLP epilogues and a baseline sweep that keeps a losing regime. All sizes fit 6 GB; FlashAttention-3 and Blackwell paths are reading only.",
+    "brief": "Build IO-aware attention with paged decoding and fused transformer paths on your GPU. Size every shape to fit your GPU's memory and build with `-arch=native`. Features your GPU lacks stay reading only: read the code and audit it statically.",
     "units": [
       "attention-shapes-traffic",
       "online-softmax-attention-tiling",
@@ -16,19 +16,17 @@
       "attention-baselines-regimes"
     ],
     "steps": [
-      "Count noncausal MHA closed-book for \\(B = 1\\), eight query heads, \\(L = S = 1024\\), width 64 and two-byte score, probability and key/value storage: 32 MiB for the two intermediates, 64 MiB write-read traffic and 2147483648 FLOPs for the two products, with every excluded byte category named; for decode with \\(L = 1\\) one ideal key and value read is 2 MiB. Implement LeetGPU challenge 6 in the local harness against `reference_impl` with the public generators.",
-      "Merge two tiles with logits `[0., 1., 2., 3.]` and values `[1., 2., 3., 4.]` split after the second entry for weighted output near 3.492652734585769 in float64. Implement query and key tiling for seed 0 standard-normal inputs of shapes 2 by 17 by 7 and 2 by 19 by 7 at scale \\(1/\\sqrt{7}\\), with 4 by 5 and 8 by 8 tiles each matching the double-precision dense reference within stated tolerance. Gate the CS336 `flash_forward` PyTorch and noncausal Triton cases on these tests before timing.",
-      "Build a CPU reference for four query heads, two KV heads, two suffix queries and five cached keys of width 8 with seed 0 standard-normal float64 inputs at query positions 3 and 4, head map `[0, 0, 1, 1]`, keys masked after each query position, compared with SDPA using `attn_mask` and `enable_gqa=True` at `rtol=1e-12, atol=1e-12`. Change one future value and show the earlier query output is unchanged. Pass TensorTonic `causal_gqa`, LeetGPU challenge 53 and the CS336 causal `flash_forward` cases locally.",
-      "Write the attention IO ledger with schedule diagrams for key-outer and FlashAttention-2 query-outer forms, marking every slow-memory read and write and the owner of each output row, plus a tile resource budget from `cuobjdump -res-usage` and the occupancy API. For square query tiles of 64 rows at sequence 1024, batch 1 and eight heads derive 128 forward thread blocks and state why the grid count is not an occupancy measurement. Check the prediction against interleaved timings and compiled resource reports.",
-      "Implement no-dropout gradients from a blank file for seed 0 standard-normal float64 inputs with batch 2, 17 queries, 19 keys and width 7 and a random output cotangent, matching dense autograd at `rtol=1e-12, atol=1e-12` for all three gradients, then add causal masking with absolute positions and confirm masked probabilities and score gradients are zero. Pass the CS336 `flash_backward` PyTorch and Triton cases. Mark this step optional if only forward timings are reported, and say so.",
-      "Pass TensorTonic `kv_cache_decode_step` on contiguous caches, then build a ragged and paged decode path with a contiguous gather oracle: translate a seven-token request with page size 4 and physical pages `[3, 1]` (last-page occupancy 3, token 6 on page 1 slot 2), permute the physical allocation while preserving the page table for unchanged dense output, and check request isolation and split-state behavior with odd lengths and partial pages in a bounded CUDA or Triton kernel. Add KV append and gather with separate key and value caches on the same pages, `-99.0` in unused storage, increasing integer rows verified exactly with untouched slots checked, `NHD` to `HND` conversion repeated, stream-order checks kept, and optional symmetric dequantized loads as `xhat = s*round(x/s)` with positive scale checked against an independent reference.",
-      "Write CPU double-precision references for RMSNorm, centered LayerNorm and half-split RoPE: with input `[3., 3., 3., 3.]`, unit weights, zero bias and `eps=1e-5` LayerNorm returns zero while RMSNorm does not; with input `[1., 2., 3., 4.]` rotated by 0.3 and 0.7 radians squared norm is preserved within `rtol=1e-12, atol=1e-12`. Implement the forward GPU kernels, compare fused head-norm then RoPE against separate execution, and pass LeetGPU challenge 61 locally. Implement challenge 84 with its two-row basis-vector example giving a diagonal output with `sigmoid(1)` on the diagonal and zeros elsewhere, draw separate against pointwise-fused against projection-epilogue dataflows counting each removed intermediate write and read at its dtype, and pass its ten functional cases locally.",
-      "Gate every variant on the public attention tests plus edge tests before timing, then run a bounded prefill and decode sweep with eager SDPA and a compiled baseline using interleaved event trials. Derive the serial bound \\(S = 1/(1-f+f/r)\\) for share \\(f\\) and local speedup \\(r\\): 20 percent share at twofold local speedup gives near 1.111 rather than twofold. Substitute measured full-block shares, compare the prediction with the runner, label runner TTFT and TPOT separately from endpoint metrics, and retain one small, decode-heavy or irregular losing regime."
+      "Write the attention IO and FLOP ledger for one prefill and one decode shape you choose, naming byte categories you leave out, with a schedule sketch. Check the budget against event timings and `cuobjdump -res-usage`, and pass LeetGPU challenge 6 in your own harness.",
+      "Implement online-softmax tiling in PyTorch, then Triton, checked against a float64 dense reference on odd shapes and tile sizes you choose. Pass the CS336 `flash_forward` tests before timing anything.",
+      "Add causal masking and grouped KV heads. Show that changing a future token leaves earlier outputs unchanged, and pass TensorTonic `causal_gqa` and LeetGPU 53.",
+      "Optional: implement the backward pass and match autograd in float64 for all three gradients, with causal masking included.",
+      "Build a paged decode kernel with a contiguous gather as the reference. Test page permutation, partial pages and request isolation, with KV append, layout conversion, sentinel and stream-order checks, plus optional dequantized loads.",
+      "Fuse norm, RoPE and the MLP epilogue, and count the intermediate traffic the fusion removes. Benchmark against eager and compiled SDPA with event timings, adding `sudo ncu` counters where you have access, and keep one regime where your kernel loses."
     ],
     "deliverables": [
-      "`kernels/cuda/` and `kernels/triton/` attention with traffic counts, tiled softmax, masks, IO ledger and tile budget, and the optional backward with gradient checks.",
-      "The ragged and paged decode path with gather oracle, permutation and isolation tests, plus KV append, layout conversion and stream-order checks.",
-      "Fused norm, RoPE and MLP paths with double-precision references and the baseline sweep with the serial bound and a retained losing regime."
+      "Tiled attention with masks, the IO ledger, tile budget and optional backward, checked against dense references.",
+      "Paged decode path with gather oracle, KV append, layout conversion and isolation tests.",
+      "Fused norm, RoPE and MLP paths with traffic counts and the baseline sweep with a losing regime."
     ],
     "checks": [
       {
@@ -39,30 +37,30 @@
         "kind": "external-tests",
         "name": "LeetGPU attention challenges run locally against the reference implementation",
         "url": "https://leetgpu.com/challenges/",
-        "note": "Run 6 Softmax Attention, 53 Causal Attention, 61 RoPE and 84 SwiGLU MLP Block locally; keep tests beyond the hosted score."
+        "note": "Pass 6 Softmax Attention, 53 Causal Attention, 61 RoPE and 84 SwiGLU MLP Block in your own harness; keep tests beyond the hosted score."
       },
       {
         "kind": "external-tests",
         "name": "CS336 Assignment 2 attention tests",
         "url": "https://github.com/stanford-cs336/assignment2-systems",
-        "note": "Run the `tests/test_attention.py` `flash_forward` and `flash_backward` cases plus `flash_benchmarking` on sizes that fit 6 GB."
+        "note": "Run `flash_forward`, `flash_backward` and `flash_benchmarking` in `tests/test_attention.py` on shapes that fit your GPU's memory."
       }
     ],
     "rubric": [
       {
         "criterion": "Tiled correctness",
-        "pass": "Tiled softmax, causal and grouped masks and paged gather each match dense double or SDPA references at stated tolerance, future-value and permutation tests pass, and empty and partial tiles follow the written policy.",
-        "strong": "The 3.492652734585769 merge and the 128-block derivation are reproduced closed-book."
+        "pass": "Tiled softmax, causal and grouped masks and paged gather each match dense or framework references from your own tests, with future-token and permutation checks passing.",
+        "strong": "Closed-book notes rederive the tile merge and the thread-block count without the answer key."
       },
       {
         "criterion": "Fusion honesty",
-        "pass": "Fused norm, RoPE and MLP paths match separate execution within tolerance, removed traffic is counted at its dtype, and norm preservation is checked.",
-        "strong": "Dataflow diagrams name every buffer that fusion removes and one it cannot."
+        "pass": "Fused norm, RoPE and MLP paths match separate execution in your own tests, with removed traffic counted at its dtype.",
+        "strong": "Diagrams name every buffer fusion removes and one it cannot, with the dtype of each."
       },
       {
         "criterion": "Regime evidence",
-        "pass": "Variants are gated before timing, the serial bound is applied with measured shares, runner metrics are kept apart from endpoint metrics, and a losing regime is retained with an explanation.",
-        "strong": "The report states when the library or compiler path is preferred."
+        "pass": "Variants are gated on the public suites before timing, runner metrics stay separate from endpoint metrics, and one losing regime is kept with an explanation.",
+        "strong": "The report states when the library or compiler path wins and why."
       }
     ],
     "feedsInto": "Capstone kernel suite and integration: attention, paged decode, KV kernels and fused paths feed the endpoint. The IO ledger and losing regimes feed the final workload-weighted report."

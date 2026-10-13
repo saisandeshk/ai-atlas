@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "Matched CUDA and Triton paths with lowering and dispatch gates",
     "hours": "12 to 16",
-    "brief": "Implement the same mechanisms in CUDA and Triton inside kernellab: blocked programs, reductions and dot precision, autotuning with correctness gates, codegen inspection, lowering evidence, graph boundaries, a custom op, one CuTe GEMM reconstruction and versioned dispatch with fallback.",
+    "brief": "Implement the same mechanisms in CUDA and Triton on your GPU: blocked programs, reductions, autotuning, codegen inspection, a custom op, one CuTe GEMM reconstruction and versioned dispatch with fallback. Build with `-arch=native`, fit your GPU's memory, and treat paths your toolchain lacks as reading only.",
     "units": [
       "triton-programming-model",
       "triton-reductions-dot",
@@ -16,19 +16,17 @@
       "kernel-dispatch-regressions"
     ],
     "steps": [
-      "Write Triton `add_kernel` with its grid function for \\(N = 1000\\) and `BLOCK = 1024`: grid `(1,)` from `triton.cdiv` and maximum absolute difference 0.0 against `x + y` at \\(N = 1000\\), 1024 and 98432 on the RTX 3050 with CUDA 13.4 and Triton 3.8.0. Add a masked tanh-approximate GELU for contiguous CUDA tensors with partial final blocks, rerun on non-multiple shapes and two dtypes against `torch.nn.functional.gelu` with the matching approximation.",
-      "Implement tiled Triton row sums for strided CUDA tensors with fixed-width tiles and float32 sums, and stable row-wise softmax for padded rows and partial tiles in fp32, fp16 and bf16, rerunning both on a 781-wide row and comparing fp16 and bf16 against fp32 at stated tolerance. On a 64 by 64 fp32 product of seed 0 standard-normal matrices show a `tl.dot` loop with `input_precision=tf32` near 0.0237 maximum absolute error against fp64 while `ieee` gives near 7.6e-06, and explain why tf32 input truncation rather than accumulation order dominates.",
-      "Implement the CSE 291A PA2 Part 1 fused matmul-add-ReLU with fp16 inputs and output and an fp32 accumulator and its configuration search, tested with `student_local_test.py` on the RTX 3050 and timed with your own interleaved harness against the PyTorch reference. Time `torch.compile(lambda x, y: torch.relu(x + y) * 2)` on 1024 by 1024 fp32 tensors with synchronization: first call near 1.2 to 1.9 s with an empty Inductor cache and warm calls near 0.1 ms on PyTorch 2.14.1. Show the second autotuned launch skipping benchmarking, and record that `triton.Config` rejects `num_consumer_groups` on 3.8.0.",
-      "Launch the Triton vector-add kernel with `BLOCK = 1024` on 3.8.0 and read the handle: `n_regs` 26, shared 0, target `sm_86`, `asm` keys `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`, and a PTX header with `.version 8.8`, `.target sm_86` and `.reqntid 128`. Dump `ttgir` and `ptx` for one kernel, run the GPU MODE Lecture 29 `vector_add.py` inspection far enough to print `compiled_kernel.asm.keys()`, and document interpreter, assertion and sanitizer limits with one minimal reproducer each.",
-      "Write matched CUDA and Triton twins for LeetGPU challenges 1 and 2 in kernellab and pass the example plus scalar-tail and non-power-of-two functional tests locally against `reference_impl`, pinning `input_precision` on the Triton side and accumulation on the CUDA side before any timing and keeping losing shapes. Compile one vector-add `.cu` with `nvcc -arch=sm_86 -cubin` and show the guarded prologue with `S2R`, `IMAD`, `ISETP`, guarded `EXIT` and `LDG.E` loads plus resource line `REG:12` with `SHARED:0` from `cuobjdump -sass` and `cuobjdump -res-usage`. Run `torch._dynamo.explain` on a Python `if` over `y.sum() > 0` (Graph Count 2, Break Count 1) and on its `torch.where` rewrite (Graph Count 1, Break Count 0) on PyTorch 2.14.",
-      "Trace one framework operation from graph capture through generated GPU code: run the ch14 inspection and recompilation scripts on small shapes, reporting graph counts, break reasons and which guard each recompile names, with `dynamic=True` plus reduce-overhead behavior (one graph per size, warning limit 8) recorded from your own run. Register a Triton LayerNorm with forward, `dx`, `dw` and `db` agreement at `test_layer_norm(1151, 8192, torch.float16)`, keep the lock protocol and both reduction stages, derive the vector-Jacobian product with row means, and record the higher-order limitation in tests.",
-      "Reconstruct one GEMM configuration down to layouts, copy atoms and MMA atoms: give the element address of `A(i, j)` for layout `(M, K):(1, ldA)`, compute `cosize` 1031 for the padded shared layout with shape `(128, 8)` and stride `(1, 129)` from maximum offset 1030, and compare the blocked Triton program with the equivalent CuTe mapping stage by stage. Write the tutorial mainloop order (`copy`, `cp_async_fence`, `cp_async_wait`, `__syncthreads`, `gemm`, `__syncthreads`) with what each barrier waits for, and map a fused tiled matmul plus ReLU (non-multiple `M`, `N`, `K`) to copy stage, fp32 MMA accumulation and fused epilogue.",
-      "Wrap a Triton softmax (LeetGPU challenge 5) in device, dtype, shape and contiguity dispatch with a `torch.softmax` fallback: fast path for contiguous fp32 rows under 8192 columns, library fallback otherwise. Add a version-pinned regression test over held-out non-multiple shapes that fails when `cuobjdump -res-usage` registers change across a compiler update. Record CUDA Tile IR as reading only on this toolchain."
+      "Write a Triton vector-add kernel with its grid function, checked against `x + y` on shapes you choose, including non-multiples of the block size. Add a masked approximate GELU checked against `torch.nn.functional.gelu` in two dtypes, each with a matched CUDA twin under identical tests.",
+      "Implement tiled row sums and stable row-wise softmax for strided inputs with padding and partial tiles, checked against fp32 references. Show where `tl.dot` precision flags change the error against float64, and name which rounding dominates.",
+      "Run the CSE 291A PA2 Part 1 fused kernel under `student_local_test.py`, with an autotuning search gated on correctness. Separate cold compile cost from warm launch cost with interleaved timings against the PyTorch reference.",
+      "Inspect one compiled kernel from Triton IR down to PTX, quoting register and shared-memory usage from your own build. Compile one CUDA source file with `-arch=native` and compare `cuobjdump -sass` and `cuobjdump -res-usage` output with the Triton report.",
+      "Use `torch._dynamo.explain` to contrast a data-dependent branch with its branch-free rewrite, quoting graph and break counts from your own run. Register a Triton LayerNorm as a custom op with gradient checks against the framework, and record its higher-order limitation.",
+      "Reconstruct one GEMM configuration down to layouts, copy atoms and MMA atoms, and compare it stage by stage with the equivalent Triton blocked program. Wrap the Triton softmax from LeetGPU challenge 5 in versioned dispatch with a tested fallback and a register-change regression."
     ],
     "deliverables": [
-      "Matched CUDA and Triton kernels with shared tests, precision pins and losing shapes.",
-      "Autotune evidence with `student_local_test.py` results, cold against warm compile timings, codegen dumps with `n_regs` 26 and `.reqntid 128`, and the dynamo break reports.",
-      "The CuTe GEMM reconstruction beside the Triton blocked program, the custom LayerNorm op, and versioned dispatch with fallback and the register-change regression."
+      "Matched CUDA and Triton kernels with shared tests, pinned precision and kept losing shapes.",
+      "Autotune and compile evidence: cold against warm costs, codegen dumps and dynamo break reports.",
+      "The CuTe GEMM reconstruction, the custom LayerNorm op and versioned dispatch with fallback."
     ],
     "checks": [
       {
@@ -39,30 +37,30 @@
         "kind": "external-tests",
         "name": "LeetGPU CUDA and Triton parity set run locally",
         "url": "https://leetgpu.com/challenges/",
-        "note": "Re-solve one primitive, one GEMM and one transformer challenge in Triton with matched CUDA twins locally against `reference_impl`."
+        "note": "Re-solve one primitive, one GEMM and one transformer challenge in Triton with matched CUDA twins against `reference_impl`."
       },
       {
         "kind": "external-tests",
         "name": "CSE 291A PA2 Part 1 local tests",
         "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
-        "note": "Run `student_local_test.py` locally; replace the remote speedup score with interleaved timing against PyTorch."
+        "note": "Run `student_local_test.py`; compare with interleaved timing against PyTorch, not the hosted score."
       }
     ],
     "rubric": [
       {
         "criterion": "Parity with pins",
-        "pass": "CUDA and Triton twins pass identical tests including tails and non-powers of two, precision is pinned before timing, and losing shapes are kept.",
-        "strong": "The `REG:12` and `SHARED:0` lines are quoted from your own build."
+        "pass": "CUDA and Triton twins pass identical tests from your own harness including tails and non-powers of two, with precision pinned before timing and losing shapes kept.",
+        "strong": "Register and shared-memory lines are quoted from your own build, with the flags that produced them."
       },
       {
         "criterion": "Autotune and lowering honesty",
-        "pass": "The second autotuned launch skips benchmarking, cold against warm compile costs are separated, dynamo break counts are quoted from your own run, and generated PTX and SASS assumptions are checked.",
-        "strong": "Guards that trigger recompiles are named per case."
+        "pass": "The second autotuned launch skips benchmarking, cold and warm costs are separated, and break counts come from your own run.",
+        "strong": "Each recompile names the guard that triggered it."
       },
       {
         "criterion": "Reconstruction and dispatch",
-        "pass": "The CuTe reconstruction reaches layouts, copy atoms and MMA atoms with `cosize` 1031 derived, and the dispatch test covers native, forced fallback and register-change branches with fallback correctness.",
-        "strong": "The LayerNorm VJP is derived with row means stated and the higher-order limit is tested."
+        "pass": "The CuTe reconstruction reaches layouts, copy atoms and MMA atoms, and dispatch tests cover native, forced fallback and register-change branches.",
+        "strong": "The LayerNorm gradient derivation states its row-mean terms and its higher-order limit is tested."
       }
     ],
     "feedsInto": "Capstone suite and integration: matched paths, autotune gates, lowering evidence and dispatch with fallback feed the endpoint and the final portability defense."
