@@ -1,6 +1,17 @@
 {
   "section": "gpu-execution-memory-codegen",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "nvidia-cuda-kernel-patterns-gpu2",
+      "role": "article",
+      "priority": "required",
+      "name": "NVIDIA CUDA Pro Tips: grid-stride loops and vectorized memory access",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Read the grid-stride SAXPY loop and its scalability and debugging discussion (April 22, 2013), plus the scalar-copy SASS and vector-type alignment discussion in Increase Performance with Vectorized Memory Access (August 4, 2025). Skip the latter article's full vector-copy kernels: their tail-thread condition can omit remainders. These fill the pool's grid-stride and vector-width coverage gaps.",
+      "url": "https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/"
+    }
+  ],
   "units": [
     {
       "id": "cuda-programming-model",
@@ -252,47 +263,83 @@
         "coalescing-address-patterns"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the aligned memory sectors touched by each warp instruction, including offsets, strides and access widths.",
+        "Distinguish useful bytes, requested sectors, cache hits and traffic reaching device memory.",
+        "Measure paired access patterns and explain discrepancies between sector predictions and elapsed time."
       ],
-      "why": "TODO",
+      "why": "Threads that are adjacent in a tensor need not request adjacent bytes. The address pattern of each instruction determines coalescing; caches then determine how much of that traffic reaches device memory.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/transpose-tiling-banks",
+          "note": "Use a shared-memory tile to repair a strided global access."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-fundamentals-gpu2",
+          "title": "PMPP, 4th edition: coalescing and memory latency",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Section 6.1, Figures 6.1 to 6.4; Section 6.2 through Figure 6.8",
+          "depth": "Stop before the toy channel assignment in Figure 6.9. Use CUDA's sector model below rather than treating a DRAM burst as the transaction unit of every GPU."
+        },
+        {
+          "resource": "cuda-best-practices-gpu2",
+          "title": "CUDA C++ Best Practices Guide 13.4: aligned, offset and strided accesses",
+          "url": "https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#coalesced-access-to-global-memory",
+          "locator": "Sections 10.2.1.1 to 10.2.1.4"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: device caches",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html#caches",
+          "locator": "Section 2.3.3.6, Caches"
+        },
+        {
+          "resource": "nvidia-cuda-kernel-patterns-gpu2",
+          "title": "NVIDIA: vectorized memory access, August 4, 2025",
+          "url": "https://developer.nvidia.com/blog/cuda-pro-tip-increase-performance-with-vectorized-memory-access/",
+          "locator": "Opening scalar copy kernel and SASS, then the vector-type and alignment discussion through the aligned `int2` pointer-offset example",
+          "depth": "Stop before the structure example and full vector-copy kernels. Their remainder handler relies on a thread whose index can lie outside the launched grid, so it can skip the tail. Treat performance improvements as hypotheses, not guarantees."
         }
       ],
       "focus": [
-        "TODO"
+        "For compute capability 6.0 and later, count distinct aligned 32-byte sectors touched by the active lanes of one instruction. Permuting the same addresses does not change that count.",
+        "Count every byte of a wide access, including sector crossings. A wider instruction may reduce instruction count without reducing useful bytes or aggregate sectors for the same work.",
+        "L1 is local to an SM and L2 is shared across SMs. Requested sectors are not measured DRAM bytes; cache reuse can make the timing penalty smaller than a per-warp sector ratio.",
+        "A base allocation's alignment does not guarantee an offset view's alignment. Validate the address and tail before using `int2` or `int4` loads."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For one fully active 32-lane warp, derive the sector counts for four-byte loads from byte addresses \\(4\\ell\\), \\(4\\ell+4\\) and \\(32\\ell\\), where \\(0\\leq\\ell<32\\) and the base address is 32-byte aligned. Obtain 4, 5 and 32 sectors, with unique useful-byte fractions 100%, 80% and 12.5%. Implement a byte-interval union counter and verify the predictions. In `kernellab`, compare bounds-safe offset and stride copy variants with an independent reference and event timings; do not convert those sector ratios directly into speedups.",
       "traps": [
-        "TODO"
+        "Calling a 128-byte cache line one 32-byte sector. TensorTonic's configurable line model and the CUDA sector model use different transaction units.",
+        "Counting only starting addresses for vector accesses. A load can touch several sectors.",
+        "Calling a copy memory-bound from its source alone. Small arrays can be launch-limited, and cache-resident arrays have a different traffic boundary."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "If lanes reverse the order of 32 adjacent four-byte words at an aligned base, does the sector count change?",
+          "a": "No. The same four sectors are touched; coalescing depends on the address set, not lane order."
+        },
+        {
+          "q": "Why can an offset copy lose less time than its five-versus-four sector ratio suggests?",
+          "a": "Adjacent warps can reuse overlapping sectors in cache. The per-warp request count is not the total traffic reaching DRAM."
+        },
+        {
+          "q": "A warp loads one consecutive 16-byte object per lane from a 32-byte-aligned base. How many sectors cover its byte range?",
+          "a": "Sixteen sectors cover 512 bytes. Wider per-lane loads do not make that byte range fit in four sectors."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Global-Memory Coalescing Counter",
+          "url": "https://www.tensortonic.com/problems/cs336-l05-global-memory-coalescing",
+          "locator": "Implement `coalescing_analysis`; work the adjacent-word, separated-line and line-crossing public cases",
+          "note": "This free problem counts distinct byte coverage, including overlaps, with a default 128-byte line. Solve its stated model, then repeat your own cases with `cache_line_bytes=32` for the CUDA sector analysis. Its line-crossing case is an abstract byte interval, not permission to issue a misaligned typed CUDA load. The section mini-project covers the paired GPU copies and timings."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your counter handles overlaps and crossings, the three sector predictions agree with your derivation, and your paired-copy report separates requested sectors from measured time and any unavailable DRAM counters.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The pool covers coalescing and caches but lacks a focused vector-width and alignment locator; the opened NVIDIA vector-access article fills that gap, with its faulty tail kernels excluded."
       }
     },
     {
@@ -307,47 +354,83 @@
         "constant-readonly-memory"
       ],
       "outcomes": [
-        "TODO"
+        "Predict shared-memory bank IDs and conflict degree for scalar word accesses, including broadcasts.",
+        "Derive when padding a row stride removes column-access conflicts.",
+        "Choose between shared memory, constant memory and read-only global loads for a stated access pattern."
       ],
-      "why": "TODO",
+      "why": "On-chip storage does not make every access pattern efficient. Bank mapping and the number of distinct constant addresses within a warp matter as much as placement.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/transpose-tiling-banks",
+          "note": "Apply the bank derivation to a padded transpose tile."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-fundamentals-gpu2",
+          "title": "PMPP, 4th edition: memory types",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Section 5.2"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: banks, broadcast and padding",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html#shared-memory-access-patterns",
+          "locator": "Section 2.3.4.2 before the transpose example; Section 2.3.4.2.2, Shared Memory Bank Conflicts, Figures 17 and 18",
+          "depth": "Skip the full transpose implementation in 2.3.4.2.1 here. Derive the bank map before implementing a transpose in the primitives section."
+        },
+        {
+          "resource": "cuda-best-practices-gpu2",
+          "title": "CUDA C++ Best Practices Guide 13.4: constant-cache access",
+          "url": "https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#constant-memory",
+          "locator": "Section 10.2.6"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: read-only global loads",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/cpp-language-extensions.html#low-level-load-and-store-functions",
+          "locator": "Section 5.4.8.3, the `__ldg` description",
+          "depth": "Read only the read-only-load contract, not the list of cache-control intrinsics."
         }
       ],
       "focus": [
-        "TODO"
+        "For aligned scalar 32-bit accesses on the 32-bank model, the bank is \\(\\lfloor a/4\\rfloor\\bmod32\\), with byte address \\(a\\). Count distinct words per bank, not just requesting lanes.",
+        "Same-word reads can broadcast. Different words in the same bank conflict; same-address competing writes are not a safe broadcast-based algorithm.",
+        "A row-major tile with 32 columns gives column accesses a 32-word stride. Padding to 33 columns changes the bank stride to one modulo 32.",
+        "Constant memory favors few distinct addresses per warp. A read-only global pointer is not a `__constant__` allocation, and a read-only cache is not coherent with writes to that data during the kernel."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a full warp of aligned four-byte shared-memory reads, compute banks for word indices \\(\\ell s\\) at strides \\(s\\in\\{1,2,3,32,33\\}\\). Obtain conflict degrees 1, 2, 1, 32 and 1, assuming distinct words and one scalar access per lane. Then replace all addresses with the same word: the reads broadcast with degree 1. Explain why the same calculation does not prove a general bank rule for vector or 64-bit accesses.",
       "traps": [
-        "TODO"
+        "Applying the scalar bank-conflict rule across separate hardware transactions of a wide instruction. Analyze the actual instruction's transaction groups.",
+        "Adding padding without recalculating addresses and shared-memory capacity. A changed stride can fix one access and alter another.",
+        "Choosing constant memory just because the data never changes. Many distinct addresses in one warp serialize constant-cache requests."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does word stride 3 avoid conflicts in this 32-bank scalar model?",
+          "a": "Three is coprime to 32, so multiplication by three modulo 32 visits every bank once across the 32 lanes."
+        },
+        {
+          "q": "Four lanes read byte addresses 0, 128, 256 and 384. Is this a broadcast?",
+          "a": "No. They read four different words in bank 0, making a four-way conflict in the stated model."
+        },
+        {
+          "q": "Would a small lookup table with one distinct lookup per lane necessarily favor constant memory?",
+          "a": "No. Constant requests serialize by distinct address within a warp. Read-only global access may be a better hypothesis, which still needs measurement."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Shared-Memory Bank Conflict Analyzer",
+          "url": "https://www.tensortonic.com/problems/cs336-l05-shared-memory-bank-conflicts",
+          "locator": "Implement `bank_conflict_analysis`; work all three public cases: adjacent words, four-way conflict and same-address broadcast",
+          "note": "This free problem counts distinct addresses per bank and returns a degree for each lane. Treat it as a scalar-read model. Add your own full-warp stride and padded-tile cases; the section mini-project covers paired conflicting and conflict-free kernels."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your analyzer passes the public examples and your five stride cases, and you can defend a memory-space choice from the warp's addresses without calling all read-only data constant memory.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "PMPP's memory first pass plus CUDA's exact bank, constant-cache and read-only-load locators cover the unit; TensorTonic provides named analytical practice."
       }
     },
     {
@@ -363,47 +446,69 @@
         "grid-stride-bounds"
       ],
       "outcomes": [
-        "TODO"
+        "Predict divergent paths and useful active lanes for a warp, including a partial tail.",
+        "Implement a bounds-safe grid-stride map with zero-size handling and overflow-aware indexing.",
+        "Use generated code to distinguish branches from predicated instructions rather than guessing from source syntax."
       ],
-      "why": "TODO",
+      "why": "Bounds checks are part of correctness, not an optional performance cost. A grid-stride loop decouples coverage from launch size while preserving adjacent-lane addressing within each iteration.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-execution-memory-codegen/sync-scopes-atomics",
+          "note": "Keep bounds and divergent control compatible with synchronization."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pmpp-fundamentals-gpu2",
+          "title": "PMPP, 4th edition: control divergence",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Section 4.5"
+        },
+        {
+          "resource": "cuda-best-practices-gpu2",
+          "title": "CUDA C++ Best Practices Guide 13.4: branches and predication",
+          "url": "https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branching-and-divergence",
+          "locator": "Sections 13.1 and 13.2"
+        },
+        {
+          "resource": "nvidia-cuda-kernel-patterns-gpu2",
+          "title": "NVIDIA: flexible kernels with grid-stride loops",
+          "url": "https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/",
+          "locator": "Monolithic SAXPY kernel, grid-stride SAXPY kernel, Scalability and thread reuse, and Debugging"
         }
       ],
       "focus": [
-        "TODO"
+        "Divergence is within a warp. Different uniform paths in different warps need not serialize each other as divergent paths of one warp do.",
+        "A source `if` may become a branch, a select or predicated instructions. Inspect the final code before describing the machine's control flow.",
+        "A grid-stride loop starts at the global thread index and increments by the total grid thread count. Each element belongs to one residue class, so coverage is complete without overlapping writes.",
+        "Handle an empty input on the host rather than launching a zero-block grid. Promote operands before index multiplication and define a size limit that also prevents loop-increment overflow."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Convert the vector-add baseline to a grid-stride loop. For 1003 elements and a one-block, 128-thread launch, thread 0 handles indices 0, 128, 256, 384, 512, 640, 768 and 896; thread 127 handles seven indices ending at 895. Validate every result against the host reference, then repeat with a one-thread launch and lengths 0, 1, 31, 32 and 33. Use the exact integer-valued single-precision inputs from the programming-model unit, so equality is exact here, not a general floating-point promise.",
       "traps": [
-        "TODO"
+        "Using block size alone as the loop stride in a multi-block grid. Blocks then overlap work.",
+        "Removing the tail guard to avoid divergence. Invalid memory access cannot be traded for speed.",
+        "Assuming a serial GPU launch reproduces all CPU floating-point arithmetic bit for bit. Contraction, precision and operation order can still differ."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does `threadIdx.x < 32` diverge a block with 128 threads?",
+          "a": "It gives different paths to different warps, but each warp's predicate is uniform. It is not within-warp divergence for this one-dimensional launch."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is a grid-stride map complete even when the grid is smaller than the input?",
+          "a": "Every valid index has a unique remainder modulo the total grid thread count. That thread reaches the index after a finite number of loop increments."
+        },
+        {
+          "q": "Is converting the completed index product to a wide type sufficient to avoid overflow?",
+          "a": "No. The multiplication can overflow before conversion. Promote an operand before multiplication and also check the maximum supported size and increment."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` grid-stride map, odd and empty tails, paired uniform and divergent control kernels, and source-to-SASS control-flow annotations.",
+      "stopWhen": "Your grid-stride map passes the stated lengths with both launch sizes, and you predict lane activity for a new predicate before checking its generated control flow.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The pool covers divergence but has no focused grid-stride implementation locator; the verified NVIDIA SAXPY article fills that coverage gap, with `kernellab` providing edge-case practice."
       }
     },
     {
