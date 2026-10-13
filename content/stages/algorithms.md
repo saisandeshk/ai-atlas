@@ -59,7 +59,7 @@ Every later choice in this stage starts by reading the constraint line. A wrong 
 1. [Computational complexity and Big-O](https://dsa.handbook.academy/curriculum/foundations/complexity-big-o/) (DSA Handbook - Foundations and linear patterns) - What complexity actually means; How to read a complexity bound (the five notations); The hierarchy you will meet with the input-size table; Space-time tradeoffs.
 2. [Mathematics for Computer Science, Chapter 13, Section 13.7](https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-spring-2015/mit6_042js15_textbook.pdf) (MIT 6.042J - asymptotics and invariants) - Section 13.7 Asymptotic Notation (printed pp. 528 to 549): 13.7.1 Little O, 13.7.2 Big O with Definitions 13.7.5 and 13.7.9 plus Proposition 13.7.10 ($`100x^2 = O(x^2)`$), 13.7.3 $`\Theta`$ with Definition 13.7.13, 13.7.4 Pitfalls, 13.7.5 $`\Omega`$ with Definitions 13.7.15 and 13.7.16.
 3. [Complexity Models](https://en.algorithmica.org/hpc/complexity) (Algorithmica - memory and data layout) - Classical Complexity Theory and Asymptotic Complexity: the instruction-count model and where it breaks (clock speeds and instruction latencies).
-4. [Programming Languages and constant factors](https://en.algorithmica.org/hpc/complexity/languages) (Algorithmica - memory and data layout) - Interpreted languages, Compiled Languages and Takeaway: the pure-Python versus C versus OpenBLAS matrix-multiply comparison. Depth: Read for the constant-factor warning only. Algorithmica's timings are C++ measurements; do not carry any crossover point to Python without your own timeit run.
+4. [Programming Languages and constant factors](https://en.algorithmica.org/hpc/complexity/languages) (Algorithmica - memory and data layout) - Interpreted languages, Compiled Languages and Takeaway: the pure-Python versus C versus OpenBLAS matrix-multiply comparison. Depth: Read for the constant-factor warning only. Algorithmica's timings are C++ measurements; do not carry any crossover point to Python without your own `timeit` run.
 
 **Focus**
 
@@ -73,12 +73,12 @@ Every later choice in this stage starts by reading the constraint line. A wrong 
 **Traps**
 
 - Reading Big-O as an exact operation count. It bounds growth up to a constant, and the constant decides close races.
-- Quoting the handbook's operations-per-second rates, its $`n = 50`$ sort crossover or its ten-to-thirty-second estimate for scanning $`10^9`$ items as measured facts. They are rough compiled-language planning numbers; time your own code with timeit before repeating them.
+- Quoting the handbook's operations-per-second rates, its $`n = 50`$ sort crossover or its ten-to-thirty-second estimate for scanning $`10^9`$ items as measured facts. They are rough compiled-language planning numbers; time your own code with `timeit` before repeating them.
 - Calling one fast observed run an average case. A single input is one sample; an average needs a stated distribution.
 
 **Practice**
 
-- [LeetCode 1: Two Sum](https://leetcode.com/problems/two-sum/) - Implement the $`O(n^2)`$ brute-force double loop and the $`O(n)`$ complement hashmap. Time both with timeit at $`n = 2000`$, seed 0, target absent: expect about 0.05 s per brute run against about 0.1 ms per hash run. State both bounds with the named variable $`n`$.. After submitting, read the handbook hash-maps section LC 1: value-to-index map for the lookup-then-insert order that avoids matching an element with itself on inputs like [3, 3].
+- [LeetCode 1: Two Sum](https://leetcode.com/problems/two-sum/) - Implement the $`O(n^2)`$ brute-force double loop and the $`O(n)`$ complement hashmap. Time both with `timeit` at $`n = 2000`$, seed 0, target absent: expect about 0.05 s per brute run against about 0.1 ms per hash run. State both bounds with the named variable $`n`$. After submitting, read the handbook hash-maps section LC 1: value-to-index map for the lookup-then-insert order that avoids matching an element with itself on inputs like `[3, 3]`.
 
 **Stop when:** You prove a polynomial $`\Theta`$ bound from the definitions without notes, and your Two Sum timing shows the predicted gap with both bounds stated.
 
@@ -113,7 +113,7 @@ Appends, queue transfers and table resizes all hide rare expensive steps inside 
 **Study**
 
 1. [Amortised analysis (inside Computational complexity and Big-O)](https://dsa.handbook.academy/curriculum/foundations/complexity-big-o/) (DSA Handbook - Foundations and linear patterns) - Amortised analysis: the aggregate, banker and potential methods on the dynamic-array example, plus the hard-real-time caveat. Depth: Read only this section; the rest of the chapter belongs to the previous unit.
-2. [Dynamic array internals](https://dsa.handbook.academy/curriculum/linear-data-structures/dynamic-array-internals/) (DSA Handbook - Foundations and linear patterns) - The proof in one paragraph (geometric series to $`b/(b-1)`$); How fast capacity actually grows (the 1000-push copy counts for $`b = 2`$ and $`b = 1.125`$); Five libraries (the CPython 1.125 row with the listobject.c formula and the python-dev history); What happens on the way down (shrink hysteresis); the Python-doubles and front-insertion warnings.
+2. [Dynamic array internals](https://dsa.handbook.academy/curriculum/linear-data-structures/dynamic-array-internals/) (DSA Handbook - Foundations and linear patterns) - The proof in one paragraph (geometric series to $`b/(b-1)`$); How fast capacity actually grows (the 1000-push copy counts for $`b = 2`$ and $`b = 1.125`$); Five libraries (the CPython 1.125 row with the `listobject.c` formula and the python-dev history); What happens on the way down (shrink hysteresis); the Python-doubles and front-insertion warnings.
 3. [Lecture 9: Amortized Analysis, Sections 9.1 to 9.3](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/09-amortize.pdf) (Algorithms lecture notes - amortized analysis and hashing) - 9.1 Incrementing a Binary Counter; 9.2 Counting from 0 to $`n`$ with 9.2.1 Summation, 9.2.2 Taxation, 9.2.3 Charging and 9.2.4 Potential (amortized cost 2 per increment); 9.3 Incrementing and Decrementing (the double-binary counter); 9.5 Generalities and Warnings. Depth: Skip 9.4 Gray Codes; it is depth material for later. 9.5 is one page on why one structure can have several valid sets of amortized bounds.
 
 **Focus**
@@ -123,17 +123,17 @@ Appends, queue transfers and table resizes all hide rare expensive steps inside 
 - CPython grows lists by about 1.125x after the small-list steps 0, 4, 8, 16: about nine moves per push, the highest constant in the table, chosen to bound peak RAM.
 - Shrinking needs hysteresis (shrink at a quarter full, not a half) or alternating push and pop replays the resize forever.
 
-**Reproduce:** Without notes, derive the amortized bound both ways: the copy series summing to at most $`n/(b-1)`$, and the potential $`\Phi = 2\mathrm{num} - \mathrm{capacity}`$ with the resize case $`(k+1) + (2-k) = 3`$. Then append 200 ints to a list in Python 3.13.14 and confirm with sys.getsizeof that capacity steps land at lengths 1, 5, 9, 17, 25 and 33.
+**Reproduce:** Without notes, derive the amortized bound both ways: the copy series summing to at most $`n/(b-1)`$, and the potential $`\Phi = 2\mathrm{num} - \mathrm{capacity}`$ with the resize case $`(k+1) + (2-k) = 3`$. Then append 200 ints to a list in Python 3.13.14 and confirm with `sys.getsizeof` that capacity steps land at lengths 1, 5, 9, 17, 25 and 33.
 
 **Traps**
 
 - Amortized $`O(1)`$ does not bound the single slowest push; the resize push copies everything.
-- Python lists do not double. The formula is (newsize + (newsize >> 3) + 6) & ~3 after the 0, 4, 8 start.
+- Python lists do not double. The formula is `(newsize + (newsize >> 3) + 6) & ~3` after the 0, 4, 8 start.
 - Halving on pop breaks the bound; only the quarter rule (or no shrinking) keeps it.
 
 **Practice**
 
-- [LeetCode 232: Implement Queue using Stacks](https://leetcode.com/problems/implement-queue-using-stacks/) - Implement the two-stack lazy transfer. In your solution note, prove each element moves at most twice, so the amortized cost per operation is $`O(1)`$. Judge with the Example sequence push 1, push 2, peek, pop, empty.. After submitting, read the handbook queues-deques section Why the patterns chapters teach the rest for the lazy-transfer argument.
+- [LeetCode 232: Implement Queue using Stacks](https://leetcode.com/problems/implement-queue-using-stacks/) - Implement the two-stack lazy transfer. In your solution note, prove each element moves at most twice, so the amortized cost per operation is $`O(1)`$. Judge with the Example sequence `push` 1, `push` 2, `peek`, `pop`, `empty`. After submitting, read the handbook queues-deques section Why the patterns chapters teach the rest for the lazy-transfer argument.
 
 **Stop when:** You derive the resize-push bound from $`\Phi`$ without notes, and your queue solution states its amortized argument next to the transfer code.
 
@@ -168,19 +168,19 @@ Stating the invariant first turns debugging into checking. A brute-force oracle 
 **Study**
 
 1. [Mathematics for Computer Science, Chapter 5, Section 5.4](https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-spring-2015/mit6_042js15_textbook.pdf) (MIT 6.042J - asymptotics and invariants) - 5.4.1 States and Transitions; 5.4.2 Invariant for a Diagonally-Moving Robot with Lemma 5.4.1 and Theorem 5.4.2; 5.4.3 The Invariant Principle with Definitions 5.4.4 and 5.4.5. Depth: Skim 5.4.4 Die Hard as a second example; skip 5.4.5 Fast Exponentiation.
-2. [Hypothesis Quickstart](https://hypothesis.readthedocs.io/en/latest/quickstart.html) (Hypothesis documentation - Quickstart and stateful testing) - Write your first test (@given with integers and lists strategies); Running in a test suite; Combining Hypothesis with pytest. Depth: Skip the database and shrinking-internals pages; shrinking behavior is used here, not studied.
-3. [Hypothesis: Configuring test settings](https://hypothesis.readthedocs.io/en/latest/tutorial/settings.html) (Hypothesis documentation - Quickstart and stateful testing) - Configuring a single test (@settings with max_examples) and the commonly used settings, where derandomize makes runs deterministic.
-4. [Hypothesis stateful testing](https://hypothesis.readthedocs.io/en/latest/stateful.html) (Hypothesis documentation - Quickstart and stateful testing) - Rule-based state machines: rule, precondition and invariant; run_state_machine_as_test. Depth: Read the rules-and-invariants shape only; full stateful harnesses arrive with Design HashMap in the hash-table unit.
+2. [Hypothesis Quickstart](https://hypothesis.readthedocs.io/en/latest/quickstart.html) (Hypothesis documentation - Quickstart and stateful testing) - Write your first test (`@given` with integers and lists strategies); Running in a test suite; Combining Hypothesis with pytest. Depth: Skip the database and shrinking-internals pages; shrinking behavior is used here, not studied.
+3. [Hypothesis: Configuring test settings](https://hypothesis.readthedocs.io/en/latest/tutorial/settings.html) (Hypothesis documentation - Quickstart and stateful testing) - Configuring a single test (`@settings` with `max_examples`) and the commonly used settings, where `derandomize` makes runs deterministic.
+4. [Hypothesis stateful testing](https://hypothesis.readthedocs.io/en/latest/stateful.html) (Hypothesis documentation - Quickstart and stateful testing) - Rule-based state machines: `rule`, `precondition` and `invariant`; `run_state_machine_as_test`. Depth: Read the rules-and-invariants shape only; full stateful harnesses arrive with Design HashMap in the hash-table unit.
 5. [Sliding window: fixed size (invariant-in-code example)](https://dsa.handbook.academy/curriculum/pointers-window-prefix/sliding-window-fixed/) (DSA Handbook - Foundations and linear patterns) - The pattern (build-first-window then slide) and the four primitives table. Depth: Read only the pattern and primitives as the invariant written in code; the full chapter belongs to the two-pointer unit.
 
 **Focus**
 
 - An invariant has three obligations: true at the start, preserved by each step, and strong enough to imply the answer at the end.
 - The oracle must be too simple to share the bug: brute force against optimized, with independent code paths.
-- derandomize (or a fixed seed) makes the run replayable; shrinking then minimizes the failure, which you map back to the invariant clause.
+- `derandomize` (or a fixed seed) makes the run replayable; shrinking then minimizes the failure, which you map back to the invariant clause.
 - State the invariant in one sentence before the loop; the window primitives show the shape.
 
-**Reproduce:** Write test_window.py comparing the sliding-window max-average against the $`O(nk)`$ brute-force oracle with Hypothesis lists of ints in [-100, 100] of length 1 to 30 and $`k`$ drawn from 1 to len(nums), max_examples=200, derandomize=True. Run under pytest in Python 3.13 with Hypothesis 6.169.0 and pytest 9.1.1: expect 1 passed. Then break the slide step once (drop the minus term) and confirm the test fails on a shrunken input.
+**Reproduce:** Write `test_window.py` comparing the sliding-window max-average against the $`O(nk)`$ brute-force oracle with Hypothesis lists of ints in `[-100, 100]` of length 1 to 30 and $`k`$ drawn from 1 to `len(nums)`, `max_examples=200`, `derandomize=True`. Run under pytest in Python 3.13 with Hypothesis 6.169.0 and pytest 9.1.1: expect 1 passed. Then break the slide step once (drop the minus term) and confirm the test fails on a shrunken input.
 
 **Traps**
 
@@ -190,7 +190,7 @@ Stating the invariant first turns debugging into checking. A brute-force oracle 
 
 **Practice**
 
-- [LeetCode 643: Maximum Average Subarray I](https://leetcode.com/problems/maximum-average-subarray-i/) - Solve with the build-first-window slide. Commit a Hypothesis differential test against the $`O(nk)`$ brute force alongside the solution; judge with the worked example nums = [2, 1, 5, 1, 3, 2, 1, 4], $`k = 3`$.. After submitting, re-read the handbook sliding-window-fixed worked example and check your trace emits the same running maxima.
+- [LeetCode 643: Maximum Average Subarray I](https://leetcode.com/problems/maximum-average-subarray-i/) - Solve with the build-first-window slide. Commit a Hypothesis differential test against the $`O(nk)`$ brute force alongside the solution; judge with the worked example `nums = [2, 1, 5, 1, 3, 2, 1, 4]`, $`k = 3`$. After submitting, re-read the handbook sliding-window-fixed worked example and check your trace emits the same running maxima.
 
 **Stop when:** Your committed test replays deterministically, catches the seeded minus-term bug, and you can point at the invariant line the shrunken input breaks.
 
@@ -202,7 +202,7 @@ Stating the invariant first turns debugging into checking. A brute-force oracle 
 2. Why does the max-average oracle use the $`O(nk)`$ double loop instead of a second window implementation?
    - The double loop recomputes each window from scratch, so it cannot share an off-by-one in the slide update. Independence is what makes disagreement evidence.
 3. Hypothesis reports a failing input of length 24. What do you do before touching the code?
-   - Let it shrink, replay the minimal case with derandomize, and identify which invariant clause the minimal input violates.
+   - Let it shrink, replay the minimal case with `derandomize`, and identify which invariant clause the minimal input violates.
 4. Write the invariant for the fixed-size window slide.
    - Before each step, $`s`$ equals the sum of the current $`k`$ elements. Each step emits the current window and advances by exactly one, so at termination every window was emitted.
 
@@ -226,30 +226,30 @@ Arrays and linked nodes are the two physical layouts everything else composes. I
 
 1. [Arrays: static, dynamic, multi-dimensional](https://dsa.handbook.academy/curriculum/linear-data-structures/arrays/) (DSA Handbook - Foundations and linear patterns) - What an array actually is; The cost model you can quote in an interview; Three problems, three techniques (LC 88 back-merge, LC 27 two-pointer compaction, LC 189 three-reverse rotation).
 2. [Strings: encoding, immutability, builders](https://dsa.handbook.academy/curriculum/linear-data-structures/strings/) (DSA Handbook - Foundations and linear patterns) - The $`O(n^2)`$ concatenation trap with the refcount-1 in-place note; the parts-plus-join builder idiom. Depth: The chapter's 2.2x figure is a CPython 3.11 micro-benchmark. Rerun the comparison on 3.13 yourself (see Reproduce) instead of quoting it.
-3. [Linked list fundamentals](https://dsa.handbook.academy/curriculum/linked-lists/linked-list-fundamentals/) (DSA Handbook - Foundations and linear patterns) - The four pointer primitives; The sentinel; Designing the list: LC 707 (get, addAtHead, addAtTail, addAtIndex, deleteAtIndex); When the design changes (doubly-linked insert).
-4. [CPython list over-allocation](https://github.com/python/cpython/blob/main/Objects/listobject.c) (CPython source - list and dict objects) - list_resize: the (newsize + (newsize >> 3) + 6) & ~3 formula with the growth-pattern comment (0, 4, 8, 16, 24, 32, 40, 52, 64, 76, ...). Depth: Read the function and its comment only; the rest of the file is later.
+3. [Linked list fundamentals](https://dsa.handbook.academy/curriculum/linked-lists/linked-list-fundamentals/) (DSA Handbook - Foundations and linear patterns) - The four pointer primitives; The sentinel; Designing the list: LC 707 (`get`, `addAtHead`, `addAtTail`, `addAtIndex`, `deleteAtIndex`); When the design changes (doubly-linked insert).
+4. [CPython list over-allocation](https://github.com/python/cpython/blob/main/Objects/listobject.c) (CPython source - list and dict objects) - `list_resize`: the `(newsize + (newsize >> 3) + 6) & ~3` formula with the growth-pattern comment (0, 4, 8, 16, 24, 32, 40, 52, 64, 76, ...). Depth: Read the function and its comment only; the rest of the file is later.
 5. [Cache Lines](https://en.algorithmica.org/hpc/cpu-cache/cache-lines) (Algorithmica - memory and data layout) - 64-byte cache lines and the strided-loop demonstration (stride 1 against stride 16). Depth: These are C++ measurements on contiguous arrays. Do not quote them for Python lists; your Reproduce shows why.
 6. [External Memory Model](https://en.algorithmica.org/hpc/external-memory/model) (Algorithmica - memory and data layout) - Cache-Aware Model and Array Scan: why a scan is the cheapest access pattern. Depth: Read for the model only; the numbers are C++ measurements.
 
 **Focus**
 
 - In-place means bounded extra space with exact bounds: merge from the back, compact with a write pointer, rotate with three reverses.
-- The sentinel (dummy head) removes the empty-head special case; every rewiring snapshots next before clobbering.
+- The sentinel (dummy head) removes the empty-head special case; every rewiring snapshots `next` before clobbering.
 - CPython lists over-allocate geometrically (about 1.125x) but store pointers: consecutive elements are separate heap objects, so stride effects differ from C arrays.
-- Unaliased local string accumulation grows in place on CPython 3.13 and runs near join speed; one extra reference to the running string restores the quadratic copying.
+- Unaliased local string accumulation grows in place on CPython 3.13 and runs near `join` speed; one extra reference to the running string restores the quadratic copying.
 
-**Reproduce:** Build parts = [str(i) for i in range(30000)] and time three functions on Python 3.13.14 (12th Gen Intel Core i9-12900K): s = s + p in a loop where s is the only reference (about 0.5 ms), the same loop with t = s taken before each concatenation (about 0.09 s, quadratic copying), and ''.join(parts) (about 0.1 ms). The aliased loop is over 100x slower. Then, without notes, implement remove-element compaction plus sentinel-based insert-after and delete-after.
+**Reproduce:** Build `parts = [str(i) for i in range(30000)]` and time three functions on Python 3.13.14 (12th Gen Intel Core i9-12900K): `s = s + p` in a loop where `s` is the only reference (about 0.5 ms), the same loop with `t = s` taken before each concatenation (about 0.09 s, quadratic copying), and `''.join(parts)` (about 0.1 ms). The aliased loop is over 100x slower. Then, without notes, implement remove-element compaction plus sentinel-based insert-after and delete-after.
 
 **Traps**
 
-- Iterating to capacity instead of length, and front insertion or pop(0) in a loop: growth amortizes the tail only, so $`n`$ front inserts cost $`\Theta(n^2)`$.
+- Iterating to capacity instead of length, and front insertion or `pop(0)` in a loop: growth amortizes the tail only, so $`n`$ front inserts cost $`\Theta(n^2)`$.
 - Quoting the handbook's 2.2x concat figure or Algorithmica's stride numbers as your Python behavior. Both were measured elsewhere; rerun on 3.13.
-- Rewiring curr.next before saving it: the rest of the list is gone.
+- Rewiring `curr.next` before saving it: the rest of the list is gone.
 
 **Practice**
 
-- [LeetCode 27: Remove Element](https://leetcode.com/problems/remove-element/) - Implement the read/write two-pointer compaction in place with $`O(1)`$ extra memory. State the write-pointer invariant in a comment.. After submitting, compare against the handbook arrays section LC 27: Remove Element, the two-pointer compaction.
-- [LeetCode 707: Design Linked List](https://leetcode.com/problems/design-linked-list/) - Implement get, addAtHead, addAtTail, addAtIndex and deleteAtIndex with a sentinel node. Test empty-list, head and tail-index cases.. After submitting, compare against the handbook linked-list-fundamentals sections The sentinel and Designing the list: LC 707.
+- [LeetCode 27: Remove Element](https://leetcode.com/problems/remove-element/) - Implement the read/write two-pointer compaction in place with $`O(1)`$ extra memory. State the write-pointer invariant in a comment. After submitting, compare against the handbook arrays section LC 27: Remove Element, the two-pointer compaction.
+- [LeetCode 707: Design Linked List](https://leetcode.com/problems/design-linked-list/) - Implement `get`, `addAtHead`, `addAtTail`, `addAtIndex` and `deleteAtIndex` with a sentinel node. Test empty-list, head and tail-index cases. After submitting, compare against the handbook linked-list-fundamentals sections The sentinel and Designing the list: LC 707.
 
 **Stop when:** Both solutions are accepted, your concat rerun reproduces the 100x gap, and you can draw the pointer state before and after each rewiring.
 
@@ -260,9 +260,9 @@ Arrays and linked nodes are the two physical layouts everything else composes. I
    - The tail of the destination is free buffer. Writing forwards would overwrite unmerged elements; writing backwards only touches buffer cells or already-placed cells.
 2. Argue the three-reverse rotation correct.
    - Reversing everything puts each element at its rotated mirror position; reversing the first $`k`$ and the rest then fixes each segment's internal order.
-3. getsizeof steps land at lengths 1, 5, 9 and 17. What capacities are those?
+3. `getsizeof` steps land at lengths 1, 5, 9 and 17. What capacities are those?
    - With a 56-byte header and 8 bytes per slot, 88, 120, 184 and 248 bytes mean 4, 8, 16 and 24 slots, matching the 0, 4, 8, 16, 24 pattern.
-4. Consecutive list elements sit 32 bytes apart by id(). Why does the stride-16 demo not apply?
+4. Consecutive list elements sit 32 bytes apart by `id()`. Why does the stride-16 demo not apply?
    - The list stores pointers; elements are separate heap objects. Striding the list still chases pointers, unlike striding a C array of inline values.
 
 </details>
@@ -286,7 +286,7 @@ Hash maps are the default index, counter and cache. Their average is excellent a
 1. [Hash maps and hash sets](https://dsa.handbook.academy/curriculum/linear-data-structures/hash-maps/) (DSA Handbook - Foundations and linear patterns) - What invariant the average-case bound depends on ($`\Theta(1+\alpha)`$); LC 1 value-to-index; LC 49 signature keys; LC 242 counters; What it actually costs (the double-plus-rehash resize contract).
 2. [Hash collisions and the load factor](https://dsa.handbook.academy/curriculum/linear-data-structures/hash-collisions/) (DSA Handbook - Foundations and linear patterns) - Two strategies, one contract; What it costs to grow; When the contract breaks: LC 128 in two complexities; How the 28C3 attack worked, and what fixed it (SipHash, PEP 456); A second example: LC 380's pointer-redirection trick. Depth: Treat the CPython probing recurrence as a reading guide for the source item below, not as a substitute for it.
 3. [Lecture 5: Hash Tables, Sections 5.1 to 5.5 and 5.8 to 5.10](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/05-hashing.pdf) (Algorithms lecture notes - amortized analysis and hashing) - 5.2 The Importance of Being Random; 5.3 universal and near-universal definitions; 5.4 Chaining (expected $`O(1+\alpha)`$); 5.5 multiplicative hashing with Theorems 1 and 2; 5.8 Open Addressing (expected at most $`1/(1-\alpha)`$); 5.9 Linear and Binary Probing. Depth: Read the statements of 5.6 Balls and Bins and 5.7 Perfect Hashing; skip their proofs.
-4. [CPython dict internals](https://github.com/python/cpython/blob/main/Objects/dictobject.c) (CPython source - list and dict objects) - USABLE_FRACTION (currently two-thirds) with its definition comment; the perturbation-probing comment (j = 5j + 1 + perturb); dummy (tombstone) entries on deletion. Depth: Find the three definitions; do not read the whole file.
+4. [CPython dict internals](https://github.com/python/cpython/blob/main/Objects/dictobject.c) (CPython source - list and dict objects) - `USABLE_FRACTION` (currently two-thirds) with its definition comment; the perturbation-probing comment (`j = (5*j) + 1 + perturb`); `dummy` (tombstone) entries on deletion. Depth: Find the three definitions; do not read the whole file.
 
 **Focus**
 
@@ -295,19 +295,19 @@ Hash maps are the default index, counter and cache. Their average is excellent a
 - Deletion must leave a tombstone: marking the slot empty would cut probe chains and lose keys.
 - Deterministic string hashing is attackable (the 2011 HashDoS); Python seeds SipHash per interpreter (PEP 456).
 
-**Reproduce:** Insert ints 0 to 49 into an empty dict on Python 3.13.14, recording sys.getsizeof after each insert. The first insert allocates the 8-slot table; assert the later size steps at $`n`$ = 6, 11, 22 and 43, confirming the two-thirds rule. Then delete two keys and assert the byte size and the remaining key order are unchanged.
+**Reproduce:** Insert ints 0 to 49 into an empty `dict` on Python 3.13.14, recording `sys.getsizeof` after each insert. The first insert allocates the 8-slot table; assert the later size steps at $`n`$ = 6, 11, 22 and 43, confirming the two-thirds rule. Then delete two keys and assert the byte size and the remaining key order are unchanged.
 
 **Traps**
 
 - Reading insertion order as sorted order; dicts remember arrival, not rank.
-- Checking the map after storing on Two Sum style lookup: store-then-check matches an element with itself on inputs like [3, 3].
+- Checking the map after storing on Two Sum style lookup: store-then-check matches an element with itself on inputs like `[3, 3]`.
 - Assuming worst-case $`O(1)`$: adversarial keys drive any fixed hash to $`O(n)`$ chains.
 
 **Practice**
 
-- [LeetCode 706: Design HashMap](https://leetcode.com/problems/design-hashmap/) - Attempt cold with hidden tags. Implement put, get and remove with chaining or open addressing plus a load-factor resize. Add randomized put/get/remove histories checked against a dict oracle. Judge with the Example operation sequence.. After submitting, read the AlgoMaster Design HashMap write-up (algomaster.io/learn/dsa/design-hashmap) and the handbook hash-collisions chapter for the resize contract.
+- [LeetCode 706: Design HashMap](https://leetcode.com/problems/design-hashmap/) - Attempt cold with hidden tags. Implement `put`, `get` and `remove` with chaining or open addressing plus a load-factor resize. Add randomized `put`/`get`/`remove` histories checked against a `dict` oracle. Judge with the Example operation sequence. After submitting, read the AlgoMaster Design HashMap write-up (https://algomaster.io/learn/dsa/design-hashmap) and the handbook hash-collisions chapter for the resize contract.
 
-**Stop when:** Your resize script asserts the 6/11/22/43 steps, and your HashMap passes 200 randomized histories against the dict oracle.
+**Stop when:** Your resize script asserts the 6/11/22/43 steps, and your `HashMap` passes 200 randomized histories against the `dict` oracle.
 
 <details>
 <summary>Self-test</summary>
@@ -339,31 +339,31 @@ Stacks suspend work until its context arrives; queues order it fairly. Their mon
 
 **Study**
 
-1. [Stacks and the call stack analogy](https://dsa.handbook.academy/curriculum/linear-data-structures/stacks/) (DSA Handbook - Foundations and linear patterns) - The LIFO contract; The call stack is the same data structure; LC 20 the deferred-match validator; What it actually costs (push amortized $`O(1)`$, LC 20 $`O(n)`$ time and space).
-2. [Queues, deques, and circular buffers](https://dsa.handbook.academy/curriculum/linear-data-structures/queues-deques/) (DSA Handbook - Foundations and linear patterns) - The FIFO contract; The deque adds the back end; The circular buffer fixes the capacity; Why the patterns chapters teach the rest (LC 232 amortized queue); What it actually costs (list.pop(0) $`O(n)`$ against deque $`O(1)`$).
-3. [Monotonic stack](https://dsa.handbook.academy/curriculum/stack-queue-patterns/monotonic-stack/) (DSA Handbook - Foundations and linear patterns) - The pattern (pop-while-violating then push); Why the work stays linear ($`2n`$ aggregate); Worked example LC 739 on [73, 74, 75, 71, 69, 72, 76, 73]; Largest rectangle: the sentinel-pop trick; Two pitfalls (indices, not values).
-4. [Monotonic deque](https://dsa.handbook.academy/curriculum/stack-queue-patterns/monotonic-deque/) (DSA Handbook - Foundations and linear patterns) - The invariant (decreasing indices, front is the $`\operatorname{argmax}`$); The pattern (drop-front, pop-tail, push, emit); Worked example LC 239 on [1, 3, -1, -3, 5, 3, 6, 7] with $`k = 3`$; What it actually costs. Depth: The cost table lists the max-heap with lazy deletion as $`O(n \log k)`$ beside $`O(n)`$ space. The space column is right: stale entries stay buried, so the heap can hold $`n`$ entries and its worst case is $`O(n \log n)`$.
+1. [Stacks and the call stack analogy](https://dsa.handbook.academy/curriculum/linear-data-structures/stacks/) (DSA Handbook - Foundations and linear patterns) - The LIFO contract; The call stack is the same data structure; LC 20 the deferred-match validator; What it actually costs (`push` amortized $`O(1)`$, LC 20 $`O(n)`$ time and space).
+2. [Queues, deques, and circular buffers](https://dsa.handbook.academy/curriculum/linear-data-structures/queues-deques/) (DSA Handbook - Foundations and linear patterns) - The FIFO contract; The deque adds the back end; The circular buffer fixes the capacity; Why the patterns chapters teach the rest (LC 232 amortized queue); What it actually costs (`list.pop(0)` $`O(n)`$ against `deque` $`O(1)`$).
+3. [Monotonic stack](https://dsa.handbook.academy/curriculum/stack-queue-patterns/monotonic-stack/) (DSA Handbook - Foundations and linear patterns) - The pattern (pop-while-violating then push); Why the work stays linear ($`2n`$ aggregate); Worked example LC 739 on `[73, 74, 75, 71, 69, 72, 76, 73]`; Largest rectangle: the sentinel-pop trick; Two pitfalls (indices, not values).
+4. [Monotonic deque](https://dsa.handbook.academy/curriculum/stack-queue-patterns/monotonic-deque/) (DSA Handbook - Foundations and linear patterns) - The invariant (decreasing indices, front is the $`\operatorname{argmax}`$); The pattern (drop-front, pop-tail, push, emit); Worked example LC 239 on `[1, 3, -1, -3, 5, 3, 6, 7]` with $`k = 3`$; What it actually costs. Depth: The cost table lists the max-heap with lazy deletion as $`O(n \log k)`$ beside $`O(n)`$ space. The space column is right: stale entries stay buried, so the heap can hold $`n`$ entries and its worst case is $`O(n \log n)`$.
 
 **Focus**
 
 - Each index enters and leaves once: at most $`2n`$ stack ops and at most $`2n`$ deque ops. That is the whole linearity proof.
 - Monotone structures store indices: values cannot report expiry.
 - Deque order per slide: drop the expired front, pop smaller backs, push, emit the front.
-- Python list is the stack and collections.deque is the queue. Swapped roles cost $`O(n)`$ per op at the wrong end.
+- Python `list` is the stack and `collections.deque` is the queue. Swapped roles cost $`O(n)`$ per op at the wrong end.
 
-**Reproduce:** From a blank file, implement sliding-window maximum with a monotone deque: on [1, 3, -1, -3, 5, 3, 6, 7] with $`k = 3`$ output [3, 3, 5, 5, 6, 7]. Differential-test it against the $`O(nk)`$ brute force with Hypothesis (lengths up to 50, $`k`$ up to 10, derandomize, max_examples=200) in Python 3.13: expect 1 passed.
+**Reproduce:** From a blank file, implement sliding-window maximum with a monotone deque: on `[1, 3, -1, -3, 5, 3, 6, 7]` with $`k = 3`$ output `[3, 3, 5, 5, 6, 7]`. Differential-test it against the $`O(nk)`$ brute force with Hypothesis (lengths up to 50, $`k`$ up to 10, `derandomize`, `max_examples=200`) in Python 3.13: expect 1 passed.
 
 **Traps**
 
 - Storing values instead of indices: equal values from different positions become indistinguishable and expiry breaks.
 - Emitting before pushing or popping the wrong end: the order is drop-front, pop-back, push, emit.
-- list.pop(0) as a queue (about 45x slower than deque per drain at $`n = 20000`$ on the stated CPU and Python 3.13.14), and recursion past the default limit of 1000 frames, which raises RecursionError instead of growing.
+- `list.pop(0)` as a queue (about 45x slower than `deque` per drain at $`n = 20000`$ on the stated CPU and Python 3.13.14), and recursion past the default limit of 1000 frames, which raises `RecursionError` instead of growing.
 
 **Practice**
 
-- [LeetCode 20: Valid Parentheses](https://leetcode.com/problems/valid-parentheses/) - Implement the deferred-match validator with the terminal empty check. Judge with the Examples (), ()[]{} and ([)].. After submitting, compare against the handbook stacks section LC 20: the deferred-match validator.
-- [LeetCode 739: Daily Temperatures](https://leetcode.com/problems/daily-temperatures/) - Implement the pop-while-smaller template storing indices. Judge with the Examples [73, 74, 75, 71, 69, 72, 76, 73] and [30, 40, 50, 60].. After submitting, compare your trace against the handbook monotonic-stack worked example on the same input.
-- [LeetCode 239: Sliding Window Maximum](https://leetcode.com/problems/sliding-window-maximum/) - Attempt cold with hidden tags. Implement the monotone deque and judge with the Example [1, 3, -1, -3, 5, 3, 6, 7], $`k = 3`$ giving [3, 3, 5, 5, 6, 7].. After submitting, read the AlgoMaster Sliding Window Maximum write-up (algomaster.io/learn/dsa/sliding-window-maximum) and the handbook monotonic-deque cost table.
+- [LeetCode 20: Valid Parentheses](https://leetcode.com/problems/valid-parentheses/) - Implement the deferred-match validator with the terminal empty check. Judge with the Examples `()`, `()[]{}` and `([)]`. After submitting, compare against the handbook stacks section LC 20: the deferred-match validator.
+- [LeetCode 739: Daily Temperatures](https://leetcode.com/problems/daily-temperatures/) - Implement the pop-while-smaller template storing indices. Judge with the Examples `[73, 74, 75, 71, 69, 72, 76, 73]` and `[30, 40, 50, 60]`. After submitting, compare your trace against the handbook monotonic-stack worked example on the same input.
+- [LeetCode 239: Sliding Window Maximum](https://leetcode.com/problems/sliding-window-maximum/) - Attempt cold with hidden tags. Implement the monotone deque and judge with the Example `[1, 3, -1, -3, 5, 3, 6, 7]`, $`k = 3`$ giving `[3, 3, 5, 5, 6, 7]`. After submitting, read the AlgoMaster Sliding Window Maximum write-up (https://algomaster.io/learn/dsa/sliding-window-maximum) and the handbook monotonic-deque cost table.
 
 **Stop when:** All three are accepted and your deque emits the worked trace exactly, with the $`2n`$ argument written beside it.
 
@@ -397,10 +397,10 @@ Two pointers and windows replace nested loops with single passes wherever order 
 
 **Study**
 
-1. [Two pointers: opposite ends](https://dsa.handbook.academy/curriculum/pointers-window-prefix/two-pointers-opposite/) (DSA Handbook - Foundations and linear patterns) - Why the proof actually works - the shorter-wall case analysis; The four primitives; Worked example LC 11 on [1, 8, 6, 2, 5, 4, 8, 3, 7]; Worked example LC 15 with the three duplicate-skips; What it actually costs.
-2. [Two pointers: same direction](https://dsa.handbook.academy/curriculum/pointers-window-prefix/two-pointers-same-direction/) (DSA Handbook - Foundations and linear patterns) - The four primitives (seed, scan, keep, commit); Worked example LC 26 on [1, 1, 2, 2, 3]; When the pattern bends (tail-fill LC 283, three-way partition LC 75, backward merge LC 88).
-3. [Sliding window: fixed size](https://dsa.handbook.academy/curriculum/pointers-window-prefix/sliding-window-fixed/) (DSA Handbook - Foundations and linear patterns) - The pattern (build-first-window then slide); The four primitives; Worked example LC 643 on [2, 1, 5, 1, 3, 2, 1, 4] with k = 3; Frequency-map slide with the matched counter (LC 567).
-4. [Sliding window: variable size](https://dsa.handbook.academy/curriculum/pointers-window-prefix/sliding-window-variable/) (DSA Handbook - Foundations and linear patterns) - The pattern (expand right, shrink while broken); The four primitives plus the shrink trigger; Worked example LC 3 on pwwkew; Last-index jump; have == required for LC 76.
+1. [Two pointers: opposite ends](https://dsa.handbook.academy/curriculum/pointers-window-prefix/two-pointers-opposite/) (DSA Handbook - Foundations and linear patterns) - Why the proof actually works - the shorter-wall case analysis; The four primitives; Worked example LC 11 on `[1, 8, 6, 2, 5, 4, 8, 3, 7]`; Worked example LC 15 with the three duplicate-skips; What it actually costs.
+2. [Two pointers: same direction](https://dsa.handbook.academy/curriculum/pointers-window-prefix/two-pointers-same-direction/) (DSA Handbook - Foundations and linear patterns) - The four primitives (seed, scan, keep, commit); Worked example LC 26 on `[1, 1, 2, 2, 3]`; When the pattern bends (tail-fill LC 283, three-way partition LC 75, backward merge LC 88).
+3. [Sliding window: fixed size](https://dsa.handbook.academy/curriculum/pointers-window-prefix/sliding-window-fixed/) (DSA Handbook - Foundations and linear patterns) - The pattern (build-first-window then slide); The four primitives; Worked example LC 643 on `[2, 1, 5, 1, 3, 2, 1, 4]` with `k = 3`; Frequency-map slide with the matched counter (LC 567).
+4. [Sliding window: variable size](https://dsa.handbook.academy/curriculum/pointers-window-prefix/sliding-window-variable/) (DSA Handbook - Foundations and linear patterns) - The pattern (expand right, shrink while broken); The four primitives plus the shrink trigger; Worked example LC 3 on `pwwkew`; Last-index jump; `have == required` for LC 76.
 
 **Focus**
 
@@ -409,7 +409,7 @@ Two pointers and windows replace nested loops with single passes wherever order 
 - Last-index jumps and matched counters keep $`O(1)`$ per step; rescanning the window on each slide is the $`O(nk)`$ trap.
 - Negatives break shrinking: the fix is prefix sums, next unit.
 
-**Reproduce:** From a blank file, implement longest-substring with the last-seen jump and differential-test it against the $`O(n^2)`$ brute force on alphabet abc up to length 12 (derandomize, max_examples=300) in Python 3.13: expect 1 passed. Then exhibit [1, -1, 1, 1] seeking the shortest subarray with sum at least 2: the shrink loop reports length 4 and misses the tail [1, 1] of length 2.
+**Reproduce:** From a blank file, implement longest-substring with the last-seen jump and differential-test it against the $`O(n^2)`$ brute force on alphabet `abc` up to length 12 (`derandomize`, `max_examples=300`) in Python 3.13: expect 1 passed. Then exhibit `[1, -1, 1, 1]` seeking the shortest subarray with sum at least 2: the shrink loop reports length 4 and misses the tail `[1, 1]` of length 2.
 
 **Traps**
 
@@ -419,8 +419,8 @@ Two pointers and windows replace nested loops with single passes wherever order 
 
 **Practice**
 
-- [LeetCode 167: Two Sum II - Input Array Is Sorted](https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/) - Implement the opposite-ends move with the sortedness precondition stated in a comment. Judge with the Examples [2, 7, 11, 15] target 9 and [2, 3, 4] target 6.. After submitting, compare against the handbook two-pointers-opposite section The four primitives.
-- [LeetCode 3: Longest Substring Without Repeating Characters](https://leetcode.com/problems/longest-substring-without-repeating-characters/) - Attempt cold with hidden tags. Implement the variable window with last-seen jumps. Judge with the Examples abcabcbb, bbbbb and pwwkew.. After submitting, read the AlgoMaster Longest Substring write-up (algomaster.io/learn/dsa/longest-substring-without-repeating-characters) and the handbook variable-window worked example on pwwkew.
+- [LeetCode 167: Two Sum II - Input Array Is Sorted](https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/) - Implement the opposite-ends move with the sortedness precondition stated in a comment. Judge with the Examples `[2, 7, 11, 15]` target 9 and `[2, 3, 4]` target 6. After submitting, compare against the handbook two-pointers-opposite section The four primitives.
+- [LeetCode 3: Longest Substring Without Repeating Characters](https://leetcode.com/problems/longest-substring-without-repeating-characters/) - Attempt cold with hidden tags. Implement the variable window with last-seen jumps. Judge with the Examples `abcabcbb`, `bbbbb` and `pwwkew`. After submitting, read the AlgoMaster Longest Substring write-up (https://algomaster.io/learn/dsa/longest-substring-without-repeating-characters) and the handbook variable-window worked example on pwwkew.
 
 **Stop when:** Both are accepted cold with the invariant stated first, and your negatives trace shows exactly which shrink step discards the optimum.
 
@@ -431,7 +431,7 @@ Two pointers and windows replace nested loops with single passes wherever order 
    - Area is width times the shorter wall. Moving the taller wall cannot raise the minimum and shrinks the width; only moving the shorter wall can find a taller bound. Case analysis over where the optimum sits.
 2. Why does the Two Sum II move rule fail on unsorted input?
    - The rule (sum too small: advance left) assumes everything left of right is no larger. Unsorted input breaks the ordering the rule reads.
-3. Trace the negatives counterexample [1, -1, 1, 1] with target sum at least 2.
+3. Trace the negatives counterexample `[1, -1, 1, 1]` with target sum at least 2.
    - Running sums are 1, 0, 1, 2. The shrink loop first fires at the last element and reports length 4. Dropping the leading 1 leaves sum 1, so the loop stops before it drops the -1, which would raise the sum back to 2 at length 2. Shrinking assumes that removing an element never raises the sum, and a negative element breaks that.
 4. Why do the three 3Sum duplicate skips matter?
    - Without skipping equal outer values and equal left and right values, each duplicate occurrence re-emits the same triple: correct values with wrong multiplicity and wasted output.
@@ -455,27 +455,27 @@ Precomputation trades linear space for constant queries, and the prefix-plus-has
 **Study**
 
 1. [Prefix sums and difference arrays](https://dsa.handbook.academy/curriculum/pointers-window-prefix/prefix-sums/) (DSA Handbook - Foundations and linear patterns) - The pattern (build $`\mathrm{prefix}[n+1]`$ once, query in $`O(1)`$); Worked example LC 303; What it costs (1D and 2D builds and queries, difference-array updates); 2D prefix sums: inclusion-exclusion on four corners; Difference arrays: the inverse direction.
-2. [The prefix-sum + hash-map combo](https://dsa.handbook.academy/curriculum/pointers-window-prefix/prefix-sum-hash/) (DSA Handbook - Foundations and linear patterns) - Why sliding window fails on negatives, in one trace ([1, -1, 1, 1]); The reduction ($`\mathrm{prefix}[l] = \mathrm{prefix}[r+1] - k`$); The pattern with the {0: 1} seed; Worked example LC 560 on [1, 1, 1] with $`k = 2`$; When the pattern bends (modulo LC 974, first-seen LC 525).
+2. [The prefix-sum + hash-map combo](https://dsa.handbook.academy/curriculum/pointers-window-prefix/prefix-sum-hash/) (DSA Handbook - Foundations and linear patterns) - Why sliding window fails on negatives, in one trace (`[1, -1, 1, 1]`); The reduction ($`\mathrm{prefix}[l] = \mathrm{prefix}[r+1] - k`$); The pattern with the `{0: 1}` seed; Worked example LC 560 on `[1, 1, 1]` with $`k = 2`$; When the pattern bends (modulo LC 974, first-seen LC 525).
 
 **Focus**
 
 - The prefix array has $`n+1`$ entries with $`P[0] = 0`$: a range sum is $`P[r+1]-P[l]`$, with no special case.
-- Counting needs the seed {0: 1}: subarrays starting at index 0 would otherwise be missed.
+- Counting needs the seed `{0: 1}`: subarrays starting at index 0 would otherwise be missed.
 - Difference arrays mark $`+v`$ at $`l`$ and $`-v`$ at $`r+1`$; one prefix pass materializes the array, and a second prefix over it answers queries.
-- Python's % already normalizes negatives for positive $`k`$; the ((x%k)+k)%k form is for C++ and Java ports.
+- Python's `%` already normalizes negatives for positive $`k`$; the `((x%k)+k)%k` form is for C++ and Java ports.
 
-**Reproduce:** By hand on [1, 1, 1] with $`k = 2`$: seed {0: 1}; running prefixes 1, 2, 3 need -1, 0, 1 with counts 0, 1, 1, totaling 2. Then implement range-add via difference marks plus range-sum queries, differential-tested against naive loops ($`n`$ up to 20, up to 10 updates, derandomize) in Python 3.13: expect 1 passed.
+**Reproduce:** By hand on `[1, 1, 1]` with $`k = 2`$: seed `{0: 1}`; running prefixes 1, 2, 3 need -1, 0, 1 with counts 0, 1, 1, totaling 2. Then implement range-add via difference marks plus range-sum queries, differential-tested against naive loops ($`n`$ up to 20, up to 10 updates, `derandomize`) in Python 3.13: expect 1 passed.
 
 **Traps**
 
 - Off-by-one: $`P`$ has $`n+1`$ entries and the query is $`P[r+1]-P[l]`$.
-- Missing seed {0: 1}: every valid prefix starting at index 0 vanishes.
+- Missing seed `{0: 1}`: every valid prefix starting at index 0 vanishes.
 - Using a window on possibly-negative inputs; reach for prefix-plus-hash instead.
 
 **Practice**
 
-- [LeetCode 303: Range Sum Query - Immutable](https://leetcode.com/problems/range-sum-query-immutable/) - Build the $`n+1`$ prefix once and answer each sumRange in $`O(1)`$. Judge with the Example array [-2, 0, 3, -5, 2, -1].. After submitting, compare against the handbook prefix-sums worked example LC 303.
-- [LeetCode 560: Subarray Sum Equals K](https://leetcode.com/problems/subarray-sum-equals-k/) - Implement the prefix-frequency reduction with the {0: 1} seed. Judge with the Examples [1, 1, 1] $`k = 2`$ giving 2, and [1, 2, 3] $`k = 3`$ giving 2.. After submitting, compare your trace against the handbook prefix-sum-hash worked example on [1, 1, 1].
+- [LeetCode 303: Range Sum Query - Immutable](https://leetcode.com/problems/range-sum-query-immutable/) - Build the $`n+1`$ prefix once and answer each `sumRange` in $`O(1)`$. Judge with the Example array `[-2, 0, 3, -5, 2, -1]`. After submitting, compare against the handbook prefix-sums worked example LC 303.
+- [LeetCode 560: Subarray Sum Equals K](https://leetcode.com/problems/subarray-sum-equals-k/) - Implement the prefix-frequency reduction with the `{0: 1}` seed. Judge with the Examples `[1, 1, 1]` $`k = 2`$ giving 2, and `[1, 2, 3]` $`k = 3`$ giving 2. After submitting, compare your trace against the handbook prefix-sum-hash worked example on [1, 1, 1].
 
 **Stop when:** Both are accepted, your hand trace totals 2, and you can state the window-versus-prefix choice rule from the sign of the input.
 
@@ -486,22 +486,22 @@ Precomputation trades linear space for constant queries, and the prefix-plus-has
    - $`P[i+1][j+1] - P[i][j+1] - P[i+1][j] + P[i][j]`$: subtract the top and left rectangles, add back the doubly-subtracted corner.
 2. Why does the difference marking work?
    - Telescoping: position x accumulates all marks at indices up to x, exactly the updates covering x. A second prefix over the materialized array answers sums.
-3. Where does the {0: 1} seed enter the LC 560 trace?
+3. Where does the `{0: 1}` seed enter the LC 560 trace?
    - Prefix 2 needs 0, which never appears as a running total. The seed supplies its count of 1.
 4. Modulo keys with negative running sums in Python?
-   - key = running % k works directly since Python floors to non-negative for positive $`k`$. Ports to C++ or Java need the double-mod form.
+   - `key = running % k` works directly since Python floors to non-negative for positive $`k`$. Ports to C++ or Java need the double-mod form.
 
 </details>
 
 ### Mini-project: Hash map, two tag-hidden linear problems and a shrunk wrong solution
 
-**About 8 to 12 hours.** In your own repository, build an open-addressing hash map and check it against dict with randomized operation histories, solve two tag-hidden linear-structure problems with each invariant written before the code, and let Hypothesis expose and minimize a plausible wrong solution.
+**About 8 to 12 hours.** In your own repository, build an open-addressing hash map and check it against `dict` with randomized operation histories, solve two tag-hidden linear-structure problems with each invariant written before the code, and let Hypothesis expose and minimize a plausible wrong solution.
 
-1. Implement a linear-probing hash map with get, put, delete by tombstone, and resizing at a load factor you state. Write its invariant (every stored key is reachable from its home slot without crossing an empty slot) and the amortized cost of put from the doubling argument.
-2. Write a Hypothesis rule-based state machine that runs put, get, delete and len against a dict oracle, with an invariant method that checks the probe invariant and the load factor after every step. Draw some keys as multiples of the capacity so probe chains and tombstones are exercised.
-3. Seed two defects in copies: delete that empties the slot instead of leaving a tombstone, and resize that copies slots by index instead of reinserting. Show the state machine fails on each, and keep the shrunk histories as regression tests.
-4. Solve LC 1248 Count Number of Nice Subarrays without reading its tags. Write the invariant first (a running count of odd numbers and a map of prefix counts seeded with {0: 1}), state $`O(n)`$ time and space, check the three examples (2, 0 and 16), and differential-test against an $`O(n^2)`$ brute force.
-5. Solve LC 862 Shortest Subarray with Sum at Least K without reading its tags. First write the plausible two-pointer window that shrinks while the sum is at least $`k`$, and let Hypothesis find and shrink a failing input against brute force (expect something as small as [-1, 1] with $`k = 1`$, where the window answers -1 instead of 1). State the assumption negative numbers break, then solve with prefix sums and a monotone deque, writing its invariant (the deque holds indices with increasing prefix sums).
+1. Implement a linear-probing hash map with `get`, `put`, `delete` by tombstone, and resizing at a load factor you state. Write its invariant (every stored key is reachable from its home slot without crossing an empty slot) and the amortized cost of `put` from the doubling argument.
+2. Write a Hypothesis rule-based state machine that runs `put`, `get`, `delete` and `len` against a `dict` oracle, with an `invariant` method that checks the probe invariant and the load factor after every step. Draw some keys as multiples of the capacity so probe chains and tombstones are exercised.
+3. Seed two defects in copies: `delete` that empties the slot instead of leaving a tombstone, and `resize` that copies slots by index instead of reinserting. Show the state machine fails on each, and keep the shrunk histories as regression tests.
+4. Solve LC 1248 Count Number of Nice Subarrays without reading its tags. Write the invariant first (a running count of odd numbers and a map of prefix counts seeded with `{0: 1}`), state $`O(n)`$ time and space, check the three examples (2, 0 and 16), and differential-test against an $`O(n^2)`$ brute force.
+5. Solve LC 862 Shortest Subarray with Sum at Least K without reading its tags. First write the plausible two-pointer window that shrinks while the sum is at least $`k`$, and let Hypothesis find and shrink a failing input against brute force (expect something as small as `[-1, 1]` with $`k = 1`$, where the window answers -1 instead of 1). State the assumption negative numbers break, then solve with prefix sums and a monotone deque, writing its invariant (the deque holds indices with increasing prefix sums).
 6. Measure probes per successful lookup at load factors 0.5 and 0.75 for three key distributions: sequential ints, random 62-bit ints and multiples of the capacity. Predict each row first. Random keys should land near the linear-probing estimate $`(1 + 1/(1 - a))/2`$, 1.5 and 2.5; explain why sequential ints take one probe and capacity multiples take about $`n/2`$.
 
 **Deliverables**
@@ -518,10 +518,10 @@ Precomputation trades linear space for constant queries, and the prefix-plus-has
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Hash map correctness | The state machine runs 200 derandomized histories against dict, including colliding keys, and both seeded defects fail with shrunk histories. | Each shrunk history is a few readable steps, is kept as a regression test, and the invariant method names the property it broke. |
+| Hash map correctness | The state machine runs 200 derandomized histories against `dict`, including colliding keys, and both seeded defects fail with shrunk histories. | Each shrunk history is a few readable steps, is kept as a regression test, and the invariant method names the property it broke. |
 | Invariants before code | Both solutions carry the invariant and the time and space bound above the code, written before submitting. | The invariants are also asserted in a debug mode that the random tests switch on. |
 | Wrong solution exposed | Hypothesis finds and shrinks a failing input for the window, and the write-up states the broken assumption: removing an element never raises the sum. | A property test restricted to nonnegative inputs shows the same window is correct there. |
-| Measurement | The probe table covers three key distributions at two load factors, and the random-key rows are compared with the linear-probing estimate. | Predictions are written before measuring, and a timing against dict states the Python version and CPU and explains the gap. |
+| Measurement | The probe table covers three key distributions at two load factors, and the random-key rows are compared with the linear-probing estimate. | Predictions are written before measuring, and a timing against `dict` states the Python version and CPU and explains the gap. |
 
 Feeds into: Capstone correctness library: the hash map and its state machine. Failure evidence: the two seeded hash-map defects and the shrunk window counterexample.
 
@@ -533,8 +533,8 @@ Feeds into: Capstone correctness library: the hash map and its state machine. Fa
 - **Support - Theory:** [Algorithms lecture notes - amortized analysis and hashing](https://jeffe.cs.illinois.edu/teaching/algorithms/#notes) - Use note 9 Amortized Analysis for the summation, taxation, charging and potential-function proofs, and note 5 Hashing for chaining, universal hashing and open-addressing analysis, when the handbook treatment is too brief for a proof.
 - **Support - Application:** [Algorithmica - memory and data layout](https://en.algorithmica.org/hpc/) - Read the memory hierarchy, cache and complexity-model chapters, then measure one contiguous-versus-linked and one hash-versus-ordered workload crossover.
 - **Optional - Assessment:** [NeetCode - unseen linear problems](https://neetcode.io/practice) - Use only for two tag-hidden transfer problems after the AlgoMaster slice. Do not start another full roadmap or watch a solution before the attempt is complete.
-- **Support - Reference:** [Hypothesis documentation - Quickstart and stateful testing](https://hypothesis.readthedocs.io/en/latest/) - Follow Quickstart for @given strategies and the pytest combination, Configuring test settings for max_examples and derandomize, then Rule-based state machines (rule, precondition, invariant, run_state_machine_as_test) for randomized operation histories against dict and deque oracles.
-- **Reference - Reference:** [CPython source - list and dict objects](https://github.com/python/cpython) - Read list_resize in Objects/listobject.c for the growth formula and pattern comment, and the USABLE_FRACTION definition, perturbation-probing comment and dummy-entry handling in Objects/dictobject.c. Read the cited functions and comments only.
+- **Support - Reference:** [Hypothesis documentation - Quickstart and stateful testing](https://hypothesis.readthedocs.io/en/latest/) - Follow Quickstart for `@given` strategies and the pytest combination, Configuring test settings for `max_examples` and `derandomize`, then Rule-based state machines (`rule`, `precondition`, `invariant`, `run_state_machine_as_test`) for randomized operation histories against `dict` and `deque` oracles.
+- **Reference - Reference:** [CPython source - list and dict objects](https://github.com/python/cpython) - Read `list_resize` in `Objects/listobject.c` for the growth formula and pattern comment, and the `USABLE_FRACTION` definition, perturbation-probing comment and dummy-entry handling in `Objects/dictobject.c`. Read the cited functions and comments only.
 
 ### Exit checkpoint
 
@@ -587,11 +587,11 @@ Sorting is the first place an ordering invariant pays off, and the lower bound t
 
 - State the sorting contract (stability, in-place behavior, comparator rules) and pick merge sort, quicksort or heap sort from the binding constraint.
 - Prove the comparison-sorting lower bound with a decision-tree argument and explain why counting and radix sorts escape it.
-- Implement stable top-down merge sort with a shared auxiliary buffer and check it against sorted with randomized differential tests.
+- Implement stable top-down merge sort with a shared auxiliary buffer and check it against `sorted` with randomized differential tests.
 
 **Study**
 
-1. [Comparison sorts I: insertion sort and merge sort](https://dsa.handbook.academy/curriculum/search-sort/comparison-sorts-1/) (DSA Handbook - search, trees and heaps) - Algorithm A: insertion sort; Algorithm B: merge sort; Why the merge step gives you $`\Theta(n \log n)`$; The stability table; Worked example: merge sort on [5, 2, 4, 7, 1, 3, 2, 6]; Pitfalls.
+1. [Comparison sorts I: insertion sort and merge sort](https://dsa.handbook.academy/curriculum/search-sort/comparison-sorts-1/) (DSA Handbook - search, trees and heaps) - Algorithm A: insertion sort; Algorithm B: merge sort; Why the merge step gives you $`\Theta(n \log n)`$; The stability table; Worked example: merge sort on `[5, 2, 4, 7, 1, 3, 2, 6]`; Pitfalls.
 2. [Quicksort vs mergesort vs heapsort, picking your sort](https://dsa.handbook.academy/patterns/quicksort-vs-mergesort-vs-heapsort/) (DSA Handbook Patterns - quicksort vs mergesort vs heapsort) - The decision; Algorithms compared; Side-by-side; Common misconceptions.
 3. [Erickson Chapter 1: Mergesort](https://jeffe.cs.illinois.edu/teaching/algorithms/book/Algorithms-JeffE.pdf) (Algorithms) - Section 1.4 Mergesort (pp. 26 to 28), including Lemma 1.1 (Merge), Theorem 1.2 (MergeSort) and the recurrence analysis.
 4. [Lecture Note 12: Lower Bounds, decision trees and sorting](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/12-lowerbounds.pdf) (Algorithms) - Sections 12.2 Decision Trees, 12.3 Information Theory, 12.4 But wait a second... and 12.5 Sorting.
@@ -599,25 +599,25 @@ Sorting is the first place an ordering invariant pays off, and the lower bound t
 
 **Focus**
 
-- Stability means equal keys keep their input order. Merge sort is stable because the merge emits the left run on ties (<=, not <). Quicksort and heap sort are not stable.
+- Stability means equal keys keep their input order. Merge sort is stable because the merge emits the left run on ties (`<=`, not `<`). Quicksort and heap sort are not stable.
 - The merge recurrence $`T(n) = 2T(n/2) + \Theta(n)`$ gives $`\Theta(n \log n)`$ in the best, average and worst case. The shared buffer costs $`\Theta(n)`$ extra space plus $`\Theta(\log n)`$ stack; the already-sorted short-circuit recovers $`\Theta(n)`$ on sorted input.
 - The lower bound counts leaves: $`n`$ distinct keys admit $`n!`$ permutations, so a decision tree needs height at least $`\lg(n!)`$, which is $`\Omega(n \log n)`$ by Stirling. It binds only comparison sorts on general input; counting sort never compares and needs bounded integer keys instead.
-- Equal asymptotics do not mean equal speed in Python. On a 12th Gen Intel Core i9-12900K with Python 3.13.14, a pure-Python merge sort on 20,000 random ints took 0.018 s against 0.0017 s for list.sort, about 10x. State the CPU and version with every timing you report.
+- Equal asymptotics do not mean equal speed in Python. On a 12th Gen Intel Core i9-12900K with Python 3.13.14, a pure-Python merge sort on 20,000 random ints took 0.018 s against 0.0017 s for `list.sort`, about 10x. State the CPU and version with every timing you report.
 
-**Reproduce:** From a blank file, implement top-down merge sort with one shared auxiliary buffer, midpoint lo + (hi - lo)//2, <= in the merge, and the already-sorted short-circuit. On [5, 2, 4, 7, 1, 3, 2, 6] it must return [1, 2, 2, 3, 4, 5, 6, 7]. Stability check: [(5, 'a'), (3, 'b'), (5, 'c')] must come back [(3, 'b'), (5, 'a'), (5, 'c')]. Then run a Hypothesis differential test against sorted on 300 lists up to length 60 with seed 0.
+**Reproduce:** From a blank file, implement top-down merge sort with one shared auxiliary buffer, midpoint `lo + (hi - lo)//2`, `<=` in the merge, and the already-sorted short-circuit. On `[5, 2, 4, 7, 1, 3, 2, 6]` it must return `[1, 2, 2, 3, 4, 5, 6, 7]`. Stability check: `[(5, 'a'), (3, 'b'), (5, 'c')]` must come back `[(3, 'b'), (5, 'a'), (5, 'c')]`. Then run a Hypothesis differential test against `sorted` on 300 lists up to length 60 with seed 0.
 
 **Traps**
 
-- Using < instead of <= in the merge. Ties taken from the right run break stability silently while every sortedness test still passes.
+- Using `<` instead of `<=` in the merge. Ties taken from the right run break stability silently while every sortedness test still passes.
 - Allocating a fresh auxiliary list in every merge call. Allocate once at the top; per-call allocation adds a hidden linear factor at each of the $`\log n`$ levels.
 - Reading the lower bound as a ban on fast sorting. It bans fast comparison sorting on general input; bounded keys (counting) or fixed-width keys (radix) change the model and the bound does not apply.
 
 **Practice**
 
-- [LeetCode 912: Sort an Array](https://leetcode.com/problems/sort-an-array/) - Solve with your merge sort; example inputs [5,2,3,1] and [5,1,1,2,0,0]. Attempt before reading solutions. After submitting, read the AlgoMaster write-up for Sort an Array (https://algomaster.io/learn/dsa/sort-an-array) and compare its approach with yours.
-- [LeetCode 88: Merge Sorted Array](https://leetcode.com/problems/merge-sorted-array/) - Merge in place from the end with $`O(1)`$ extra space; example inputs ([1,2,3,0,0,0], 3, [2,5,6], 3) and ([0], 0, [1], 1). This is the merge step under a no-buffer constraint. After submitting, read the AlgoMaster write-up for Merge Sorted Array (https://algomaster.io/learn/dsa/merge-sorted-array).
+- [LeetCode 912: Sort an Array](https://leetcode.com/problems/sort-an-array/) - Solve with your merge sort; example inputs `[5,2,3,1]` and `[5,1,1,2,0,0]`. Attempt before reading solutions. After submitting, read the AlgoMaster write-up for Sort an Array (https://algomaster.io/learn/dsa/sort-an-array) and compare its approach with yours.
+- [LeetCode 88: Merge Sorted Array](https://leetcode.com/problems/merge-sorted-array/) - Merge in place from the end with $`O(1)`$ extra space; example inputs `([1,2,3,0,0,0], 3, [2,5,6], 3)` and `([0], 0, [1], 1)`. This is the merge step under a no-buffer constraint. After submitting, read the AlgoMaster write-up for Merge Sorted Array (https://algomaster.io/learn/dsa/merge-sorted-array).
 
-**Stop when:** Your merge sort returns the sorted handbook example, keeps equal-key order, passes 300 Hypothesis cases against sorted, and you can state the decision-tree bound and the counting-sort precondition without notes.
+**Stop when:** Your merge sort returns the sorted handbook example, keeps equal-key order, passes 300 Hypothesis cases against `sorted`, and you can state the decision-tree bound and the counting-sort precondition without notes.
 
 <details>
 <summary>Self-test</summary>
@@ -626,8 +626,8 @@ Sorting is the first place an ordering invariant pays off, and the lower bound t
    - Model the sort as a decision tree: each internal node is one comparison and each leaf is one output permutation. Sorting $`n`$ distinct keys needs at least $`n!`$ leaves. A binary tree with $`L`$ leaves has height at least $`\lg L`$, so the height is at least $`\lg(n!)`$. By Stirling, $`n! > (n/e)^n`$, so $`\lg(n!) > n \lg n - n \lg e = \Omega(n \log n)`$.
 2. Why does counting sort not contradict that bound?
    - The bound counts comparisons on general input. Counting sort never compares keys; it indexes by key value, which needs bounded integer keys with $`k = O(n)`$ for linear time. Change the assumption and the bound does not apply.
-3. Is Python's list.sort stable, and how do you check from a REPL?
-   - Yes, it is Timsort and stable. Check sorted([(5, 'a'), (3, 'b'), (5, 'c')], key=lambda p: p[0]): the two 5s keep the order ('a') before ('c').
+3. Is Python's `list.sort` stable, and how do you check from a REPL?
+   - Yes, it is Timsort and stable. Check `sorted([(5, 'a'), (3, 'b'), (5, 'c')], key=lambda p: p[0])`: the two 5s keep the order (`'a'`) before (`'c'`).
 4. Why does merge sort cost $`\Theta(n \log n)`$ even on already-sorted input without the short-circuit?
    - Every level still visits all $`n`$ elements to merge, and there are about $`\log_2 n`$ levels regardless of order. The short-circuit only skips the merge work when the two runs are already ordered, which recovers $`\Theta(n)`$ on sorted input.
 
@@ -649,20 +649,20 @@ Partitioning is the one primitive behind quicksort, quickselect and three-way co
 
 **Study**
 
-1. [Comparison sorts II: quicksort, partition, and the production hybrids](https://dsa.handbook.academy/curriculum/search-sort/comparison-sorts-2/) (DSA Handbook - search, trees and heaps) - Algorithm A: quicksort with median-of-three Lomuto partition; Why the obvious version explodes on sorted input; The teaching reference; Worked example: median-of-three Lomuto on [5,2,4,7,1,3,2,6]; Cost; Pitfalls.
+1. [Comparison sorts II: quicksort, partition, and the production hybrids](https://dsa.handbook.academy/curriculum/search-sort/comparison-sorts-2/) (DSA Handbook - search, trees and heaps) - Algorithm A: quicksort with median-of-three Lomuto partition; Why the obvious version explodes on sorted input; The teaching reference; Worked example: median-of-three Lomuto on `[5,2,4,7,1,3,2,6]`; Cost; Pitfalls.
 2. [Erickson Chapter 1: Quicksort](https://jeffe.cs.illinois.edu/teaching/algorithms/book/Algorithms-JeffE.pdf) (Algorithms) - Section 1.5 Quicksort (pp. 29 to 31), including the Lomuto Partition pseudocode and the pivot-rank recurrence.
-3. [Quickselect: linear-time selection](https://dsa.handbook.academy/curriculum/search-sort/quickselect/) (DSA Handbook - search, trees and heaps) - The primitive: partition; The trick: recurse on one side; Random pivot is non-negotiable; Worked example: LC 215 on [3,2,1,5,6,4], k=2; Quickselect or heap?; Pitfalls. Depth: Read Why expected linear works for the recurrence shape only; its expectation proof belongs to algorithms/decomposition-greedy-randomness/randomized-algorithms. Skim Why nobody ships median-of-medians for the verdict; the deterministic proof belongs to algorithms/decomposition-greedy-randomness/divide-conquer-recurrences.
+3. [Quickselect: linear-time selection](https://dsa.handbook.academy/curriculum/search-sort/quickselect/) (DSA Handbook - search, trees and heaps) - The primitive: partition; The trick: recurse on one side; Random pivot is non-negotiable; Worked example: LC 215 on `[3,2,1,5,6,4]`, `k=2`; Quickselect or heap?; Pitfalls. Depth: Read Why expected linear works for the recurrence shape only; its expectation proof belongs to algorithms/decomposition-greedy-randomness/randomized-algorithms. Skim Why nobody ships median-of-medians for the verdict; the deterministic proof belongs to algorithms/decomposition-greedy-randomness/divide-conquer-recurrences.
 4. [Erickson Chapter 1: Quickselect and good pivots](https://jeffe.cs.illinois.edu/teaching/algorithms/book/Algorithms-JeffE.pdf) (Algorithms) - Section 1.8 Linear-Time Selection (pp. 35 to 36), Quickselect and Good pivots. Depth: Stop before the Analysis on pp. 37 to 38; the median-of-medians proof belongs to algorithms/decomposition-greedy-randomness/divide-conquer-recurrences.
 5. [Quickselect vs heap for top-K](https://dsa.handbook.academy/patterns/quickselect-vs-heap-top-k/) (DSA Handbook Patterns - quickselect vs heap for top-K) - The decision; Algorithms compared; Side-by-side; Common misconceptions.
 
 **Focus**
 
-- Lomuto invariant: at every scan step, arr[lo..i] holds elements <= pivot, arr[i+1..j-1] holds elements > pivot, and arr[j..hi-1] is unexamined. The final swap puts the pivot at its final sorted index. Median-of-three places the pivot at arr[hi]; that placement is part of the contract.
-- With the handbook's <= in the scan, keys equal to the pivot join the left band; Erickson's strict < sends them right. Either way all-equal input puts every key on one side, so Lomuto degenerates to $`\Theta(n^2)`$ even with a random pivot. Three-way (Dutch flag) partition groups equal keys in one pass and recovers $`\Theta(n)`$.
+- Lomuto invariant: at every scan step, `arr[lo..i]` holds elements <= pivot, `arr[i+1..j-1]` holds elements > pivot, and `arr[j..hi-1]` is unexamined. The final swap puts the pivot at its final sorted index. Median-of-three places the pivot at `arr[hi]`; that placement is part of the contract.
+- With the handbook's `<=` in the scan, keys equal to the pivot join the left band; Erickson's strict `<` sends them right. Either way all-equal input puts every key on one side, so Lomuto degenerates to $`\Theta(n^2)`$ even with a random pivot. Three-way (Dutch flag) partition groups equal keys in one pass and recovers $`\Theta(n)`$.
 - Random pivot is the correctness fix, not an optimization: a fixed last-element pivot is $`\Theta(n^2)`$ on sorted input. Judges include large sorted and duplicate-heavy arrays, so test both yourself.
-- Top-k routing: a stream or tiny $`k`$ favors a size-k heap ($`O(n \log k)`$ time, $`O(k)`$ space, no mutation); a whole array in memory with unsorted output favors quickselect (expected $`O(n)`$); sorted output adds $`O(k \log k)`$. In CPython, heapq.nlargest runs in C: on a 12th Gen Intel Core i9-12900K with Python 3.13.14 it took about 1.3 ms against about 6 ms for an in-place pure-Python quickselect on 100,000 ints with $`k = 100`$, so count comparisons and wall-clock time separately.
+- Top-k routing: a stream or tiny $`k`$ favors a size-k heap ($`O(n \log k)`$ time, $`O(k)`$ space, no mutation); a whole array in memory with unsorted output favors quickselect (expected $`O(n)`$); sorted output adds $`O(k \log k)`$. In CPython, `heapq.nlargest` runs in C: on a 12th Gen Intel Core i9-12900K with Python 3.13.14 it took about 1.3 ms against about 6 ms for an in-place pure-Python quickselect on 100,000 ints with $`k = 100`$, so count comparisons and wall-clock time separately.
 
-**Reproduce:** From a blank file, implement Lomuto partition with a random pivot swap and iterative quickselect for kth largest. Assert the post-condition on every partition call (pivot at its final index, everything left of it <= pivot, everything right of it > pivot). quickselect([3,2,1,5,6,4], 2) must return 5. Run a Hypothesis differential test against sorted on 300 lists up to length 40, including sorted and all-equal inputs, then add a three-way partition and time both on 10,000 equal keys.
+**Reproduce:** From a blank file, implement Lomuto partition with a random pivot swap and iterative quickselect for kth largest. Assert the post-condition on every partition call (pivot at its final index, everything left of it `<=` pivot, everything right of it `>` pivot). `quickselect([3,2,1,5,6,4], 2)` must return 5. Run a Hypothesis differential test against `sorted` on 300 lists up to length 40, including sorted and all-equal inputs, then add a three-way partition and time both on 10,000 equal keys.
 
 **Traps**
 
@@ -672,8 +672,8 @@ Partitioning is the one primitive behind quicksort, quickselect and three-way co
 
 **Practice**
 
-- [LeetCode 215: Kth Largest Element in an Array](https://leetcode.com/problems/kth-largest-element-in-an-array/) - Solve with iterative quickselect, a random pivot and a three-way partition; example inputs ([3,2,1,5,6,4], 2) and ([3,2,3,1,2,4,5,5,6], 4). Include sorted-input and all-duplicate tests of 100,000 elements before submitting. After submitting, read the AlgoMaster write-up for Kth Largest Element in an Array (https://algomaster.io/learn/dsa/kth-largest-element-in-an-array).
-- [LeetCode 347: Top K Frequent Elements](https://leetcode.com/problems/top-k-frequent-elements/) - Hash the counts first, then select top $`k`$; example inputs ([1,1,1,2,2,3], 2) and ([1], 1). Solve it twice: once with a size-k heap, once with quickselect on (count, value) pairs, and state which you would ship for a stream. After submitting, read the AlgoMaster write-up for Top K Frequent Elements (https://algomaster.io/learn/dsa/top-k-frequent-elements).
+- [LeetCode 215: Kth Largest Element in an Array](https://leetcode.com/problems/kth-largest-element-in-an-array/) - Solve with iterative quickselect, a random pivot and a three-way partition; example inputs `([3,2,1,5,6,4], 2)` and `([3,2,3,1,2,4,5,5,6], 4)`. Include sorted-input and all-duplicate tests of 100,000 elements before submitting. After submitting, read the AlgoMaster write-up for Kth Largest Element in an Array (https://algomaster.io/learn/dsa/kth-largest-element-in-an-array).
+- [LeetCode 347: Top K Frequent Elements](https://leetcode.com/problems/top-k-frequent-elements/) - Hash the counts first, then select top $`k`$; example inputs `([1,1,1,2,2,3], 2)` and `([1], 1)`. Solve it twice: once with a size-k heap, once with quickselect on `(count, value)` pairs, and state which you would ship for a stream. After submitting, read the AlgoMaster write-up for Top K Frequent Elements (https://algomaster.io/learn/dsa/top-k-frequent-elements).
 
 **Stop when:** Your quickselect returns 5 on the handbook example, survives sorted and all-equal inputs, passes 300 differential cases, and you can route a new top-k task to heap, quickselect or full sort from its streaming and output constraints.
 
@@ -681,13 +681,13 @@ Partitioning is the one primitive behind quicksort, quickselect and three-way co
 <summary>Self-test</summary>
 
 1. State the Lomuto invariant and what the final swap establishes.
-   - During the scan, arr[lo..i] holds elements <= pivot, arr[i+1..j-1] holds elements > pivot, and arr[j..hi-1] is unexamined. The final swap moves the pivot just past the <= band, so it sits at its final sorted index with everything left <= it and everything right > it.
+   - During the scan, `arr[lo..i]` holds elements <= pivot, `arr[i+1..j-1]` holds elements > pivot, and `arr[j..hi-1]` is unexamined. The final swap moves the pivot just past the `<=` band, so it sits at its final sorted index with everything left <= it and everything right > it.
 2. Why does Lomuto with a random pivot still go quadratic on all-equal input, and what fixes it?
-   - Every key equal to the pivot lands on one side (left with <=, right with <), so each partition removes only the pivot and $`T(n) = T(n-1) + \Theta(n) = \Theta(n^2)`$. Three-way partition groups all pivot-equal keys in one pass, so the recursion skips them and the cost is $`\Theta(n)`$.
+   - Every key equal to the pivot lands on one side (left with `<=`, right with `<`), so each partition removes only the pivot and $`T(n) = T(n-1) + \Theta(n) = \Theta(n^2)`$. Three-way partition groups all pivot-equal keys in one pass, so the recursion skips them and the cost is $`\Theta(n)`$.
 3. When does a size-k heap beat quickselect for top-k, and when does it lose asymptotically?
    - The heap wins when the input streams (quickselect needs random access to the whole array) or when $`O(k)`$ space without mutation matters. At $`k = n/2`$ the heap costs $`O(n \log n)`$ and loses its edge while quickselect stays expected $`O(n)`$. Sorted output adds $`O(k \log k)`$ on top of either.
 4. What does introselect change about quickselect's worst case?
-   - It watches the recursion depth and switches to a guaranteed method past about $`2 \lg n`$ levels: median-of-medians in Musser's design, which keeps the worst case linear, or heap selection in libstdc++'s nth_element, which caps it at $`O(n \log n)`$. The median-of-medians proof belongs to algorithms/decomposition-greedy-randomness/divide-conquer-recurrences.
+   - It watches the recursion depth and switches to a guaranteed method past about $`2 \lg n`$ levels: median-of-medians in Musser's design, which keeps the worst case linear, or heap selection in libstdc++'s `nth_element`, which caps it at $`O(n \log n)`$. The median-of-medians proof belongs to algorithms/decomposition-greedy-randomness/divide-conquer-recurrences.
 
 </details>
 
@@ -702,49 +702,49 @@ Binary search fails in production through boundary bugs, not through asymptotics
 **You can now**
 
 - Prove the binary-search loop invariant and derive safe boundary updates for lower-bound, upper-bound and first-true variants.
-- Implement exact-match, lower-bound, upper-bound and answer-space search from the invariant, with differential tests against bisect.
-- Turn a monotone feasibility predicate into lo/hi bounds with cost $`O(F \log W)`$, and defend why monotonicity (not sortedness) is the requirement.
+- Implement exact-match, lower-bound, upper-bound and answer-space search from the invariant, with differential tests against `bisect`.
+- Turn a monotone feasibility predicate into `lo`/`hi` bounds with cost $`O(F \log W)`$, and defend why monotonicity (not sortedness) is the requirement.
 
 **Study**
 
 1. [Binary search: the canonical version](https://dsa.handbook.academy/curriculum/search-sort/binary-search-canonical/) (DSA Handbook - search, trees and heaps) - Pick the template from the question, not the input; Template A: exact-match on a closed interval; Template B: lower-bound on a half-open interval; Template C: predicate-driven leftmost; The off-by-one death zone.
-2. [Binary search variants: lower_bound, upper_bound, peaks, and rotated arrays](https://dsa.handbook.academy/curriculum/search-sort/binary-search-variants/) (DSA Handbook - search, trees and heaps) - Variant 1: lower_bound and upper_bound on duplicates; Variant 4: binary search on the answer; Pitfalls. Depth: Skim Variants 2, 3 and 5 (rotated arrays, peaks, cross-array partition) for recognition only; they are not implemented here.
+2. [Binary search variants: `lower_bound`, `upper_bound`, peaks, and rotated arrays](https://dsa.handbook.academy/curriculum/search-sort/binary-search-variants/) (DSA Handbook - search, trees and heaps) - Variant 1: `lower_bound` and `upper_bound` on duplicates; Variant 4: binary search on the answer; Pitfalls. Depth: Skim Variants 2, 3 and 5 (rotated arrays, peaks, cross-array partition) for recognition only; they are not implemented here.
 3. [Lecture Note 12: the dictionary lower bound](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/12-lowerbounds.pdf) (Algorithms) - Section 12.3 Information Theory. Depth: Read only the dictionary lower-bound argument (Omega(log n) queries); the sorting sections belong to the merge-sort unit.
-4. [Algorithmica: Binary Search](https://en.algorithmica.org/hpc/data-structures/binary-search/) (Algorithmica - search and sorting performance) - Binary Search (The Bottleneck); Removing Branches. Depth: Read for the branch-prediction and cache explanation only. Every speedup number there (2.5x to 3x branchless on small arrays, about 2x Eytzinger against std::lower_bound) is a C++ measurement with Clang 10 on Zen 2; do not transfer any crossover point to Python.
+4. [Algorithmica: Binary Search](https://en.algorithmica.org/hpc/data-structures/binary-search/) (Algorithmica - search and sorting performance) - Binary Search (The Bottleneck); Removing Branches. Depth: Read for the branch-prediction and cache explanation only. Every speedup number there (2.5x to 3x branchless on small arrays, about 2x Eytzinger against `std::lower_bound`) is a C++ measurement with Clang 10 on Zen 2; do not transfer any crossover point to Python.
 
 **Focus**
 
-- Closed [lo,hi] pairs with while lo <= hi and hi=mid-1; half-open [lo,hi) pairs with while lo < hi and hi=mid. Mixing the pairs is the non-termination bug.
-- lower_bound keeps equality right with nums[mid] < target; upper_bound keeps equality left with nums[mid] <= target. Their difference counts duplicates.
+- Closed `[lo,hi]` pairs with `while lo <= hi` and `hi=mid-1`; half-open `[lo,hi)` pairs with `while lo < hi` and `hi=mid`. Mixing the pairs is the non-termination bug.
+- `lower_bound` keeps equality right with `nums[mid] < target`; `upper_bound` keeps equality left with `nums[mid] <= target`. Their difference counts duplicates.
 - Answer-space search is Template C with a monotone predicate: feasibility must hold above (or below) a threshold with no gaps. Cost is $`O(F \log W)`$ for predicate cost $`F`$ and width $`W`$.
-- Algorithmica's C++ numbers explain why equal-asymptotic searches cross over (an unpredictable branch costs 10 to 15 cycles, a cache miss up to 300), but Python's interpreter overhead moves every crossover. Verify bounds against bisect, not against ported constants.
+- Algorithmica's C++ numbers explain why equal-asymptotic searches cross over (an unpredictable branch costs 10 to 15 cycles, a cache miss up to 300), but Python's interpreter overhead moves every crossover. Verify bounds against `bisect`, not against ported constants.
 
-**Reproduce:** From a blank file, implement lower_bound, upper_bound and a first-true search on [lo,hi). On [1,2,2,2,3] with target 2, return 1 and 4. Reproduce Koko: piles [3,6,7,11] with h=8 must return 4. Run a Hypothesis differential test of both bounds against bisect_left and bisect_right on 300 sorted lists up to length 30.
+**Reproduce:** From a blank file, implement `lower_bound`, `upper_bound` and a first-true search on `[lo,hi)`. On `[1,2,2,2,3]` with target 2, return 1 and 4. Reproduce Koko: piles `[3,6,7,11]` with `h=8` must return 4. Run a Hypothesis differential test of both bounds against `bisect_left` and `bisect_right` on 300 sorted lists up to length 30.
 
 **Traps**
 
-- Returning lo for every template. The upper-bound twin and Template A need their own return values; derive each from the invariant instead of memorizing one.
-- Writing lo=mid or hi=mid in Template A after a miss. The closed interval needs mid+1 and mid-1 to shrink; the half-open forms are the ones that keep mid.
-- Searching on a predicate that is not monotone. Prove hours(k) is nonincreasing in $`k`$ (or your predicate's direction) before trusting the loop; a gap in feasibility silently returns a wrong answer.
+- Returning `lo` for every template. The upper-bound twin and Template A need their own return values; derive each from the invariant instead of memorizing one.
+- Writing `lo=mid` or `hi=mid` in Template A after a miss. The closed interval needs `mid+1` and `mid-1` to shrink; the half-open forms are the ones that keep `mid`.
+- Searching on a predicate that is not monotone. Prove `hours(k)` is nonincreasing in $`k`$ (or your predicate's direction) before trusting the loop; a gap in feasibility silently returns a wrong answer.
 
 **Practice**
 
-- [LeetCode 875: Koko Eating Bananas](https://leetcode.com/problems/koko-eating-bananas/) - Solve with a monotone hours predicate on [1, max(piles)]; example piles [3,6,7,11] with h=8 expects 4. Attempt cold: state the predicate and its monotonicity before coding. After submitting, read the AlgoMaster write-up for Koko Eating Bananas (https://algomaster.io/learn/dsa/koko-eating-bananas).
-- [LeetCode 34: Find First and Last Position of Element in Sorted Array](https://leetcode.com/problems/find-first-and-last-position-of-element-in-sorted-array/) - Two bound searches; example inputs ([5,7,7,8,8,10], 8) expects [3,4] and ([5,7,7,8,8,10], 6) expects [-1,-1]. Cover the empty array and the absent target without extra branches. After submitting, read the AlgoMaster write-up for Find First and Last Position of Element in Sorted Array (https://algomaster.io/learn/dsa/find-first-and-last-position-of-element-in-sorted-array).
+- [LeetCode 875: Koko Eating Bananas](https://leetcode.com/problems/koko-eating-bananas/) - Solve with a monotone `hours` predicate on `[1, max(piles)]`; example piles `[3,6,7,11]` with `h=8` expects 4. Attempt cold: state the predicate and its monotonicity before coding. After submitting, read the AlgoMaster write-up for Koko Eating Bananas (https://algomaster.io/learn/dsa/koko-eating-bananas).
+- [LeetCode 34: Find First and Last Position of Element in Sorted Array](https://leetcode.com/problems/find-first-and-last-position-of-element-in-sorted-array/) - Two bound searches; example inputs `([5,7,7,8,8,10], 8)` expects `[3,4]` and `([5,7,7,8,8,10], 6)` expects `[-1,-1]`. Cover the empty array and the absent target without extra branches. After submitting, read the AlgoMaster write-up for Find First and Last Position of Element in Sorted Array (https://algomaster.io/learn/dsa/find-first-and-last-position-of-element-in-sorted-array).
 
-**Stop when:** Your three searches match bisect on 300 random cases, Koko returns 4, and you can write any bound variant from its invariant without trial edits.
+**Stop when:** Your three searches match `bisect` on 300 random cases, Koko returns 4, and you can write any bound variant from its invariant without trial edits.
 
 <details>
 <summary>Self-test</summary>
 
 1. Prove Template B terminates with lo at the lower bound.
-   - Invariant: every index j < lo has nums[j] < target and every index k >= hi has nums[k] >= target. Each iteration replaces [lo,hi) with a strictly smaller interval that preserves the invariant, since mid sits strictly inside while lo < hi. The width reaches zero, so lo == hi, and the invariant says every index below lo is < target and every index from lo on is >= target (lo = n when none is), so lo is the lower bound.
-2. On [1,2,2,2,3], what do exact-match search, lower_bound and upper_bound return for target 2, and why?
-   - Exact match returns some index in {1,2,3}. lower_bound returns 1 because the strict comparison keeps equality right; upper_bound returns 4 because the non-strict comparison keeps equality left. The duplicate count is 4 - 1 = 3.
+   - Invariant: every index `j < lo` has `nums[j] < target` and every index `k >= hi` has `nums[k] >= target`. Each iteration replaces `[lo,hi)` with a strictly smaller interval that preserves the invariant, since `mid` sits strictly inside `while lo < hi`. The width reaches zero, so `lo == hi`, and the invariant says every index below `lo` is < target and every index from `lo` on is >= target (`lo = n` when none is), so `lo` is the lower bound.
+2. On `[1,2,2,2,3]`, what do exact-match search, `lower_bound` and `upper_bound` return for target 2, and why?
+   - Exact match returns some index in `{1,2,3}`. `lower_bound` returns 1 because the strict comparison keeps equality right; `upper_bound` returns 4 because the non-strict comparison keeps equality left. The duplicate count is $`4 - 1 = 3`$.
 3. Why is binary search correct on the Koko predicate when speeds are not stored in an array?
-   - hours(k) is nonincreasing in $`k`$: a faster speed never needs more hours. That monotonicity is the only requirement; the loop searches the predicate, not a sorted array. Each probe scans $`n`$ piles, so the cost is $`O(n \log \max(\text{piles}))`$.
+   - `hours(k)` is nonincreasing in $`k`$: a faster speed never needs more hours. That monotonicity is the only requirement; the loop searches the predicate, not a sorted array. Each probe scans $`n`$ piles, so the cost is $`O(n \log \max(\text{piles}))`$.
 4. A colleague ports Algorithmica's branchless binary search to Python expecting 2.5x. What do you tell them?
-   - The 2.5x to 3x number is Algorithmica's C++ measurement (Clang 10, Zen 2) on small arrays. Python's per-iteration interpreter overhead dominates and removes the branch-prediction effect, so the constant does not transfer. Measure with timeit on the real workload instead.
+   - The 2.5x to 3x number is Algorithmica's C++ measurement (Clang 10, Zen 2) on small arrays. Python's per-iteration interpreter overhead dominates and removes the branch-prediction effect, so the constant does not transfer. Measure with `timeit` on the real workload instead.
 
 </details>
 
@@ -770,23 +770,23 @@ Every tree algorithm is a traversal with extra state. The traversal order decide
 
 **Focus**
 
-- Height convention used here: height(null) = 0 and a leaf has height 1 (nodes on the path). The AVL chapter switches to edges; never mix the two conventions in one argument.
-- Iterative inorder keeps every ancestor whose left subtree is done but whose value is unemitted; after emitting, move to cur.right, not None.
-- Level order needs the level_size = len(queue) snapshot taken once per level. Reading the queue length inside the inner loop merges levels.
-- CPython's default recursion limit is 1000 (check with sys.getrecursionlimit), so a recursive traversal fails on a skewed tree of a few thousand nodes while a balanced tree of 100,000 nodes (depth about 17) is fine. The iterative forms have no such cap.
+- Height convention used here: `height(null) = 0` and a leaf has height 1 (nodes on the path). The AVL chapter switches to edges; never mix the two conventions in one argument.
+- Iterative inorder keeps every ancestor whose left subtree is done but whose value is unemitted; after emitting, move to `cur.right`, not `None`.
+- Level order needs the `level_size = len(queue)` snapshot taken once per level. Reading the queue length inside the inner loop merges levels.
+- CPython's default recursion limit is 1000 (check with `sys.getrecursionlimit`), so a recursive traversal fails on a skewed tree of a few thousand nodes while a balanced tree of 100,000 nodes (depth about 17) is fine. The iterative forms have no such cap.
 
-**Reproduce:** From a blank file, implement iterative inorder and level-order with the snapshot line. On the chapter's canonical tree (preorder [1,2,4,5,3,6], inorder [4,2,5,1,3,6]), return inorder [4,2,5,1,3,6] and level order [[1],[2,3],[4,5,6]]. Check both against recursive versions on 200 random BSTs up to 25 nodes with fixed seeds, plus empty, single-node and skewed inputs.
+**Reproduce:** From a blank file, implement iterative inorder and level-order with the snapshot line. On the chapter's canonical tree (preorder `[1,2,4,5,3,6]`, inorder `[4,2,5,1,3,6]`), return inorder `[4,2,5,1,3,6]` and level order `[[1],[2,3],[4,5,6]]`. Check both against recursive versions on 200 random BSTs up to 25 nodes with fixed seeds, plus empty, single-node and skewed inputs.
 
 **Traps**
 
 - Pushing the left child before the right in iterative preorder. Push right first so the left child pops next.
-- Serializing without null markers. Preorder [2,1] fits two different trees; markers disambiguate.
-- Using list.pop(0) as the BFS queue. Each pop costs $`O(n)`$, which makes level order $`O(n^2)`$; use collections.deque.
+- Serializing without `null` markers. Preorder `[2,1]` fits two different trees; markers disambiguate.
+- Using `list.pop(0)` as the BFS queue. Each pop costs $`O(n)`$, which makes level order $`O(n^2)`$; use `collections.deque`.
 
 **Practice**
 
 - [LeetCode 94: Binary Tree Inorder Traversal](https://leetcode.com/problems/binary-tree-inorder-traversal/) - Solve recursively, then iteratively with an explicit stack; the follow-up asks for the iterative form. After submitting, read the AlgoMaster write-up for Binary Tree Inorder Traversal (https://algomaster.io/learn/dsa/binary-tree-inorder-traversal).
-- [LeetCode 102: Binary Tree Level Order Traversal](https://leetcode.com/problems/binary-tree-level-order-traversal/) - Group output by level with the snapshot line; example tree [3,9,20,null,null,15,7] expects [[3],[9,20],[15,7]]. After submitting, read the AlgoMaster write-up for Binary Tree Level Order Traversal (https://algomaster.io/learn/dsa/binary-tree-level-order-traversal).
+- [LeetCode 102: Binary Tree Level Order Traversal](https://leetcode.com/problems/binary-tree-level-order-traversal/) - Group output by level with the snapshot line; example tree `[3,9,20,null,null,15,7]` expects `[[3],[9,20],[15,7]]`. After submitting, read the AlgoMaster write-up for Binary Tree Level Order Traversal (https://algomaster.io/learn/dsa/binary-tree-level-order-traversal).
 
 **Stop when:** Both iterative traversals match their recursive twins on 200 random trees, you reproduce the canonical orders from memory, and empty, single-node and skewed inputs all pass.
 
@@ -795,9 +795,9 @@ Every tree algorithm is a traversal with extra state. The traversal order decide
 
 1. Why does inorder traversal of a BST emit sorted keys?
    - Inorder visits the left subtree, then the node, then the right subtree. Every key left of a node is smaller and every key right of it is larger, so induction on the tree gives ascending order. This needs the BST invariant and is false for general binary trees.
-2. What breaks if the inner level-order loop reads len(queue) on every check instead of snapshotting?
+2. What breaks if the inner level-order loop reads `len(queue)` on every check instead of snapshotting?
    - Children appended during the level change the bound mid-level, so the loop consumes the next level too and the boundaries merge. The snapshot fixes the count before any appends happen.
-3. Preorder [1,2] and postorder [2,1] fit more than one tree. Show the ambiguity and the fix.
+3. Preorder `[1,2]` and postorder `[2,1]` fit more than one tree. Show the ambiguity and the fix.
    - Both fit root 1 with a single child 2 on either side; the one-child direction is undetermined. Null markers (or an inorder sequence, which needs distinct keys) fix the shape.
 4. A recursive inorder fails on a skewed tree of 5,000 nodes but works on a balanced tree of 100,000. Why?
    - Stack use follows depth, not size: skewed depth is $`n-1 = 4{,}999`$ against the default limit of 1000, while balanced depth is about 17. The fix is the iterative form, or a deliberate limit raise.
@@ -815,7 +815,7 @@ BSTs turn sorted search dynamic, but only balance keeps it logarithmic. Augmente
 **You can now**
 
 - Explain the BST ordering invariant and why child-only checks accept invalid trees.
-- Implement search, insert, delete in all three cases, and bounded validation, with edge tests for duplicates and sentinels.
+- Implement `search`, `insert`, `delete` in all three cases, and bounded validation, with edge tests for duplicates and sentinels.
 - Explain AVL balance, rotations and the Fibonacci height bound, read red-black guarantees at survey level, and implement an augmented range-sum structure with differential tests.
 
 **Study**
@@ -827,22 +827,22 @@ BSTs turn sorted search dynamic, but only balance keeps it logarithmic. Augmente
 
 **Focus**
 
-- Bounded validation passes (lo,hi) down and checks lo < val < hi strictly. The tree [5,4,6,null,null,3,7] passes every child-only check, yet node 3 sits in the right subtree of 5 and fails the inherited bound.
+- Bounded validation passes `(lo,hi)` down and checks `lo < val < hi` strictly. The tree `[5,4,6,null,null,3,7]` passes every child-only check, yet node 3 sits in the right subtree of 5 and fails the inherited bound.
 - Hibbard deletion copies the inorder successor's value, then deletes the successor, which has at most one child. Never rewire the successor object into the deleted slot; that loses the left subtree.
 - AVL dispatch asks two questions: which side is heavy (sign of the balance factor) and outer versus inner (sign agreement). Same sign rotates once; opposite signs rotate twice. Insert needs $`O(1)`$ rotations because the subtree height returns to its old value.
 - Segment-tree query visits at most four vertices per level because only the two boundary vertices split; interior vertices exit on exact match. The min/max clipping plus the empty-range guard is what makes that proof work.
 
-**Reproduce:** From a blank file, implement BST insert, bounded validation and Hibbard delete. Insert [5,3,8,1,4,7,9] and assert inorder [1,3,4,5,7,8,9]; assert validation rejects [5,4,6,null,null,3,7] and LeetCode's [5,1,4,null,null,3,6]; delete 5 and assert inorder [1,3,4,7,8,9] with validation true. Implement a segment tree with point update and range sum: on [1,3,5,7,9,11,13,15], update index 3 to 6 and assert sumRange(2,5) is 31. Differential-test the segment tree against brute force on random arrays up to length 50.
+**Reproduce:** From a blank file, implement BST insert, bounded validation and Hibbard delete. Insert `[5,3,8,1,4,7,9]` and assert inorder `[1,3,4,5,7,8,9]`; assert validation rejects `[5,4,6,null,null,3,7]` and LeetCode's `[5,1,4,null,null,3,6]`; delete 5 and assert inorder `[1,3,4,7,8,9]` with validation true. Implement a segment tree with point update and range sum: on `[1,3,5,7,9,11,13,15]`, update index 3 to 6 and assert `sumRange(2,5)` is 31. Differential-test the segment tree against brute force on random arrays up to length 50.
 
 **Traps**
 
-- Using int sentinels (INT_MIN, INT_MAX) as initial bounds. A key equal to the sentinel breaks the check; use infinities, boxed nullable bounds or a wider type.
+- Using `int` sentinels (`INT_MIN`, `INT_MAX`) as initial bounds. A key equal to the sentinel breaks the check; use infinities, boxed nullable bounds or a wider type.
 - Deleting by rewiring instead of value copy, or forgetting to delete the successor copy afterwards. Both corrupt the ordering or duplicate a key.
 - Counting segment-tree vertices as $`2n-1`$ and allocating $`2n`$. When $`n`$ is not a power of two the implicit layout overflows; allocate $`4n`$.
 
 **Practice**
 
-- [LeetCode 98: Validate Binary Search Tree](https://leetcode.com/problems/validate-binary-search-tree/) - Validate with (lo,hi) bounds; failing cases [5,1,4,null,null,3,6] from the problem and [5,4,6,null,null,3,7], which passes child-only checks. Attempt cold with tags hidden: state the ordering invariant before coding. After submitting, read the AlgoMaster write-up for Validate Binary Search Tree (https://algomaster.io/learn/dsa/validate-binary-search-tree). Transfer check: solve one unseen tree problem on NeetCode (for example LC 105 Construct Binary Tree from Preorder and Inorder Traversal, https://leetcode.com/problems/construct-binary-tree-from-preorder-and-inorder-traversal/) with solutions closed.
+- [LeetCode 98: Validate Binary Search Tree](https://leetcode.com/problems/validate-binary-search-tree/) - Validate with `(lo,hi)` bounds; failing cases `[5,1,4,null,null,3,6]` from the problem and `[5,4,6,null,null,3,7]`, which passes child-only checks. Attempt cold with tags hidden: state the ordering invariant before coding. After submitting, read the AlgoMaster write-up for Validate Binary Search Tree (https://algomaster.io/learn/dsa/validate-binary-search-tree). Transfer check: solve one unseen tree problem on NeetCode (for example LC 105 Construct Binary Tree from Preorder and Inorder Traversal, https://leetcode.com/problems/construct-binary-tree-from-preorder-and-inorder-traversal/) with solutions closed.
 - [LeetCode 230: Kth Smallest Element in a BST](https://leetcode.com/problems/kth-smallest-element-in-a-bst/) - Early-exit inorder counting to $`k`$; follow-up asks for better than $`O(n)`$ memory. After submitting, read the AlgoMaster write-up for Kth Smallest Element in a BST (https://algomaster.io/learn/dsa/kth-smallest-element-in-a-bst).
 
 **Stop when:** Delete and validation behave on the handbook cases, the segment tree matches brute force on random arrays, and you can derive all four AVL cases plus the height bound on a fresh insert.
@@ -851,7 +851,7 @@ BSTs turn sorted search dynamic, but only balance keeps it logarithmic. Augmente
 <summary>Self-test</summary>
 
 1. Show a tree that passes child-only BST checks but is not a BST, and state the check that rejects it.
-   - In [5,4,6,null,null,3,7], every parent is correctly ordered against its own children, but node 3 sits in the right subtree of 5. Bounded validation rejects it: node 3 inherits lo=5 and fails 5 < 3.
+   - In `[5,4,6,null,null,3,7]`, every parent is correctly ordered against its own children, but node 3 sits in the right subtree of 5. Bounded validation rejects it: node 3 inherits `lo=5` and fails `5 < 3`.
 2. Why does Hibbard deletion of a two-child node always terminate?
    - It copies the inorder successor's value and recurses into the right subtree for the successor. The successor is the leftmost node there, so it has no left child and the recursion lands in the zero-child or right-only case at once.
 3. Derive the AVL height bound from the Fibonacci recurrence.
@@ -872,7 +872,7 @@ Heaps buy priority operations in logarithmic time with plain array storage. The 
 **You can now**
 
 - Derive why bottom-up heap construction is linear while repeated insertion is $`\Theta(n \log n)`$.
-- Implement sift-up, sift-down, Floyd build, push, pop and replace with invariant tests, using heapq only as an oracle.
+- Implement sift-up, sift-down, Floyd build, `push`, `pop` and `replace` with invariant tests, using `heapq` only as an oracle.
 - Implement the two-heap streaming median and defend its size and ordering invariants.
 
 **Study**
@@ -883,22 +883,22 @@ Heaps buy priority operations in logarithmic time with plain array storage. The 
 **Focus**
 
 - Most nodes are leaves with short subtrees: level $`h`$ holds about $`n/2^{h+1}`$ nodes at $`O(h)`$ sift cost each, and the series $`(n/2)`$ times sum $`h/2^h`$ converges to $`O(n)`$. Repeated insertion instead pays $`\log 1 + \ldots + \log n = \log(n!))`$, which is $`\Theta(n \log n)`$.
-- Floyd starts at n//2 - 1, the last internal node, and moves right to left so every sift-down sees valid child heaps. That order is the MAX-HEAPIFY precondition; building by sift-up throws the linear bound away.
-- Two-heap invariants: 0 <= len(lower) - len(upper) <= 1 with the extra element in lower, and max(lower) <= min(upper). Push-then-rotate maintains both with $`O(\log n)`$ per insert and $`O(1)`$ per query.
-- heapq is min-heap only and heapify runs in documented $`O(\operatorname{len}(\text{heap}))`$ time. Max-heap idioms negate keys, and payloads need a tiebreak slot (the LC 23 tuple trick) so equal priorities never compare task objects.
+- Floyd starts at `n//2 - 1`, the last internal node, and moves right to left so every sift-down sees valid child heaps. That order is the `MAX-HEAPIFY` precondition; building by sift-up throws the linear bound away.
+- Two-heap invariants: `0 <= len(lower) - len(upper) <= 1` with the extra element in lower, and `max(lower) <= min(upper)`. Push-then-rotate maintains both with $`O(\log n)`$ per insert and $`O(1)`$ per query.
+- `heapq` is min-heap only and `heapify` runs in documented $`O(\operatorname{len}(\text{heap}))`$ time. Max-heap idioms negate keys, and payloads need a tiebreak slot (the LC 23 tuple trick) so equal priorities never compare task objects.
 
-**Reproduce:** From a blank file, implement Floyd max-heap build plus push and pop. With random.seed(0) and random.sample(range(10^6), 2000), assert the result is a valid max-heap holding the same multiset, and count comparisons (at most $`2n = 4000`$). Implement MedianFinder with the push-then-rotate rule: after add(1) and add(2) the median is 1.5; after add(3) it is 2.0. Differential-test both against heapq and brute-force medians on random streams.
+**Reproduce:** From a blank file, implement Floyd max-heap build plus `push` and `pop`. With `random.seed(0)` and `random.sample(range(10**6), 2000)`, assert the result is a valid max-heap holding the same multiset, and count comparisons (at most $`2n = 4000`$). Implement `MedianFinder` with the push-then-rotate rule: after `add(1)` and `add(2)` the median is 1.5; after `add(3)` it is 2.0. Differential-test both against `heapq` and brute-force medians on random streams.
 
 **Traps**
 
 - Calling sift-down on a node whose children are not heaps yet. The child-heaps precondition is load-bearing; Floyd's right-to-left order is what establishes it.
 - Rebalancing the two heaps in the wrong order. Push to lower, move its top to upper, then rotate back only if upper outgrew lower; skipping the last step breaks the size invariant on even totals.
-- Averaging the two middle values with // instead of /. Floor division truncates the even-case median (1.5 becomes 1).
+- Averaging the two middle values with `//` instead of `/`. Floor division truncates the even-case median (1.5 becomes 1).
 
 **Practice**
 
-- [LeetCode 703: Kth Largest Element in a Stream](https://leetcode.com/problems/kth-largest-element-in-a-stream/) - Size-k min-heap with heapreplace; include k=1 and duplicate-heavy streams. After submitting, read the AlgoMaster write-up for Kth Largest Element in a Stream (https://algomaster.io/learn/dsa/kth-largest-element-in-a-stream).
-- [LeetCode 295: Find Median from Data Stream](https://leetcode.com/problems/find-median-from-data-stream/) - Two-heap MedianFinder; example sequence add(1), add(2), findMedian expects 1.5, then add(3), findMedian expects 2.0. Attempt cold. After submitting, read the AlgoMaster write-up for Find Median from Data Stream (https://algomaster.io/learn/dsa/find-median-from-data-stream).
+- [LeetCode 703: Kth Largest Element in a Stream](https://leetcode.com/problems/kth-largest-element-in-a-stream/) - Size-`k` min-heap with `heapreplace`; include `k=1` and duplicate-heavy streams. After submitting, read the AlgoMaster write-up for Kth Largest Element in a Stream (https://algomaster.io/learn/dsa/kth-largest-element-in-a-stream).
+- [LeetCode 295: Find Median from Data Stream](https://leetcode.com/problems/find-median-from-data-stream/) - Two-heap `MedianFinder`; example sequence `add(1)`, `add(2)`, `findMedian` expects 1.5, then `add(3)`, `findMedian` expects 2.0. Attempt cold. After submitting, read the AlgoMaster write-up for Find Median from Data Stream (https://algomaster.io/learn/dsa/find-median-from-data-stream).
 
 **Stop when:** Floyd build holds heap order with at most 2n comparisons on the 2000-element seed-0 input, the median matches brute force on random streams, and you can state both invariants plus the linear-build series without notes.
 
@@ -907,12 +907,12 @@ Heaps buy priority operations in logarithmic time with plain array storage. The 
 
 1. Prove Floyd's build is $`O(n)`$.
    - Nodes at height $`h`$ number about $`n/2^{h+1}`$ and each costs at most $`h`$ sift steps. The total is at most $`(n/2)`$ times the sum of $`h/2^h`$ over all $`h`$, and that series converges to 2, giving at most about $`n`$ sift steps and $`2n`$ comparisons. Naive repeated insertion instead pays $`\log 1 + \ldots + \log n = \log(n!)`$, which is $`\Theta(n \log n)`$ by Stirling.
-2. Why must the build loop start at n//2 - 1 and go down?
-   - Indices [n//2, n) are leaves, which are trivially valid single-element heaps, so n//2 - 1 is the last internal node. Descending guarantees both children are already valid heaps when a node is sifted, which is the sift-down precondition.
+2. Why must the build loop start at `n//2 - 1` and go down?
+   - Indices `[n//2, n)` are leaves, which are trivially valid single-element heaps, so `n//2 - 1` is the last internal node. Descending guarantees both children are already valid heaps when a node is sifted, which is the sift-down precondition.
 3. State both two-heap invariants and compute the median for odd and even totals.
    - Size: lower holds at most one element more than upper, never fewer. Ordering: every lower key is at most every upper key. Odd total: the median is lower's root. Even total: the average of the two roots.
-4. heapq has no max-heap. How do you store (priority, task) pairs, and what breaks on ties?
-   - Push (-priority, index, task) with a tiebreak counter: negation flips the order and the counter keeps task objects uncompared. Without it, equal priorities fall through to comparing tasks, which raises TypeError for unordered types.
+4. `heapq` has no max-heap. How do you store `(priority, task)` pairs, and what breaks on ties?
+   - Push `(-priority, index, task)` with a tiebreak counter: negation flips the order and the counter keeps task objects uncompared. Without it, equal priorities fall through to comparing tasks, which raises `TypeError` for unordered types.
 
 </details>
 
@@ -927,46 +927,46 @@ Tries trade key storage for shared prefixes. Prefix enumeration and constrained 
 **You can now**
 
 - Explain trie representation, prefix lookup cost and memory cost, and when a trie beats hashing.
-- Implement a trie with insert, search, startsWith and wildcard search, tested on empty strings, duplicates and shared prefixes.
+- Implement a trie with `insert`, `search`, `startsWith` and wildcard search, tested on empty strings, duplicates and shared prefixes.
 - Route a prefix problem to a trie, a hash map or a sorted set from its query shape.
 
 **Study**
 
-1. [Tries](https://dsa.handbook.academy/curriculum/trees-heaps/tries/) (DSA Handbook - search, trees and heaps) - What's in the structure; What is_end is and is not; Choosing the children container; LC 211: wildcards and a tree-shaped walk; What it actually costs. Depth: Skim LC 212 (the trie as prune oracle) and Pattern variants worth knowing for recognition; only LC 208 and 211 are implemented here.
+1. [Tries](https://dsa.handbook.academy/curriculum/trees-heaps/tries/) (DSA Handbook - search, trees and heaps) - What's in the structure; What `is_end` is and is not; Choosing the children container; LC 211: wildcards and a tree-shaped walk; What it actually costs. Depth: Skim LC 212 (the trie as prune oracle) and Pattern variants worth knowing for recognition; only LC 208 and 211 are implemented here.
 
 **Focus**
 
-- search checks is_end; startsWith does not. After inserting car and card, the node for car is terminal and still has a d child: terminal and leaf are orthogonal.
-- Lookup costs $`O(L)`$ in the key length with one step per character, the same factor a hash pays to read the key. The trie wins on prefix queries (list every word under ca), which hashing cannot enumerate without scanning the table.
-- The children container sets the constants: a 26-array is $`O(1)`$ per step but wastes nulls (the chapter estimates about 20 MB per 100k nodes); dict children handle Unicode and sparse alphabets.
-- Wildcard '.' tries every non-null child by DFS. LC 211 allows at most 2 dots, so the fan-out caps at $`26^2 = 676`$ paths; with many dots, scanning the stored words of the query's length is the simpler bound.
+- `search` checks `is_end`; `startsWith` does not. After inserting `car` and `card`, the node for `car` is terminal and still has a `d` child: terminal and leaf are orthogonal.
+- Lookup costs $`O(L)`$ in the key length with one step per character, the same factor a hash pays to read the key. The trie wins on prefix queries (list every word under `ca`), which hashing cannot enumerate without scanning the table.
+- The children container sets the constants: a 26-array is $`O(1)`$ per step but wastes nulls (the chapter estimates about 20 MB per 100k nodes); `dict` children handle Unicode and sparse alphabets.
+- Wildcard `'.'` tries every non-null child by DFS. LC 211 allows at most 2 dots, so the fan-out caps at $`26^2 = 676`$ paths; with many dots, scanning the stored words of the query's length is the simpler bound.
 
-**Reproduce:** From a blank file, implement a trie with dict children. Insert apple and app; assert search(app) is True, search(appl) is False and startsWith(app) is True. Add wildcard search; assert wildcard('.pp') is True and wildcard('b..') is False. Differential-test search and startsWith against a Python set oracle on random word lists including empty strings and duplicates.
+**Reproduce:** From a blank file, implement a trie with `dict` children. Insert `apple` and `app`; assert `search(app)` is `True`, `search(appl)` is `False` and `startsWith(app)` is `True`. Add wildcard search; assert `wildcard('.pp')` is `True` and `wildcard('b..')` is `False`. Differential-test `search` and `startsWith` against a Python `set` oracle on random word lists including empty strings and duplicates.
 
 **Traps**
 
-- Pasting search into startsWith. The shared walk must skip the is_end check for prefix queries.
-- Sizing the children array for lowercase only, then indexing ord('A') - ord('a') = -32. Dict children or explicit alphabet checks avoid the silent negative index.
+- Pasting `search` into `startsWith`. The shared walk must skip the `is_end` check for prefix queries.
+- Sizing the children array for lowercase only, then indexing `ord('A') - ord('a') = -32`. Dict children or explicit alphabet checks avoid the silent negative index.
 - Running one DFS per word on a board instead of one DFS guided by the trie. The trie prunes every word sharing an impossible prefix at once.
 
 **Practice**
 
 - [LeetCode 208: Implement Trie (Prefix Tree)](https://leetcode.com/problems/implement-trie-prefix-tree/) - Trie with insert, search and startsWith over lowercase words; example sequence in the problem statement. Test the empty string, duplicate inserts and the car/card shared-prefix case. After submitting, read the AlgoMaster write-up for Implement Trie (https://algomaster.io/learn/dsa/implement-trie-prefix-tree).
-- [LeetCode 211: Design Add and Search Words Data Structure](https://leetcode.com/problems/design-add-and-search-words-data-structure/) - Wildcard '.' search over the same trie; the dot matches any single letter. Implement the dot as DFS over non-null children. After submitting, read the AlgoMaster write-up for Design Add and Search Words Data Structure (https://algomaster.io/learn/dsa/design-add-and-search-words-data-structure).
+- [LeetCode 211: Design Add and Search Words Data Structure](https://leetcode.com/problems/design-add-and-search-words-data-structure/) - Wildcard `'.'` search over the same trie; the dot matches any single letter. Implement the dot as DFS over non-null children. After submitting, read the AlgoMaster write-up for Design Add and Search Words Data Structure (https://algomaster.io/learn/dsa/design-add-and-search-words-data-structure).
 
-**Stop when:** Insert, search, startsWith and wildcard search match a set oracle on random word lists with empties and duplicates, and you can defend trie versus hash map versus sorted set for a new prefix task.
+**Stop when:** Insert, `search`, `startsWith` and wildcard search match a `set` oracle on random word lists with empties and duplicates, and you can defend trie versus hash map versus sorted set for a new prefix task.
 
 <details>
 <summary>Self-test</summary>
 
-1. After inserting car and card, is the node for car a leaf? Is it terminal?
-   - Terminal but not a leaf: is_end is True and it still has the d child. The two flags are independent.
+1. After inserting `car` and `card`, is the node for `car` a leaf? Is it terminal?
+   - Terminal but not a leaf: `is_end` is `True` and it still has the `d` child. The two flags are independent.
 2. Why can a hash map not answer 'list every word starting with ca' efficiently?
-   - Hashes destroy prefix locality: matching words scatter across buckets, so enumeration scans the whole table. A trie walks to ca once, then enumerates only that subtree.
+   - Hashes destroy prefix locality: matching words scatter across buckets, so enumeration scans the whole table. A trie walks to `ca` once, then enumerates only that subtree.
 3. What is the worst-case cost of wildcard search with $`k`$ dots over alphabet size $`R`$?
    - $`O(R^k)`$ trie paths, since each dot fans out to every non-null child. LC 211 stays feasible by capping queries at 2 dots ($`26^2 = 676`$). With many dots, grouping words by length and scanning the group costs $`O(N L)`$ for $`N`$ words of length $`L`$ and is the safer bound.
 4. When does a sorted set beat a trie for prefix queries?
-   - On memory and simplicity for a single range: bisecting 'ca' to 'cb' answers one prefix query with no per-node overhead. Tries win when many prefix walks share structure or when per-character steps with wildcards are needed.
+   - On memory and simplicity for a single range: bisecting `'ca'` to `'cb'` answers one prefix query with no per-node overhead. Tries win when many prefix walks share structure or when per-character steps with wildcards are needed.
 
 </details>
 
@@ -980,7 +980,7 @@ Intervals turn sorting into scheduling. One sort plus one left-to-right walk ans
 
 **You can now**
 
-- State the interval-merging invariant and implement merge and insert with edge tests for touching endpoints and containment.
+- State the interval-merging invariant and implement `merge` and `insert` with edge tests for touching endpoints and containment.
 - Implement event sweeps with an explicit tie-break and defend the ends-before-starts versus starts-before-ends choice from the interval convention.
 - Solve unseen interval problems by reading the verb (collapse, insert, concurrency) and picking the matching running state.
 
@@ -991,24 +991,24 @@ Intervals turn sorting into scheduling. One sort plus one left-to-right walk ans
 
 **Focus**
 
-- Sort by start, walk left to right, keep one running merged interval; the overlap test is s <= last.end under LC 56's closed intervals. Sorting dominates at $`O(n \log n)`$ with $`O(n)`$ output.
+- Sort by start, walk left to right, keep one running merged interval; the overlap test is `s <= last.end` under LC 56's closed intervals. Sorting dominates at $`O(n \log n)`$ with $`O(n)`$ output.
 - Insert skips the sort: the input is already sorted and non-overlapping, so one pass splices the before part, the widened overlap and the after part in $`O(n)`$. Re-sorting throws the precondition away for an extra $`\log`$ factor.
-- The sweep tie-break follows the convention: half-open [s,e) processes ends before starts; closed [s,e] flips it. On [[7,10],[10,11]], ends-first counts 1 (correct for half-open) while starts-first double-counts the boundary.
-- The verb picks the state: collapse asks for a running interval, a new range asks for a widened newInterval, concurrency asks for a min-heap of end times or a +1/-1 balance counter.
+- The sweep tie-break follows the convention: half-open `[s,e)` processes ends before starts; closed `[s,e]` flips it. On `[[7,10],[10,11]]`, ends-first counts 1 (correct for half-open) while starts-first double-counts the boundary.
+- The verb picks the state: collapse asks for a running interval, a new range asks for a widened `newInterval`, concurrency asks for a min-heap of end times or a `+1`/`-1` balance counter.
 
-**Reproduce:** From a blank file, implement merge and insert. Merge [[1,3],[2,6],[8,10],[15,18]] must give [[1,6],[8,10],[15,18]], and touching [1,3],[3,5] must merge to [[1,5]]. Insert [2,5] into [[1,3],[6,9]] must give [[1,5],[6,9]]. Implement the +1/-1 event sweep with ends-before-starts; on [[0,30],[5,10],[15,20]] it must report maximum concurrency 2. Differential-test merge against a brute-force pairwise-collapse loop on random interval lists.
+**Reproduce:** From a blank file, implement merge and insert. Merge `[[1,3],[2,6],[8,10],[15,18]]` must give `[[1,6],[8,10],[15,18]]`, and touching `[1,3]`,`[3,5]` must merge to `[[1,5]]`. Insert `[2,5]` into `[[1,3],[6,9]]` must give `[[1,5],[6,9]]`. Implement the `+1`/`-1` event sweep with ends-before-starts; on `[[0,30],[5,10],[15,20]]` it must report maximum concurrency 2. Differential-test merge against a brute-force pairwise-collapse loop on random interval lists.
 
 **Traps**
 
-- Merging with < instead of <= on closed intervals. Touching endpoints [1,3],[3,5] overlap under LC 56's convention and must merge.
+- Merging with `<` instead of `<=` on closed intervals. Touching endpoints `[1,3]`,`[3,5]` overlap under LC 56's convention and must merge.
 - Using the sweep's $`O(N \log N)`$ default as a law. Bounded coordinate ranges admit a difference array at $`O(N + R)`$; the sort is the default, not the law.
 - Keeping the whole active set when a scalar suffices. Event counting needs one balance counter, not a heap; match the structure to what the question asks at each $`x`$.
 
 **Practice**
 
-- [LeetCode 57: Insert Interval](https://leetcode.com/problems/insert-interval/) - Three-phase splice without sorting; example ([[1,3],[6,9]], [2,5]) expects [[1,5],[6,9]]. After submitting, read the AlgoMaster write-up for Insert Interval (https://algomaster.io/learn/dsa/insert-interval).
-- [AlgoMaster: Meeting Rooms II](https://algomaster.io/learn/dsa/meeting-rooms-ii) - Read only Understanding the Problem and its Key Constraints, then solve twice: the +1/-1 event sweep with ends before starts, and a min-heap of end times. Test both against a brute-force count at every start time on random meetings, including back-to-back [7, 10], [10, 11].. After both pass, read Approaches 2 and 3 (min-heap, and two sorted arrays) and compare their tie rules with yours.
-- [LeetCode 56: Merge Intervals](https://leetcode.com/problems/merge-intervals/) - Sort by start plus running merge; example [[1,3],[2,6],[8,10],[15,18]] expects [[1,6],[8,10],[15,18]]. Use only if interval modeling is still weak after the pattern pages; state the overlap convention before coding. After submitting, read the AlgoMaster write-up for Merge Intervals (https://algomaster.io/learn/dsa/merge-intervals). Transfer check: solve one unseen heap-or-interval problem on NeetCode (for example LC 435 Non-overlapping Intervals, https://leetcode.com/problems/non-overlapping-intervals/) with solutions closed.
+- [LeetCode 57: Insert Interval](https://leetcode.com/problems/insert-interval/) - Three-phase splice without sorting; example `([[1,3],[6,9]], [2,5])` expects `[[1,5],[6,9]]`. After submitting, read the AlgoMaster write-up for Insert Interval (https://algomaster.io/learn/dsa/insert-interval).
+- [AlgoMaster: Meeting Rooms II](https://algomaster.io/learn/dsa/meeting-rooms-ii) - Read only Understanding the Problem and its Key Constraints, then solve twice: the `+1`/`-1` event sweep with ends before starts, and a min-heap of end times. Test both against a brute-force count at every start time on random meetings, including back-to-back `[7, 10]`, `[10, 11]`. After both pass, read Approaches 2 and 3 (min-heap, and two sorted arrays) and compare their tie rules with yours.
+- [LeetCode 56: Merge Intervals](https://leetcode.com/problems/merge-intervals/) - Sort by start plus running merge; example `[[1,3],[2,6],[8,10],[15,18]]` expects `[[1,6],[8,10],[15,18]]`. Use only if interval modeling is still weak after the pattern pages; state the overlap convention before coding. After submitting, read the AlgoMaster write-up for Merge Intervals (https://algomaster.io/learn/dsa/merge-intervals). Transfer check: solve one unseen heap-or-interval problem on NeetCode (for example LC 435 Non-overlapping Intervals, https://leetcode.com/problems/non-overlapping-intervals/) with solutions closed.
 
 **Stop when:** Merge and insert match the handbook examples, the sweep reports concurrency 2 on the worked input, merge survives a brute-force differential test, and you route a new interval task from its verb.
 
@@ -1020,19 +1020,19 @@ Intervals turn sorting into scheduling. One sort plus one left-to-right walk ans
 2. Why is insert $`O(n)`$ while merge is $`O(n \log n)`$?
    - Insert's input is sorted and non-overlapping, so one linear splice (before, widened overlap, after) suffices. Merge must establish the order first, and comparison sorting costs $`O(n \log n)`$.
 3. Under the half-open convention, why do ends sort before starts at equal coordinates?
-   - At $`x=10`$, [7,10) has already ended while [10,11) begins; processing the -1 first keeps the count at 1. Starts-first would briefly count 2 and double-count the shared boundary.
+   - At $`x=10`$, `[7,10)` has already ended while `[10,11)` begins; processing the `-1` first keeps the count at 1. Starts-first would briefly count 2 and double-count the shared boundary.
 4. What changes if intervals arrive as an unbounded stream?
-   - If meetings arrive in start order, a min-heap of active end times (pop while top <= start) processes them online in $`O(n \log n)`$ time with $`O(n)`$ state. If they arrive in arbitrary order, no single pass works: keep an ordered map of +1/-1 events, or a segment tree over bounded coordinates, and update the maximum as events land.
+   - If meetings arrive in start order, a min-heap of active end times (pop while top <= start) processes them online in $`O(n \log n)`$ time with $`O(n)`$ state. If they arrive in arbitrary order, no single pass works: keep an ordered map of `+1`/`-1` events, or a segment tree over bounded coordinates, and update the maximum as events land.
 
 </details>
 
 ### Mini-project: Mutable-priority heap, a derived boundary and a room scheduler
 
-**About 10 to 14 hours.** Build an indexed heap with update and remove, derive one binary-search-on-the-answer boundary from its predicate before running examples, and solve an unseen tree problem and a two-heap scheduling problem with adversarial tests and a worst-case defense.
+**About 10 to 14 hours.** Build an indexed heap with `update` and `remove`, derive one binary-search-on-the-answer boundary from its predicate before running examples, and solve an unseen tree problem and a two-heap scheduling problem with adversarial tests and a worst-case defense.
 
-1. Implement an indexed min-heap with push, pop, peek, update(item, priority) and remove(item), backed by a position map. Write both invariants (heap order on the array, and pos[item] equals the item's index) and the cost of each operation.
-2. Test it with a Hypothesis rule-based state machine against a dict oracle that answers the minimum by scanning, checking both invariants after every step. Seed one defect, such as an update that only sifts down or a swap that forgets the position map, and keep the shrunk history.
-3. Solve LC 1011 Capacity To Ship Packages Within D Days without reading its tags. Write the predicate feasible(c), prove it monotone, set lo = max(weights) and hi = sum(weights), and derive the loop condition and updates from the invariant (feasible(hi) holds, everything below lo fails) before running any example. The examples answer 15, 6 and 3.
+1. Implement an indexed min-heap with `push`, `pop`, `peek`, `update(item, priority)` and `remove(item)`, backed by a position map. Write both invariants (heap order on the array, and `pos[item]` equals the item's index) and the cost of each operation.
+2. Test it with a Hypothesis rule-based state machine against a `dict` oracle that answers the minimum by scanning, checking both invariants after every step. Seed one defect, such as an update that only sifts down or a swap that forgets the position map, and keep the shrunk history.
+3. Solve LC 1011 Capacity To Ship Packages Within D Days without reading its tags. Write the predicate `feasible(c)`, prove it monotone, set `lo = max(weights)` and `hi = sum(weights)`, and derive the loop condition and updates from the invariant (`feasible(hi)` holds, everything below `lo` fails) before running any example. The examples answer 15, 6 and 3.
 4. Solve LC 236 Lowest Common Ancestor of a Binary Tree recursively, then defend the worst case: a path-shaped tree of $`10^5`$ nodes exceeds CPython's default recursion limit of 1000, so add an iterative version with a parent map and test both against an ancestor-set oracle on random trees.
 5. Solve LC 2402 Meeting Rooms III with two heaps, free rooms by number and busy rooms by end time and number. Write adversarial tests for chained delays, equal end times and a meeting that starts exactly when a room frees, and compare against a brute-force simulator on small random inputs. The examples answer 0 and 1.
 6. Write the worst-case notes: the $`O(m \log m + m \log n)`$ bound for LC 2402, and why delayed end times can reach about $`5 \times 10^{10}`$ with one room, which overflows 32-bit integers in a fixed-width language.
@@ -1053,7 +1053,7 @@ Intervals turn sorting into scheduling. One sort plus one left-to-right walk ans
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Indexed heap | The state machine passes with both invariants checked after every step, and the seeded defect fails with a shrunk history. | Update and remove are tested on the root and the last slot, and swap counts on random histories stay within the stated logarithmic bounds. |
-| Boundary derivation | The invariant and updates are written before any example runs, and all three examples pass on the first run. | A property test checks that the answer is the smallest feasible capacity: feasible(answer) holds and feasible(answer - 1) fails. |
+| Boundary derivation | The invariant and updates are written before any example runs, and all three examples pass on the first run. | A property test checks that the answer is the smallest feasible capacity: `feasible(answer)` holds and `feasible(answer - 1)` fails. |
 | Tree worst case | Both versions agree with the oracle, and the iterative version handles the $`10^5`$-node path. | The write-up shows the recursive failure on the deep tree and states the $`O(h)`$ space of each version. |
 | Scheduler | LC 2402 is accepted, and the brute-force simulator agrees on random small inputs with ties and back-to-back meetings. | The tie rules are stated as invariants of the two heaps, and the overflow note names the largest end time the constraints allow. |
 
@@ -1070,7 +1070,7 @@ Feeds into: Capstone correctness library: the mutable-priority heap. Failure evi
 - **Support - Support:** [DSA Handbook Patterns - quickselect vs heap for top-K](https://dsa.handbook.academy/patterns/quickselect-vs-heap-top-k/) - Use The decision through Side-by-side for the streaming, sorted-output and mutation routing; problem details stay with their units.
 - **Support - Support:** [DSA Handbook Patterns - two-heap median archetypes](https://dsa.handbook.academy/patterns/two-heap-median-archetypes/) - Use Streaming median and Variants side-by-side for the two-heap invariants; skip sliding-window median and sketches.
 - **Support - Support:** [DSA Handbook Patterns - merge intervals archetypes](https://dsa.handbook.academy/patterns/merge-intervals-archetypes/) - Use The decision, Variants and the LC 56 and LC 57 signature problems for merge and insert implementation, and the Meeting Rooms II archetype for the min-heap form.
-- **Support - Support:** [DSA Handbook Patterns - sweep line archetypes](https://dsa.handbook.academy/patterns/sweep-line-archetypes/) - Use The decision and the 1D event sweep variant for +1/-1 concurrency counting with explicit tie-breaks; skyline and rectangle area are recognition only.
+- **Support - Support:** [DSA Handbook Patterns - sweep line archetypes](https://dsa.handbook.academy/patterns/sweep-line-archetypes/) - Use The decision and the 1D event sweep variant for `+1`/`-1` concurrency counting with explicit tie-breaks; skyline and rectangle area are recognition only.
 
 ### Exit checkpoint
 
@@ -1139,7 +1139,7 @@ Every later unit consumes a graph. A wrong model, such as marking a vertex visit
 - An implicit graph is a neighbor function, not a table: four lines of grid arithmetic or one-letter word mutations replace a 10,000-vertex grid build.
 - When the state carries more than the vertex (a word, a lock combination, keys held), the visited mark must sit on the state. Marking the bare vertex merges distinct states.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), build the undirected adjacency list for $`n = 5`$ and edges [(0,1),(0,2),(1,3),(2,3),(3,4)], assert adj[3] == [1,2,4], then BFS from 0 and report distances {0:0, 1:1, 2:1, 3:2, 4:3}. Then write grid_neighbors(r, c, rows, cols) yielding the four in-bounds neighbors, and state in one sentence why Word Ladder nodes are words rather than positions.
+**Reproduce:** From a blank file with the course Python (3.13.14), build the undirected adjacency list for $`n = 5`$ and edges `[(0,1),(0,2),(1,3),(2,3),(3,4)]`, assert `adj[3] == [1,2,4]`, then BFS from 0 and report distances `{0:0, 1:1, 2:1, 3:2, 4:3}`. Then write `grid_neighbors(r, c, rows, cols)` yielding the four in-bounds neighbors, and state in one sentence why Word Ladder nodes are words rather than positions.
 
 **Traps**
 
@@ -1152,7 +1152,7 @@ Every later unit consumes a graph. A wrong model, such as marking a vertex visit
 - [LeetCode 1971: Find if Path Exists in Graph](https://leetcode.com/problems/find-if-path-exists-in-graph/) - Examples 1 and 2 ($`n = 3`$ triangle with source 0 and destination 2; two-component graph with source 0 and destination 5). Build the adjacency list from the edge list, then traverse. Attempt before reading the DSA Handbook 8.0 worked solution, which is the after-attempt reference for the build-then-traverse contract.
 - [LeetCode 127: Word Ladder](https://leetcode.com/problems/word-ladder/) - Example 1 (begin hit, end cog, six-word list; expected ladder length 5). Model first: nodes are words, edges are one-letter mutations. BFS over the implicit graph. After-attempt reference is the State-space BFS section of DSA Handbook 8.1.
 
-**Stop when:** Your blank-file script prints adj[3] == [1,2,4] with the distance table above, and you can name the nodes, edges and visited key of a new narrative before writing code.
+**Stop when:** Your blank-file script prints `adj[3] == [1,2,4]` with the distance table above, and you can name the nodes, edges and visited key of a new narrative before writing code.
 
 <details>
 <summary>Self-test</summary>
@@ -1161,8 +1161,8 @@ Every later unit consumes a graph. A wrong model, such as marking a vertex visit
    - Adjacency list. Traversal costs $`\Theta(V + E)`$ on the list against $`\Theta(V^2)`$ on the matrix, and the matrix needs about $`10^{10}`$ cells at that scale.
 2. LC 1557 answers with an in-degree array and no adjacency list. What is the general lesson?
    - Store the minimum structure the algorithm consumes. In-degree-zero detection needs counts, not neighbors.
-3. Two searches reach grid cell (2,2), one holding key A and one holding nothing. One visited bit on (2,2): what breaks?
-   - The second arrival is skipped although its future differs: the doors it can open are not the same. The visited key must be (cell, keys).
+3. Two searches reach grid cell `(2,2)`, one holding key A and one holding nothing. One visited bit on `(2,2)`: what breaks?
+   - The second arrival is skipped although its future differs: the doors it can open are not the same. The visited key must be `(cell, keys)`.
 4. Why do Kruskal and Bellman-Ford take the edge list as is?
    - They consume edges in bulk order (by weight, or all of them per pass) and never query the neighbors of one vertex.
 
@@ -1196,18 +1196,18 @@ BFS is the shortest-path algorithm for uniform cost and the reachability engine 
 - Multi-source BFS seeds every source at depth 0 in one pre-scan, equivalent to a virtual super-source with zero-weight edges. One run replaces one BFS per source.
 - Counting is an outer scan wrapped around the traversal: every unvisited land cell starts one flood. Minutes count edges traversed; binary-matrix path length counts cells, so it adds one.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), run multi-source BFS on [[2,1,1],[1,1,0],[0,1,1]] and return 4; on [[2,1,1],[0,1,1],[1,0,1]] return -1; on a grid with no fresh cells return 0. State the input size ($`3 \times 3`$) and that the answer counts edges, not cells.
+**Reproduce:** From a blank file with the course Python (3.13.14), run multi-source BFS on `[[2,1,1],[1,1,0],[0,1,1]]` and return 4; on `[[2,1,1],[0,1,1],[1,0,1]]` return -1; on a grid with no fresh cells return 0. State the input size ($`3 \times 3`$) and that the answer counts edges, not cells.
 
 **Traps**
 
-- list.pop(0) as a queue: each pop shifts the remaining elements, so at 20,000 queued cells one pop costs about 1.9 us against about 11 ns for deque.popleft (measured on 12th Gen i9-12900K, Python 3.13.14). Always import deque.
+- `list.pop(0)` as a queue: each pop shifts the remaining elements, so at 20,000 queued cells one pop costs about 1.9 us against about 11 ns for `deque.popleft` (measured on 12th Gen i9-12900K, Python 3.13.14). Always import `deque`.
 - A single-source loop over sources for a multi-source question: $`n`$ runs give $`n`$ single-source distances, not the parallel-frontier minimum the problem asks for.
 - Cell-versus-edge counting: LC 994 returns the depth of the last rotted cell while LC 1091 returns depth plus one for the cell-inclusive path. Trace a 3-cell line by hand before submitting.
 
 **Practice**
 
 - [LeetCode 200: Number of Islands](https://leetcode.com/problems/number-of-islands/) - Examples 1 and 2 (answers 1 and 3 on the two listed grids). Attempt cold per the AlgoMaster pool note. After-attempt reference is DSA Handbook 8.3 (LC 200 pattern and LC 547 reveal). Implement iterative BFS: recursive DFS on a $`300 \times 300`$ all-land grid recurses about 90,000 deep against the default limit of 1000.
-- [LeetCode 994: Rotting Oranges](https://leetcode.com/problems/rotting-oranges/) - The three listed examples ([[2,1,1],[1,1,0],[0,1,1]] answers 4; the walled-off grid answers -1; [[0,2]] answers 0 because no fresh orange remains). After-attempt reference is the DSA Handbook 8.1 canonical implementation. State whether you used depth-tagged or layer-counted minutes and keep one style.
+- [LeetCode 994: Rotting Oranges](https://leetcode.com/problems/rotting-oranges/) - The three listed examples (`[[2,1,1],[1,1,0],[0,1,1]]` answers 4; the walled-off grid answers -1; `[[0,2]]` answers 0 because no fresh orange remains). After-attempt reference is the DSA Handbook 8.1 canonical implementation. State whether you used depth-tagged or layer-counted minutes and keep one style.
 
 **Stop when:** Your blank-file BFS prints 4, -1 and 0 on the three reproduce grids, and you solve LC 200 and LC 994 without changing queue style mid-function.
 
@@ -1221,7 +1221,7 @@ BFS is the shortest-path algorithm for uniform cost and the reachability engine 
 3. A diamond $`A \to B`$, $`A \to C`$, $`B \to D`$, $`C \to D`$ with visited marked at dequeue: what happens?
    - $`B`$ and $`C`$ both see $`D`$ unmarked before $`D`$ is dequeued, so $`D`$ is pushed twice. If the pop skips marked vertices, the answer is still right but the queue carries duplicates; if it does not, $`D`$ is expanded twice. Marking at enqueue pushes $`D`$ once.
 4. LC 547 reads an $`n \times n`$ matrix but runs the same template as LC 200. What changes?
-   - Only the neighbor function: neighbors of $`i`$ are columns $`j`$ with isConnected[i][j] == 1. Cost becomes $`\Theta(n^2)`$ because every matrix cell is read.
+   - Only the neighbor function: neighbors of $`i`$ are columns $`j`$ with `isConnected[i][j] == 1`. Cost becomes $`\Theta(n^2)`$ because every matrix cell is read.
 
 </details>
 
@@ -1248,25 +1248,25 @@ DFS supplies the recursion structure BFS cannot: finish times, edge classificati
 
 **Focus**
 
-- Mark before recursing, on entry. Recursing first lets the neighbor immediately recurse back, which loops until RecursionError.
-- GRAY means on the current stack; BLACK means finished. The diamond edge into a BLACK vertex is a benign forward edge; only a GRAY neighbor is a back edge and a cycle witness.
-- Undirected DFS needs one boolean plus the parent argument: the neighbor you arrived from does not count. Three colors are unnecessary there because undirected DFS has no forward or cross edges.
+- Mark before recursing, on entry. Recursing first lets the neighbor immediately recurse back, which loops until `RecursionError`.
+- `GRAY` means on the current stack; `BLACK` means finished. The diamond edge into a `BLACK` vertex is a benign forward edge; only a `GRAY` neighbor is a back edge and a cycle witness.
+- Undirected DFS needs one boolean plus the `parent` argument: the neighbor you arrived from does not count. Three colors are unnecessary there because undirected DFS has no forward or cross edges.
 - Bipartite colors are 1 and -1 with 0 for unvisited, flipped by negation across each edge, inside an outer loop over components. A same-color edge is the odd-cycle witness.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), run three-color DFS on the diamond [(0,1),(0,2),(1,3),(2,3)] and report no cycle, and on [(0,1),(1,2),(2,0)] report a cycle. Then run two-color BFS on [[1,3],[0,2],[1,3],[0,2]] (True) and on [[1,2],[0,2],[0,1]] (False).
+**Reproduce:** From a blank file with the course Python (3.13.14), run three-color DFS on the diamond `[(0,1),(0,2),(1,3),(2,3)]` and report no cycle, and on `[(0,1),(1,2),(2,0)]` report a cycle. Then run two-color BFS on `[[1,3],[0,2],[1,3],[0,2]]` (`True`) and on `[[1,2],[0,2],[0,1]]` (`False`).
 
 **Traps**
 
 - Two-color directed DFS: the diamond reports a cycle because one visited bit conflates on-stack with finished. The fix is the third color, not a second visited set.
-- Parentless undirected DFS: a single edge reports a cycle because each endpoint sees the other as visited. The fix is the parent argument, not more colors.
-- Recursive DFS on deep grids or chains: CPython caps the stack at 1000 frames by default (check with sys.getrecursionlimit), so a snake region or a 2000-chain crashes. Set the limit explicitly or ship the iterative form.
+- Parentless undirected DFS: a single edge reports a cycle because each endpoint sees the other as visited. The fix is the `parent` argument, not more colors.
+- Recursive DFS on deep grids or chains: CPython caps the stack at 1000 frames by default (check with `sys.getrecursionlimit`), so a snake region or a 2000-chain crashes. Set the limit explicitly or ship the iterative form.
 
 **Practice**
 
 - [LeetCode 130: Surrounded Regions](https://leetcode.com/problems/surrounded-regions/) - The two listed examples ($`4 \times 4`$ board with two interior O cells flipping; single-cell board). Pre-order DFS from every border O, marking first and recursing second. After-attempt reference is the DSA Handbook 8.2 worked example.
-- [LeetCode 785: Is Graph Bipartite?](https://leetcode.com/problems/is-graph-bipartite/) - Examples 1 (triangle inside, False) and 2 (4-cycle, True). Two-color BFS with the outer component loop. After-attempt reference is the DSA Handbook 8.7 worked example.
+- [LeetCode 785: Is Graph Bipartite?](https://leetcode.com/problems/is-graph-bipartite/) - Examples 1 (triangle inside, `False`) and 2 (4-cycle, `True`). Two-color BFS with the outer component loop. After-attempt reference is the DSA Handbook 8.7 worked example.
 
-**Stop when:** Your blank-file script prints the four reproduce verdicts (no cycle, cycle, True, False), and LC 130 plus LC 785 pass with the visited discipline stated up front.
+**Stop when:** Your blank-file script prints the four reproduce verdicts (no cycle, cycle, `True`, `False`), and LC 130 plus LC 785 pass with the visited discipline stated up front.
 
 <details>
 <summary>Self-test</summary>
@@ -1276,7 +1276,7 @@ DFS supplies the recursion structure BFS cannot: finish times, edge classificati
 2. Prove a graph is bipartite iff it has no odd cycle.
    - If 2-colored, any cycle alternates colors and must return to its start color after an even number of steps, so all cycles are even. If no odd cycle exists, BFS two-coloring never assigns the same color to both ends of an edge: a conflict would close an odd cycle through the BFS tree, contradiction.
 3. Why does the bipartite outer loop cost nothing on connected graphs?
-   - Every later start is already colored, so each trips the continue immediately: $`O(V)`$ checks total. Skipping the loop misses odd cycles hiding in unvisited components.
+   - Every later start is already colored, so each trips the `continue` immediately: $`O(V)`$ checks total. Skipping the loop misses odd cycles hiding in unvisited components.
 4. LC 130 floods from the border instead of testing each region. Why is the inversion sound?
    - Border-connected regions are exactly the ones to keep; DFS marks all of them, so every unmarked O is surrounded by construction. Testing from inside cannot see the border without the same outward walk.
 
@@ -1304,25 +1304,25 @@ Dependency order is the scheduling primitive: builds, courses, task graphs. The 
 
 **Focus**
 
-- Pin the edge convention in a comment: [a,b] means $`b`$ is the prerequisite, so the edge is $`b \to a`$. Inverting it turns DAGs into cycles.
+- Pin the edge convention in a comment: `[a,b]` means $`b`$ is the prerequisite, so the edge is $`b \to a`$. Inverting it turns DAGs into cycles.
 - Kahn detects the cycle only at termination: emitted count equal to $`V`$ means DAG, fewer means the leftovers sit on cycles. No early return inside the loop.
-- DFS emits each vertex after all successors finish, so finish times decrease along every edge; reversing puts producers first. A GRAY successor aborts with a cycle.
+- DFS emits each vertex after all successors finish, so finish times decrease along every edge; reversing puts producers first. A `GRAY` successor aborts with a cycle.
 - Kosaraju finishes SCCs in topological order on the first pass, then walks the reversed graph from the latest-finishing component, which cannot escape its own SCC.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), run Kahn on $`n = 6`$ with [[1,0],[2,0],[3,1],[3,2],[4,2],[5,3],[5,4]] and emit a valid order such as [0,1,2,3,4,5] (check every $`b`$ precedes its $`a`$); on [[1,0],[0,1]] emit 0 of 2 and report a cycle. Then run Kosaraju on [(0,1),(1,2),(2,0),(2,3),(3,4)] and report components [0,0,0,1,2].
+**Reproduce:** From a blank file with the course Python (3.13.14), run Kahn on $`n = 6`$ with `[[1,0],[2,0],[3,1],[3,2],[4,2],[5,3],[5,4]]` and emit a valid order such as `[0,1,2,3,4,5]` (check every $`b`$ precedes its $`a`$); on `[[1,0],[0,1]]` emit 0 of 2 and report a cycle. Then run Kosaraju on `[(0,1),(1,2),(2,0),(2,3),(3,4)]` and report components `[0,0,0,1,2]`.
 
 **Traps**
 
 - Counting indegrees from one edge collection and decrementing from another, such as a deduplicated set against the raw list with duplicate prerequisites: counts go negative or never reach zero. Count and decrement from the same list, and enqueue exactly when a count reaches 0.
 - Returning the post-order list unreversed: it holds consumers before producers, the exact opposite of the graded order.
-- Running DFS from vertex 0 only: cycles in other weakly connected components are missed. The outer white-check loop is mandatory, as is the GRAY-to-BLACK flip on exit.
+- Running DFS from vertex 0 only: cycles in other weakly connected components are missed. The outer white-check loop is mandatory, as is the `GRAY`-to-`BLACK` flip on exit.
 
 **Practice**
 
-- [LeetCode 210: Course Schedule II](https://leetcode.com/problems/course-schedule-ii/) - Examples 1 to 3 (2 courses [[1,0]]; 4 courses [[1,0],[2,0],[3,1],[3,2]]; single course with no prerequisites). Attempt cold per the AlgoMaster pool note, in either Kahn or DFS framing, then implement the other framing and compare orders. After-attempt reference is DSA Handbook 8.4 (Kahn) and 8.5 (post-order).
+- [LeetCode 210: Course Schedule II](https://leetcode.com/problems/course-schedule-ii/) - Examples 1 to 3 (2 courses `[[1,0]]`; 4 courses `[[1,0],[2,0],[3,1],[3,2]]`; single course with no prerequisites). Attempt cold per the AlgoMaster pool note, in either Kahn or DFS framing, then implement the other framing and compare orders. After-attempt reference is DSA Handbook 8.4 (Kahn) and 8.5 (post-order).
 - [LeetCode 802: Find Eventual Safe States](https://leetcode.com/problems/find-eventual-safe-states/) - The two listed examples (7-node graph with two safe terminals; 5-node graph). Reverse-graph Kahn from terminal vertices, or three-color DFS; state which witness you report. After-attempt reference is the reverse-graph section of DSA Handbook 8.4.
 
-**Stop when:** Your blank-file script prints a valid 6-course order, the 0-of-2 cycle verdict and the [0,0,0,1,2] component labels, and you can defend the Kahn-versus-DFS choice on operational grounds (iteration and lex order versus post-order computation).
+**Stop when:** Your blank-file script prints a valid 6-course order, the 0-of-2 cycle verdict and the `[0,0,0,1,2]` component labels, and you can defend the Kahn-versus-DFS choice on operational grounds (iteration and lex order versus post-order computation).
 
 <details>
 <summary>Self-test</summary>
@@ -1355,29 +1355,29 @@ Connectivity queries that interleave with edge insertions defeat repeated traver
 **Study**
 
 1. [Union-Find: parent forests, path compression, and union by rank](https://dsa.handbook.academy/curriculum/graphs/union-find/) (DSA Handbook - graphs) - The forest, the find, the union; Two heuristics that change the bound; Putting it all together (LC 684); LC 990: equality and inequality, two passes. Depth: Skim LC 685's directed case-split on first pass; return after the MST unit if directed redundancy still bites.
-2. [Disjoint Sets, Lecture Note 11](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/11-unionfind.pdf) (Algorithms - graph chapters) - 11.1 Reversed Trees (union by depth or rank, and the size-at-least-2-to-the-rank property); 11.3 Path Compression; 11.6 The Ackermann Function and its Inverse for the bound. Skim 11.2 Shallow Threaded Trees..
+2. [Disjoint Sets, Lecture Note 11](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/11-unionfind.pdf) (Algorithms - graph chapters) - 11.1 Reversed Trees (union by depth or rank, and the size-at-least-2-to-the-rank property); 11.3 Path Compression; 11.6 The Ackermann Function and its Inverse for the bound. Skim 11.2 Shallow Threaded Trees.
 
 **Focus**
 
-- Compare find(x) with find(y), never parent[x] with parent[y]: cousins share a root through a chain while their immediate parents differ.
+- Compare `find(x)` with `find(y)`, never `parent[x]` with `parent[y]`: cousins share a root through a chain while their immediate parents differ.
 - Rank is an upper bound on height, not the height: compression shrinks trees without lowering ranks, and the size-at-least-2-to-the-rank property is what the log bound leans on.
-- Count components as the set of find(i) over all $`i`$, never as the set of parent entries: stale intermediate pointers undercount.
+- Count components as the set of `find(i)` over all $`i`$, never as the set of `parent` entries: stale intermediate pointers undercount.
 - Process all equalities before any inequality (LC 990): input order lies, because a later union can connect an earlier checked pair.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), process [[1,2],[1,3],[2,3]] and return [2,3] as the first redundant edge. Then union the chain 0-1 through 6-7 in order with union by rank and report maximum depth 1.
+**Reproduce:** From a blank file with the course Python (3.13.14), process `[[1,2],[1,3],[2,3]]` and return `[2,3]` as the first redundant edge. Then union the chain 0-1 through 6-7 in order with union by rank and report maximum depth 1.
 
 **Traps**
 
-- Rank without compression, or compression without rank: the adversarial chain union(0,1), union(1,2), ... builds depth $`n`$ when attachment is one-sided, and compression never fires before the first find.
-- Recursive find on production-size chains: fine at LC 684 scale ($`n \le 1000`$), but the recursive form costs a frame per hop. Ship the iterative two-pass form past $`10^{5}`$ elements.
-- String keys without make-set: integer constructors pre-fill every root, but email-keyed maps need an explicit make on first sighting or find raises KeyError.
+- Rank without compression, or compression without rank: the adversarial chain `union(0,1)`, `union(1,2)`, ... builds depth $`n`$ when attachment is one-sided, and compression never fires before the first `find`.
+- Recursive `find` on production-size chains: fine at LC 684 scale ($`n \le 1000`$), but the recursive form costs a frame per hop. Ship the iterative two-pass form past $`10^{5}`$ elements.
+- String keys without make-set: integer constructors pre-fill every root, but email-keyed maps need an explicit make on first sighting or `find` raises `KeyError`.
 
 **Practice**
 
-- [LeetCode 684: Redundant Connection](https://leetcode.com/problems/redundant-connection/) - Examples 1 ([[1,2],[1,3],[2,3]] answers [2,3]) and 2 (five-edge graph). The first union returning False is the answer. After-attempt reference is the DSA Handbook 8.8 worked example and trace.
-- [LeetCode 990: Satisfiability of Equality Equations](https://leetcode.com/problems/satisfiability-of-equality-equations/) - The two listed examples (a==b with b!=a answers False; the satisfiable set answers True). Two passes: unions first, inequality checks second. After-attempt reference is the LC 990 section of DSA Handbook 8.8.
+- [LeetCode 684: Redundant Connection](https://leetcode.com/problems/redundant-connection/) - Examples 1 (`[[1,2],[1,3],[2,3]]` answers `[2,3]`) and 2 (five-edge graph). The first `union` returning `False` is the answer. After-attempt reference is the DSA Handbook 8.8 worked example and trace.
+- [LeetCode 990: Satisfiability of Equality Equations](https://leetcode.com/problems/satisfiability-of-equality-equations/) - The two listed examples (`a==b` with `b!=a` answers `False`; the satisfiable set answers `True`). Two passes: unions first, inequality checks second. After-attempt reference is the LC 990 section of DSA Handbook 8.8.
 
-**Stop when:** Your blank-file DSU prints [2,3] on the redundant input with max chain depth 1, and LC 684 plus LC 990 pass with roots compared, never parents.
+**Stop when:** Your blank-file DSU prints `[2,3]` on the redundant input with max chain depth 1, and LC 684 plus LC 990 pass with roots compared, never parents.
 
 <details>
 <summary>Self-test</summary>
@@ -1415,25 +1415,25 @@ Nonneg weights buy a heap-ordered greedy; negative edges or hop budgets need rep
 
 **Focus**
 
-- heapq has no decrease-key (check hasattr on the course Python: False), so this card uses the lazy-deletion variant: push a fresh entry per relaxation and skip with if d > dist[u]: continue. Count the skips; the handbook graph produces exactly 2.
+- heapq has no decrease-key (check `hasattr` on the course Python: `False`), so this card uses the lazy-deletion variant: push a fresh entry per relaxation and skip with `if d > dist[u]: continue`. Count the skips; the handbook graph produces exactly 2.
 - Settle-once holds only for nonneg weights: every undiscovered alternative path must leave through an unsettled vertex of distance at least $`d`$, so adding nonneg remainders cannot beat $`d`$. One negative edge breaks the argument and the code stays silent.
 - Bellman-Ford's pass $`i`$ is correct for paths of at most $`i`$ edges by induction, and simple paths use at most $`V - 1`$ edges. The $`V`$th pass is the detector, not bookkeeping: any relaxation there proves a reachable negative cycle.
-- $`K`$-edge budgets read from the previous pass: snapshot = dist[:] each round. Reading live dist chains two edges in one pass and silently spends budget twice.
+- $`K`$-edge budgets read from the previous pass: `snapshot = dist[:]` each round. Reading live `dist` chains two edges in one pass and silently spends budget twice.
 
-**Reproduce:** From a blank file with the course Python (3.13.14): Dijkstra on the 6-node handbook graph (source 0) returns [0,7,9,20,20,11] with exactly 2 stale skips (7 pushes, 8 pops). A settle-once variant on edges [(0,1,6),(0,2,7),(2,3,-3),(3,1,-2)] locks dist[1] at 6 while Bellman-Ford reports the true 2. LC 787's sample ($`n = 4`$, $`k = 1`$) returns 700 with the snapshot line and the wrong 400 without it.
+**Reproduce:** From a blank file with the course Python (3.13.14): Dijkstra on the 6-node handbook graph (source 0) returns `[0,7,9,20,20,11]` with exactly 2 stale skips (7 pushes, 8 pops). A settle-once variant on edges `[(0,1,6),(0,2,7),(2,3,-3),(3,1,-2)]` locks `dist[1]` at 6 while Bellman-Ford reports the true 2. LC 787's sample ($`n = 4`$, $`k = 1`$) returns 700 with the `snapshot` line and the wrong 400 without it.
 
 **Traps**
 
 - Negative input to Dijkstra: no exception, no warning, wrong distances. Scan weights for negatives first; one negative edge reroutes to Bellman-Ford.
 - $`K`$ stops means $`K + 1`$ edges: a direct flight is 0 stops and 1 edge. Running $`K`$ passes under-relaxes by one hop.
-- Missing INF guard before dist[u] + w: in Java and C++ INT_MAX plus w wraps negative and relaxes the unreachable. Gate on dist[u] != INF; Python with float inf is exempt but keep the guard for portability.
+- Missing `INF` guard before `dist[u] + w`: in Java and C++ `INT_MAX` plus `w` wraps negative and relaxes the unreachable. Gate on `dist[u] != INF`; Python with float inf is exempt but keep the guard for portability.
 
 **Practice**
 
-- [LeetCode 743: Network Delay Time](https://leetcode.com/problems/network-delay-time/) - The three listed examples (times [[2,1,1],[2,3,1],[3,4,1]] with $`n = 4`$ and $`k = 2`$; single edge; unreachable node). Attempt cold per the AlgoMaster pool note. Lazy-deletion heap with the stale check; answer is max dist or -1. After-attempt reference is DSA Handbook 8.9.
-- [LeetCode 787: Cheapest Flights Within K Stops](https://leetcode.com/problems/cheapest-flights-within-k-stops/) - Sample ($`n = 4`$, five flights, src 0, dst 3, $`k = 1`$ answers 700). Bellman-Ford with $`K + 1`$ snapshot passes, not Dijkstra: the hop constraint breaks settle-once. After-attempt reference is DSA Handbook 8.10.
+- [LeetCode 743: Network Delay Time](https://leetcode.com/problems/network-delay-time/) - The three listed examples (times `[[2,1,1],[2,3,1],[3,4,1]]` with $`n = 4`$ and $`k = 2`$; single edge; unreachable node). Attempt cold per the AlgoMaster pool note. Lazy-deletion heap with the stale check; answer is max dist or -1. After-attempt reference is DSA Handbook 8.9.
+- [LeetCode 787: Cheapest Flights Within K Stops](https://leetcode.com/problems/cheapest-flights-within-k-stops/) - Sample ($`n = 4`$, five flights, `src` 0, `dst` 3, $`k = 1`$ answers 700). Bellman-Ford with $`K + 1`$ snapshot passes, not Dijkstra: the hop constraint breaks settle-once. After-attempt reference is DSA Handbook 8.10.
 
-**Stop when:** Your blank-file script prints [0,7,9,20,20,11] with 2 stale skips, the 6-versus-2 negative-edge gap and the 700-versus-400 snapshot gap, and both LeetCode problems pass with the assumption stated before the import.
+**Stop when:** Your blank-file script prints `[0,7,9,20,20,11]` with 2 stale skips, the 6-versus-2 negative-edge gap and the 700-versus-400 snapshot gap, and both LeetCode problems pass with the assumption stated before the import.
 
 <details>
 <summary>Self-test</summary>
@@ -1443,9 +1443,9 @@ Nonneg weights buy a heap-ordered greedy; negative edges or hop budgets need rep
 2. Prove $`V - 1`$ passes suffice for Bellman-Ford.
    - Induction: pass 1 fixes all one-edge shortest paths from direct relaxations; if pass $`i - 1`$ fixed all paths of at most $`i - 1`$ edges, pass $`i`$ extends each by one scanned edge. Simple shortest paths repeat no vertex, hence use at most $`V - 1`$ edges.
 3. Why does the no-snapshot LC 787 code return 400 instead of 700?
-   - Without the snapshot the first pass already chains edges: (0,1) sets dist[1] = 100, then (1,2) reads it and sets dist[2] = 200, then (2,3) sets dist[3] = 400, three edges against a two-edge budget. The snapshot makes every pass extend only the previous pass's distances.
+   - Without the `snapshot` the first pass already chains edges: `(0,1)` sets `dist[1] = 100`, then `(1,2)` reads it and sets `dist[2] = 200`, then `(2,3)` sets `dist[3] = 400`, three edges against a two-edge budget. The `snapshot` makes every pass extend only the previous pass's distances.
 4. When is 0-1 BFS the right call over Dijkstra?
-   - All weights in $`\{{0, 1\}}`$: push front on 0-cost, back on 1-cost relaxations. The deque front always holds minimum tentative distance, so each operation is $`O(1)`$ and total is $`\Theta(V + E)`$ instead of heap-logged.
+   - All weights in $`\{{0, 1\}}`$: push front on 0-cost, back on 1-cost relaxations. The `deque` front always holds minimum tentative distance, so each operation is $`O(1)`$ and total is $`\Theta(V + E)`$ instead of heap-logged.
 
 </details>
 
@@ -1466,22 +1466,22 @@ Minimum connection cost is the canonical greedy-with-proof: one theorem justifie
 **Study**
 
 1. [Minimum spanning tree: Kruskal's algorithm](https://dsa.handbook.academy/curriculum/graphs/mst-kruskal/) (DSA Handbook - graphs) - The pattern (LC 1584); Why it works: the cut property; Worked example on the canonical 7-vertex graph (weight 31); Variants: virtual source node. Depth: Skim LC 1489's Kruskal-twice-per-edge on first pass; edge classification is stretch.
-2. [Minimum spanning trees: Prim's algorithm](https://dsa.handbook.academy/curriculum/graphs/mst-prim/) (DSA Handbook - graphs) - The pattern with the in_mst skip; When the graph is implicit: LC 1584; Dense Prim from $`O(n^2 \log n)`$ to $`O(n^2)`$; Kruskal vs Prim: the decision table.
+2. [Minimum spanning trees: Prim's algorithm](https://dsa.handbook.academy/curriculum/graphs/mst-prim/) (DSA Handbook - graphs) - The pattern with the `in_mst` skip; When the graph is implicit: LC 1584; Dense Prim from $`O(n^2 \log n)`$ to $`O(n^2)`$; Kruskal vs Prim: the decision table.
 3. [Minimum Spanning Trees, Chapter 7](https://jeffe.cs.illinois.edu/teaching/algorithms/book/07-mst.pdf) (Algorithms - graph chapters) - 7.1 Distinct Edge Weights; 7.2 The Only Minimum Spanning Tree Algorithm (safe and useless edges); 7.3 Boruvka's Algorithm; 7.4 Jarnik's ("Prim's") Algorithm; 7.5 Kruskal's Algorithm (printed pp. 257-268).
 
 **Focus**
 
-- Kruskal's guard is union: accept iff endpoints sit in different components, stop at $`n - 1`$ edges. The sort dominates at $`O(E \log E)`$; the DSU loop is effectively linear.
-- Lazy Prim pushes (weight, vertex) pairs and skips with if in_mst[u]: continue. The heap holds duplicates; the eager decrease-key variant needs an indexed heap no standard library ships.
+- Kruskal's guard is `union`: accept iff endpoints sit in different components, stop at $`n - 1`$ edges. The sort dominates at $`O(E \log E)`$; the DSU loop is effectively linear.
+- Lazy Prim pushes `(weight, vertex)` pairs and skips with `if in_mst[u]: continue`. The heap holds duplicates; the eager decrease-key variant needs an indexed heap no standard library ships.
 - Prim cumulates nothing: pushing distance-from-start plus edge weight builds a shortest-path tree, not an MST. Dijkstra cumulates, Prim does not.
 - Every MST has the same total weight, and distinct weights also make the edge set unique. With ties, as in LC 1584, Kruskal and Prim may pick different edges but must report the same total.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), run Kruskal and dense Prim on [[0,0],[2,2],[3,10],[5,2],[7,0]]; both return 20. State the input size ($`n = 5`$, complete graph of 10 Manhattan edges) and which variant each function is.
+**Reproduce:** From a blank file with the course Python (3.13.14), run Kruskal and dense Prim on `[[0,0],[2,2],[3,10],[5,2],[7,0]]`; both return 20. State the input size ($`n = 5`$, complete graph of 10 Manhattan edges) and which variant each function is.
 
 **Traps**
 
-- Early break on disconnected input: stopping is valid only when $`n - 1`$ accepts happen. Otherwise walk every edge and return -1 when accepts fall short.
-- Integer totals in Java and C++: LC 1584 edge weights reach $`4 \times 10^{6}`$ and 999 of them sum past INT_MAX. Accumulate in long or long long; Python integers are exempt.
+- Early break on disconnected input: stopping is valid only when $`n - 1`$ accepts happen. Otherwise walk every edge and `return -1` when accepts fall short.
+- Integer totals in Java and C++: LC 1584 edge weights reach $`4 \times 10^{6}`$ and 999 of them sum past `INT_MAX`. Accumulate in `long` or `long long`; Python integers are exempt.
 - Forgetting either DSU heuristic: one-sided chains push finds to $`O(n)`$ before compression ever fires. Ship path halving with union by rank as in the handbook reference.
 
 **Practice**
@@ -1498,7 +1498,7 @@ Minimum connection cost is the canonical greedy-with-proof: one theorem justifie
 2. Why is a rejected Kruskal edge safe to drop?
    - Its endpoints already connect through accepted edges, each processed earlier hence no heavier. The closed cycle's other edges are all at most as heavy, so the rejected edge is a heaviest edge of that cycle and no MST needs it.
 3. Why does dense Prim beat heap Prim on LC 1584?
-   - The complete graph materializes about 500,000 edges at $`n = 1000`$; heap Prim pays $`O(n^2 \log n)`$ on them while dense Prim scans min_edge arrays for $`O(n^2)`$ with no heap and no stale entries.
+   - The complete graph materializes about 500,000 edges at $`n = 1000`$; heap Prim pays $`O(n^2 \log n)`$ on them while dense Prim scans `min_edge` arrays for $`O(n^2)`$ with no heap and no stale entries.
 4. Kruskal and Prim report different totals on the same input. What follows?
    - A bug: all minimum spanning trees share one total weight, so two correct runs agree on it even when tied weights let them choose different edges. Check the stale skip, the union guard and the weight function.
 
@@ -1520,23 +1520,23 @@ An algorithm without an independent checker is a rumor. Certificates turn output
 
 **Study**
 
-1. [Hypothesis quickstart](https://hypothesis.readthedocs.io/en/latest/quickstart.html) (Hypothesis - generated graph tests) - Write your first test (@given with strategies); Dependent generation (@composite ordered_pairs); Combining Hypothesis with pytest.
-2. [Custom strategies with @composite](https://hypothesis.readthedocs.io/en/latest/tutorial/custom-strategies.html) (Hypothesis - generated graph tests) - Writing helper functions; Combining @composite with parameters; Dependent generation with @composite.
-3. [Strategies reference: collections](https://hypothesis.readthedocs.io/en/latest/reference/strategies.html) (Hypothesis - generated graph tests) - Collections (lists), sampled_from and composite entries used to build edge lists and weight draws.
+1. [Hypothesis quickstart](https://hypothesis.readthedocs.io/en/latest/quickstart.html) (Hypothesis - generated graph tests) - Write your first test (`@given` with strategies); Dependent generation (`@composite` `ordered_pairs`); Combining Hypothesis with pytest.
+2. [Custom strategies with @composite](https://hypothesis.readthedocs.io/en/latest/tutorial/custom-strategies.html) (Hypothesis - generated graph tests) - Writing helper functions; Combining `@composite` with parameters; Dependent generation with `@composite`.
+3. [Strategies reference: collections](https://hypothesis.readthedocs.io/en/latest/reference/strategies.html) (Hypothesis - generated graph tests) - Collections (`lists`), `sampled_from` and composite entries used to build edge lists and weight draws.
 4. [Floyd-Warshall as the oracle](https://jeffe.cs.illinois.edu/teaching/algorithms/book/09-apsp.pdf) (Algorithms - graph chapters) - Section 9.8 (Kleene-Roy-)Floyd-Warshall(-Ingerman): the triple loop over intermediate vertices (printed p. 318).
 
 **Focus**
 
 - A certificate is checked by different code than the solver: re-walk parent pointers for distances, scan every edge against a claimed topological order, recount components. $`O(V + E)`$ checkers, no shared helpers.
-- Generate edge lists with @composite (draw $`n`$, draw $`m`$, draw weighted pairs), dedupe parallel edges explicitly, and cover disconnected and cyclic shapes: the default random graph is connected-ish and hides the interesting failures.
+- Generate edge lists with `@composite` (draw $`n`$, draw $`m`$, draw weighted pairs), dedupe parallel edges explicitly, and cover disconnected and cyclic shapes: the default random graph is connected-ish and hides the interesting failures.
 - Compare on the same instance: Dijkstra against Floyd-Warshall's row, Kruskal against Prim and against brute force at $`n \le 8`$. Cross-instance numbers prove nothing.
 - Report measurements with setup: BFS on a seeded $`n = 3000`$ sparse graph takes about 0.3 ms over the list against about 97 ms over the matrix on 12th Gen i9-12900K with Python 3.13.14. Re-run it; the direction is the claim, not the ratio, and the gap is CPython row-scan overhead, not a portable constant.
 
-**Reproduce:** From a blank file with the course Python (Hypothesis 6.169.0): a @composite small-graph strategy ($`n \le 7`$, derandomize=True) comparing Dijkstra against Floyd-Warshall on nonneg weights passes 100 examples with zero disagreements. Separately, timeit on a seeded $`n = 3000`$, 9,000-edge sparse graph shows BFS over the adjacency list at about 0.3 ms against about 97 ms over the matrix. Quote both numbers with CPU and Python version.
+**Reproduce:** From a blank file with the course Python (Hypothesis 6.169.0): a `@composite` small-graph strategy ($`n \le 7`$, `derandomize=True`) comparing Dijkstra against Floyd-Warshall on nonneg weights passes 100 examples with zero disagreements. Separately, timeit on a seeded $`n = 3000`$, 9,000-edge sparse graph shows BFS over the adjacency list at about 0.3 ms against about 97 ms over the matrix. Quote both numbers with CPU and Python version.
 
 **Traps**
 
-- Oracle and solver sharing code: two Dijkstra implementations sharing the relax helper agree even when both are wrong. The oracle must be an independent formulation (triple loop, exhaustive search).
+- Oracle and solver sharing code: two Dijkstra implementations sharing the `relax` helper agree even when both are wrong. The oracle must be an independent formulation (triple loop, exhaustive search).
 - Connected-only generation: strategies drawing $`m \ge n - 1`$ edges rarely emit isolated vertices, so component and unreachable handling goes untested. Force sparse and empty draws.
 - Quoting the 300x ratio as a constant: it measures CPython-level matrix row scans on one CPU, not an algorithmic invariant. C++ crossover points never transfer without a local measurement.
 
@@ -1587,13 +1587,13 @@ Flows and matchings are recognition vocabulary at this stage: routing, assignmen
 - Bipartite matching is flow with unit capacities: source to left, allowed edges left to right, right to sink; integer flow of value $`k`$ is a matching of size $`k`$.
 - Explicit non-goals: residual-graph implementation at scale, Dinic or push-relabel, general (non-bipartite) matching and spectral methods stay in the section's leave-for-later list.
 
-**Reproduce:** From a blank file with the course Python (3.13.14), run Edmonds-Karp on $`n = 4`$ with capacities [(0,1,3),(0,2,2),(1,2,1),(1,3,2),(2,3,3)] from 0 to 3 and report max flow 5. Exhibit the certifying cut ($`\{0\}`$ versus $`\{1, 2, 3\}`$) with capacity 3 + 2 = 5.
+**Reproduce:** From a blank file with the course Python (3.13.14), run Edmonds-Karp on $`n = 4`$ with capacities `[(0,1,3),(0,2,2),(1,2,1),(1,3,2),(2,3,3)]` from 0 to 3 and report max flow 5. Exhibit the certifying cut ($`\{0\}`$ versus $`\{1, 2, 3\}`$) with capacity 3 + 2 = 5.
 
 **Traps**
 
 - Augmenting without residual backward edges: the greedy path choice gets stuck below maximum because it cannot undo earlier flow. Backward edges with residual capacity are the algorithm, not an optimization.
 - Confusing bipartite check with bipartite matching: two-coloring decides a partition exists; matching finds the largest conflict-free edge set given one. LC 785 does not solve LC 1349.
-- Undirected edges as single arcs: an undirected edge of capacity c becomes two opposite arcs of capacity c. One arc forbids flow in the other direction and can silently lower the maximum.
+- Undirected edges as single arcs: an undirected edge of capacity `c` becomes two opposite arcs of capacity `c`. One arc forbids flow in the other direction and can silently lower the maximum.
 
 **Practice**
 
@@ -1619,7 +1619,7 @@ Flows and matchings are recognition vocabulary at this stage: routing, assignmen
 
 **About 10 to 14 hours.** Build a tested union-find, turn two unfamiliar narratives into graphs with algorithms that return certificates, and reject one plausible method with a minimized counterexample.
 
-1. Implement union-find with union by rank and path compression. State the invariants (parent pointers form a forest, and a root of rank $`r`$ has at least $`2^r`$ members) and the amortized cost. Test it with a Hypothesis state machine against a component-labeling oracle that runs BFS over the unions so far, asserting the rank-size invariant after every step.
+1. Implement union-find with union by rank and path compression. State the invariants (`parent` pointers form a forest, and a root of rank $`r`$ has at least $`2^r`$ members) and the amortized cost. Test it with a Hypothesis state machine against a component-labeling oracle that runs BFS over the unions so far, asserting the rank-size invariant after every step.
 2. Narrative 1, AlgoMaster Alien Dictionary (https://algomaster.io/learn/dsa/alien-dictionary): model letters as vertices and first-difference pairs as edges, and treat a longer word before its own prefix as invalid. Return a certificate: for an order, a check that every extracted edge points forward; for an empty answer, the cycle or the bad prefix pair.
 3. Test the dictionary solver on generated inputs: draw a random alphabet order, generate words, sort them by that order, and check the output against the extracted edges, since several orders can be valid. Add cyclic and bad-prefix cases.
 4. Narrative 2, LC 1631 Path With Minimum Effort: write the model (cells, edges weighted by height difference, path cost the maximum edge) before code, and solve it with a Dijkstra variant. Return the path and a cut certificate: the cells reachable using only edges below the answer do not include the target. The examples answer 2, 1 and 0.
@@ -1709,7 +1709,7 @@ Backtracking is the baseline every smarter search must beat. If the contract is 
 
 **Study**
 
-1. [The recursion mental model](https://dsa.handbook.academy/curriculum/foundations/recursion-mental-model/) (DSA Handbook - recursion, backtracking and greedy) - The three parts; Worked example: tracing factorial(4); Variants you'll meet; Common pitfalls. Depth: Read for the contract shape only. Cost analysis returns in the next unit.
+1. [The recursion mental model](https://dsa.handbook.academy/curriculum/foundations/recursion-mental-model/) (DSA Handbook - recursion, backtracking and greedy) - The three parts; Worked example: tracing `factorial(4)`; Variants you'll meet; Common pitfalls. Depth: Read for the contract shape only. Cost analysis returns in the next unit.
 2. [The backtracking template](https://dsa.handbook.academy/curriculum/recursion-backtracking/backtracking-template/) (DSA Handbook - recursion, backtracking and greedy) - What backtracking is, exactly; The three operations; The four levers; Walking LC 17 on digits 23; What it actually costs. Depth: Use LC 17 as the chassis demo. Pruning detail comes from the N-Queens item below.
 3. [Subsets, combinations, permutations](https://dsa.handbook.academy/curriculum/recursion-backtracking/subsets-combinations-permutations/) (DSA Handbook - recursion, backtracking and greedy) - Subsets (LC 78); Permutations (LC 46); Combination Sum (LC 39); When duplicates show up: LC 90 and LC 47, including the warning that the two skip predicates are not interchangeable.
 4. [N-Queens: pruning and constraint propagation](https://dsa.handbook.academy/curriculum/recursion-backtracking/n-queens/) (DSA Handbook - recursion, backtracking and greedy) - The pattern; Worked example $`n = 4`$; The bitmask shift, in detail; What it actually costs.
@@ -1717,34 +1717,34 @@ Backtracking is the baseline every smarter search must beat. If the contract is 
 
 **Focus**
 
-- The path is identical at entry and exit: every push has a matching pop in the same scope, and every snapshot copies the path instead of storing the live list.
+- The path is identical at entry and exit: every push has a matching pop in the same scope, and every snapshot copies the `path` instead of storing the live list.
 - The start-index chassis (subsets, combinations) and the used-mask chassis (permutations) take different duplicate-skip predicates. Sorting comes first in both, and the two predicates are not interchangeable.
 - A prune is a claim, not a speedup: the cut branch provably holds no solution, as with a negative remaining target over positive candidates or an attacked queen square. Bitmask state passed by value needs no undo step.
 - Output size sets the floor: subsets cost $`\Theta(n \cdot 2^n)`$, permutations cost $`\Theta(n \cdot n!)`$, and LC 46 stays small because $`n!`$ explodes.
 
-**Reproduce:** From a blank file in Python 3.13.14, implement subsets and bitmask N-Queens. subsets([1, 2, 3]) returns 8 subsets; N-Queens counts are 2 for $`n = 4`$ and 92 for $`n = 8`$. Add a pytest file that checks every reported subset against the input set and every queen board for shared columns and diagonals.
+**Reproduce:** From a blank file in Python 3.13.14, implement subsets and bitmask N-Queens. `subsets([1, 2, 3])` returns 8 subsets; N-Queens counts are 2 for $`n = 4`$ and 92 for $`n = 8`$. Add a pytest file that checks every reported subset against the input set and every queen board for shared columns and diagonals.
 
 **Traps**
 
-- Appending the live path instead of a copy. Every snapshot aliases one list, later pushes mutate all of them, and the result finishes as copies of an empty path.
-- Skipping the unchoose half on one exit path, such as an early return that pops but forgets to clear used[i]. Keep push and pop adjacent in the same scope so no exit can split them.
-- An unproved prune that keeps sample tests green, such as a break on the first too-large candidate when the candidates were never sorted. Prove each cut, and test it against the unpruned search. Deep recursion is a separate problem: CPython stops at about 1000 frames, and raising the limit hides a depth bug instead of bounding it.
+- Appending the live `path` instead of a copy. Every snapshot aliases one list, later pushes mutate all of them, and the result finishes as copies of an empty `path`.
+- Skipping the unchoose half on one exit path, such as an early return that pops but forgets to clear `used[i]`. Keep push and pop adjacent in the same scope so no exit can split them.
+- An unproved prune that keeps sample tests green, such as a `break` on the first too-large candidate when the candidates were never sorted. Prove each cut, and test it against the unpruned search. Deep recursion is a separate problem: CPython stops at about 1000 frames, and raising the limit hides a depth bug instead of bounding it.
 
 **Practice**
 
-- [LeetCode 51: N-Queens](https://leetcode.com/problems/n-queens/) - Attempt cold. Example $`n = 4`$ returns 2 solutions; $`n = 1`$ returns 1 solution.. After submitting, read the DSA Handbook N-Queens chapter for the bitmask form and the AlgoMaster N-Queens lesson (https://algomaster.io/learn/dsa/n-queens), and compare your prune counts with the chapter cascade.
+- [LeetCode 51: N-Queens](https://leetcode.com/problems/n-queens/) - Attempt cold. Example $`n = 4`$ returns 2 solutions; $`n = 1`$ returns 1 solution. After submitting, read the DSA Handbook N-Queens chapter for the bitmask form and the AlgoMaster N-Queens lesson (https://algomaster.io/learn/dsa/n-queens), and compare your prune counts with the chapter cascade.
 
 **Stop when:** N-Queens is accepted from a cold attempt, and your own tests catch a removed copy, a removed unchoose step, and an unsound prune.
 
 <details>
 <summary>Self-test</summary>
 
-1. Why must the result store path.copy() rather than path?
-   - path keeps mutating after the snapshot. Storing the reference makes every entry reflect the final empty path instead of the candidate at snapshot time.
-2. What does the plain LC 78 algorithm emit on [1, 2, 2], and what is the fix?
-   - Eight subsets with a duplicated [2] and a duplicated [1, 2]. Sort first, then skip with i greater than start and nums[i] equal to nums[i-1], which keeps exactly one canonical index sequence per distinct multiset.
+1. Why must the result store `path.copy()` rather than `path`?
+   - `path` keeps mutating after the snapshot. Storing the reference makes every entry reflect the final empty `path` instead of the candidate at snapshot time.
+2. What does the plain LC 78 algorithm emit on `[1, 2, 2]`, and what is the fix?
+   - Eight subsets with a duplicated `[2]` and a duplicated `[1, 2]`. Sort first, then skip with `i` greater than `start` and `nums[i]` equal to `nums[i-1]`, which keeps exactly one canonical index sequence per distinct multiset.
 3. Permutations run but return too few orderings. Which line is missing?
-   - The unchoose half: used[i] set back to False alongside path.pop(). Without it the invariant sum(used) equal to len(path) breaks and sibling branches never revisit the element.
+   - The unchoose half: `used[i]` set back to `False` alongside `path.pop()`. Without it the invariant `sum(used)` equal to `len(path)` breaks and sibling branches never revisit the element.
 4. What makes a prune sound?
    - A proof that no cut branch holds a solution, for example remaining target below zero with positive candidates, or a queen square under attack. Samples alone cannot show this.
 
@@ -1777,7 +1777,7 @@ Divide and conquer sets the price of every recursive algorithm you will write. S
 - Groups of five guarantee a pivot that discards a fixed fraction on both sides, giving $`T(n)`$ below $`T(n/5) + T(7n/10) + O(n)`$, which sums to linear because 1/5 plus 7/10 is below 1.
 - Fixed-pivot quickselect on sorted input recurses on $`n - 1`$ each level and is quadratic. The randomness or the median of medians is doing the work, not the partition loop.
 
-**Reproduce:** Closed book, solve $`T(n) = 2T(n/2) + n`$ with $`T(1) = 1`$ by tree: depth 10, per-level cost 1024, total 11264 at $`n = 1024`$, confirmed with a short evaluator. Then, in Python 3.13.14, implement median-of-medians select with groups of five and check it against sorted(xs)[k] with pytest on 300 seeded lists of length 1 to 60 with duplicates. Finally count comparisons for first-element-pivot quickselect ($`n - 1`$ per partition) on sorted range(1000) with $`k = 999`$: 499500, which is $`n(n - 1)/2`$.
+**Reproduce:** Closed book, solve $`T(n) = 2T(n/2) + n`$ with $`T(1) = 1`$ by tree: depth 10, per-level cost 1024, total 11264 at $`n = 1024`$, confirmed with a short evaluator. Then, in Python 3.13.14, implement median-of-medians select with groups of five and check it against `sorted(xs)[k]` with pytest on 300 seeded lists of length 1 to 60 with duplicates. Finally count comparisons for first-element-pivot quickselect ($`n - 1`$ per partition) on sorted `range(1000)` with $`k = 999`$: 499500, which is $`n(n - 1)/2`$.
 
 **Traps**
 
@@ -1787,10 +1787,10 @@ Divide and conquer sets the price of every recursive algorithm you will write. S
 
 **Practice**
 
-- [LeetCode 493: Reverse Pairs](https://leetcode.com/problems/reverse-pairs/) - Attempt cold with merge-sort counting. Examples: [1, 3, 2, 3, 1] returns 2; [2, 4, 3, 5, 1] returns 3. Write the recurrence your code satisfies, then differentially test against the $`O(n^2)`$ double loop on 200 seeded arrays up to length 40, including negatives and values near $`2^{31}`$.. After submitting, read the AlgoMaster Reverse Pairs lesson (https://algomaster.io/learn/dsa/reverse-pairs) and compare where the count is taken relative to the merge.
-- [LeetCode 215: Kth Largest Element in an Array](https://leetcode.com/problems/kth-largest-element-in-an-array/) - Resubmit with your deterministic median-of-medians select, with no random pivot. Examples: [3, 2, 1, 5, 6, 4] with $`k = 2`$ returns 5; [3, 2, 3, 1, 2, 4, 5, 5, 6] with $`k = 4`$ returns 4.. The partition unit solved this problem with random pivots; this pass checks the median-of-medians code on the judge's sorted and duplicate-heavy tests.
+- [LeetCode 493: Reverse Pairs](https://leetcode.com/problems/reverse-pairs/) - Attempt cold with merge-sort counting. Examples: `[1, 3, 2, 3, 1]` returns 2; `[2, 4, 3, 5, 1]` returns 3. Write the recurrence your code satisfies, then differentially test against the $`O(n^2)`$ double loop on 200 seeded arrays up to length 40, including negatives and values near $`2^{31}`$. After submitting, read the AlgoMaster Reverse Pairs lesson (https://algomaster.io/learn/dsa/reverse-pairs) and compare where the count is taken relative to the merge.
+- [LeetCode 215: Kth Largest Element in an Array](https://leetcode.com/problems/kth-largest-element-in-an-array/) - Resubmit with your deterministic median-of-medians select, with no random pivot. Examples: `[3, 2, 1, 5, 6, 4]` with $`k = 2`$ returns 5; `[3, 2, 3, 1, 2, 4, 5, 5, 6]` with $`k = 4`$ returns 4. The partition unit solved this problem with random pivots; this pass checks the median-of-medians code on the judge's sorted and duplicate-heavy tests.
 
-**Stop when:** You derive the three recurrences without notes, Reverse Pairs is accepted, and your median-of-medians select matches sorted on every small test and is accepted on LC 215.
+**Stop when:** You derive the three recurrences without notes, Reverse Pairs is accepted, and your median-of-medians select matches `sorted` on every small test and is accepted on LC 215.
 
 <details>
 <summary>Self-test</summary>
@@ -1833,17 +1833,17 @@ Greedy is the shortest path from idea to code and the easiest place to be confid
 - Optimal substructure must hold after the greedy choice. In Huffman coding, merging the two least frequent symbols leaves a smaller instance whose optimum sits inside the full optimum through the weight recurrence.
 - Partition Labels is the stays-ahead drill: last occurrence table, extend the part end, cut at $`i = \text{end}`$, in $`O(n)`$ time and $`O(1)`$ extra space.
 
-**Reproduce:** From a blank file in Python 3.13.14, implement Partition Labels from its invariant and run it on ababcbacadefegdehijhklij to get [9, 7, 8]. Closed book, write the Huffman exchange step: swapping a least frequent symbol into a deepest sibling leaf changes total cost by at most zero.
+**Reproduce:** From a blank file in Python 3.13.14, implement Partition Labels from its invariant and run it on `ababcbacadefegdehijhklij` to get `[9, 7, 8]`. Closed book, write the Huffman exchange step: swapping a least frequent symbol into a deepest sibling leaf changes total cost by at most zero.
 
 **Traps**
 
 - Proving by example. Passing samples shows the code runs; only the exchange or staying-ahead step shows no optimal solution beats it.
 - An exchange that breaks feasibility. Swapping must keep the prefix-free sibling structure in Huffman coding and disjointness in scheduling, or the transformed optimum is not a valid candidate.
-- Staying ahead on a measure that does not imply the objective. Largest-coin-first on coins [1, 3, 4] with target 6 leads on amount covered after one coin (4 against 3), yet needs 3 coins (4 + 1 + 1) against the optimal 2 (3 + 3).
+- Staying ahead on a measure that does not imply the objective. Largest-coin-first on coins `[1, 3, 4]` with target 6 leads on amount covered after one coin (4 against 3), yet needs 3 coins ($`4 + 1 + 1`$) against the optimal 2 ($`3 + 3`$).
 
 **Practice**
 
-- [LeetCode 134: Gas Station](https://leetcode.com/problems/gas-station/) - Attempt cold. Example gas [1, 2, 3, 4, 5] with cost [3, 4, 5, 1, 2] returns 3; gas [2, 3, 4] with cost [3, 4, 3] returns minus 1.. After submitting, read the DSA Handbook Jump games and gas station chapter (Claims 1 and 2) and the AlgoMaster Gas Station lesson (https://algomaster.io/learn/dsa/gas-station), and restate your loop invariant in their terms.
+- [LeetCode 134: Gas Station](https://leetcode.com/problems/gas-station/) - Attempt cold. Example `gas` `[1, 2, 3, 4, 5]` with `cost` `[3, 4, 5, 1, 2]` returns 3; `gas` `[2, 3, 4]` with `cost` `[3, 4, 3]` returns minus 1. After submitting, read the DSA Handbook Jump games and gas station chapter (Claims 1 and 2) and the AlgoMaster Gas Station lesson (https://algomaster.io/learn/dsa/gas-station), and restate your loop invariant in their terms.
 
 **Stop when:** Gas Station is accepted from a cold attempt, and you can write the Huffman exchange step and the total-surplus argument without notes.
 
@@ -1877,28 +1877,28 @@ Interval scheduling is the rare greedy proof you can carry in your head. Counter
 
 **Study**
 
-1. [Interval scheduling: the comparator is the algorithm](https://dsa.handbook.academy/curriculum/greedy/interval-scheduling/) (DSA Handbook - recursion, backtracking and greedy) - Why the obvious approach finds the wrong answer; Why sort-by-end is optimal; Worked example: LC 435 on [[1,2], [2,3], [3,4], [1,3]]; Sort-by-start, fold while overlapping (LC 56).
-2. [Greedy thinking: the failure half](https://dsa.handbook.academy/curriculum/greedy/greedy-thinking/) (DSA Handbook - recursion, backtracking and greedy) - Where greedy fails, with coins [1, 3, 4] and the decision rule. Depth: Read only the failure section and the decision rule. The proof templates were covered in the previous unit.
+1. [Interval scheduling: the comparator is the algorithm](https://dsa.handbook.academy/curriculum/greedy/interval-scheduling/) (DSA Handbook - recursion, backtracking and greedy) - Why the obvious approach finds the wrong answer; Why sort-by-end is optimal; Worked example: LC 435 on `[[1,2], [2,3], [3,4], [1,3]]`; Sort-by-start, fold while overlapping (LC 56).
+2. [Greedy thinking: the failure half](https://dsa.handbook.academy/curriculum/greedy/greedy-thinking/) (DSA Handbook - recursion, backtracking and greedy) - Where greedy fails, with coins `[1, 3, 4]` and the decision rule. Depth: Read only the failure section and the decision rule. The proof templates were covered in the previous unit.
 3. [Scheduling Classes, Section 4.2](https://jeffe.cs.illinois.edu/teaching/algorithms/book/04-greedy.pdf) (Algorithms - recursion, backtracking and greedy) - 4.2 Scheduling Classes (printed pp. 161-164): the earliest-finish rule and its exchange argument.
 
 **Focus**
 
 - The comparator is the algorithm: sort by end time, keep an interval exactly when its $`\text{start}`$ is at least the $`\text{current end}`$. Touching intervals are allowed in LC 435.
 - The exchange step replaces the optimal first interval with the earliest-finishing one: it ends no later, so the rest stays disjoint, and induction finishes the proof.
-- Sort-by-start fails on nesting: [[1, 100], [2, 3], [3, 4]] keeps the long interval and removes 2, while the optimum keeps the two short ones and removes 1.
-- LC 435 and LC 56 differ at the boundary: LC 435 treats touching intervals as disjoint (overlap means $`\text{start} < \text{end}`$), while LC 56 merges them ($`\text{start} \le \text{end}`$, then extend with max). Pasting one boundary into the other is the standard bug.
+- Sort-by-start fails on nesting: `[[1, 100], [2, 3], [3, 4]]` keeps the long interval and removes 2, while the optimum keeps the two short ones and removes 1.
+- LC 435 and LC 56 differ at the boundary: LC 435 treats touching intervals as disjoint (overlap means $`\text{start} < \text{end}`$), while LC 56 merges them ($`\text{start} \le \text{end}`$, then extend with `max`). Pasting one boundary into the other is the standard bug.
 
-**Reproduce:** From a blank file in Python 3.13.14, implement earliest-finish: [[1, 2], [2, 3], [3, 4], [1, 3]] returns 1 removal. A pytest loop over 500 small instances from random.Random(7) agrees with the brute-force maximum on all 500 cases.
+**Reproduce:** From a blank file in Python 3.13.14, implement earliest-finish: `[[1, 2], [2, 3], [3, 4], [1, 3]]` returns 1 removal. A pytest loop over 500 small instances from `random.Random(7)` agrees with the brute-force maximum on all 500 cases.
 
 **Traps**
 
-- Sorting by start or by duration. Start order fails on nesting ([[1, 100], [2, 3], [3, 4]]); shortest-first fails when a short interval straddles two disjoint ones ([[1, 5], [4, 7], [6, 10]] keeps 1 against 2). Friendly samples pass both, so the test family needs both shapes.
-- Treating touching intervals as overlapping in LC 435. [[1, 4], [4, 5]] removes nothing under LC 435 but merges under LC 56; the two problems also sort differently, by end and by start.
+- Sorting by start or by duration. Start order fails on nesting (`[[1, 100], [2, 3], [3, 4]]`); shortest-first fails when a short interval straddles two disjoint ones (`[[1, 5], [4, 7], [6, 10]]` keeps 1 against 2). Friendly samples pass both, so the test family needs both shapes.
+- Treating touching intervals as overlapping in LC 435. `[[1, 4], [4, 5]]` removes nothing under LC 435 but merges under LC 56; the two problems also sort differently, by end and by start.
 - Trusting sample tests for a greedy rule. Shrink each candidate rule against the others until the smallest input where they disagree, and check nested and touching cases first.
 
 **Practice**
 
-- [LeetCode 435: Non-overlapping Intervals](https://leetcode.com/problems/non-overlapping-intervals/) - Examples: [[1, 2], [2, 3], [3, 4], [1, 3]] returns 1; [[1, 2], [1, 2], [1, 2]] returns 2.. After submitting, read the DSA Handbook interval-scheduling chapter and the AlgoMaster Non-overlapping Intervals lesson (https://algomaster.io/learn/dsa/non-overlapping-intervals), and confirm your sort key and boundary match theirs.
+- [LeetCode 435: Non-overlapping Intervals](https://leetcode.com/problems/non-overlapping-intervals/) - Examples: `[[1, 2], [2, 3], [3, 4], [1, 3]]` returns 1; `[[1, 2], [1, 2], [1, 2]]` returns 2. After submitting, read the DSA Handbook interval-scheduling chapter and the AlgoMaster Non-overlapping Intervals lesson (https://algomaster.io/learn/dsa/non-overlapping-intervals), and confirm your sort key and boundary match theirs.
 
 **Stop when:** LC 435 is accepted, and your differential test plus a nested-interval case both pass.
 
@@ -1908,9 +1908,9 @@ Interval scheduling is the rare greedy proof you can carry in your head. Counter
 1. Give the earliest-finish exchange step in one move.
    - Let $`g_1`$ be the earliest-finishing interval and $`o_1`$ the first interval of an optimal set. $`o_1`$ ends no earlier than $`g_1`$, so replacing $`o_1`$ with $`g_1`$ keeps the set disjoint and no smaller; induct on the rest.
 2. Give the minimal counterexample to sort-by-start for maximum non-overlapping intervals.
-   - [[1, 100], [2, 3], [3, 4]]. Start order keeps [1, 100] and removes 2. The optimum keeps [2, 3] and [3, 4] and removes 1.
-3. What does [[1, 4], [4, 5]] give under LC 435 and under LC 56?
-   - LC 435 removes 0 because touching is allowed. LC 56 merges to [1, 5]. The overlap tests differ only at equality.
+   - `[[1, 100], [2, 3], [3, 4]]`. Start order keeps `[1, 100]` and removes 2. The optimum keeps `[2, 3]` and `[3, 4]` and removes 1.
+3. What does `[[1, 4], [4, 5]]` give under LC 435 and under LC 56?
+   - LC 435 removes 0 because touching is allowed. LC 56 merges to `[1, 5]`. The overlap tests differ only at equality.
 4. How do you hunt a counterexample to a new greedy rule?
    - Shrink to the smallest input where two candidate rules disagree, trying nested, touching, and equal-endpoint cases first. A rule that survives only sorted samples is not proved.
 
@@ -1934,7 +1934,7 @@ Random pivots turn a quadratic worst case into linear expected time. The guarant
 
 1. [Nuts and Bolts: randomized analysis method](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/02-nutsbolts.pdf) (Algorithms lecture notes - randomized algorithms) - 2.2 Deterministic vs. Randomized Algorithms, 2.3 Back to Nuts and Bolts and 2.4 Finding All Matches; 2.6 Recursive Analysis (the good-pivot bound) and 2.7 Iterative Analysis (indicator variables); Exercise 5 on QuickSelect. Depth: Exercise 4, reservoir sampling, belongs to the next unit. Skip 2.8 Masochistic Analysis.
 2. [Tail Inequalities: expected versus high-probability](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/04-chernoff.pdf) (Algorithms lecture notes - randomized algorithms) - 4.1 Markov's Inequality, 4.3 Chebyshev's Inequality, 4.5 Chernoff Bounds, and 4.7 to 4.8 Back to Treaps as the expected-versus-high-probability example.
-3. [Expectation, linearity, and deviation bounds](https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-spring-2015/pages/readings/) (MIT 6.042J - probability and randomized algorithms) - Session 32: Chapter 18.4 Great Expectations and 18.5 Linearity of Expectation. Session 33: Chapter 19.1 Markov's Theorem, 19.2 Chebyshev's Theorem and 19.3 Properties of Variance..
+3. [Expectation, linearity, and deviation bounds](https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-spring-2015/pages/readings/) (MIT 6.042J - probability and randomized algorithms) - Session 32: Chapter 18.4 Great Expectations and 18.5 Linearity of Expectation. Session 33: Chapter 19.1 Markov's Theorem, 19.2 Chebyshev's Theorem and 19.3 Properties of Variance.
 
 **Focus**
 
@@ -1943,18 +1943,18 @@ Random pivots turn a quadratic worst case into linear expected time. The guarant
 - This unit owns the expected-cost derivation for random pivots. Deterministic median of medians lives in the previous unit and partition code lives in the partition unit.
 - Expected cost is a mean; high-probability bounds tail risk through Markov, Chebyshev, or Chernoff. Treap depth is the worked example of the stronger claim.
 
-**Reproduce:** In Python 3.13.14, simulate rand10 from rand7 with a random.Random(0).randint(1, 7) stub over 20,000 calls: mean rand7 calls 2.459 against theory $`2 \times 49/40 = 2.45`$. Then sum the pair indicators $`2/(\max(j, k) - \min(i, k) + 1)`$ for the median of 1000 elements ($`k = 500`$): 3336.3 expected comparisons. Run random-pivot quickselect ($`n - 1`$ comparisons per partition) on shuffled range(1000) for 2000 seeded trials: the mean lands within about 50 of 3336, while single runs spread with a standard deviation near 980. Record sizes, seed, trials and theory with each run.
+**Reproduce:** In Python 3.13.14, simulate `rand10` from `rand7` with a `random.Random(0).randint(1, 7)` stub over 20,000 calls: mean `rand7` calls 2.459 against theory $`2 \times 49/40 = 2.45`$. Then sum the pair indicators $`2/(\max(j, k) - \min(i, k) + 1)`$ for the median of 1000 elements ($`k = 500`$): 3336.3 expected comparisons. Run random-pivot quickselect ($`n - 1`$ comparisons per partition) on shuffled `range(1000)` for 2000 seeded trials: the mean lands within about 50 of 3336, while single runs spread with a standard deviation near 980. Record sizes, seed, trials and theory with each run.
 
 **Traps**
 
 - Reading expected $`O(n)`$ as fast on every run. The tail exists, so report trial counts and seeds, and never promise a single-run bound from an expectation.
-- Unseeded RNG inside tests. The suite passes until it does not; seed random.Random explicitly and record the seed with the expected output.
-- Modulo bias in hand-rolled reduction: mapping two rand7 calls mod 10 favors some digits because 49 outcomes do not split evenly, so rejection keeps 1 to 40 and redraws 41 to 49.
+- Unseeded RNG inside tests. The suite passes until it does not; seed `random.Random` explicitly and record the seed with the expected output.
+- Modulo bias in hand-rolled reduction: mapping two `rand7` calls mod 10 favors some digits because 49 outcomes do not split evenly, so rejection keeps 1 to 40 and redraws 41 to 49.
 
 **Practice**
 
-- [LeetCode 470: Implement Rand10() Using Rand7()](https://leetcode.com/problems/implement-rand10-using-rand7/) - The examples call rand10 1, 2 and 3 times. Test with a seeded rand7 stub and count mean rand7 calls over 20,000 calls, expecting about 2.45.. After submitting, read the DSA Handbook randomized-algorithms rejection section, which works the 2.45 figure from $`2 \times 49/40`$.
-- [Erickson lecture note 2, Exercise 5: QuickSelect analysis](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/02-nutsbolts.pdf) - Parts (a) to (d): expected-time recurrence, comparison probability, subarray probability, and linear expected time for any $`n`$ and $`k`$.. Paper analysis, not judged code. Check part (b) against your pair-indicator sum from the reproduce step; the partition implementation belongs to the partition unit.
+- [LeetCode 470: Implement Rand10() Using Rand7()](https://leetcode.com/problems/implement-rand10-using-rand7/) - The examples call `rand10` 1, 2 and 3 times. Test with a seeded `rand7` stub and count mean `rand7` calls over 20,000 calls, expecting about 2.45. After submitting, read the DSA Handbook randomized-algorithms rejection section, which works the 2.45 figure from $`2 \times 49/40`$.
+- [Erickson lecture note 2, Exercise 5: QuickSelect analysis](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/02-nutsbolts.pdf) - Parts (a) to (d): expected-time recurrence, comparison probability, subarray probability, and linear expected time for any $`n`$ and $`k`$. Paper analysis, not judged code. Check part (b) against your pair-indicator sum from the reproduce step; the partition implementation belongs to the partition unit.
 
 **Stop when:** LC 470 is accepted with a seeded stub test, and you can derive the 2.45 figure and the linear quickselect bound without notes.
 
@@ -1968,7 +1968,7 @@ Random pivots turn a quadratic worst case into linear expected time. The guarant
 3. What is the difference between expected treap depth and depth with high probability?
    - Expected depth is a mean over random priorities. The high-probability bound says all but a tiny fraction of runs stay within $`O(\log n)`$, which needs a tail inequality rather than linearity alone.
 4. What must an empirical check of a randomized claim record?
-   - Input sizes, seed, trial count, theory value, and tolerance. For example: 20000 trials at seed 0 give 2.459 rand7 calls per rand10 against theory 2.45.
+   - Input sizes, seed, trial count, theory value, and tolerance. For example: 20000 trials at seed 0 give 2.459 `rand7` calls per `rand10` against theory 2.45.
 
 </details>
 
@@ -1996,11 +1996,11 @@ Streams do not fit in memory and shuffles must be uniform, not merely random-loo
 **Focus**
 
 - Reservoir induction: with one slot, the old item survives with probability $`(i - 1)/i`$, so each of the first $`i`$ items is kept with $`1/(i - 1) \times (i - 1)/i = 1/i`$.
-- Fisher-Yates has exactly $`n!`$ equally likely paths. CPython random.Random.shuffle on 3.13.14 loops backwards with _randbelow, checked with inspect against the installed source.
+- Fisher-Yates has exactly $`n!`$ equally likely paths. CPython `random.Random.shuffle` on 3.13.14 loops backwards with `_randbelow`, checked with `inspect` against the installed source.
 - Naive swap-with-any-index has $`n^n`$ paths over $`n!`$ permutations and is biased; the rand-below-i variant (Sattolo) yields only single cycles; a 32-bit seed cannot reach all $`52!`$ orders.
-- Empirical contract: sizes, seed, trials, tolerance. random.Random(0).shuffle on 4 items, 4800 times, gives counts from 172 to 220 against 200 expected and a chi-square statistic of 22.6, under the 0.001 critical value of 49.7 at 23 degrees of freedom. The naive swap-with-any-index shuffle scores 126.7.
+- Empirical contract: sizes, seed, trials, tolerance. `random.Random(0).shuffle` on 4 items, 4800 times, gives counts from 172 to 220 against 200 expected and a chi-square statistic of 22.6, under the 0.001 critical value of 49.7 at 23 degrees of freedom. The naive swap-with-any-index shuffle scores 126.7.
 
-**Reproduce:** In Python 3.13.14 with Hypothesis 6.169.0 and pytest 9.1.1, implement reservoir sampling (Algorithm R: for i >= k draw j = rng.randrange(i + 1) and replace slot j when j < k). With $`k = 5`$ over range(100) and random.Random(0) it returns [63, 1, 2, 50, 34]. Over seeds 0 to 3999 on range(50), item 0 is kept with fraction 0.0985 against theory 0.1. Write a pytest file with a Hypothesis permutation-preservation property for your Fisher-Yates and the seeded chi-square check above; expect 2 passed.
+**Reproduce:** In Python 3.13.14 with Hypothesis 6.169.0 and pytest 9.1.1, implement reservoir sampling (Algorithm R: for `i >= k` draw `j = rng.randrange(i + 1)` and replace slot `j` when `j < k`). With $`k = 5`$ over `range(100)` and `random.Random(0)` it returns `[63, 1, 2, 50, 34]`. Over seeds 0 to 3999 on `range(50)`, item 0 is kept with fraction 0.0985 against theory 0.1. Write a pytest file with a Hypothesis permutation-preservation property for your Fisher-Yates and the seeded chi-square check above; expect 2 passed.
 
 **Traps**
 
@@ -2010,8 +2010,8 @@ Streams do not fit in memory and shuffles must be uniform, not merely random-loo
 
 **Practice**
 
-- [LeetCode 382: Linked List Random Node](https://leetcode.com/problems/linked-list-random-node/) - Calls Solution then getRandom repeatedly on [1, 2, 3]. Implement with reservoir sampling at $`k = 1`$ in $`O(1)`$ extra space.. After submitting, reread the DSA Handbook reservoir section and check your replacement probability against its induction.
-- [LeetCode 384: Shuffle an Array](https://leetcode.com/problems/shuffle-an-array/) - Calls Solution, shuffle, reset, shuffle on [1, 2, 3]. Implement Fisher-Yates and test uniformity over fixed seeds.. After submitting, compare with the DSA Handbook Fisher-Yates section and its naive-shuffle counterexample.
+- [LeetCode 382: Linked List Random Node](https://leetcode.com/problems/linked-list-random-node/) - Calls `Solution` then `getRandom` repeatedly on `[1, 2, 3]`. Implement with reservoir sampling at $`k = 1`$ in $`O(1)`$ extra space. After submitting, reread the DSA Handbook reservoir section and check your replacement probability against its induction.
+- [LeetCode 384: Shuffle an Array](https://leetcode.com/problems/shuffle-an-array/) - Calls `Solution`, `shuffle`, `reset`, `shuffle` on `[1, 2, 3]`. Implement Fisher-Yates and test uniformity over fixed seeds. After submitting, compare with the DSA Handbook Fisher-Yates section and its naive-shuffle counterexample.
 
 **Stop when:** Both problems are accepted, and your seeded reservoir and chi-square checks reproduce the stated numbers.
 
@@ -2034,11 +2034,11 @@ Streams do not fit in memory and shuffles must be uniform, not merely random-loo
 **About 8 to 12 hours.** Prove one greedy rule and refute a tempting alternative before coding, implement a backtracking search whose prunes are each sound, and verify a weighted sampler with a seeded statistical test.
 
 1. LC 1029 Two City Scheduling, without reading its tags: before coding, state the rule (sort by $`\text{cost to A} - \text{cost to B}`$ and send the first half to $`A`$) and prove it with an exchange argument. The examples answer 110 and 1859.
-2. Refute the alternative that sends each person to their cheaper city, in order of their smaller cost, until a city fills. Search with brute force over all splits; two people suffice: [[1, 1], [1, 2]] costs 3 against the optimal 2.
-3. LC 698 Partition to $`K`$ Equal Sum Subsets: backtrack over buckets with prunes stated as claims: sort in decreasing order, fail at once when a number exceeds the target, and skip a bucket whose current sum equals one already tried at this level. Prove the last prune sound by symmetry. The examples answer true and false.
-4. Differential-test the pruned search against the unpruned one on random small inputs and report node counts with and without each prune. Then remove the backtracking over buckets (place each number in the first bucket that fits) and let the test find a counterexample; [4, 3, 3, 2, 2, 2] with $`k = 2`$ is one.
-5. LC 528 Random Pick with Weight: prefix sums and a binary search. With random.Random(0) and weights [1, 3, 5, 1], draw 20,000 picks and compute a chi-square statistic against the weights: 3 degrees of freedom, 0.001 critical value 16.27. With randint(1, total) and bisect_left the statistic is about 4.9.
-6. Plant the off-by-one (bisect_right on the same 1-based draw) and show the test catches it: every count shifts, and index 4 appears although only 0 to 3 exist. Make the check a pytest that passes for seeds 0 to 19 on the correct sampler and fails on the planted one.
+2. Refute the alternative that sends each person to their cheaper city, in order of their smaller cost, until a city fills. Search with brute force over all splits; two people suffice: `[[1, 1], [1, 2]]` costs 3 against the optimal 2.
+3. LC 698 Partition to $`K`$ Equal Sum Subsets: backtrack over buckets with prunes stated as claims: sort in decreasing order, fail at once when a number exceeds the target, and skip a bucket whose current sum equals one already tried at this level. Prove the last prune sound by symmetry. The examples answer `true` and `false`.
+4. Differential-test the pruned search against the unpruned one on random small inputs and report node counts with and without each prune. Then remove the backtracking over buckets (place each number in the first bucket that fits) and let the test find a counterexample; `[4, 3, 3, 2, 2, 2]` with $`k = 2`$ is one.
+5. LC 528 Random Pick with Weight: prefix sums and a binary search. With `random.Random(0)` and `weights` `[1, 3, 5, 1]`, draw 20,000 picks and compute a chi-square statistic against the weights: 3 degrees of freedom, 0.001 critical value 16.27. With `randint(1, total)` and `bisect_left` the statistic is about 4.9.
+6. Plant the off-by-one (`bisect_right` on the same 1-based draw) and show the test catches it: every count shifts, and index 4 appears although only 0 to 3 exist. Make the check a pytest that passes for seeds 0 to 19 on the correct sampler and fails on the planted one.
 
 **Deliverables**
 
@@ -2126,9 +2126,9 @@ Every later card asks for the state first. If the state misses information the f
 **Study**
 
 1. [Smart recursion first, tables second](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.4, The Pattern: Smart Recursion (pp. 105-107): specification plus solution, then subproblems, dependencies and evaluation order.
-2. [Text segmentation recurrence](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.3 (p. 105): $`\operatorname{Splittable}(i)`$ recurrence with base $`\operatorname{Splittable}(n+1) = \text{True}`$ and $`O(n^2)`$ IsWord calls.
+2. [Text segmentation recurrence](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.3 (p. 105): $`\operatorname{Splittable}(i)`$ recurrence with base $`\operatorname{Splittable}(n+1) = \text{True}`$ and $`O(n^2)`$ `IsWord` calls.
 3. [Optimal substructure by contradiction](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.7 Edit Distance, Recursive Structure (pp. 111-112): remove the last column of an optimal alignment, and the rest is optimal for the prefixes, proved by contradiction.
-4. [The two conditions with a negative example](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-recursion-to-memo/) (DSA Handbook - dynamic programming) - What dynamic programming actually is: optimal substructure plus overlapping subproblems, with merge sort as the negative example. Depth: The opening says naive fib(43) makes about 433 million calls; that is $`F(43)`$, the return value. Erickson Section 3.1 gives the call count $`2F(n+1) - 1`$, about 1.4 billion for $`n = 43`$.
+4. [The two conditions with a negative example](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-recursion-to-memo/) (DSA Handbook - dynamic programming) - What dynamic programming actually is: optimal substructure plus overlapping subproblems, with merge sort as the negative example. Depth: The opening says naive `fib(43)` makes about 433 million calls; that is $`F(43)`$, the return value. Erickson Section 3.1 gives the call count $`2F(n+1) - 1`$, about 1.4 billion for $`n = 43`$.
 
 **Focus**
 
@@ -2137,7 +2137,7 @@ Every later card asks for the state first. If the state misses information the f
 - Base cases define the empty input. $`\operatorname{Splittable}(n+1) = \text{True}`$ and $`\operatorname{Edit}(0, j) = j`$ are load-bearing, not boilerplate.
 - Merge sort has optimal substructure without overlapping subproblems, so a memo never hits. Both conditions must hold.
 
-**Reproduce:** Closed-book, write the $`\operatorname{Splittable}`$ recurrence with its base case, then run it in Python 3.13 on $`A = \text{ARTISTOIL}`$ ($`n = 9`$) with the word set ARTIST, OIL, ART, IS, TOIL: it returns True. Change OR to a sum to count segmentations: 2 (ARTIST.OIL and ART.IS.TOIL).
+**Reproduce:** Closed-book, write the $`\operatorname{Splittable}`$ recurrence with its base case, then run it in Python 3.13 on $`A = \text{ARTISTOIL}`$ ($`n = 9`$) with the word set ARTIST, OIL, ART, IS, TOIL: it returns `True`. Change OR to a sum to count segmentations: 2 (ARTIST.OIL and ART.IS.TOIL).
 
 **Traps**
 
@@ -2147,10 +2147,10 @@ Every later card asks for the state first. If the state misses information the f
 
 **Practice**
 
-- [LeetCode 70 - Climbing Stairs](https://leetcode.com/problems/climbing-stairs/) - Solve $`n = 2`$ (answer 2) and $`n = 5`$ (answer 8) by hand from $`\text{ways}[n] = \text{ways}[n-1] + \text{ways}[n-2]`$ with $`\text{ways}[0] = \text{ways}[1] = 1`$, then submit.. Write the state, transition and base cases on paper first. After submitting, compare with the DSA Handbook dp-1d Climbing Stairs section.
-- [LeetCode 198 - House Robber](https://leetcode.com/problems/house-robber/) - Derive $`\text{dp}[i] = \max(\text{dp}[i-1], \text{dp}[i-2] + \text{nums}[i])`$ and test [2,1,1,2] (answer 4) before submitting.. The alternating parity pick returns 3 on [2,1,1,2] and is wrong. After submitting, read the AlgoMaster House Robber lesson (https://algomaster.io/learn/dsa/house-robber).
+- [LeetCode 70 - Climbing Stairs](https://leetcode.com/problems/climbing-stairs/) - Solve $`n = 2`$ (answer 2) and $`n = 5`$ (answer 8) by hand from $`\text{ways}[n] = \text{ways}[n-1] + \text{ways}[n-2]`$ with $`\text{ways}[0] = \text{ways}[1] = 1`$, then submit. Write the state, transition and base cases on paper first. After submitting, compare with the DSA Handbook dp-1d Climbing Stairs section.
+- [LeetCode 198 - House Robber](https://leetcode.com/problems/house-robber/) - Derive $`\text{dp}[i] = \max(\text{dp}[i-1], \text{dp}[i-2] + \text{nums}[i])`$ and test `[2,1,1,2]` (answer 4) before submitting. The alternating parity pick returns 3 on `[2,1,1,2]` and is wrong. After submitting, read the AlgoMaster House Robber lesson (https://algomaster.io/learn/dsa/house-robber).
 
-**Stop when:** You write state, recurrence, base cases and order for Climbing Stairs and House Robber without notes, and can show why the parity-greedy pick fails on [2,1,1,2].
+**Stop when:** You write state, recurrence, base cases and order for Climbing Stairs and House Robber without notes, and can show why the parity-greedy pick fails on `[2,1,1,2]`.
 
 <details>
 <summary>Self-test</summary>
@@ -2182,9 +2182,9 @@ Memoized recursion dies near depth 1000 in CPython. Tabulation with an explicit 
 
 **Study**
 
-1. [Fibonacci from naive recursion to iteration](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.1 (pp. 97-102): RecFibo, the $`T(n) = 2F(n+1) - 1`$ call-count argument, MemFibo, IterFibo and IterFibo2. Depth: Skip Section 3.2, the matrix-squaring speedup (p. 103), until the limits unit.
+1. [Fibonacci from naive recursion to iteration](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.1 (pp. 97-102): `RecFibo`, the $`T(n) = 2F(n+1) - 1`$ call-count argument, `MemFibo`, `IterFibo` and `IterFibo2`. Depth: Skip Section 3.2, the matrix-squaring speedup (p. 103), until the limits unit.
 2. [The four-step conversion to a table](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-bottom-up-tabulation/) (DSA Handbook - dynamic programming) - The four-step conversion: dependency DAG, topological order, loop, array; Tracing the table fill on $`n = 8`$.
-3. [The default 1000-frame limit](https://docs.python.org/3/library/sys.html#sys.setrecursionlimit) (Python sys: recursion limit) - sys.getrecursionlimit and sys.setrecursionlimit: the limit guards the C stack, and the highest safe value is platform-dependent. Check the current value with sys.getrecursionlimit() (1000 on CPython 3.13)..
+3. [The default 1000-frame limit](https://docs.python.org/3/library/sys.html#sys.setrecursionlimit) (Python sys: recursion limit) - `sys.getrecursionlimit` and `sys.setrecursionlimit`: the limit guards the C stack, and the highest safe value is platform-dependent. Check the current value with `sys.getrecursionlimit()` (1000 on CPython 3.13).
 
 **Focus**
 
@@ -2193,7 +2193,7 @@ Memoized recursion dies near depth 1000 in CPython. Tabulation with an explicit 
 - A Python frame per index means depth-$`n`$ recursion needs a limit above $`n`$. Set it once at module top level, never per function.
 - State count times per-state work gives total time: $`O(n)`$ states at $`O(1)`$ each is $`O(n)`$ for Fibonacci.
 
-**Reproduce:** Closed-book in Python 3.13, write memoized and tabulated fib. Both give $`\operatorname{fib}(25) = 75025`$. At the default limit of 1000, $`\operatorname{fib}(2500)`$ raises RecursionError; with the limit raised once to 10000 the memoized form returns a 523-digit integer, and the tabulated form returns the same digits. Assert the two results are equal.
+**Reproduce:** Closed-book in Python 3.13, write memoized and tabulated `fib`. Both give $`\operatorname{fib}(25) = 75025`$. At the default limit of 1000, $`\operatorname{fib}(2500)`$ raises `RecursionError`; with the limit raised once to 10000 the memoized form returns a 523-digit integer, and the tabulated form returns the same digits. Assert the two results are equal.
 
 **Traps**
 
@@ -2203,8 +2203,8 @@ Memoized recursion dies near depth 1000 in CPython. Tabulation with an explicit 
 
 **Practice**
 
-- [LeetCode 509 - Fibonacci Number](https://leetcode.com/problems/fibonacci-number/) - Implement memoized and tabulated forms; check $`n = 2, 3, 4`$ (answers 1, 2, 3), then submit.. Compare both forms on $`n = 30`$. After submitting, use the DSA Handbook dp-recursion-to-memo ladder as the reference.
-- [LeetCode 1137 - N-th Tribonacci Number](https://leetcode.com/problems/n-th-tribonacci-number/) - Extend the window to three predecessors; check $`n = 4`$ (answer 4) and $`n = 25`$ (answer 1389537), then submit.. Carry three rolling values in the tabulated form. After submitting, compare with the DSA Handbook fixed look-back section.
+- [LeetCode 509 - Fibonacci Number](https://leetcode.com/problems/fibonacci-number/) - Implement memoized and tabulated forms; check $`n = 2, 3, 4`$ (answers 1, 2, 3), then submit. Compare both forms on $`n = 30`$. After submitting, use the DSA Handbook dp-recursion-to-memo ladder as the reference.
+- [LeetCode 1137 - N-th Tribonacci Number](https://leetcode.com/problems/n-th-tribonacci-number/) - Extend the window to three predecessors; check $`n = 4`$ (answer 4) and $`n = 25`$ (answer 1389537), then submit. Carry three rolling values in the tabulated form. After submitting, compare with the DSA Handbook fixed look-back section.
 
 **Stop when:** Both forms agree on $`\operatorname{fib}(25) = 75025`$ from a blank file, and you can state the order and the limit behavior without notes.
 
@@ -2212,7 +2212,7 @@ Memoized recursion dies near depth 1000 in CPython. Tabulation with an explicit 
 <summary>Self-test</summary>
 
 1. $`\operatorname{fib}(2500)`$ under the default limit: what happens and why?
-   - RecursionError. The chain runs 2500 frames deep before the first base case returns, and the default limit is 1000. The cache cannot help because no call has returned yet.
+   - `RecursionError`. The chain runs 2500 frames deep before the first base case returns, and the default limit is 1000. The cache cannot help because no call has returned yet.
 2. When is tabulation better than memoization if both are $`O(n)`$?
    - When the topological order is obvious and the input is deep or call overhead matters. Tabulation has no recursion stack and pays one index per step instead of one frame per state.
 3. Your bottom-up loop reads $`\text{dp}[i+1]`$ left to right and returns garbage. What went wrong?
@@ -2254,11 +2254,11 @@ An optimum without a witness cannot be checked. Compression that deletes the dec
 
 - Keeping one row and then trying to backtrack through it. Old rows are gone; recovery needs the full table or a Hirschberg split.
 - Using strict greater-than in the fill and greater-or-equal in the backtrack. Either comparator is fine alone; mixing them walks an unscored path.
-- Reading text1[i] instead of text1[i-1] inside a 1-indexed table. The one-character test (a, a) raises IndexError at $`i = 1`$ and exposes the shift.
+- Reading `text1[i]` instead of `text1[i-1]` inside a 1-indexed table. The one-character test `(a, a)` raises `IndexError` at $`i = 1`$ and exposes the shift.
 
 **Practice**
 
-- [LeetCode 583 - Delete Operation for Two Strings](https://leetcode.com/problems/delete-operation-for-two-strings/) - Reduce to LCS with $`\text{answer} = m + n - 2k`$; check $`(\text{sea}, \text{eat}) = 2`$ and $`(\text{leetcode}, \text{etco}) = 4`$, then submit.. After submitting, compare with the DSA Handbook lcs reduction section for LC 583.
+- [LeetCode 583 - Delete Operation for Two Strings](https://leetcode.com/problems/delete-operation-for-two-strings/) - Reduce to LCS with $`\text{answer} = m + n - 2k`$; check $`(\text{sea}, \text{eat}) = 2`$ and $`(\text{leetcode}, \text{etco}) = 4`$, then submit. After submitting, compare with the DSA Handbook lcs reduction section for LC 583.
 
 **Stop when:** Your backtrack returns length 4 plus a valid witness on the textbook pair, and your rolling form agrees on the length.
 
@@ -2272,7 +2272,7 @@ An optimum without a witness cannot be checked. Compression that deletes the dec
 3. What does the Hirschberg split add over rolling rows?
    - The witness in linear space. Rolling rows give the length in $`O(\min(m, n))`$ space; the midpoint split recurses on both halves to also recover the sequence in $`O(m + n)`$ space at a constant time factor.
 4. House Robber rolling pair: can you still name the robbed houses?
-   - No. The pair kept values, not decisions. Keep a boolean choice array or the full dp column to reconstruct the set.
+   - No. The pair kept values, not decisions. Keep a boolean choice array or the full `dp` column to reconstruct the set.
 
 </details>
 
@@ -2295,7 +2295,7 @@ One 2D table shape carries LCS, edit distance and their reductions. The mismatch
 1. [Two LIS recurrences](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.6 (pp. 109-110): First Recurrence: Is This Next? ($`\operatorname{LISbigger}`$, two indices) and Second Recurrence: What's Next? ($`\operatorname{LISfirst}`$, one index, filled in decreasing order).
 2. [Edit distance recurrence and table](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.7 (pp. 111-114): $`\operatorname{Edit}(i, j)`$ three-way recurrence, row-major order, and the ALGORITHM vs ALTRUISTIC table with distance 6.
 3. [Quadratic LIS with recovery](https://dsa.handbook.academy/curriculum/dynamic-programming/lis-quadratic/) (DSA Handbook - dynamic programming) - The $`O(n^2)`$ LIS: per-index $`\text{dp}[i]`$ as $`\max`$ over smaller predecessors, with parent-pointer recovery and the counting variants.
-4. [Prefix decisions with validity gates](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-decode-word-break/) (DSA Handbook - dynamic programming) - The recurrence, written once: $`\text{dp}[i]`$ for the prefix s[:i], a count of decodings for LC 91 Decode Ways and an OR over valid splits for LC 139 Word Break; Why $`\text{dp}[0] = \text{True}`$, in one trace.
+4. [Prefix decisions with validity gates](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-decode-word-break/) (DSA Handbook - dynamic programming) - The recurrence, written once: $`\text{dp}[i]`$ for the prefix `s[:i]`, a count of decodings for LC 91 Decode Ways and an OR over valid splits for LC 139 Word Break; Why $`\text{dp}[0] = \text{True}`$, in one trace.
 
 **Focus**
 
@@ -2314,8 +2314,8 @@ One 2D table shape carries LCS, edit distance and their reductions. The mismatch
 
 **Practice**
 
-- [LeetCode 1143 - Longest Common Subsequence](https://leetcode.com/problems/longest-common-subsequence/) - Attempt cold. Check $`(\text{abcde}, \text{ace}) = 3`$, $`(\text{abc}, \text{abc}) = 3`$, $`(\text{abc}, \text{def}) = 0`$, then submit.. Attempt cold: write state, transition, base case and order first. After submitting, read the AlgoMaster Longest Common Subsequence lesson (https://algomaster.io/learn/dsa/longest-common-subsequence).
-- [LeetCode 300 - Longest Increasing Subsequence](https://leetcode.com/problems/longest-increasing-subsequence/) - Check $`[10,9,2,5,3,7,101,18] = 4`$ and $`[7,7,7,7,7,7,7] = 1`$, then submit.. After submitting, compare with the DSA Handbook lis-quadratic page, including the strict-increase gate.
+- [LeetCode 1143 - Longest Common Subsequence](https://leetcode.com/problems/longest-common-subsequence/) - Attempt cold. Check $`(\text{abcde}, \text{ace}) = 3`$, $`(\text{abc}, \text{abc}) = 3`$, $`(\text{abc}, \text{def}) = 0`$, then submit. Attempt cold: write state, transition, base case and order first. After submitting, read the AlgoMaster Longest Common Subsequence lesson (https://algomaster.io/learn/dsa/longest-common-subsequence).
+- [LeetCode 300 - Longest Increasing Subsequence](https://leetcode.com/problems/longest-increasing-subsequence/) - Check $`[10,9,2,5,3,7,101,18] = 4`$ and $`[7,7,7,7,7,7,7] = 1`$, then submit. After submitting, compare with the DSA Handbook lis-quadratic page, including the strict-increase gate.
 
 **Stop when:** The reproduce numbers come out of a blank file, the brute-force differential tests pass, and you can call the mismatch branch for subsequence versus substring without notes.
 
@@ -2326,8 +2326,8 @@ One 2D table shape carries LCS, edit distance and their reductions. The mismatch
    - $`\operatorname{LISfirst}(i) = 1 + \max`$ of $`\operatorname{LISfirst}(j)`$ over $`j > i`$ with $`A[j] > A[i]`$, with $`\text{max-empty} = 0`$. Entry $`i`$ reads only entries $`j > i`$, so filling $`i`$ from $`n`$ down keeps every read on a computed cell.
 2. Why does edit distance need the diagonal predecessor while LCS mismatch does not?
    - Substitution consumes one character from each string in a single column, which is exactly the diagonal step with cost $`[A[i] \ne B[j]]`$. LCS mismatch only skips a character from one side, which is an up or left step.
-3. Word Break on catsandog with [cats, dog, sand, and, cat]: what does $`\text{dp}`$ say and why?
-   - False. No valid split covers the string: the $`\text{dp}[i]`$ OR over splits finds no chain of dictionary words reaching position 9.
+3. Word Break on `catsandog` with `[cats, dog, sand, and, cat]`: what does $`\text{dp}`$ say and why?
+   - `False`. No valid split covers the string: the $`\text{dp}[i]`$ OR over splits finds no chain of dictionary words reaching position 9.
 4. When do you prefer the two-index $`\operatorname{LISbigger}`$ over $`\operatorname{LISfirst}`$?
    - Rarely for code; $`\operatorname{LISfirst}`$ is shorter and $`O(n)`$ space. $`\operatorname{LISbigger}`$ earns its keep only when the threshold value matters per state, and both are $`O(n^2)`$ time.
 
@@ -2359,18 +2359,18 @@ Iteration direction follows the dependency direction. Survival predicates read s
 - The $`\max(\ldots, 1)`$ clamp is the survival predicate per cell, not a guard. Dropping it admits zero-HP entries the knight cannot use.
 - Interval cells depend on strictly shorter intervals, so length-ascending fill is the order. Any single direction that respects shorter-first works.
 
-**Reproduce:** Closed-book in Python 3.13: unique_paths(3, 7) = 28, min_path_sum([[1,3,1],[1,5,1],[4,2,1]]) = 7, dungeon([[-2,-3,3],[-5,-10,1],[10,30,-5]]) = 7, burst([3,1,5,8]) = 167. State the grid sizes and all four expected outputs.
+**Reproduce:** Closed-book in Python 3.13: `unique_paths(3, 7) = 28`, `min_path_sum([[1,3,1],[1,5,1],[4,2,1]]) = 7`, `dungeon([[-2,-3,3],[-5,-10,1],[10,30,-5]]) = 7`, `burst([3,1,5,8]) = 167`. State the grid sizes and all four expected outputs.
 
 **Traps**
 
 - Copying the LC 64 idea into Dungeon Game: maximize the path sum, then read the HP it needs. On the problem's own example the max-sum path (down, down, right, right; sum 28) needs 8 HP, but right, right, down, down needs 7.
-- Continuing the LC 63 base row past the first obstacle. Cells past a top-row wall are unreachable; the base loop must break, not continue.
+- Continuing the LC 63 base row past the first obstacle. Cells past a top-row wall are unreachable; the base loop must `break`, not `continue`.
 - Filling interval tables row-major left to right. Cell $`(l, r)`$ reads $`(l, k)`$ and $`(k+1, r)`$, which a plain row-major pass may not have written; iterate by length.
 
 **Practice**
 
-- [LeetCode 62 - Unique Paths](https://leetcode.com/problems/unique-paths/) - Check that a 3 by 7 grid gives 28 paths and a 3 by 2 grid gives 3, then submit.. Fill row-major and state the read set above the loop. After submitting, compare with the DSA Handbook grid-dp LC 62 section.
-- [LeetCode 174 - Dungeon Game](https://leetcode.com/problems/dungeon-game/) - Check [[-2,-3,3],[-5,-10,1],[10,30,-5]] = 7 and [[0]] = 1, then submit.. Iterate backward with the clamp. After submitting, compare with the DSA Handbook grid-dp LC 174 section and the AlgoMaster Dungeon Game lesson (https://algomaster.io/learn/dsa/dungeon-game).
+- [LeetCode 62 - Unique Paths](https://leetcode.com/problems/unique-paths/) - Check that a 3 by 7 grid gives 28 paths and a 3 by 2 grid gives 3, then submit. Fill row-major and state the read set above the loop. After submitting, compare with the DSA Handbook grid-dp LC 62 section.
+- [LeetCode 174 - Dungeon Game](https://leetcode.com/problems/dungeon-game/) - Check `[[-2,-3,3],[-5,-10,1],[10,30,-5]] = 7` and `[[0]] = 1`, then submit. Iterate backward with the clamp. After submitting, compare with the DSA Handbook grid-dp LC 174 section and the AlgoMaster Dungeon Game lesson (https://algomaster.io/learn/dsa/dungeon-game).
 
 **Stop when:** The four reproduce numbers come out of a blank file, and you can state each recurrence read set and loop direction.
 
@@ -2384,7 +2384,7 @@ Iteration direction follows the dependency direction. Survival predicates read s
 3. Why does Burst Balloons try the last burst in $`[l, r]`$ instead of the first?
    - Bursting $`k`$ first changes the neighbors of the rest, so subintervals are not independent. Bursting $`k`$ last fixes its neighbors to the interval boundaries, which splits $`[l, r]`$ into independent $`[l, k-1]`$ and $`[k+1, r]`$.
 4. A forward fill keeps, per cell, the smallest starting HP needed so far. Why can it fail?
-   - A predecessor that needed less HP so far may arrive with less HP left, and one number cannot keep both. On [[-2,-1,-1],[-3,-1,0],[2,0,-3]] the forward fill answers 8 while the backward fill gives 7.
+   - A predecessor that needed less HP so far may arrive with less HP left, and one number cannot keep both. On `[[-2,-1,-1],[-3,-1,0],[2,0,-3]]` the forward fill answers 8 while the backward fill gives 7.
 
 </details>
 
@@ -2406,7 +2406,7 @@ On trees the dependency graph is the input. One post-order pass gives linear tim
 
 1. [Maximum independent set on trees](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.10 (pp. 120-122): $`\operatorname{MIS}(v)`$ recurrence over children and grandchildren, memoization into the tree, post-order evaluation, and the $`\operatorname{MISyes}/\operatorname{MISno}`$ mutual recurrence.
 2. [Tuple state and the return-vs-global split](https://dsa.handbook.academy/curriculum/dynamic-programming/tree-dp/) (DSA Handbook - dynamic programming) - Two-state DP: the $`(\text{rob}, \text{skip})`$ tuple on LC 337; The dual-quantity split, with negative values in play, on LC 124 with the $`\max(\text{child\_gain}, 0)`$ clamp.
-3. [The linear precursor](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-1d/) (DSA Handbook - dynamic programming) - House robber (LC 198): the take-or-skip prototype that LC 337 lifts onto trees, with the [2,1,1,2] parity-greedy counterexample.
+3. [The linear precursor](https://dsa.handbook.academy/curriculum/dynamic-programming/dp-1d/) (DSA Handbook - dynamic programming) - House robber (LC 198): the take-or-skip prototype that LC 337 lifts onto trees, with the `[2,1,1,2]` parity-greedy counterexample.
 
 **Focus**
 
@@ -2414,17 +2414,17 @@ On trees the dependency graph is the input. One post-order pass gives linear tim
 - LC 124 returns the straight-down chain but compares the bent path globally. Returning the bent path builds two-bend shapes that are not paths.
 - Each node is visited once with $`O(1)`$ local work, so time is $`O(n)`$. Space is the recursion stack $`O(h)`$, which is $`n`$ on skewed input.
 
-**Reproduce:** Closed-book in Python 3.13 with the limit raised once at module top level: rob on level-order [3,2,3,null,3,null,1] = 7 and on [3,4,5,1,3,null,1] = 9. State both level-order inputs and both expected outputs.
+**Reproduce:** Closed-book in Python 3.13 with the limit raised once at module top level: `rob` on level-order `[3,2,3,null,3,null,1] = 7` and on `[3,4,5,1,3,null,1] = 9`. State both level-order inputs and both expected outputs.
 
 **Traps**
 
-- Keeping the default limit of 1000 for deep trees. LC 337 allows $`10^4`$ nodes and LC 124 allows $`3 \times 10^4`$, so a skewed tree raises RecursionError; raise the limit once at module top level or use an explicit stack.
+- Keeping the default limit of 1000 for deep trees. LC 337 allows $`10^4`$ nodes and LC 124 allows $`3 \times 10^4`$, so a skewed tree raises `RecursionError`; raise the limit once at module top level or use an explicit stack.
 - Initializing the LC 124 global to 0. All-negative trees then return 0 for an empty path; start at negative infinity so the root comparison fires.
 - Recomputing grandchildren per node instead of returning both states. The tuple memoizes both worlds in one pass; without it the recursion revisits subtrees.
 
 **Practice**
 
-- [LeetCode 337 - House Robber III](https://leetcode.com/problems/house-robber-iii/) - Attempt cold. Check [3,2,3,null,3,null,1] = 7 and [3,4,5,1,3,null,1] = 9, then submit.. Attempt cold: return the $`(\text{rob}, \text{skip})`$ tuple from the helper. After submitting, read the AlgoMaster House Robber III lesson (https://algomaster.io/learn/dsa/house-robber-iii).
+- [LeetCode 337 - House Robber III](https://leetcode.com/problems/house-robber-iii/) - Attempt cold. Check `[3,2,3,null,3,null,1] = 7` and `[3,4,5,1,3,null,1] = 9`, then submit. Attempt cold: return the $`(\text{rob}, \text{skip})`$ tuple from the helper. After submitting, read the AlgoMaster House Robber III lesson (https://algomaster.io/learn/dsa/house-robber-iii).
 
 **Stop when:** Both reproduce trees return 7 and 9 from a blank file, and you can state what each helper slot means to its parent.
 
@@ -2458,9 +2458,9 @@ One table shape answers min-coins, counting and feasibility. The loop direction 
 
 **Study**
 
-1. [$`0/1`$ knapsack and the backward inner loop](https://dsa.handbook.academy/curriculum/dynamic-programming/knapsack-01/) (DSA Handbook - dynamic programming) - The 1D table fill; Why the inner loop sweeps right-to-left; Worked example: LC 416 on [1, 5, 11, 5]; Reformulations: when the problem doesn't say "knapsack" (LC 494, 1049, 474).
+1. [$`0/1`$ knapsack and the backward inner loop](https://dsa.handbook.academy/curriculum/dynamic-programming/knapsack-01/) (DSA Handbook - dynamic programming) - The 1D table fill; Why the inner loop sweeps right-to-left; Worked example: LC 416 on `[1, 5, 11, 5]`; Reformulations: when the problem doesn't say "knapsack" (LC 494, 1049, 474).
 2. [Unbounded knapsack and the reversed loop](https://dsa.handbook.academy/curriculum/dynamic-programming/knapsack-unbounded/) (DSA Handbook - dynamic programming) - What changes from $`0/1`$ knapsack; The mechanics: filling $`\text{dp}[a]`$ left to right; Counting unordered combinations: LC 518; Counting ordered sequences: LC 377.
-3. [Bitmask state for small sets](https://dsa.handbook.academy/curriculum/dynamic-programming/bitmask-dp/) (DSA Handbook - dynamic programming) - The pattern; Worked example: LC 847 on a 3-node line; What it actually costs; Permutation / assignment: position is popcount(mask) (LC 526).
+3. [Bitmask state for small sets](https://dsa.handbook.academy/curriculum/dynamic-programming/bitmask-dp/) (DSA Handbook - dynamic programming) - The pattern; Worked example: LC 847 on a 3-node line; What it actually costs; Permutation / assignment: position is `popcount(mask)` (LC 526).
 4. [Subset Sum and the Nadiria change problem](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.8 (pp. 116-117): $`\operatorname{SS}(i, t)`$ recurrence with the $`O(nT)`$ table, and Exercise 1 Nadiria change (p. 123): greedy failure first, then recurrence, then DP.
 
 **Focus**
@@ -2469,7 +2469,7 @@ One table shape answers min-coins, counting and feasibility. The loop direction 
 - Subset Sum $`O(nT)`$ is pseudopolynomial: $`T`$ is a value, not the input size. Tabulation loses to backtracking when $`T`$ dwarfs $`2^n`$.
 - Bitmask state costs $`2^n`$ subsets times $`n`$ transitions. It fits only small ground sets; that boundary is the content, not a footnote.
 
-**Reproduce:** Closed-book in Python 3.13: coin_change([1,2,5], 11) = 3, coin_change_ii(5, [1,2,5]) = 4, can_partition([1,5,11,5]) = True and can_partition([1,2,3,5]) = False. Also show largest-first greedy on ([1,3,4], 6) gives 3 coins versus optimal 2. State the amounts and all five expected outputs.
+**Reproduce:** Closed-book in Python 3.13: `coin_change([1,2,5], 11) = 3`, `coin_change_ii(5, [1,2,5]) = 4`, `can_partition([1,5,11,5]) = True` and `can_partition([1,2,3,5]) = False`. Also show largest-first greedy on `([1,3,4], 6)` gives 3 coins versus optimal 2. State the amounts and all five expected outputs.
 
 **Traps**
 
@@ -2479,8 +2479,8 @@ One table shape answers min-coins, counting and feasibility. The loop direction 
 
 **Practice**
 
-- [LeetCode 322 - Coin Change](https://leetcode.com/problems/coin-change/) - Attempt cold. Check ([1,2,5], 11) = 3, ([2], 3) = -1 and ([1], 0) = 0, then submit.. Attempt cold: write the reuse direction before coding. After submitting, read the AlgoMaster Coin Change lesson (https://algomaster.io/learn/dsa/coin-change).
-- [LeetCode 416 - Partition Equal Subset Sum](https://leetcode.com/problems/partition-equal-subset-sum/) - Check [1,5,11,5] = True and [1,2,3,5] = False, then submit.. Reduce to subset sum with target $`\text{total}/2`$. After submitting, compare with the DSA Handbook knapsack-01 reformulation section.
+- [LeetCode 322 - Coin Change](https://leetcode.com/problems/coin-change/) - Attempt cold. Check `([1,2,5], 11) = 3`, `([2], 3) = -1` and `([1], 0) = 0`, then submit. Attempt cold: write the reuse direction before coding. After submitting, read the AlgoMaster Coin Change lesson (https://algomaster.io/learn/dsa/coin-change).
+- [LeetCode 416 - Partition Equal Subset Sum](https://leetcode.com/problems/partition-equal-subset-sum/) - Check `[1,5,11,5] = True` and `[1,2,3,5] = False`, then submit. Reduce to subset sum with target $`\text{total}/2`$. After submitting, compare with the DSA Handbook knapsack-01 reformulation section.
 
 **Stop when:** The five reproduce numbers come out of a blank file, and you can state each loop direction and why.
 
@@ -2489,7 +2489,7 @@ One table shape answers min-coins, counting and feasibility. The loop direction 
 
 1. Why does the $`0/1`$ inner loop run right to left?
    - Left to right lets $`\text{dp}[a]`$ read $`\text{dp}[a-c]`$ written in the same item pass, reusing item $`i`$. Right to left keeps every read on the previous item row.
-2. Coins [1,3,4], amount 6: what does largest-first greedy give and why is it wrong?
+2. Coins `[1,3,4]`, amount 6: what does largest-first greedy give and why is it wrong?
    - $`4+1+1 = 3`$ coins. Optimal is $`3+3 = 2`$. Greedy commits to 4 without comparing the two-coin completion; only the recurrence compares all last-coin choices.
 3. Subset Sum runs $`O(nT)`$. Why is that not polynomial?
    - $`T`$ measures a value in the input, which takes $`\log T`$ bits to write. The bound is polynomial in the numeric value but exponential in the input length.
@@ -2517,7 +2517,7 @@ Samples pass and proofs fail. A differential harness plus a minimized counterexa
 1. [The proof checklist and a model argument](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.4 (pp. 105-107), the step checklist that ends "you have to prove that each of these steps is correct"; Section 3.7 Recursive Structure (pp. 111-112) as the model optimal-substructure argument.
 2. [First property test with pytest](https://hypothesis.readthedocs.io/en/latest/quickstart.html) (Hypothesis - exhaustive and differential DP tests) - Write your first test and Combining Hypothesis with pytest.
 3. [Strategies for small instances](https://hypothesis.readthedocs.io/en/latest/reference/strategies.html) (Hypothesis - exhaustive and differential DP tests) - Strategies Reference: Numeric (integers) and Collections (lists) for generating small valid instances.
-4. [Replaying shrunken failures](https://hypothesis.readthedocs.io/en/latest/tutorial/replaying-failures.html) (Hypothesis - exhaustive and differential DP tests) - The Hypothesis database; Using @example to run a specific input; Prefer @example over the database for correctness.
+4. [Replaying shrunken failures](https://hypothesis.readthedocs.io/en/latest/tutorial/replaying-failures.html) (Hypothesis - exhaustive and differential DP tests) - The Hypothesis database; Using `@example` to run a specific input; Prefer `@example` over the database for correctness.
 
 **Focus**
 
@@ -2525,11 +2525,11 @@ Samples pass and proofs fail. A differential harness plus a minimized counterexa
 - The harness generates small valid inputs, runs three implementations, and keeps the shrunk failure. Brute force is the oracle, not a fourth opinion.
 - Derandomize the settings for the reproduce run so the example count and seed replay exactly.
 
-**Reproduce:** In Python 3.13 with Hypothesis 6.169 and pytest: @given lists of ints 0-9 with length at most 8, max_examples = 200, derandomize = True. Compare memoized, tabulated and brute-force House Robber on every example: all 200 pass. Then plant the alternating-parity variant: Hypothesis shrinks the failure to [1,0,0,1] with parity 1 versus optimal 2.
+**Reproduce:** In Python 3.13 with Hypothesis 6.169 and pytest: `@given` lists of ints 0-9 with length at most 8, `max_examples = 200`, `derandomize = True`. Compare memoized, tabulated and brute-force House Robber on every example: all 200 pass. Then plant the alternating-parity variant: Hypothesis shrinks the failure to `[1,0,0,1]` with parity 1 versus optimal 2.
 
 **Traps**
 
-- Testing only on statement samples. The parity variant passes both LC 198 examples ([1,2,3,1] and [2,7,9,3,1]) and fails first on [1,0,0,1]; generate, do not hand-pick.
+- Testing only on statement samples. The parity variant passes both LC 198 examples (`[1,2,3,1]` and `[2,7,9,3,1]`) and fails first on `[1,0,0,1]`; generate, do not hand-pick.
 - Comparing two optimized forms with no brute-force oracle. Agreement proves consistency, not correctness; the exhaustive baseline is the check.
 - Generating invalid instances such as negative coins or empty grids. Constrain generation to valid inputs or failures indict the generator, not the recurrence.
 
@@ -2546,8 +2546,8 @@ Samples pass and proofs fail. A differential harness plus a minimized counterexa
    - That removing the last column of an optimal alignment leaves an optimal alignment of the prefixes. With the three possible last-column shapes, the three-way min considers every optimum, and each option it considers is a valid alignment.
 2. Why three implementations instead of two?
    - Memoized and tabulated share the recurrence, so a wrong recurrence passes their comparison. Brute force derives from the definition, so it disagrees exactly when the recurrence is wrong.
-3. Hypothesis shrinks a failure to [1,0,0,1]. What do you do?
-   - Pin it with @example([1, 0, 0, 1]) so it runs on every test run, then map it to the claim: the alternating pick returns 1, while taking both ends and skipping the middle returns 2, which indicts the parity assumption.
+3. Hypothesis shrinks a failure to `[1,0,0,1]`. What do you do?
+   - Pin it with `@example([1, 0, 0, 1])` so it runs on every test run, then map it to the claim: the alternating pick returns 1, while taking both ends and skipping the middle returns 2, which indicts the parity assumption.
 4. A proof says by optimal substructure, the recurrence holds. What is missing?
    - The argument itself: which cases exhaust the optimum, why the tail is optimal for the subproblem, and why no invalid solution is admitted.
 
@@ -2572,7 +2572,7 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 1. [Coin change as the allocation family](https://dsa.handbook.academy/curriculum/dynamic-programming/knapsack-unbounded/) (DSA Handbook - dynamic programming) - How minimum coins, count of ways and minimum cost share one recurrence: the allocation family with the reuse direction. Depth: Reread for the allocation framing only; the loop mechanics belong to the knapsack unit.
 2. [DP on an implicit DAG](https://dsa.handbook.academy/curriculum/dynamic-programming/grid-dp/) (DSA Handbook - dynamic programming) - Strict-increase predicate: the implicit DAG and DFS-with-memo (LC 329); monotone moves make the cell graph acyclic.
 3. [Greed is stupid without a proof](https://jeffe.cs.illinois.edu/teaching/algorithms/book/03-dynprog.pdf) (Algorithms - dynamic programming) - Section 3.5 (pp. 107-108): Warning: Greed is Stupid, with the shortest-prefix text-segmentation counterexample.
-4. [When exact scheduling is infeasible](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/J-approx.pdf) (Erickson lecture note J - Approximation Algorithms) - Section J.1, Load Balancing: NP-hardness by reduction from Partition, GreedyLoadBalance, and Theorem J.1 with its factor-2 proof.
+4. [When exact scheduling is infeasible](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/J-approx.pdf) (Erickson lecture note J - Approximation Algorithms) - Section J.1, Load Balancing: NP-hardness by reduction from Partition, `GreedyLoadBalance`, and Theorem J.1 with its factor-2 proof.
 
 **Focus**
 
@@ -2580,7 +2580,7 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 - Coin change is allocation: amount is the budget, denominations are unit costs, and the inner-loop direction is the reuse policy.
 - Partition makes exact load balancing NP-hard, so the greedy 2-approximation with its stated bound is the honest answer at scale.
 
-**Reproduce:** In Python 3.13: longest-prefix-greedy Word Break returns False on $`s = \text{abcd}`$ with dict [ab, abc, cd] while tabulated DP returns True. GreedyLoadBalance on jobs [5,5,4,4,3,3,3] with $`m = 2`$ gives makespan 15 against optimal 14, inside the factor-2 bound. State both inputs and all three expected outputs.
+**Reproduce:** In Python 3.13: longest-prefix-greedy Word Break returns `False` on $`s = \text{abcd}`$ with dict `[ab, abc, cd]` while tabulated DP returns `True`. `GreedyLoadBalance` on jobs `[5,5,4,4,3,3,3]` with $`m = 2`$ gives makespan 15 against optimal 14, inside the factor-2 bound. State both inputs and all three expected outputs.
 
 **Traps**
 
@@ -2590,22 +2590,22 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 
 **Practice**
 
-- [LeetCode 1235 - Maximum Profit in Job Scheduling](https://leetcode.com/problems/maximum-profit-in-job-scheduling/) - Solve tag-hidden. Example 1 returns 120 and example 2 returns 150. First show that earliest-finish greedy keeps 90 on example 1, then sort by end time and write $`\text{dp}`$ over jobs with a binary search for the last compatible job.. Write the state and the take-or-skip recurrence before coding. After submitting, read the AlgoMaster Maximum Profit in Job Scheduling lesson (https://algomaster.io/learn/dsa/maximum-profit-in-job-scheduling).
-- [LeetCode 139 - Word Break](https://leetcode.com/problems/word-break/) - Solve tag-hidden. Check (leetcode, [leet, code]) = True and (catsandog, [cats, dog, sand, and, cat]) = False, then submit.. Exhibit the abcd longest-prefix failure in your notes. After submitting, compare with the DSA Handbook decode-word-break page and the AlgoMaster Word Break lesson (https://algomaster.io/learn/dsa/word-break).
+- [LeetCode 1235 - Maximum Profit in Job Scheduling](https://leetcode.com/problems/maximum-profit-in-job-scheduling/) - Solve tag-hidden. Example 1 returns 120 and example 2 returns 150. First show that earliest-finish greedy keeps 90 on example 1, then sort by end time and write $`\text{dp}`$ over jobs with a binary search for the last compatible job. Write the state and the take-or-skip recurrence before coding. After submitting, read the AlgoMaster Maximum Profit in Job Scheduling lesson (https://algomaster.io/learn/dsa/maximum-profit-in-job-scheduling).
+- [LeetCode 139 - Word Break](https://leetcode.com/problems/word-break/) - Solve tag-hidden. Check `(leetcode, [leet, code]) = True` and `(catsandog, [cats, dog, sand, and, cat]) = False`, then submit. Exhibit the `abcd` longest-prefix failure in your notes. After submitting, compare with the DSA Handbook decode-word-break page and the AlgoMaster Word Break lesson (https://algomaster.io/learn/dsa/word-break).
 
 **Stop when:** Both tag-hidden solutions are accepted, and you can exhibit the earliest-finish and longest-prefix counterexamples plus the exact-versus-approximate boundary without notes.
 
 <details>
 <summary>Self-test</summary>
 
-1. Word Break abcd with [ab, abc, cd]: why does longest-prefix greedy fail?
-   - It takes abc first and strands d. The valid split ab + cd needs the shorter first piece; only the OR-over-splits recurrence compares both.
+1. Word Break `abcd` with `[ab, abc, cd]`: why does longest-prefix greedy fail?
+   - It takes `abc` first and strands `d`. The valid split `ab + cd` needs the shorter first piece; only the OR-over-splits recurrence compares both.
 2. Why is load balancing NP-hard, in one reduction?
    - Partition reduces to two-machine makespan: the jobs split evenly iff some assignment reaches $`\text{total}/2`$. Exact optimization at scale is infeasible, which is why the greedy bound matters.
 3. State the greedy load-balance bound with its two observations.
    - Makespan at most twice optimal. $`\operatorname{OPT}`$ covers the longest job and the average load; the last job on the bottleneck machine adds at most one $`\operatorname{OPT}`$ to a below-$`\operatorname{OPT}`$ base.
 4. A batching problem has $`10^6`$ jobs and 64 machines. Exact DP or greedy?
-   - Greedy with the stated bound, then measure. Load balancing is NP-hard, so exact search over assignments is infeasible at this size; GreedyLoadBalance is within a factor of 2, and sorting the jobs longest-first tightens the bound.
+   - Greedy with the stated bound, then measure. Load balancing is NP-hard, so exact search over assignments is infeasible at this size; `GreedyLoadBalance` is within a factor of 2, and sorting the jobs longest-first tightens the bound.
 
 </details>
 
@@ -2614,8 +2614,8 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 **About 10 to 14 hours.** Derive two scheduling dynamic programs from blank files, return a witness from each, and use a Hypothesis differential harness to shrink, pin and repair a subtly wrong recurrence.
 
 1. LC 983 Minimum Cost For Tickets, without reading its tags: write the English specification of the subproblem, the recurrence, the base case and the evaluation order before code. Return the cost and a witness, the passes bought with their start days. The examples answer 11 and 17.
-2. Build the harness: Hypothesis generates small day sets and costs; compare memoized, tabulated and brute-force answers (enumerate every purchase plan) with derandomize=True, and check that the witness covers every travel day and costs exactly the reported total.
-3. Plant the off-by-one recurrence in which a 7-day pass bought on day $`d`$ covers $`d`$ through $`d + 7`$ and a 30-day pass $`d`$ through $`d + 30`$. Let Hypothesis shrink a failure (expect two travel days 7 apart, such as days [1, 8] with costs [1, 1, 2], where the bug reports 1 against the true 2), pin it with @example, and repair the recurrence.
+2. Build the harness: Hypothesis generates small day sets and costs; compare memoized, tabulated and brute-force answers (enumerate every purchase plan) with `derandomize=True`, and check that the witness covers every travel day and costs exactly the reported total.
+3. Plant the off-by-one recurrence in which a 7-day pass bought on day $`d`$ covers $`d`$ through $`d + 7`$ and a 30-day pass $`d`$ through $`d + 30`$. Let Hypothesis shrink a failure (expect two travel days 7 apart, such as days `[1, 8]` with costs `[1, 1, 2]`, where the bug reports 1 against the true 2), pin it with `@example`, and repair the recurrence.
 4. LC 1335 Minimum Difficulty of a Job Schedule, without reading its tags: $`\text{dp}`$ over (first unscheduled job, days left), returning the cut points as a witness. The examples answer 7, -1 and 3. Differential-test against brute force over all cut positions on small inputs.
 5. Prove both recurrences by induction: name the case split (the pass bought on the first uncovered travel day; the first day's block of jobs), why the state is sufficient, and why no invalid schedule is admitted.
 6. Write a transfer note for each problem: the smallest sufficient state and one smaller state that fails, with a counterexample.
@@ -2636,7 +2636,7 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 | --- | --- | --- |
 | Formulation | Specification, recurrence, base cases and order are written before code for both problems. | Each transfer note refutes a smaller state with a concrete counterexample. |
 | Witnesses | Both solutions return witnesses that an independent checker validates. | The witness checker runs inside the Hypothesis harness on every example. |
-| Harness and repair | Memoized, tabulated and brute-force answers agree on 200 derandomized examples; the planted recurrence fails, its shrunk input is pinned with @example, and the repair passes. | The write-up maps the shrunk input to the exact claim the planted recurrence made. |
+| Harness and repair | Memoized, tabulated and brute-force answers agree on 200 derandomized examples; the planted recurrence fails, its shrunk input is pinned with `@example`, and the repair passes. | The write-up maps the shrunk input to the exact claim the planted recurrence made. |
 | Proof | One recurrence is proved by induction with its case split named. | Both are proved, including why no invalid schedule is admitted. |
 
 Feeds into: Capstone correctness library: one reconstructing DP. Failure evidence: the planted recurrence and its repair. Transfer: two tag-hidden scheduling problems.
@@ -2648,9 +2648,9 @@ Feeds into: Capstone correctness library: one reconstructing DP. Failure evidenc
 - **Required - Theory:** [Algorithms - dynamic programming](https://jeffe.cs.illinois.edu/teaching/algorithms/) - Use the dynamic-programming chapter to derive states and recurrences from first principles and to separate DP from greedy reasoning and shortest paths.
 - **Support - Practice:** [Hypothesis - exhaustive and differential DP tests](https://hypothesis.readthedocs.io/en/latest/) - Generate small valid instances, compare memoized, tabulated and exhaustive results, and retain shrunk failures for wrong state, base case, order and compression defects.
 - **Optional - Assessment:** [NeetCode - unseen mixed problems](https://neetcode.io/practice) - Use two tag-hidden mixed problems as the final transfer test. One must require rejecting a tempting greedy or insufficient-state solution with a counterexample.
-- **Reference - Reference:** [Python sys: recursion limit](https://docs.python.org/3/library/sys.html#sys.setrecursionlimit) - Read sys.getrecursionlimit and sys.setrecursionlimit: the limit guards the C stack and its safe maximum is platform-dependent. Check the default with getrecursionlimit (1000 on CPython 3.13), raise it once for memoized DP, or switch to tabulation for deep inputs.
+- **Reference - Reference:** [Python sys: recursion limit](https://docs.python.org/3/library/sys.html#sys.setrecursionlimit) - Read `sys.getrecursionlimit` and `sys.setrecursionlimit`: the limit guards the C stack and its safe maximum is platform-dependent. Check the default with `getrecursionlimit` (1000 on CPython 3.13), raise it once for memoized DP, or switch to tabulation for deep inputs.
 - **Reference - Theory:** [Erickson lecture note D - Advanced Dynamic Programming](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/D-faster-dynprog.pdf) - Read Section D.1 (Saving Space: Divide and Conquer) for the Hirschberg Half-table split that recovers an optimal edit sequence in $`O(m + n)`$ space.
-- **Reference - Theory:** [Erickson lecture note J - Approximation Algorithms](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/J-approx.pdf) - Read Section J.1 (Load Balancing) for the Partition reduction that makes exact scheduling NP-hard, the GreedyLoadBalance heuristic, and Theorem J.1 with its factor-2 proof.
+- **Reference - Theory:** [Erickson lecture note J - Approximation Algorithms](https://jeffe.cs.illinois.edu/teaching/algorithms/notes/J-approx.pdf) - Read Section J.1 (Load Balancing) for the Partition reduction that makes exact scheduling NP-hard, the `GreedyLoadBalance` heuristic, and Theorem J.1 with its factor-2 proof.
 
 ### Exit checkpoint
 

@@ -30,6 +30,11 @@ function label(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+// Ends a field with a full stop unless it already ends a sentence.
+function sentence(value) {
+  return /[.!?]$/.test(value) ? value : `${value}.`;
+}
+
 function routeMarkdown(stage, routeKind) {
   const topicCount = stage.sections.reduce(
     (sum, section) => sum + section.topics.length,
@@ -165,7 +170,7 @@ function unitsMarkdown(section) {
       ...unit.study.map((item, itemIndex) => {
         const link = item.url ? `[${item.title}](${item.url})` : item.title;
         const depth = item.depth ? ` Depth: ${item.depth}` : '';
-        return `${itemIndex + 1}. ${link} (${resourceName.get(item.resource)}) - ${item.locator}.${depth}`;
+        return `${itemIndex + 1}. ${link} (${resourceName.get(item.resource)}) - ${sentence(item.locator)}${depth}`;
       }),
       '',
       '**Focus**',
@@ -183,7 +188,7 @@ function unitsMarkdown(section) {
       ...(unit.practice.length
         ? unit.practice.map(
             (item) =>
-              `- [${item.name}](${item.url}) - ${item.locator}${item.note ? `. ${item.note}` : ''}`,
+              `- [${item.name}](${item.url}) - ${item.note ? `${sentence(item.locator)} ${item.note}` : item.locator}`,
           )
         : [`- ${unit.practiceNote}`]),
       '',
