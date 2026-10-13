@@ -291,51 +291,90 @@
         "triton-debugging"
       ],
       "outcomes": [
-        "TODO"
+        "Inspect a compiled Triton kernel for registers, shared memory and the full IR-to-cubin trajectory.",
+        "Debug a failing Triton kernel with the interpreter, device asserts and compute-sanitizer, and state what each tool cannot see.",
+        "Build a minimal reproducer that isolates a Triton defect from the surrounding program."
       ],
-      "why": "TODO",
+      "why": "A slow or wrong Triton kernel is a compiler artifact until you read it. Resource reports and IR dumps turn guessing into evidence.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-triton-cute-compilers/cuda-triton-lowering",
+          "note": "Place the inspected Triton output beside the CUDA compilation trajectory."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/triton-specialization-autotune",
+          "note": "Feed register and shared-memory findings back into the autotune space."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "triton-tutorials-gpu7",
+          "title": "Debugging Triton",
+          "url": "https://triton-lang.org/main/programming-guide/chapter-3/debugging.html",
+          "locator": "Using Triton's Debugging Operations: `static_print`, `static_assert`, `device_print`, `device_assert`, with `device_assert` active only when `TRITON_DEBUG=1`; Using the Interpreter with `TRITON_INTERPRET=1`, including Limitations on bfloat16 and indirect access; Using Third-party Tools with `compute-sanitizer`"
+        },
+        {
+          "resource": "gpu-mode-languages-gpu7",
+          "title": "GPU MODE Lecture 29: Triton internals and artifacts",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
+          "locator": "presentation.md: NVCC toolchain (`nvcc` to PTX to `ptxas` to SASS), Triton Compilation through TTIR, TTGIR, LLIR, PTX and cubin, and the JIT handle `asm` keys; `vector_add.py`: `compiled_kernel.asm` keys with `get_sass`, and `MLIR_ENABLE_DUMP=1` for per-pass IR"
+        },
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Fused Softmax: occupancy from a warmup compile",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html",
+          "locator": "Compute Kernel helper `softmax`: pre-compile with `warmup`, then read `n_regs` and `metadata.shared` to derive occupancy from register and shared-memory limits"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Debugging generated compiler code",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Performance Hints and Debugging Generated Code: `TORCH_LOGS`, `TORCH_COMPILE_DEBUG=1` and the dumped FX graph, Inductor IR and Triton code"
         }
       ],
       "focus": [
-        "TODO"
+        "The `asm` dict holds `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`. Each stage answers a different question about the final machine code.",
+        "`n_regs` and `metadata.shared` set resource ceilings before any profiler runs. Compare them against the launch before blaming the algorithm.",
+        "The interpreter runs programs sequentially on CPU with NumPy semantics. It exposes indexing bugs but not races or occupancy effects.",
+        "`compute-sanitizer` checks races and out-of-bounds on hardware, where the interpreter cannot help."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Launch the vector-add kernel with \(BLOCK = 1024\) on Triton 3.8.0 and read the handle: `n_regs` 26, shared 0, target sm_86, `asm` keys `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`, and a PTX header with `.version 8.8`, `.target sm_86` and `.reqntid 128`. Measured on an RTX 3050 6 GB with CUDA 13.4.",
       "traps": [
-        "TODO"
+        "Adding `device_assert` and seeing nothing. It executes only when `TRITON_DEBUG=1` is set.",
+        "Trusting interpreter timing or race behavior. Sequential CPU simulation cannot show either; rerun on hardware with `compute-sanitizer` for those.",
+        "Reading `n_regs` from a `warmup` call with one grid and assuming it covers all configs. Any `tl.constexpr` change recompiles and can change resources."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which `asm` key holds the PTX, and which holds the final machine code?",
+          "a": "`ptx` holds the PTX and `cubin` holds the final machine code. `ttir`, `ttgir` and `llir` are the compiler stages above them."
+        },
+        {
+          "q": "A kernel reports high `n_regs` and zero shared memory. What limits occupancy first?",
+          "a": "Registers. Divide the SM register file by registers per thread times threads per block, and compare against the block limit before touching shared memory."
+        },
+        {
+          "q": "Your kernel fails only on hardware but passes with `TRITON_INTERPRET=1`. What class of bug is likely?",
+          "a": "A race, an out-of-bounds access masked by NumPy semantics, or a resource effect. Reproduce under `compute-sanitizer` with a minimal launch."
+        },
+        {
+          "q": "Why does the interpreter refuse bfloat16 tensors?",
+          "a": "It has no bfloat16 operation support. Cast with `tl.cast` to float32 for the interpreter run, then re-verify on hardware."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "GPU MODE Lecture 29 vector_add.py codegen inspection",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
+          "locator": "Run `vector_add.py` far enough to print `compiled_kernel.asm.keys()`, dump the `ttgir` and `ptx`, and rerun with `MLIR_ENABLE_DUMP=1`; then run the same launch under `compute-sanitizer`",
+          "note": "Do this on your own GPU with a short launch. Keep each sanitizer run small and never leave a process holding GPU memory."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can name the IR stage behind any PTX or SASS observation, and your minimal reproducer fails identically on hardware and under the sanitizer.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The debugging guide, Lecture 29 artifacts and the softmax warmup cover inspection and debugging at measure depth, with the Lecture 29 script as lab practice."
       }
-    },
-    {
-      "id": "cuda-triton-lowering",
       "title": "Matched CUDA and Triton kernels and the lowering path",
       "hours": 5,
       "target": [
@@ -347,51 +386,90 @@
         "compiler-ir-lowering"
       ],
       "outcomes": [
-        "TODO"
+        "Implement matched CUDA and Triton kernels for one operation and test them against the same reference and tolerances.",
+        "Trace both kernels from source through PTX to SASS and state which device code actually ships.",
+        "Explain where the Triton lowering diverges from handwritten CUDA: tiling, precision defaults and launch setup."
       ],
-      "why": "TODO",
+      "why": "Two kernels that pass the same tests can still differ in precision, resources and shipped machine code. Parity work makes the difference visible.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-triton-cute-compilers/torch-compile-boundaries",
+          "note": "See how a framework compiler chooses between paths like these."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cutlass-cute-layouts",
+          "note": "Compare the Triton blocked program with a CuTe tiled GEMM."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gpu-mode-languages-gpu7",
+          "title": "GPU MODE Lecture 29: compilation trajectories",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
+          "locator": "presentation.md: Device Code Processing with `cicc` to PTX and `ptxas` to SASS, then Triton Compilation from the DSL through TTIR, TTGIR, LLIR, PTX and cubin with the cache layout"
+        },
+        {
+          "resource": "ptx-compiler-gpu7",
+          "title": "CUDA Binary Utilities",
+          "url": "https://docs.nvidia.com/cuda/cuda-binary-utilities/",
+          "locator": "Sections 1.2 (cuobjdump against nvdisasm inputs), 2.1.1 (dumping SASS, ELF and PTX), 2.1.2 (listing embedded binaries) and 2.1.3 (resource usage with `-res-usage`)"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Triton lowering to PTX",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Triton Programming Model: Triton converts the program to PTX with each program using a single CUDA thread block, and vectorizes arithmetic and memory operations"
         }
       ],
       "focus": [
-        "TODO"
+        "`cuobjdump` accepts cubins and host binaries while `nvdisasm` accepts only cubins with richer output. Pick the tool by input, not habit.",
+        "`-res-usage` reports registers and shared memory per function. Match those numbers against the Triton handle before comparing speed.",
+        "A fat binary can carry several architectures. List embedded binaries before claiming which SASS runs.",
+        "Triton `tl.dot` defaults to tf32 on fp32 inputs while a naive CUDA kernel stays in fp32. Parity tests must pin precision on both sides."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Compile a vector-add `.cu` with `nvcc -arch=sm_86 -cubin` and run `cuobjdump -sass` plus `cuobjdump -res-usage`. Show the guarded prologue (`S2R`, `IMAD`, `ISETP`, guarded `EXIT`, `LDG.E` loads) and the resource line `REG:12` with `SHARED:0`. Measured with CUDA 13.4 for compute capability 8.6.",
       "traps": [
-        "TODO"
+        "Comparing PTX `.target` strings and calling it a performance result. PTX is virtual; only the SASS for your architecture executes.",
+        "Forgetting `cuobjdump -lelf` on a shipped binary. The running code may come from a different embedded arch than the one you inspected.",
+        "Attributing a Triton-versus-CUDA gap to tiling when one side used tf32 and the other used fp32. Fix `input_precision` first."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When do you reach for `nvdisasm` instead of `cuobjdump`?",
+          "a": "When the input is already a cubin and you want control-flow graphs, register liveness or source correlation, which `cuobjdump` does not provide."
+        },
+        {
+          "q": "Your binary runs slower than the SASS you inspected suggests. What do you check?",
+          "a": "Which embedded binary actually loads, with `-lelf` and the driver architecture. The inspected SASS may belong to another arch."
+        },
+        {
+          "q": "The Triton kernel is faster than your CUDA kernel on fp32 matmul. What is the first suspect?",
+          "a": "Precision: Triton `tl.dot` defaults to tf32 inputs while the CUDA kernel accumulates true fp32. Re-run with `input_precision='ieee'` before crediting tiling."
+        },
+        {
+          "q": "What does `REG:12 SHARED:0` tell you about the vector-add kernel?",
+          "a": "It uses 12 registers per thread and no shared memory, so occupancy is set by registers and block limits, not by shared memory."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU 1 Vector Addition in Triton with a CUDA twin",
+          "url": "https://leetgpu.com/challenges/vector-addition",
+          "locator": "Public `challenge.py` at `challenges/easy/1_vector_add/challenge.py`: `torch.add` reference with `atol=1e-05`, `rtol=1e-05`, free tier",
+          "note": "Write matched CUDA and Triton kernels in your own repository, pass the example plus the scalar-tail and non-power-of-two functional tests, and compare `cuobjdump -res-usage` reports for both."
+        },
+        {
+          "name": "LeetGPU 2 Matrix Multiplication in Triton with a CUDA twin",
+          "url": "https://leetgpu.com/challenges/matrix-multiplication",
+          "locator": "Public `challenge.py` at `challenges/easy/2_matrix_multiplication/challenge.py`: `torch.matmul` reference with `atol=0.0001`, `rtol=0.0001`, free tier",
+          "note": "Pin `input_precision` on the Triton side and the accumulation on the CUDA side before any timing, and keep the losing shapes in your report."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both twins pass the same tests, and you can point at the PTX and SASS lines plus the resource reports that explain their gap.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Lecture 29 trajectories, the binary-utilities reference and the book lowering note cover parity and IR at explain and implement depth, with two free LeetGPU challenges as checked practice."
       }
-    },
-    {
-      "id": "torch-compile-boundaries",
       "title": "torch.compile capture, fusion, graph breaks and recompilation",
       "hours": 4,
       "target": [
@@ -402,51 +480,84 @@
         "graph-break-recompile"
       ],
       "outcomes": [
-        "TODO"
+        "Trace one operation from `torch.compile` capture through FX graph and generated Triton code to the running kernel.",
+        "Diagnose graph breaks and recompilations with `explain` and `TORCH_LOGS`, and repair the common cases.",
+        "Predict how dynamic shapes change guards, recompilation and CUDA-graph eligibility."
       ],
-      "why": "TODO",
+      "why": "Framework compilation decides fusion boundaries for you until it silently gives up. Breaks and guards are where its speedups go missing.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-triton-cute-compilers/custom-ops-autograd",
+          "note": "Make custom kernels visible to the compiler instead of breaking its graph."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/kernel-dispatch-regressions",
+          "note": "Turn guard and version observations into regression tests."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-compiler-gpu7",
+          "title": "Compiler pipeline: Dynamo, AOT Autograd, Inductor",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, PyTorch Compiler Deep Dive through TorchInductor Backend Code Generation: bytecode capture, joint forward-backward graph, PrimTorch IR with about 250 primitives, and Inductor code generation with autotuning and CUDA graphs"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Graph breaks, recompiles and dynamic shapes",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Explaining and Minimizing Graph Breaks (`torch._dynamo.explain`, `allow_in_graph`, `torch.where` masking, `torch.cond` limits), Minimize Graph Recompilations (`TORCH_LOGS=graph_breaks,recompiles,guards`, `mark_dynamic`, `eager_on_recompile`), and Dynamic Shapes and Variable Sequence Lengths (symbolic shapes, guards, `dynamic=True` disabling CUDA graphs)"
+        },
+        {
+          "resource": "aisys-code-compiler-gpu7",
+          "title": "Compiler debugging scripts",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code",
+          "locator": "`code/ch14/inspect_compiled_code.py` for dumping the compiled SimpleLLMBlock kernels; `code/ch14/baseline_graph_break_control_flow.py` against `optimized_graph_break_control_flow.py` for the Python-branch break; `code/ch14/recompilation_demo.py` for guard-driven recompiles"
         }
       ],
       "focus": [
-        "TODO"
+        "Dynamo captures straight-line tensor code and breaks on data-dependent Python control flow, falling back to eager for that region.",
+        "Every compiled graph carries guards on shapes, dtypes and devices. A failing guard recompiles, so changing values look like slow code.",
+        "`dynamic=True` generalizes shapes up front but disables CUDA graphs. Prefer `mark_dynamic` on the dims that truly vary.",
+        "Inductor fuses and autotunes over the captured graph only. Code outside the graph keeps its launch overhead whatever the mode says."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run `torch._dynamo.explain` on a function with a Python `if` over `y.sum() > 0` and on its `torch.where` rewrite, with PyTorch 2.14. The first reports Graph Count 2 with Break Count 1 (generic jump); the second reports Graph Count 1 with Break Count 0. Quote both reports from your own run.",
       "traps": [
-        "TODO"
+        "Reading one slow iteration as a slow kernel. The first iterations pay capture and compile; compare warm steady state only.",
+        "Closing over a changing Python constant such as a seed or timestamp. Every new value fails a guard and recompiles.",
+        "Setting `dynamic=True` globally for one varying dim. You lose CUDA graphs everywhere instead of marking one dim dynamic."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What does `explain` report for a data-dependent Python `if` on a tensor sum?",
+          "a": "Two graphs with one break: the region before the branch, a generic-jump break reason, and the region after it."
+        },
+        {
+          "q": "Iterations stay slow long after warmup. Which log separates breaks from recompiles?",
+          "a": "`TORCH_LOGS=graph_breaks,recompiles,guards`. Breaks cut graphs short; recompiles show which guard keeps failing."
+        },
+        {
+          "q": "Why does `dynamic=True` cost CUDA graphs?",
+          "a": "Generalized symbolic shapes cannot use the fixed-shape capture that graphs require, so Inductor skips graph capture for them."
+        },
+        {
+          "q": "When does `eager_on_recompile` beat fixing the guard?",
+          "a": "When shapes vary irreducibly and each recompile costs more than it saves. It caps recompiles by falling back to eager."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems ch14: graph-break and recompile inspection",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code",
+          "locator": "Run `code/ch14/inspect_compiled_code.py` to dump the SimpleLLMBlock graphs and Triton code, then `code/ch14/recompilation_demo.py`; compare `explain` output for `baseline_graph_break_control_flow.py` against the optimized version",
+          "note": "Run the scripts on your own GPU with small shapes. Report graph counts, break reasons and which guard each recompile names."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can predict the graph count of a small function before running `explain`, and name the guard behind any recompile you trigger.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapter 14 plus the ch14 debugging and graph-break scripts cover capture, breaks, recompiles and dynamic shapes at measure depth with named runnable practice."
       }
-    },
-    {
-      "id": "custom-ops-autograd",
       "title": "Custom operators, stream semantics and autograd contracts",
       "hours": 3,
       "target": [
