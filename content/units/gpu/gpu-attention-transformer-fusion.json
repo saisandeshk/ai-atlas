@@ -334,7 +334,7 @@
     {
       "id": "attention-backward-recompute",
       "title": "Backward attention state and recomputation",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive",
         "implement"
@@ -343,47 +343,71 @@
         "attention-backward"
       ],
       "outcomes": [
-        "TODO"
+        "Derive attention input gradients from the rowwise softmax Jacobian.",
+        "Reconstruct probabilities from saved logsumexp rather than a saved probability matrix.",
+        "Implement the optional backward path and check masks, scale and gradient accumulation ownership."
       ],
-      "why": "TODO",
+      "why": "This optional unit connects inference-style tiling to training. Recomputing scores can save memory, but correctness depends on preserving the forward scale and mask.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/attention-baselines-regimes",
+          "note": "Compare saved-state memory and full forward-backward boundaries."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashattention-gpu6",
+          "title": "FlashAttention backward derivation, arXiv:2205.14135v2",
+          "url": "https://arxiv.org/abs/2205.14135v2",
+          "locator": "Appendix B.2, Memory-efficient backward pass, and Appendix B.4, Algorithms 3 and 4 (pp. 18 to 21)",
+          "depth": "Use the no-dropout case. Defer random-mask regeneration and a fused GPU backward kernel."
+        },
+        {
+          "resource": "cs336-a2-flashattention-gpu6",
+          "title": "CS336 backward with recomputation",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 4.2.2, Backward pass with recomputation, equations 13 to 19 (p. 24), and problem `flash_backward` (p. 28)",
+          "depth": "Implement the requested PyTorch backward and compile it. Stop before optional Section 4.2.3. A dense recomputed backward is a learning step, not a memory-efficient tiled backward."
         }
       ],
       "focus": [
-        "TODO"
+        "With scaled and masked scores \\(S\\), save \\(L_i = \\log\\sum_j\\exp(S_{ij})\\). Reconstruct allowed probabilities as \\(P_{ij} = \\exp(S_{ij}-L_i)\\). Logarithm and exponential bases must agree.",
+        "For output cotangent \\(G\\), compute \\(\\mathrm{d}P = GV^\\top\\), \\(D_i = \\sum_a G_{ia}O_{ia}\\) and \\(\\mathrm{d}S_{ij} = P_{ij}(\\mathrm{d}P_{ij}-D_i)\\). Then \\(\\mathrm{d}V = P^\\top G\\), \\(\\mathrm{d}Q = \\mathrm{d}S K/\\sqrt{d}\\) and \\(\\mathrm{d}K = \\mathrm{d}S^\\top Q/\\sqrt{d}\\).",
+        "Saving inputs, output and one statistic per query row avoids saved quadratic probabilities. A dense backward may still allocate quadratic temporary scores and probabilities; tiled recomputation is needed to remove that peak workspace.",
+        "Query-block owners can accumulate query gradients, while key-block owners accumulate key/value gradients. Shared gradient destinations require a reduction or atomics; GQA also sums key/value gradients across query heads in each group."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement the no-dropout gradient equations for seed 0 standard-normal `torch.float64` inputs with batch size 2, 17 queries, 19 keys and width 7, and a random output cotangent generated after those inputs. Compare all three gradients against dense PyTorch 2.14.1 autograd on CPU with `rtol=1e-12, atol=1e-12`. Then add causal masking using absolute positions and confirm masked probabilities and their score gradients are zero.",
       "traps": [
-        "TODO"
+        "Dropping the score scale in query and key gradients. The softmax score derivative is not yet the derivative of the unscaled dot product.",
+        "Using tile-local logsumexp instead of the full row's saved statistic. Reconstructed tile probabilities then normalize independently.",
+        "Advertising the compiled dense backward as FlashAttention's tiled memory guarantee. Compilation alone does not prove which quadratic temporaries disappear."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can the row correction be computed from output and its gradient?",
+          "a": "Expanding the output as a probability-weighted sum of values shows that its dot product with the output cotangent equals the probability-weighted sum of probability cotangents. It is one scalar per query row."
+        },
+        {
+          "q": "Must recomputation make backward slower?",
+          "a": "No. It adds arithmetic but can remove expensive memory movement. Whether it wins depends on hardware, shape and the actual backward schedule."
+        },
+        {
+          "q": "What happens to a shared KV head's gradients under GQA?",
+          "a": "Its key and value gradients are sums of contributions from every query head that uses it, not just one head's contribution."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `flash_backward`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_attention.py",
+          "locator": "`test_flash_backward_pytorch` and both causal settings of `test_flash_backward_triton`; run `pytest tests/test_attention.py -k test_flash_backward`",
+          "note": "Use the adapter name `get_flashattention_autograd_function_triton`; the forward handout abbreviates it incorrectly. The public tests check three input gradients on fixed 128 by 128 attention, not peak memory or GQA. Add double-precision small-case checks and mask regressions in `kernellab`."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "All public backward cases pass, your independent small-case gradient checks pass, and you distinguish saved-state memory from backward peak workspace.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The original paper gives the reverse-mode derivation and CS336 gives a bounded compiled backward task with public tests. The optional fused backward is deliberately excluded."
       }
     },
     {
