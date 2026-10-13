@@ -16,11 +16,14 @@ const curriculum = mergeUnits(
 const stageOutputDirectory = path.join(projectRoot, 'content', 'stages');
 const trackOutputDirectory = path.join(projectRoot, 'content', 'tracks');
 
-// Content marks inline math as \( ... \) for KaTeX on the site. GitHub
-// renders inline math written as $`...`$, which no shell variable or price in
-// the content can be mistaken for.
+// Content marks inline math as \( ... \) for KaTeX on the site and inline
+// code with backticks, which Markdown already reads as code. GitHub renders
+// inline math written as $`...`$, which no shell variable or price in the
+// content can be mistaken for. Code spans pass through untouched.
 function githubMath(markdown) {
-  return markdown.replace(/\\\(([\s\S]+?)\\\)/g, (_, source) => `$\`${source}\`$`);
+  return markdown.replace(/\\\(([\s\S]+?)\\\)|`[^`\n]+`/g, (span, source) =>
+    source === undefined ? span : `$\`${source}\`$`,
+  );
 }
 
 function label(value) {

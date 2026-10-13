@@ -110,3 +110,17 @@ Every unit file is reviewed before it merges: locators are spot-checked against 
 - **What is not.** Code stays as written: Python, NumPy, PyTorch, SQL and shell expressions, function calls, identifiers such as `np.linalg.svd` or `d_model=512`, file names and paths. So do plain numbers and percentages, units of measure, version numbers, dtypes such as float32, hardware and course names, and section, page or equation numbers in locators.
 - **Conventions.** Transpose `A^\top`; norms `\|x\|_2`; `\mathbb{E}[X]`, `\operatorname{Var}(X)`, `P(A \mid B)`; `\log`, `\exp`, `\max`, `\sqrt{x}`; named operators with `\operatorname{rank}`, `\operatorname{softmax}`, `\operatorname{argmax}`; distributions `\mathcal{N}(\mu, \sigma^2)` and `\operatorname{Beta}(a, b)`; `\hat{x}` and `\bar{x}`; `\times` for dimensions and numeric products; scientific notation inside a formula as `10^{-8}`. Write an inline matrix as `\left[\begin{smallmatrix} a & b \\ c & d \end{smallmatrix}\right]`.
 - **Keep the sentence outside.** Wrap the smallest complete expression, leave words and sentence punctuation outside the delimiters, and use `\text{}` only for a short label inside a formula.
+- **Names inside formulas.** Set a multi-letter identifier upright with `\text{}` (`\text{dp}[i]`, `\text{n\_kv\_heads}`), never as a fake subscript such as `\text{block}_{\text{size}}`. Group thousands as `16{,}384`. Metric names such as p50 and p99 stay plain text, and a word after a number keeps its space inside the label (`100 \text{ rps}`).
+
+### Code
+
+Write code between backticks: `` `torch.zeros(3, 4)` ``. The site sets it in the monospace font, the Markdown reading copies keep it as code, and `content:check` rejects an unpaired backtick.
+
+- **What is code.** Anything the learner would type or read in a program, terminal or config file: function and method calls (`` `x.t()` ``, `` `np.linalg.svd(A, full_matrices=False)` ``), identifiers, attributes and parameters (`` `max_features` ``, `` `requires_grad=True` ``, `` `x.grad` ``), statements and expressions in a language (`` `b = a` ``, `` `n*(n-1)//2` ``, `` `lo <= hi` ``), types (`` `std::span<int>` ``, `` `torch.float32` ``), shell commands and flags (`` `dig +short example.com` ``, `` `-O0 -g` ``), SQL, file names and paths, environment variables, and literal program inputs and outputs such as `` `[5, 2, 4, 7]` `` or `` `'abcde'` ``.
+- **What is not.** Product, library, language and course names used as nouns (NumPy, PyTorch, PostgreSQL, CPython 3.14.4, CS336), version numbers, measured values with units, problem titles such as LC 62 Unique Paths, and anything already written as math. A formula about the mathematics is math even when code computes it; the code that computes it is code.
+- **Wrap the smallest complete fragment.** Leave sentence punctuation and prose outside. Wrap separate fragments separately, not a whole sentence that mentions several.
+- **Never** put an address inside backticks, a backtick inside code, or math inside code. Fields that are identifiers, addresses or commands (`id`, `url`, `resource`, `unit`, `route`, `command`) hold no markup.
+
+### Addresses
+
+Write a web address in prose as the bare `https://` URL, with no angle brackets. The site turns it into a link, and sentence punctuation after it is left out of the link. Prefer a `study` or `practice` item with its own `url` when the address is the thing to open.

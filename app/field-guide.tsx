@@ -38,7 +38,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { plain, tex } from '@/lib/math';
+import { plain, rich, tex } from '@/lib/math';
 
 import { GlobalSearch, type SearchEntry } from './global-search';
 import { ThemeToggle } from './theme-toggle';
@@ -307,7 +307,7 @@ function ResourceCardBody({ resource }: { resource: Resource }) {
       </div>
       <h3>{tex(resource.name)}</h3>
       <p className="provider">{resource.provider}</p>
-      <p>{tex(resource.use)}</p>
+      <p>{rich(resource.use)}</p>
       {resource.localPath && (
         <code className="local-path">{resource.localPath}</code>
       )}
@@ -336,18 +336,18 @@ function RubricTable({ rubric }: { rubric: RubricItem[] }) {
         <tbody>
           {rubric.map((item) => (
             <tr key={item.criterion}>
-              <th scope="row">{tex(item.criterion)}</th>
+              <th scope="row">{rich(item.criterion)}</th>
               <td>
                 <span className="rubric-tag" aria-hidden="true">
                   Pass
                 </span>
-                {tex(item.pass)}
+                {rich(item.pass)}
               </td>
               <td>
                 <span className="rubric-tag" aria-hidden="true">
                   Strong
                 </span>
-                {tex(item.strong)}
+                {rich(item.strong)}
               </td>
             </tr>
           ))}
@@ -479,14 +479,14 @@ function UnitCard({
 
       {expanded && (
         <div className="unit-body" id={bodyId}>
-          <p className="unit-why">{tex(unit.why)}</p>
+          <p className="unit-why">{rich(unit.why)}</p>
 
           <div className="unit-columns">
             <section>
               <h4>You can now</h4>
               <ul>
                 {unit.outcomes.map((outcome) => (
-                  <li key={outcome}>{tex(outcome)}</li>
+                  <li key={outcome}>{rich(outcome)}</li>
                 ))}
               </ul>
             </section>
@@ -542,10 +542,10 @@ function UnitCard({
                         </span>
                       )}
                     </div>
-                    <p>{tex(item.locator)}</p>
+                    <p>{rich(item.locator)}</p>
                     {item.depth && (
                       <p className="study-depth">
-                        <strong>Depth:</strong> {tex(item.depth)}
+                        <strong>Depth:</strong> {rich(item.depth)}
                       </p>
                     )}
                   </li>
@@ -560,7 +560,7 @@ function UnitCard({
             </h4>
             <ul>
               {unit.focus.map((point) => (
-                <li key={point}>{tex(point)}</li>
+                <li key={point}>{rich(point)}</li>
               ))}
             </ul>
           </section>
@@ -569,7 +569,7 @@ function UnitCard({
             <h4>
               <Repeat2 aria-hidden="true" /> Reproduce closed-book
             </h4>
-            <p>{tex(unit.reproduce)}</p>
+            <p>{rich(unit.reproduce)}</p>
           </section>
 
           <section className="unit-traps">
@@ -578,7 +578,7 @@ function UnitCard({
             </h4>
             <ul>
               {unit.traps.map((trap) => (
-                <li key={trap}>{tex(trap)}</li>
+                <li key={trap}>{rich(trap)}</li>
               ))}
             </ul>
           </section>
@@ -599,13 +599,13 @@ function UnitCard({
                       {tex(item.name)}
                       <ArrowUpRight aria-hidden="true" />
                     </a>
-                    <p>{tex(item.locator)}</p>
-                    {item.note && <p className="practice-note">{tex(item.note)}</p>}
+                    <p>{rich(item.locator)}</p>
+                    {item.note && <p className="practice-note">{rich(item.note)}</p>}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>{tex(unit.practiceNote)}</p>
+              <p>{rich(unit.practiceNote)}</p>
             )}
           </section>
 
@@ -616,10 +616,10 @@ function UnitCard({
             <ol>
               {unit.selfTest.map((item) => (
                 <li key={item.q}>
-                  <p>{tex(item.q)}</p>
+                  <p>{rich(item.q)}</p>
                   <details>
                     <summary>Show answer</summary>
-                    <p>{tex(item.a)}</p>
+                    <p>{rich(item.a)}</p>
                   </details>
                 </li>
               ))}
@@ -630,7 +630,7 @@ function UnitCard({
             <h4>
               <Flag aria-hidden="true" /> Stop when
             </h4>
-            <p>{tex(unit.stopWhen)}</p>
+            <p>{rich(unit.stopWhen)}</p>
           </section>
 
           <section className="unit-next">
@@ -697,13 +697,13 @@ function MiniProjectCard({
           />
         </label>
       </header>
-      <p className="mini-brief">{tex(mini.brief)}</p>
+      <p className="mini-brief">{rich(mini.brief)}</p>
       <div className="unit-columns">
         <section>
           <h4>Steps</h4>
           <ol>
             {mini.steps.map((step) => (
-              <li key={step}>{tex(step)}</li>
+              <li key={step}>{rich(step)}</li>
             ))}
           </ol>
         </section>
@@ -711,7 +711,7 @@ function MiniProjectCard({
           <h4>Deliverables</h4>
           <ul>
             {mini.deliverables.map((item) => (
-              <li key={item}>{tex(item)}</li>
+              <li key={item}>{rich(item)}</li>
             ))}
           </ul>
           <h4>How it is checked</h4>
@@ -729,7 +729,7 @@ function MiniProjectCard({
                   tex(check.name)
                 )}
                 {check.command && <CopyCommand command={check.command} />}
-                {check.note && <p>{tex(check.note)}</p>}
+                {check.note && <p>{rich(check.note)}</p>}
               </li>
             ))}
           </ul>
@@ -738,7 +738,7 @@ function MiniProjectCard({
       <h4>Rubric</h4>
       <RubricTable rubric={mini.rubric} />
       <p className="mini-feeds">
-        <CornerDownRight aria-hidden="true" /> Feeds into: {tex(mini.feedsInto)}
+        <CornerDownRight aria-hidden="true" /> Feeds into: {rich(mini.feedsInto)}
       </p>
     </article>
   );
@@ -1426,15 +1426,15 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                   continueUnit.unit.id,
                 )
               }
-              title={`Continue: ${continueUnit.unit.title}`}
+              title={`Continue: ${plain(continueUnit.unit.title)}`}
             >
               <Play aria-hidden="true" />
               <span>
                 <small>
                   Continue · {continueUnit.route.index}{' '}
-                  {continueUnit.route.title}
+                  {tex(continueUnit.route.title)}
                 </small>
-                <strong>{continueUnit.unit.title}</strong>
+                <strong>{tex(continueUnit.unit.title)}</strong>
               </span>
             </button>
           )}
@@ -1491,7 +1491,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     onClick={() => selectStage(mapStage.id)}
                   >
                     <span>{mapStage.index}</span>
-                    <strong>{mapStage.title}</strong>
+                    <strong>{tex(mapStage.title)}</strong>
                   </button>
                 );
               })}
@@ -1509,7 +1509,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                     : `${stage.level} · Core route`}
               </span>
               <h1 id="stage-title">{tex(stage.title)}</h1>
-              <p>{tex(stage.summary)}</p>
+              <p>{rich(stage.summary)}</p>
               <div className="stage-facts">
                 <span>
                   {stage.sections.length}{' '}
@@ -1543,7 +1543,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                         Next up · unit{' '}
                         {unitLabel(nextUnit.section, nextUnit.unit)}
                       </small>
-                      <strong>{nextUnit.unit.title}</strong>
+                      <strong>{tex(nextUnit.unit.title)}</strong>
                     </span>
                   ) : (
                     <span>
@@ -1691,7 +1691,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
 
               <div className="why-card">
                 <span>Why</span>
-                <p>{tex(selectedSection.why)}</p>
+                <p>{rich(selectedSection.why)}</p>
               </div>
 
               {sectionUnits.length > 0 ? (
@@ -1821,7 +1821,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                 <div>
                   <p className="eyebrow">Section checkpoint</p>
                   <h3>Know when to leave</h3>
-                  <p>{tex(selectedSection.checkpoint)}</p>
+                  <p>{rich(selectedSection.checkpoint)}</p>
                 </div>
               </article>
 
@@ -1829,7 +1829,7 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                 <summary>Deliberately left for later</summary>
                 <ul>
                   {selectedSection.leaveForLater.map((item) => (
-                    <li key={item}>{tex(item)}</li>
+                    <li key={item}>{rich(item)}</li>
                   ))}
                 </ul>
               </details>
@@ -1895,13 +1895,13 @@ export default function FieldGuide({ curriculum }: { curriculum: Curriculum }) {
                 {isTrack ? 'Track milestone' : 'Stage milestone'}
               </p>
               <h2 id="milestone-title">{tex(stage.milestone.title)}</h2>
-              <p>{tex(stage.milestone.description)}</p>
+              <p>{rich(stage.milestone.description)}</p>
             </div>
             <div className="deliverables">
               {stage.milestone.deliverables.map((deliverable, index) => (
                 <span key={deliverable}>
                   <i>{index + 1}</i>
-                  {tex(deliverable)}
+                  {rich(deliverable)}
                 </span>
               ))}
             </div>
