@@ -29,7 +29,7 @@
       "provider": "arXiv",
       "access": "Free",
       "use": "Read Sections 3 to 4 for chunked-prefill stall-free batching and token-budget selection, and Section 5 for capacity and overhead method. Use it as the chunked-prefill mechanism behind the book summary.",
-      "url": "https://arxiv.org/html/2403.02310"
+      "url": "https://arxiv.org/html/2403.02310v3"
     },
     {
       "id": "speculative-decoding-gpu8",
@@ -45,11 +45,11 @@
       "id": "vllm-serving-gpu8",
       "role": "documentation",
       "priority": "reference",
-      "name": "vLLM Documentation - Serving Features",
+      "name": "vLLM Documentation - Automatic Prefix Caching",
       "provider": "vLLM Project",
       "access": "Free",
-      "use": "Read Automatic Prefix Caching for hash-based block reuse, Speculative Decoding for draft-target configuration and lossless notes, and the chunked-prefill and CUDA-graph engine pages for the operating knobs. Use it for engine behavior the papers do not version.",
-      "url": "https://docs.vllm.ai/en/latest/design/prefix_caching"
+      "use": "Read Automatic Prefix Caching (vLLM v0.31.0) for hash-based block reuse, full-block caching, reverse-order freeing and the multimodal hashing example. Use it for engine behavior the papers do not version.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/design/prefix_caching/"
     },
     {
       "id": "transformer-arithmetic-gpu8",
@@ -59,7 +59,7 @@
       "provider": "Kipply",
       "access": "Free",
       "use": "Read kv cache, capacity, latency calculations, batch sizes and flops counting for per-token KV bytes, weight-capacity arithmetic and memory-bound versus compute-bound latency floors. Use it to derive endpoint bounds before measuring.",
-      "url": "https://kipp.ly/transformer-inference-arithmetic/"
+      "url": "https://kipp.ly/p/transformer-inference-arithmetic"
     }
   ],
   "units": [
@@ -108,7 +108,7 @@
           "resource": "aisys-code-inference-gpu8",
           "title": "Whole-graph versus regional compile boundary",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch13/baseline_regional_compile.py",
-          "locator": "`TinyTransformerBlock` and `BaselineRegionalCompileBenchmark` in `baseline_regional_compile.py` versus `RegionalMLP` and `compile_mlp` in `optimized_regional_compile.py`; run with `python -m ch13.compare`"
+          "locator": "`TinyTransformerBlock` and `BaselineFullGraphCompileBenchmark` in `baseline_regional_compile.py` versus `RegionalMLP` with `compile_mlp` and `OptimizedRegionalCompileBenchmark` in `optimized_regional_compile.py`"
         }
       ],
       "focus": [
@@ -137,14 +137,14 @@
         },
         {
           "q": "Profiler shows one `aten::add` but the timeline shows no kernel. What is the most likely cause?",
-          "a": "A shape or guard miss ran a fallback path, or the profiler grouped the op while the kernel ran on a stream the trace filter excluded. Check dispatch and capture boundaries before blaming the kernel."
+          "a": "The op ran on the CPU (a CPU tensor or scalar path), or the CUDA activity was not captured: no `ProfilerActivity.CUDA`, CUPTI unavailable, or the kernel fell outside the capture window. Check the device and the profiler activities before blaming the kernel."
         }
       ],
       "practice": [
         {
           "name": "Companion code ch13: whole-graph versus regional compile trace",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch13/optimized_regional_compile.py",
-          "locator": "Run `python -m ch13.compare` for `regional_compile`, then capture profiler and `nsys` traces for both variants and attribute one dispatch or fusion difference",
+          "locator": "Run `python -m cli.aisp bench run --targets ch13:regional_compile --profile minimal` (plain `python -m ch13.compare` runs every pair in the chapter), then capture profiler and `nsys` traces for both variants and attribute one dispatch or fusion difference",
           "note": "Keep runs short on a 6 GB GPU. No public autograder checks the trace; retain both traces and your boundary notes."
         }
       ],
@@ -186,7 +186,8 @@
           "resource": "aisys-inference-gpu8",
           "title": "Capture, replay and graph best practice",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 13, Reducing Kernel Launch Overhead with CUDA Graphs: Capturing a CUDA Graph and Preallocating Memory; Replaying the Graph; Best Practices for CUDA Graphs"
+          "locator": "Chapter 13, Reducing Kernel Launch Overhead with CUDA Graphs: Capturing a CUDA Graph and Preallocating Memory; Replaying the Graph; Best Practices for CUDA Graphs",
+          "depth": "The book says any allocation during capture fails. In PyTorch 2.14.1, `torch.cuda.graph` serves capture-time allocations from the graph's private memory pool; host synchronization such as `torch.cuda.synchronize()` or `.item()` is what fails. Preallocate static buffers anyway so addresses and memory stay predictable."
         },
         {
           "resource": "aisys-code-inference-gpu8",
@@ -203,12 +204,12 @@
       ],
       "focus": [
         "Name the timed boundary before comparing: per-launch overhead, captured replay, or end-to-end step. Keep warmup, capture and steady-state replay in separate intervals.",
-        "Capture on a dedicated nondefault stream with max-size static buffers. Any allocation during capture fails, and any shape change after capture needs a new graph or bucket.",
+        "Capture on a side stream with static input buffers. Tensors allocated during capture come from the graph's private pool and keep fixed addresses, so copy new inputs into the captured buffers; any shape change after capture needs a new graph or bucket.",
         "Bucket one graph per stable shape and keep an eager fallback. A replay on an unseen shape silently computes the wrong geometry or fails to launch."
       ],
-      "reproduce": "Time 200 eager launches of a 1024-element vector add against 200 `graph.replay()` calls with CUDA events, interleaved in pairs with a recorded seed, and report both medians. On an RTX 3050 6 GB with CUDA 13.4 a single batch of 200 gave about 8.1 us per eager launch and 5.1 us per replay. Your medians will differ; replay must not exceed eager on this shape, and any shape change needs recapture.",
+      "reproduce": "Time 200 eager launches of a 1024-element vector add against 200 `graph.replay()` calls with CUDA events, interleaved in pairs with a recorded seed, and report both medians. On an RTX 3050 6 GB with PyTorch 2.14.1 and driver 595.99, six runs of 41 interleaved pairs gave eager medians from 2.4 to 13.5 us per launch and replay medians from 1.8 to 7.2 us as host load changed; replay was 1.4 to 1.9 times faster in every run. Record host load with your medians; replay must not exceed eager on this shape, and any shape change needs recapture.",
       "traps": [
-        "Capturing an allocation or `empty_cache` call inside the capture region. The capture fails or pins a stale allocator state.",
+        "Synchronizing with the host inside the capture region, through `torch.cuda.synchronize()` or a value read back with `.item()`. The capture fails, so move such checks before capture or into the replayed outputs.",
         "Timing capture or warmup inside the steady-state interval and calling that replay latency.",
         "Keeping one graph for all shapes. Unseen geometry replays stale work; bucket explicitly and test the fallback."
       ],
@@ -230,7 +231,7 @@
         {
           "name": "Companion code ch12: CUDA-graph capture and replay pair",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch12/baseline_cuda_graphs.py",
-          "locator": "Run `python -m ch12.compare` for `cuda_graphs` and `graph_replay_benchmark.py`; then capture one stable 32-step sequence and compare interleaved eager versus replay medians with a fallback path",
+          "locator": "Run `python -m cli.aisp bench run --targets ch12:cuda_graphs --profile minimal` (plain `python -m ch12.compare` runs every pair in the chapter) and the standalone `graph_replay_benchmark.py` diagnostic; then capture one stable 32-step sequence and compare interleaved eager versus replay medians with a fallback path",
           "note": "Needs CUDA. Keep each run short. No public autograder checks the graph; retain event medians, capture logs and the fallback test."
         }
       ],
@@ -318,7 +319,7 @@
         {
           "name": "Companion code ch15: continuous batching pair",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_continuous_batching.py",
-          "locator": "Run `python -m ch15.compare` for `continuous_batching`; compare padded static draining against dynamic insert-on-completion on one arrival mix and report tokens per second and queue wait",
+          "locator": "Run `python -m cli.aisp bench run --targets ch15:continuous_batching --profile minimal` (plain `python -m ch15.compare` runs every pair in the chapter); compare padded static draining against dynamic insert-on-completion on one arrival mix and report tokens per second and queue wait",
           "note": "Single-GPU run is enough. No public autograder scores the schedule; retain the arrival mix, both throughputs and the kernel-shape notes."
         }
       ],
@@ -360,24 +361,24 @@
         {
           "resource": "pagedattention-gpu8",
           "title": "Blocks, manager and scheduling interaction",
-          "url": "https://arxiv.org/html/2309.06180",
+          "url": "https://arxiv.org/html/2309.06180v1",
           "locator": "Sections 4.1 to 4.2, PagedAttention and KV Cache Manager with Figures 5 to 7; Section 4.5, Scheduling and Preemption"
         },
         {
           "resource": "sglang-gpu8",
           "title": "Radix tree reuse and cache-aware scheduling",
-          "url": "https://arxiv.org/html/2312.07104",
-          "locator": "Section 3, Efficient KV Cache Reuse with RadixAttention, with Algorithm 1 and Figure 3"
+          "url": "https://arxiv.org/html/2312.07104v2",
+          "locator": "Section 3, Efficient KV Cache Reuse with RadixAttention, with Figure 3; Appendix A.2, Algorithm 1 cache-aware scheduling pseudocode"
         },
         {
           "resource": "aisys-code-inference-gpu8",
           "title": "Allocation, pooling and radix reuse lab",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_kv_cache_management.py",
-          "locator": "`BaselineKVCacheManagementBenchmark` in `baseline_kv_cache_management.py` versus `OptimizedKVCacheManagementBenchmark` in `optimized_kv_cache_management.py`; `RadixTree` and `KVCache` in `radix_attention_example.py`"
+          "locator": "`BaselineKVCacheManagementBenchmark` in `baseline_kv_cache_management.py` versus `OptimizedKVCacheManagementBenchmark` in `optimized_kv_cache_management.py`; `RadixTree` and `KVCache` in `ch16/radix_attention_example.py`"
         }
       ],
       "focus": [
-        "A logical token position maps through a block table to a physical block. Blocks are fixed-size pages, so a 40-token sequence with block size 16 occupies blocks of 16, 16 and 8 with 8 wasted slots.",
+        "A logical token position maps through a block table to a physical block. Blocks are fixed-size pages, so a 40-token sequence with block size 16 occupies three size-16 blocks holding 16, 16 and 8 tokens, with 8 wasted slots.",
         "Only full blocks enter the reuse cache under a hash of parent hash plus block tokens plus extras such as image hashes. A partial final block never hits.",
         "Sharing is reference-counted with LRU eviction. Freeing appends tail blocks first because they hash more context and are less likely to be reused."
       ],
@@ -405,7 +406,7 @@
         {
           "name": "Companion code ch15 and ch16: KV management and radix reuse",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_kv_cache_management.py",
-          "locator": "Run `python -m ch15.compare` for `kv_cache_management` and `radix_attention_example.py`; show a shared-prefix hit against a miss with block tables and hit counters retained",
+          "locator": "Run `python -m cli.aisp bench run --targets ch15:kv_cache_management --profile minimal` (plain `python -m ch15.compare` runs every pair in the chapter) and `ch16/radix_attention_example.py`; show a shared-prefix hit against a miss with block tables and hit counters retained",
           "note": "Single-GPU run is enough. No public autograder checks reuse; retain block tables, hit rates and the capacity notes."
         }
       ],
@@ -452,14 +453,14 @@
         {
           "resource": "sarathi-serve-gpu8",
           "title": "Stall-free batching mechanism",
-          "url": "https://arxiv.org/html/2403.02310",
+          "url": "https://arxiv.org/html/2403.02310v3",
           "locator": "Sections 4.1 to 4.3, chunked-prefills, stall-free batching with Algorithm 3, and token-budget selection; Figure 9, coalescing cost"
         },
         {
           "resource": "aisys-code-inference-gpu8",
           "title": "Staged versus peer KV handoff",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_prefill_decode_disagg.py",
-          "locator": "`HostStagedPrefillDecodeDisaggBenchmark` in `baseline_prefill_decode_disagg.py` versus `PeerPrefillDecodeDisaggBenchmark` in `optimized_prefill_decode_disagg.py` via `prefill_decode_disagg_common.py`"
+          "locator": "`HostStagedPrefillDecodeDisaggBenchmark` and `PeerPrefillDecodeDisaggBenchmark`, both defined in `prefill_decode_disagg_common.py` and instantiated in `baseline_prefill_decode_disagg.py` and `optimized_prefill_decode_disagg.py`"
         }
       ],
       "focus": [
@@ -491,7 +492,7 @@
         {
           "name": "Companion code ch15: disaggregated prefill-decode pair",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_prefill_decode_disagg.py",
-          "locator": "Run `python -m ch15.compare` for `prefill_decode_disagg`; compare `HostStagedPrefillDecodeDisaggBenchmark` against `PeerPrefillDecodeDisaggBenchmark` on one prompt length and live batch, and report TTFT, TPOT and handoff cost",
+          "locator": "Run `python -m cli.aisp bench run --targets ch15:prefill_decode_disagg --profile minimal` (plain `python -m ch15.compare` runs every pair in the chapter); compare `HostStagedPrefillDecodeDisaggBenchmark` against `PeerPrefillDecodeDisaggBenchmark` on one prompt length and live batch, and report TTFT, TPOT and handoff cost",
           "note": "Single-GPU emulation is enough. No public autograder scores the handoff; retain the length, batch, TTFT, TPOT and transfer notes."
         }
       ],
@@ -541,18 +542,18 @@
           "resource": "speculative-decoding-gpu8",
           "title": "Verification cost model",
           "url": "https://proceedings.mlr.press/v202/leviathan23a/leviathan23a.pdf",
-          "locator": "Sections 2 to 3, draft-verify-accept loop, acceptance rule \\(\\alpha = \\min(1, q/p)\\), resampling distribution and walltime-versus-operations analysis"
+          "locator": "Sections 2 to 3, draft-verify-accept loop, acceptance rule, resampling distribution and walltime-versus-operations analysis. The paper names \\(p\\) the target and \\(q\\) the draft distribution; this unit and LeetGPU 87 swap the letters, so its rule reads \\(\\alpha = \\min(1, q/p)\\) with \\(p\\) the draft"
         },
         {
           "resource": "aisys-code-inference-gpu8",
           "title": "Mask reuse and weight-only quantization labs",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_guided_decoding.py",
-          "locator": "`GuidedDecodingBenchmark` with `reuse_gpu_mask=False` in `baseline_guided_decoding.py` versus `reuse_gpu_mask=True` in `optimized_guided_decoding.py`; `baseline_awq_gptq_smoothquant.py` versus `optimized_awq_gptq_smoothquant_awq.py`"
+          "locator": "`GuidedDecodingBenchmark` (defined in `guided_decoding_common.py`) with `reuse_gpu_mask=False` in `baseline_guided_decoding.py` versus `reuse_gpu_mask=True` in `optimized_guided_decoding.py`; `ch16/baseline_awq_gptq_smoothquant.py` versus `ch16/optimized_awq_gptq_smoothquant_awq.py`"
         }
       ],
       "focus": [
         "Quantized dispatch changes scales, granularity and accumulation, not just storage. Per-token scales dequantize as \\(K_{\\text{float}}[h, s, d] = K_{\\text{int8}}[h, s, d] \\times k_{\\text{scale}}[h, s]\\); verify error against task tolerance, not just kernel error.",
-        "Speculative verification accepts draft token \\(t\\) with probability \\(\\alpha = \\min(1, q/p)\\), where \\(p\\) is the draft probability and \\(q\\) the target probability. Rejection resamples from the normalized positive part of \\(q - p\\) and stops the batch.",
+        "Speculative verification accepts draft token \\(t\\) with probability \\(\\alpha = \\min(1, q/p)\\), where \\(p\\) is the draft probability and \\(q\\) the target probability. Rejection resamples from the normalized positive part of \\(q - p\\) and ends that sequence's accepted run.",
         "Structured decoding pays for masks and host interaction every step. A GPU-resident reused mask removes the per-step rebuild; measure its cost per schema, not as a constant."
       ],
       "reproduce": "Closed-book, verify the LeetGPU 87 worked example: draft `[1, 2, 0]` with the given draft and target probabilities and uniform samples `[0.50, 0.70, 0.30, 0.90]`. Accept position 0 (\\(\\alpha = 0.50/0.60 = 0.83\\), \\(0.50 < 0.83\\)), reject position 1 (\\(\\alpha = 0.20/0.50 = 0.40\\), \\(0.70 > 0.40\\)), resample token 3 from normalized `[0.667, 0, 0, 0.333]`, and emit `[1, 3, 0, 0]`.",
@@ -568,11 +569,11 @@
         },
         {
           "q": "Why does speculative decoding depend on batch shape?",
-          "a": "They change arithmetic intensity and memory traffic per step. Verification adds a batched forward that pays only when acceptance is high enough at that batch width."
+          "a": "Batch width changes arithmetic intensity and memory traffic per step. Verification adds a batched target forward that pays only when acceptance is high enough at that width."
         },
         {
           "q": "Where does guided-decoding overhead come from?",
-          "a": "A per-step CPU mask rebuild plus host interaction. Reusing a GPU-resident mask removes the rebuild; complex schemas at small batches still cost double-digit percent."
+          "a": "A per-step CPU mask rebuild plus host interaction. Reusing a GPU-resident mask removes the rebuild; the book reports that complex grammars or small batches can still cost double-digit percent."
         }
       ],
       "practice": [
@@ -580,13 +581,13 @@
           "name": "LeetGPU 87 Speculative Decoding Verification",
           "url": "https://leetgpu.com/challenges/speculative-decoding-verification",
           "locator": "Challenge 87 in `challenges/medium/87_speculative_decoding_verification/challenge.py`: implement `solve` and pass the accept-all, reject-first and mixed functional tests plus the `B = 64`, `T = 8`, `V = 32768` performance test",
-          "note": "Hosted runs need an account; the reference implementation and tests are public in the challenges repository. Keep correctness tests beyond the hosted score."
+          "note": "Run it on LeetGPU or locally against `reference_impl` from `challenge.py` as in the CUDA primitives section. Keep correctness tests beyond the hosted score."
         },
         {
           "name": "LeetGPU 96 INT8 KV Cache Attention",
           "url": "https://leetgpu.com/challenges/int8-kv-cache-attention",
           "locator": "Challenge 96 in `challenges/medium/96_int8_kv_cache_attention/challenge.py`: implement `solve` with per-token dequantization and `1 / sqrt(head_dim)` scaling; check the `num_heads = 1`, `seq_len = 3`, `head_dim = 4` example giving `[5.00, 6.00, 7.00, 8.00]`",
-          "note": "Hosted runs need an account; the reference implementation and tests are public in the challenges repository. Test adversarial scales and sequence tails locally."
+          "note": "Run it on LeetGPU or locally against `reference_impl` from `challenge.py` as in the CUDA primitives section. Test adversarial scales and sequence tails locally."
         }
       ],
       "stopWhen": "You report measured acceptance length, quantized error and mask overhead on one batch shape plus the regime where each path loses.",
@@ -624,20 +625,20 @@
         {
           "resource": "sglang-gpu8",
           "title": "Multimodal throughput and reuse evidence",
-          "url": "https://arxiv.org/html/2312.07104",
-          "locator": "Section 6.2 with Table 2, throughput on LLaVA-v1.5-7B image and LLaVA-NeXT-34B video models, and reported RadixAttention hit rates"
+          "url": "https://arxiv.org/html/2312.07104v2",
+          "locator": "Section 6.2 with Table 2: throughput for LLaVA-v1.5-7B images on one A10G 24 GB and LLaVA-NeXT-34B video on one 80 GB A100 (Appendix C), and the RadixAttention hit rates reported from deployment"
         },
         {
           "resource": "vllm-serving-gpu8",
           "title": "Multimodal block-hash rule",
-          "url": "https://docs.vllm.ai/en/latest/design/prefix_caching",
-          "locator": "Automatic Prefix Caching, hashing example with multi-modality inputs: placeholder runs, per-block image-hash extras, block size 16 with 41 placeholders"
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/prefix_caching/",
+          "locator": "Automatic Prefix Caching (vLLM v0.31.0), hashing example with multi-modality inputs: placeholder runs, per-block image-hash extras, block size 16 with 41 placeholders"
         }
       ],
       "focus": [
         "The encoder runs once per image or segment while the decoder steps per token. Co-execution shares the scheduler, KV pool and batch slots, so encoder work changes decode batch geometry.",
         "Image regions become placeholder token runs replaced by embeddings at prefill. Prefix identity must hash the image content, not just the placeholder IDs, or different images falsely share KV.",
-        "Read Table 2 as a throughput comparison against the stated Transformers baseline with the reported 52.4 percent video and 74.1 percent image cache-hit rates, not as a universal speedup."
+        "Read Table 2 as a throughput comparison against the stated Transformers baseline on the stated GPUs, not as a universal speedup. The 52.4 and 74.1 percent hit rates come from a month of deployment, for LLaVA-NeXT-34B and the Vicuna-33B chat model, not from Table 2's runs."
       ],
       "reproduce": "Without notes, sketch one image-plus-text request through prefill and two decode steps: mark where the image encoder runs, which token range the embeddings replace, and which blocks are hashable for reuse when a second request shares the text but not the image.",
       "traps": [
@@ -700,7 +701,7 @@
           "resource": "flashinfer-integration-gpu8",
           "title": "Serving-kernel wrapper contract",
           "url": "https://docs.flashinfer.ai/api/attention.html",
-          "locator": "`BatchDecodeWithPagedKVCacheWrapper`: constructor with `float_workspace_buffer` and `kv_layout`, `plan` with `indptr`, `indices` and `last_page_len`, `run` with `q` and `paged_kv_cache`, `workspace_size` and `reset_workspace_buffer`; `use_cuda_graph` buffer rules"
+          "locator": "FlashInfer 0.7.1 documentation, `BatchDecodeWithPagedKVCacheWrapper`: constructor with `float_workspace_buffer` and `kv_layout`, `plan` with `indptr`, `indices` and `last_page_len`, `run` with `q` and `paged_kv_cache`, `workspace_size` and `reset_workspace_buffer`; `use_cuda_graph` buffer rules"
         },
         {
           "resource": "flashinfer-integration-gpu8",
@@ -711,20 +712,20 @@
         {
           "resource": "sglang-gpu8",
           "title": "Alternative runtime architecture",
-          "url": "https://arxiv.org/html/2312.07104",
-          "locator": "Section 2, programming model with `gen`, `fork` and cache-aware scheduling context; Section 3, RadixAttention reuse as the alternative component boundary"
+          "url": "https://arxiv.org/html/2312.07104v2",
+          "locator": "Section 2, programming model with `gen` and `fork`; Section 3, RadixAttention reuse with cache-aware scheduling as the alternative component boundary"
         }
       ],
       "focus": [
         "Caller-owned workspace comes first: allocate the 128 MB float buffer aligned to 16 bytes, call `plan` with `indptr`, `indices` and `last_page_len`, then reuse the plan across layers with `run`. `plan` never runs inside a graph or `torch.compile`.",
-        "Graph-safe wrappers pin batch size and page-table buffers. Changing batch size, `q_len_per_req` or page-table capacity needs a new wrapper or re-plan, not a silent in-place edit.",
+        "A graph-safe wrapper (`use_cuda_graph=True`) fixes the batch size and keeps metadata in caller-provided `indptr`, `indices` and `last_page_len` buffers sized for the largest page count. Re-plan outside capture to update their contents; a different batch size needs a new wrapper.",
         "Register the custom op with a fake implementation for shape inference, keep execution on the current PyTorch stream, and keep an eager fallback that passes the same differential tests."
       ],
       "reproduce": "Without notes, register the fused residual-add plus RMSNorm as a custom op with a fake shape rule, allocate the FlashInfer decode workspace, `plan` a batch of 7 requests in `NHD` layout with `page_size = 16`, and `run` one layer. State which buffers must stay stable for graph capture and which eager fallback runs on an unsupported dtype.",
       "traps": [
         "Calling `plan` inside a captured graph. Planning copies metadata on the host; only `run` with stable bindings captures.",
         "Forgetting workspace alignment or zero-initialization on first use. Split-KV scratch then reads garbage.",
-        "Shipping the fast path without a fallback. Unsupported dtypes, layouts orshapes must route to a tested eager path."
+        "Shipping the fast path without a fallback. Unsupported dtypes, layouts or shapes must route to a tested eager path."
       ],
       "selfTest": [
         {
@@ -732,8 +733,8 @@
           "a": "Shape inference, compilation and autotuning need output metadata without launching kernels. The fake implementation supplies it; without it capture and compilation fail."
         },
         {
-          "q": "What is frozen once a graph-safe decode wrapper is planned?",
-          "a": "Batch size, page-table buffers, `q_len_per_req` and workspace binding. A re-plan with different values raises; only order-tensor contents may change without recapture on supported routes."
+          "q": "What is fixed once a graph-safe decode wrapper is created?",
+          "a": "The batch size and the caller-provided `indptr`, `indices` and `last_page_len` buffers, plus the workspace binding. A plan with another batch size raises; re-planning rewrites those buffers in place, so captured `run` calls keep reading stable addresses."
         },
         {
           "q": "Where does a custom kernel sit relative to vLLM, SGLang and FlashInfer?",
@@ -745,13 +746,13 @@
           "name": "LeetGPU 83 Fused Residual Add RMS Norm, integrated locally",
           "url": "https://leetgpu.com/challenges/fused-residual-add-and-rms-norm",
           "locator": "Challenge 83 in `challenges/medium/83_fused_residual_add_rms_norm/challenge.py`: implement `solve`, pass the hosted tests, then wrap it as a `torch.library.custom_op` with a fake implementation and an eager fallback and integrate it into one small endpoint step with differential tests",
-          "note": "Hosted runs need an account; the reference implementation and tests are public in the challenges repository. Do not stop at the hosted score: the local integration with fallback is the deliverable."
+          "note": "Run it on LeetGPU or locally against `reference_impl` from `challenge.py` as in the CUDA primitives section. Do not stop at the hosted score: the local integration with fallback is the deliverable."
         }
       ],
       "stopWhen": "Your op passes differential tests through both the custom path and the eager fallback, with a pinned plan-run interface and a stated unsupported-shape policy.",
       "fit": {
         "verdict": "kept",
-        "note": "FlashInfer supplies the serving-kernel interface, SGLang the alternative architecture, and the companion extension path the local build contract."
+        "note": "FlashInfer supplies the serving-kernel interface and its custom-op registration path, and SGLang the alternative runtime architecture."
       }
     },
     {
@@ -797,7 +798,7 @@
           "resource": "aisys-code-inference-gpu8",
           "title": "Exact-match sampler fast path",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_greedy_sampler.py",
-          "locator": "`GreedySamplerBenchmark` with `materialize_probabilities=True` in `baseline_greedy_sampler.py` versus `False` in `optimized_greedy_sampler.py` via `greedy_sampler_common.py`"
+          "locator": "`GreedySamplerBenchmark` (defined in `greedy_sampler_common.py`) with `materialize_probabilities=True` in `baseline_greedy_sampler.py` versus `False` in `optimized_greedy_sampler.py`"
         }
       ],
       "focus": [
@@ -818,7 +819,7 @@
         },
         {
           "q": "What does the greedy-sampler fast path save, and why is it exact?",
-          "a": "It removes the full-vocabulary softmax and probability buffer from greedy decode. Correctness holds because `argmax` is invariant to monotone softmax."
+          "a": "It removes the full-vocabulary softmax and probability buffer from greedy decode. Softmax is monotone, so `argmax` is unchanged; only logits close enough to round to equal probabilities could pick a different index."
         },
         {
           "q": "What must a perplexity comparison fix?",
@@ -871,7 +872,7 @@
         {
           "resource": "transformer-arithmetic-gpu8",
           "title": "KV, capacity and latency floors",
-          "url": "https://kipp.ly/transformer-inference-arithmetic/",
+          "url": "https://kipp.ly/p/transformer-inference-arithmetic",
           "locator": "kv cache per-token bytes with `k` and `v` across layers, heads and bytes per value; capacity from weights plus KV; latency calculations for memory-bound versus compute-bound floors; batch sizes and flops counting"
         },
         {
@@ -892,7 +893,7 @@
         "Fix the workload first: shape and arrival distribution, TTFT and TPOT SLOs, memory budget and goodput definition. Goodput counts only requests meeting the SLOs.",
         "Attribute with shares: a kernel speedup \\(s\\) on fraction \\(f\\) of step time gives at most \\(1 / ((1 - f) + f / s)\\) end-to-end. Baselines are the production engine and the vendor library, not eager alone."
       ],
-      "reproduce": "Closed-book, derive capacity for an 8-billion-parameter FP16 model on an 80 GB GPU: weights occupy about 16 GB, leaving roughly 64 GB of the 80 GB budget for KV and workspace. At 131072 bytes per token (32 layers, 8 KV heads, 128 head dim, FP16), that budget holds roughly 490000 tokens (524288 per 64 GiB); state your GB/GiB convention and workspace reservation. Then show how a 10 percent kernel win on a 30 percent step share gives at most about 3 percent end-to-end.",
+      "reproduce": "Closed-book, derive capacity for an 8-billion-parameter FP16 model on an 80 GB A100: weights occupy about 16 GB, leaving roughly 64 GB of the 80 GB budget for KV and workspace. At 131072 bytes per token (32 layers, 8 KV heads, 128 head dim, FP16), that budget holds roughly 490000 tokens (524288 per 64 GiB) before any workspace; subtract your workspace reservation first and state your GB/GiB convention. Then show how a 10 percent kernel win on a 30 percent step share gives at most about 3 percent end-to-end.",
       "traps": [
         "Quoting a friendly-shape kernel speedup as an endpoint win. Request mix, queueing and uncovered shares dilute it.",
         "Averaging TTFT and TPOT across different lengths and SLOs. Report per-slice percentiles on a fixed distribution.",
@@ -961,7 +962,8 @@
           "resource": "aisys-code-inference-gpu8",
           "title": "Versioned expectations harness",
           "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch16/compare.py",
-          "locator": "`expectations_2x_b200.json` and `expectations_b200.json` beside each chapter, refreshed with `--update-expectations`; `BenchmarkConfig` with iterations and warmup in `compare.py`; validity profiles in chapter READMEs"
+          "locator": "`expectations_2x_b200.json` and `expectations_b200.json` in the chapter directories, refreshed with `--update-expectations`; `BenchmarkConfig` with iterations and warmup in `compare.py`; validity profiles in chapter READMEs",
+          "depth": "The shipped expectations are B200 and GB200 numbers. Record your own baseline on your GPU before gating, and never refresh it to absorb a regression."
         }
       ],
       "focus": [
