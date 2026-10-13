@@ -16,47 +16,89 @@
         "link-bandwidth-latency"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how PCIe, NVLink and NVSwitch paths differ in bandwidth, latency and CPU involvement, and where RDMA removes the CPU from the path.",
+        "Predict which hop bounds a stated exchange from a topology dump, and state the directional bandwidth assumption behind the prediction.",
+        "Detect a silent fallback from GPUDirect RDMA to TCP sockets from logs and module checks."
       ],
-      "why": "TODO",
+      "why": "Every collective time in this section is bytes divided by the slowest link on its path plus latency. A wrong topology picture makes every later model wrong.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/collective-contracts-alpha-beta",
+          "note": "Feed link bandwidth and latency into the latency-bandwidth cost model."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/nccl-algorithms-placement",
+          "note": "Use the topology map to constrain algorithm and placement choices."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Scale-up fabric: NVLink and NVSwitch",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 2, NVLink and NVSwitch"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "RDMA, NICs and multinode connectivity",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, High-Speed, Low-Overhead Data Transfers with RDMA; Tuning Multinode Connectivity; Multinode Communication Pitfalls"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Topology detection and peer access",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting/gpu_troubleshooting.html#topology-detection",
+          "locator": "Topology detection and GPU-to-GPU communication: confirm peer access before trusting any bandwidth number"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Recording the topology NCCL saw",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-topo-dump-file",
+          "locator": "NCCL_TOPO_DUMP_FILE and NCCL_TOPO_FILE: dump the detected graph with every measurement"
         }
       ],
       "focus": [
-        "TODO"
+        "Bandwidth numbers are directional unless stated otherwise. An 800 Gb/s NIC is 100 GB/s of line rate in one direction before headers and congestion, and a Gen4 x16 link is about 32 GB/s per direction from lane arithmetic.",
+        "The book's hierarchy example (two NVLink pairs joined by PCIe) reduces on the fast pairs first so the slow link carries only a fraction of the data. Sketch which exchange crosses PCIe before running anything.",
+        "GPUDirect RDMA lets the NIC read and write GPU memory without CPU copies. A container without InfiniBand devices or with mismatched GIDs silently falls back to TCP, dropping throughput from tens of GB/s to a few Gb/s.",
+        "A Blackwell GPU advertises about 1.8 TB/s of NVLink aggregate across 18 links, which is bidirectional aggregate or 900 GB/s per direction. Per-direction phrasing of 100 GB/s per link contradicts that aggregate; use the aggregate and halve it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank page, sketch the four-GPU hierarchy example (GPUs 0-1 on one NVLink pair, 2-3 on another, PCIe between pairs) and state which exchange crosses the slow link and why it carries only a fraction of the data. Then capture `nvidia-smi topo -m` on your hardware and label each GPU pair with its path.",
       "traps": [
-        "TODO"
+        "Quoting 1.8 TB/s as per-direction NVLink bandwidth. It is bidirectional aggregate; per-direction peaks are half that, and sustained rates are lower under imbalance.",
+        "Assuming x16 width. A board negotiated at x8 has half the PCIe bandwidth of the same generation at x16; read the negotiated width from the topology output.",
+        "Trusting a bandwidth number while the path fell back to TCP. Check `NCCL_DEBUG=INFO` for NET/IB versus sockets and `lsmod | grep nvidia_peermem` for the peer-memory module."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "GPUs 0-1 share NVLink, 2-3 share NVLink, and only PCIe joins the pairs. Where does a hierarchical all-reduce put most bytes?",
+          "a": "On the two NVLink pairs first, then one exchange across PCIe per pair, then redistribution inside each pair. The slow link handles a fraction of the data rather than every byte."
+        },
+        {
+          "q": "What line rate in GB/s does an 800 Gb/s link imply, and why is it not a measurement?",
+          "a": "800 divided by 8 is 100 GB/s of line rate. Headers, encoding, congestion and software overheads sit below it, so sustained goodput needs a measurement."
+        },
+        {
+          "q": "Which two checks expose a silent RDMA-to-TCP fallback?",
+          "a": "`NCCL_DEBUG=INFO` showing socket transport instead of NET/IB paths, and a missing peer-memory module under `lsmod | grep nvidia_peermem`. Either one invalidates the RDMA bandwidth assumption."
+        },
+        {
+          "q": "A Gen4 x16 link is quoted at 64 GB/s. Is that per direction?",
+          "a": "No. Lane arithmetic gives about 32 GB/s per direction (16 lanes at 16 GT/s with 128b/130b encoding). 64 GB/s is the bidirectional sum."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code ch04: PCIe staging and topology bring-up probes",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch04/baseline_pcie_staging.py",
+          "locator": "Run baseline_pcie_staging.py with its optimized pair plus nccl_benchmark.py on compatible single-host paths; record `nvidia-smi topo -m` and NCCL_TOPO_DUMP_FILE",
+          "note": "Mark NVLink-only and multi-GPU-only paths as explicit blockers with the dump attached; do not report fallback timings as link rates."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your sketch predicts the slow hop before you run, the dump confirms the path, and you can state every quoted rate as per-direction or bidirectional with its assumption.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapters 2 and 4, NCCL topology docs and the ch04 bring-up probes cover links, RDMA and topology evidence at explain and measure depth."
       }
     },
     {
