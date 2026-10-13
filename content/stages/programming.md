@@ -567,22 +567,20 @@ Caches and listeners hold objects past their welcome. Lifetime reasoning decides
 
 ### Mini-project: Installable taskrunner package with a typed registry and two seeded defects
 
-**About 8 to 12 hours.** Start the one repository the whole stage builds on: a src-layout taskrunner package that registers typed tasks, streams its run log lazily and cleans up run directories on every path. Install its wheel into a clean environment, then seed an aliasing defect and an object-lifetime defect, diagnose each and keep a regression test that fails on the seeded code.
+**About 8 to 12 hours.** Build the installable task runner package the later projects extend, with a typed task registry, a lazy run log and deterministic cleanup. Two seeded defects, one aliasing and one lifetime, train evidence-first diagnosis with a regression test for each.
 
-1. Run `uv init --package taskrunner`: uv 0.11.32 writes a `src` layout, the `uv_build` backend and the console script `taskrunner = "taskrunner:main"`. Build the sdist and wheel with `uv build`, install the wheel into a new virtual environment outside the repository, and run `taskrunner` from another directory. Print `taskrunner.__file__` from that environment to show the installed copy was imported, not `src/`.
-2. Model a task as a frozen slotted dataclass `TaskSpec(name, timeout_s, retries)` whose `__post_init__` rejects a name that is not an identifier, a timeout that is not positive and negative retries. Test an `asdict` round trip, a `replace()` change and use as a `dict` key. Define a `Task` `Protocol` for callables that take a `params` mapping and return a result `dict`, and a `@task(name, timeout_s=..., retries=...)` decorator factory that registers the function under its name and rejects duplicates.
-3. Type the package under `mypy --strict`. If the decorator is typed to return the `Task` `Protocol`, mypy 2.4.0 rejects `count_lines.__name__` on a decorated function, because the `Protocol` declares only `__call__`. A generic `def task[F: Task](...) -> Callable[[F], F]` that returns the function unchanged keeps its own type and metadata; keep both versions in the write-up.
-4. Write the run log as JSON Lines, one record per run (`task`, `params`, `status`, `seconds`). Read it with a generator `iter_runs(path)` that parses one line at a time, and build the summary from generator expressions. With `tracemalloc`, compare the peak of summarizing through `iter_runs` against a version that first builds a `list` of records, at two log sizes such as 100,000 and 1,000,000 lines. Predict which peak grows with the file before measuring.
-5. Give each run a directory through a `@contextmanager` `run_dir(root, run_id)` that yields the path, writes a `done` or `failed` marker and closes the run log on success, on task failure and on an exception raised inside the `with` block. Map failures to a small hierarchy (`TaskError`, `ConfigError`) and to CLI exit codes (0 success, 2 bad configuration, 3 task failure), raise each mapped error from its cause, and test that `__cause__` survives.
-6. Seed an aliasing defect: build each run's `params` with `dict(DEFAULTS)` and let a task extend `params['paths']`. The copy is shallow and shares the nested list, so with `DEFAULTS = {'retries': 2, 'paths': ['data/in']}` a run that adds `'extra'` leaves the next run, and `DEFAULTS` itself, with `['data/in', 'extra']`. Write the regression test first (two runs, then assert the second run and `DEFAULTS` are unchanged), watch it fail, and fix it with `copy.deepcopy` or immutable defaults, explaining the choice.
-7. Seed a lifetime defect: a `Runner` that opens its log, closes it in `__del__` and stores the bound method `self.on_done = self._close_log`. The instance holds the method and the method holds the instance, so with `gc.disable()` a `del` leaves the log open. Keep the probe as diagnosis evidence: a `weakref` callback has not fired after `del`, then `gc.collect()` returns a nonzero count (2 on CPython 3.14.4 for a runner holding only the log and the method), the log closes and the callback fires. The regression test deletes a runner with the collector disabled and asserts the log is closed. It fails on the seeded code, and still fails if a `weakref.finalize` is added while the bound method stays on the instance; it passes once `on_done` is the `weakref.finalize(self, self.log.close)` object itself, which holds no strong reference to the instance and runs at most once.
+1. Scaffold a src-layout package with `uv init`, build its wheel with `uv build`, install the wheel into a fresh environment and run its console entry point outside the repository, showing the installed copy is imported.
+2. Model tasks as a frozen slotted dataclass validated in `__post_init__`, registered by a decorator that rejects duplicates, and checked against the AlgoMaster Python Data Classes and Decorators exercises, with `mypy --strict` clean.
+3. Stream the JSON Lines run log through a generator and build the summary from generator expressions, then predict which peak grows with file size and compare peaks with `tracemalloc` against a list-building version.
+4. Give each run a directory through a context manager that writes a marker and closes the log on every path, map failures to a small chained exception hierarchy, and test every path.
+5. Seed an aliasing defect where a shallow copy shares nested run parameters across runs, write the regression test first, watch it fail, then fix it and explain why the chosen copy strategy removes the sharing.
+6. Seed a cleanup defect where a stored bound method keeps a cycle alive, diagnose it with a `weakref` probe and the collector, then fix it so the regression test passes with the collector disabled.
 
 **Deliverables**
 
-- The taskrunner repository: src-layout package, sdist and wheel, and a `README` with the clean-environment install commands and the `taskrunner.__file__` output.
-- Tests for `TaskSpec` validation and round trip, duplicate registration, `iter_runs` laziness, `run_dir` cleanup on all three paths and exception causes, with `mypy --strict` reporting no issues.
-- Two defect write-ups, aliasing and lifetime, each with the failing regression output on the seeded code, the diagnosis evidence and the passing run after the fix.
-- The `tracemalloc` peak table for the lazy and list-building summaries at two log sizes, with the Python version.
+- The `taskrunner` repository: src-layout package, wheel, and a `README` with install and import evidence.
+- Tests for validation, registration, laziness, cleanup and causes, with `mypy --strict` clean.
+- Two defect write-ups with failing and passing regression output, diagnosis evidence and the laziness peak comparison.
 
 **Checks**
 
@@ -590,12 +588,12 @@ Caches and listeners hold objects past their welcome. Lifetime reasoning decides
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Packaging | The wheel installs into a fresh environment and the `taskrunner` entry point runs from outside the repository with no `sys.path` edits. | The `README` rebuilds and reinstalls from a clean clone in one copied block, and a test asserts the imported module is not under `src/`. |
-| Typed model | `TaskSpec` rejects bad values, round-trips through `asdict` and works as a `dict` key; duplicates are rejected; `mypy --strict` reports no issues. | Decorated tasks keep their own type, and the write-up shows the `Protocol`-typed decorator that mypy rejected and why. |
-| Resources and laziness | `run_dir` closes the log and writes its marker on success, failure and an inner raise, and mapped errors keep `__cause__`. | The `tracemalloc` table shows the `iter_runs` peak staying flat while the list-building peak grows with the log. |
-| Seeded defects | Both regression tests fail on the seeded code and pass after the fix. | Each write-up names the reference behind the bug (the shared nested list; the method cycle) and why the fix removes it, for example why a finalizer added beside the bound method still needs a collector run. |
+| Installable package | The wheel installs into a fresh environment and the entry point runs outside the repository. | A test asserts the imported package is the installed copy, and the `README` rebuilds it from a clean checkout. |
+| Typed model | `TaskSpec` rejects bad values and round-trips, duplicates are rejected, and `mypy --strict` is clean. | Decorated tasks keep their own type, and the write-up shows the rejected `Protocol` typing and why. |
+| Resources and laziness | Cleanup and markers hold on every path with causes chained, and the learner's tests cover each path. | The peak comparison shows the generator holding flat while the list version grows, as predicted. |
+| Seeded defects | Both regression tests fail on the seeded code and pass after the fix. | Each write-up names the shared reference or cycle behind the bug and why the fix removes it. |
 
-Feeds into: Capstone package and interface: the installable typed package, its entry point and the run log the service and pipeline write. Native and diagnosis: the lifetime write-up is a first evidence-first debugging report.
+Feeds into: The installable typed package, its entry point and the run log that the service and pipeline write; the lifetime write-up seeds the evidence-first debugging report.
 
 ### Resource route
 
@@ -1118,23 +1116,21 @@ Retries are normal and duplicates are corruption. Validation plus status codes m
 
 ### Mini-project: One run service behind a CLI and an HTTP API, on PostgreSQL
 
-**About 12 to 16 hours.** Turn `taskrunner` into a service: one service layer validates run submissions, debits a project's credit budget and records runs in PostgreSQL, and both an `argparse` CLI and a FastAPI app drive it. Version the payload, migrate the schema both ways, prove the transaction and isolation behavior, and make submission idempotent.
+**About 12 to 16 hours.** Turn `taskrunner` into a service with one service layer behind a CLI and an HTTP API on PostgreSQL. Version the payload, migrate the schema both ways, and prove transaction, isolation and idempotency behavior with tests.
 
-1. Write `RunService` against a `RunStore` `Protocol`, with no CLI, HTTP or database imports in the service module, plus an in-memory fake store for unit tests. The boundary model `RunRequestV1` (`project`, `task`, `params`) sets `extra='forbid'`, and a pydantic-settings `Settings` class with a `TASKRUNNER_` prefix holds the database `DSN`; test that an init argument beats the environment, which beats the default.
-2. Add `taskrunner import FILE` for batch submissions in JSON Lines or CSV. Stream the file, send malformed rows (a truncated JSON line, a wrong type) to a quarantine file with their line numbers, accept a quoted CSV field that holds a comma and a newline, and write accepted rows to Parquet with pyarrow `Table.from_pylist`. Assert the schema types and that a missing value reads back as `null`, not `NaN`.
-3. Create the schema with Alembic: revision 1 adds `projects` (`credits` integer with `CHECK (credits >= 0)`) and `runs` (`project` foreign key, `task`, `params` `jsonb`, `status`); revision 2 adds a nullable `priority` column. Run `upgrade head`, `downgrade base` and `upgrade head` on a scratch database in the `postgres:18` container. Evolve `RunRequestV1` to `RunRequestV2` with an optional `priority` and test both directions: a v1 payload validates as v2 with `priority` `None`, and a v2 payload sent to v1 fails on the `extra` field.
-4. Make `submit()` debit the project's credits and insert the run in one transaction. Test that a debit below zero raises `CheckViolation` (`SQLSTATE 23514`) and leaves both the credits and the run count unchanged. Then interleave two sessions under `REPEATABLE READ`: session A reads 10 credits, session B debits 3 and commits, and A's debit of 2 raises `SerializationFailure` (`40001`). Retry the whole transaction with a bounded attempt count and assert the final balance is 5, each debit applied once.
-5. Write the read side in SQL and predict each row count first: runs per project including projects with none (`LEFT JOIN` and `COUNT`), projects with failed runs filtered by `HAVING`, and the latest run per task with `ROW_NUMBER`. Load 5,000 runs, `ANALYZE`, compare `EXPLAIN (ANALYZE, BUFFERS)` for the list filter before and after adding the index it needs, and name one query on the same table the index does not help.
-6. Add an `argparse` CLI, `taskrunner submit` and `taskrunner show`, over the same `RunService`: the run as JSON on `stdout` with exit `0`; validation errors, unknown runs and database errors on `stderr` with distinct nonzero exit codes. Swap the fake and the PostgreSQL store without editing the service.
-7. Expose the same service through FastAPI: `POST /v1/runs` returns `201` with an output model that omits internal fields, a bad body returns `422`, an unknown id returns `404` with the `detail` envelope, and `GET /v1/runs` caps its page with `Query(le=100)`, so `limit=101` returns `422`. Add `POST /v2/runs` for the v2 payload.
-8. Make `POST` idempotent with an `Idempotency-Key` header and a ledger table keyed by it. Claim the key with `INSERT ... ON CONFLICT (key) DO NOTHING RETURNING` in the same transaction as the debit, and store a hash of the request body: a replay with the same body returns the stored response, and a different body under the same key returns `409`. Assert that a double `POST` debits once and stores one run.
+1. Write `RunService` against a `RunStore` protocol with an in-memory fake for unit tests, validate the boundary model strictly, and test configuration precedence with the AlgoMaster Interfaces and Protocols exercise as reference.
+2. Add a batch import that streams JSON Lines or CSV, quarantines malformed rows with line numbers, and writes accepted rows to Parquet with round-trip type and null checks.
+3. Migrate the schema with Alembic through an upgrade, downgrade and re-upgrade round trip on a scratch database, and test the versioned payload in both directions following the Alembic tutorial downgrade round trip.
+4. Debit credits and insert the run in one transaction with a rollback test, then reproduce a serialization anomaly under `REPEATABLE READ` with a bounded retry, following the PostgreSQL transactions tutorial.
+5. Predict each read query's row count before running it, then compare the listed filter's plan before and after adding its index and name one query the index does not help, using the AlgoMaster `LEFT JOIN` and `GROUP BY` exercises as reference.
+6. Serve the same service through a CLI and a FastAPI app over the untouched service layer, testing the status-code contract, the capped page and store swapping with the FastAPI tutorial Testing extended example.
+7. Make submission idempotent with an `Idempotency-Key` ledger claimed in the same transaction as the debit, and prove a replay stores one run while a mismatched body is rejected.
 
 **Deliverables**
 
-- The service package: `RunService`, the fake and PostgreSQL stores, the CLI and the FastAPI app over one service layer.
-- The Alembic revisions with the `head`, `base`, `head` transcript, and the v1 and v2 payload tests in both directions.
-- Transaction tests against the `postgres:18` container: the rollback, the `REPEATABLE READ` interleaving with its `40001` retry and the idempotent double `POST`.
-- The import transcript with its quarantine file and Parquet checks, plus the query predictions and the before and after plans.
+- The service package: `RunService`, the fake and PostgreSQL stores, the CLI and the FastAPI app.
+- Alembic revisions with the round-trip transcript and both-directions payload tests.
+- Transaction, isolation, idempotency and import tests with quarantine file, plans and predictions.
 
 **Checks**
 
@@ -1142,13 +1138,13 @@ Retries are normal and duplicates are corruption. Validation plus status codes m
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| One service layer | The CLI and HTTP paths call the same `RunService`, the service module imports no transport or database code, and both stores pass the service tests. | One parametrized suite runs every service test against the fake and the PostgreSQL store. |
-| Boundaries and evolution | Malformed, extra-field and v2-on-v1 payloads are rejected with field-level errors, and `head`, `base`, `head` succeeds. | The write-up classifies each schema change as additive or breaking and says which old clients keep working. |
-| Transactions | The failed debit leaves credits and run count unchanged, and the interleaving reproduces `40001` with a bounded retry that ends at 5. | The retry loop is also tested with an injected `SerializationFailure` and stops with a clear error at its limit. |
-| HTTP contract and idempotency | `201`, `422`, `404` and the capped page behave as specified, and a keyed double `POST` stores one run and debits once. | A same-key request with a different body returns `409`, and a replay returns the stored response unchanged. |
-| Data evidence | The import quarantines malformed rows with line numbers without loading the whole file, and each query matches its predicted row count. | The plan comparison states table size, `ANALYZE` state and buffers, and explains the query the index does not help. |
+| One service layer | The CLI and HTTP paths call the same service, the service module stays transport-free, and both stores pass the suite. | One parametrized suite runs every service test against the fake and the PostgreSQL store. |
+| Boundaries and evolution | Malformed, extra-field and cross-version payloads are rejected with field-level errors, and the migration round trip succeeds. | The write-up classifies each schema change as additive or breaking and names which old clients keep working. |
+| Transaction behavior | The failed debit leaves credits and run count unchanged, and the anomaly test retries to the correct balance. | The retry loop is also tested with an injected serialization failure and stops clearly at its limit. |
+| HTTP contract and idempotency | Created, validation-error, not-found and capped-page behavior hold, and a keyed double submission stores one run. | A same-key different-body request is rejected, and a replay returns the stored response unchanged. |
+| Data evidence | The import quarantines malformed rows with line numbers without loading the whole file, and each query matches its predicted count. | The plan comparison states table size and buffers, and explains the query the index does not help. |
 
-Feeds into: Capstone package and interface: the typed installable service through CLI and HTTP with its schema, migration, transaction and idempotency tests. Its PostgreSQL dependency becomes the readiness check in the operations work.
+Feeds into: The typed installable service through CLI and HTTP with schema, migration, transaction and idempotency tests; its database becomes the readiness check in operations.
 
 ### Resource route
 
@@ -1662,23 +1658,21 @@ A result that needs your laptop to reproduce is a rumor. Locks plus manifests pl
 
 ### Mini-project: Test, debug and pin the taskrunner
 
-**About 8 to 12 hours.** Make taskrunner's correctness and environment reproducible: tests with independent oracles, a property that finds a seeded hashing defect, a measured flaky test and its fix, an evidence-first debugging log, a bisected regression, a fail-fast shell wrapper and a locked environment whose runs write a manifest.
+**About 8 to 12 hours.** Make the task runner's correctness and environment reproducible with oracle-based tests and a property that finds a seeded defect. Keep an evidence-first debugging log and a locked environment whose runs write a manifest.
 
-1. Add `params_hash(params)`, the SHA-256 of a canonical JSON form that keys a run's outputs, and a `plan(tasks, deps)` that orders tasks by dependency. Test `params_hash` with parametrized boundary cases (empty, nested, non-ASCII keys), use a `tmp_path` fixture for run directories and `monkeypatch` the `TASKRUNNER_` environment. Check `plan` with an independent oracle: every dependency edge is respected and each task appears once, rather than one expected order, and `plan` rejects exactly the inputs `graphlib.TopologicalSorter` rejects with `CycleError`. Run each test alone by node id too.
-2. Seed the hashing defect: canonicalize with `json.dumps(params)` without `sort_keys`. Write the Hypothesis property that two dicts with the same items in different insertion order hash equally, over `st.dictionaries(st.text(), st.integers())`. On Hypothesis 6.169.0 it fails and shrinks to a two-key dict such as `{'': 0, '0': 0}`. Pin the shrunk case with `@example`, fix with `sort_keys=True` and fixed `separators`, and add a `ci` profile with `derandomize=True`.
-3. Seed a flaky test: `taskrunner list` returns `list(set(names))`, and the test expects `list_tasks(['build', 'test', 'lint', 'build']) == ['build', 'lint', 'test']`. Run it in 100 fresh processes: on CPython 3.14.4, 83 of 100 failed because string hashing is randomized per process. `PYTHONHASHSEED=2` passes and `PYTHONHASHSEED=0` fails, so pinning the seed makes the outcome repeatable, not correct. Mark the test `xfail(strict=True)`, fix with `sorted()`, watch the `XPASS` fail the suite, remove the mark and record 0 failures in 100 runs.
-4. Seed an off-by-one in `taskrunner tail -n N` so it prints $`N - 1`$ records. Before touching the code, write three competing hypotheses in a debugging log, each with the observation that would kill it. Confirm which module file is imported, set one `breakpoint`, read the distinguishing variable, fix, and add the regression test. Quote the tool output beside each rejected hypothesis.
-5. Rebuild a regression from history: on a branch, make at least seven small commits where one breaks `tail` or `params_hash`, with a check script that exits 0 on good commits, 1 on bad ones and 125 on commits it cannot test. Run `git bisect run` with the script and record the commits it tested and the first bad commit. Then delete a branch and recover its tip from `git reflog`.
-6. Write `scripts/run.sh` as the shell entry for one task: `set -euo pipefail`, quoted arguments that survive a filename with spaces, a temporary directory removed by an `EXIT` trap, `INT` and `TERM` traps that exit 130 and 143, the task run as a child with `&` and `wait $!` so a `TERM` is handled at once, and separate `stdout` and `stderr` logs. Show that `kill -TERM` ends it with 143 and leaves no temporary directory.
-7. Lock the environment with `uv lock` and make the gate `uv sync --locked && uv run pytest && uv run mypy --strict src`. Show that adding a dependency without relocking makes `uv sync --locked` fail while plain `uv sync` rewrites the lock. Have every run write `manifest.json` with the git commit and dirty flag, the resolved config, input checksums, the seed, the `uv.lock` SHA-256 and output checksums, and diff two manifests to explain an output change.
-8. Run the gate from a clean clone on a second machine or VM reached through an SSH host alias, inside a tmux session: detach, disconnect, reconnect, reattach and show the gate log intact.
+1. Test `params_hash` against boundary cases and `plan` against an independent edge-by-edge oracle that also rejects cyclic input, running each test alone, with the Missing Semester code-quality unit test as reference.
+2. Seed an order-dependent hashing defect, write the Hypothesis property over same-items different-order inputs that finds it following the Hypothesis quickstart shrinking pattern, pin the shrunk case with `@example`, then fix the canonical form.
+3. Seed order-dependent output that makes a test fail across fresh processes using the Missing Semester run-until-failure script, show a fixed seed only repeats the outcome, then fix the ordering and record failure counts before and after.
+4. Seed an off-by-one in a CLI output path and, before touching the code, log competing hypotheses with the observation that would kill each following the Missing Semester merge-sort debugger exercise, then fix it with quoted tool output beside each rejection.
+5. Rebuild a regression from history on a branch with a status-coded check script, locate it with `git bisect run` following the Missing Semester version-control history exercises, and delete and recover a branch tip through `git reflog`.
+6. Write a fail-fast shell entry with quoted arguments, a trapped temporary directory and separate logs checked against the Missing Semester course-shell stream and status exercises, and show it exits cleanly on `TERM` with no leftovers.
+7. Lock the environment, gate on sync plus tests plus typecheck, write a run manifest with commit, config, inputs, seed and outputs, and pass the gate over SSH inside tmux following the Missing Semester SSH, tmux and lockfile exercises.
 
 **Deliverables**
 
-- The test suite: oracle and boundary tests, the Hypothesis property with its pinned `@example`, the `strict` `xfail` history of the flaky test and its failure counts before and after.
-- The debugging log for the `tail` defect with three hypotheses and quoted evidence, and the `bisect` transcript naming the first bad commit.
-- `scripts/run.sh` with its `TERM`, filename-with-spaces and missing-input transcripts.
-- `uv.lock`, the one-command gate, two run manifests with their diff and the remote tmux transcript.
+- The test suite: oracle and boundary tests, the property with its pinned case, and the flaky test's counts before and after.
+- The debugging log with hypotheses and quoted evidence, and the `bisect` transcript naming the first bad commit.
+- The shell wrapper transcripts, the lockfile, the one-command gate, two manifests with their diff and the remote transcript.
 
 **Checks**
 
@@ -1686,12 +1680,12 @@ A result that needs your laptop to reproduce is a rumor. Locks plus manifests pl
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Oracles | Each test names its oracle, plan is checked edge by edge, and every test passes alone. | Each oracle is independent of the code under test, and a deliberate mutation of `plan` or `params_hash` makes a test fail. |
-| Properties and flakiness | The property finds the insertion-order defect, the shrunk case is pinned with `@example`, and the flaky test is fixed with failure counts before and after. | The write-up explains why the shrunk case is minimal and why pinning `PYTHONHASHSEED` would hide the flaky test rather than fix it. |
-| Diagnosis | The debugging log rejects at least two hypotheses with quoted tool output, and `bisect` names the seeded commit without manual checkouts. | Each hypothesis states its killing observation before it is tested, and the regression test fails on the bisected commit. |
-| Reproducibility | A clean clone reaches a green gate with `uv sync --locked`, the wrapper exits 143 on `TERM` without leftovers, and every run writes a manifest. | Two manifests from different commits explain an output difference field by field, and the gate also passes on the remote machine. |
+| Independent oracles | Each test names its oracle, the plan is checked edge by edge, and every test passes alone. | Each oracle stays independent of the code under test, and a deliberate mutation makes a test fail. |
+| Properties and flakiness | The property finds the order defect, the shrunk case is pinned, and the flaky test is fixed with counts before and after. | The write-up explains why the shrunk case is minimal and why a pinned seed would hide the flake. |
+| Evidence-first diagnosis | The log rejects at least two hypotheses with quoted tool output, and `bisect` names the seeded commit unaided. | Each hypothesis states its killing observation first, and the regression test fails on the found commit. |
+| Locked reproducibility | A clean checkout reaches a green gate, the wrapper exits as specified with no leftovers, and every run writes a manifest. | Two manifests explain an output difference field by field, and the gate also passes on the remote host. |
 
-Feeds into: Capstone failure and operations: the clean-checkout gate, the shell wrapper and the run manifest the runbook relies on. Native and diagnosis: the debugging log is the model for the evidence-first report.
+Feeds into: The clean-checkout gate, the shell wrapper and the run manifest the runbook relies on, plus the debugging log as the model evidence-first report.
 
 ### Resource route
 
@@ -2093,7 +2087,7 @@ A running process is not necessarily ready to serve, and restarting it is not al
 **Study**
 
 1. [Three health questions with different actions](https://kubernetes.io/docs/concepts/workloads/pods/probes/) (Liveness, Readiness, and Startup Probes) - Liveness probe; Readiness probe; Startup probe. Depth: Read only the contracts and failure actions. Implement local endpoints; cluster orchestration stays outside this section.
-2. [Containerize a Python service](https://docs.docker.com/guides/python/containerize/) (Docker guides) - Containerize a Python application: Create the Docker assets, `Dockerfile` and `.dockerignore` examples; Run the application. Depth: Stop before Use containers for Python development. Adapt only the packaging to your service. The sample uses Python 3.12 and an authenticated DHI registry; use an official Python 3.14 image pinned by digest instead, with explicit `USER` and exec-form `CMD` as below. No registry login or database is needed.
+2. [Containerize a Python service](https://docs.docker.com/guides/python/#containerize-a-python-application) (Docker guides) - Containerize a Python application: Create the Docker assets, `Dockerfile` and `.dockerignore` examples; Run the application. Depth: Stop before Use containers for Python development. Adapt only the packaging to your service. The sample uses Python 3.12 and an authenticated DHI registry; use an official Python 3.14 image pinned by digest instead, with explicit `USER` and exec-form `CMD` as below. No registry login or database is needed.
 3. [Reproducible inputs and a non-root entrypoint](https://docs.docker.com/build/building/best-practices/) (Docker guides) - Pin base image versions; Exclude with `.dockerignore`; `Dockerfile` instructions: `CMD`, `ENV`, `ENTRYPOINT` and `USER`.
 4. [Resource limits and supervision](https://docs.docker.com/engine/containers/resource_constraints/) (Docker guides) - Memory: Limit a container's access to memory, `--memory` and `--memory-swap`; CPU: `--cpus`; then Start containers automatically, Use a restart policy and Restart policy details. Depth: Use https://docs.docker.com/engine/containers/start-containers-automatically/ for the restart-policy reading. Do not disable the OOM killer or configure privileged scheduling.
 5. [A runbook tests hypotheses and verifies recovery](https://sre.google/sre-book/effective-troubleshooting/) (Site Reliability Engineering - overload and troubleshooting) - Triage; Examine; Diagnose; Test and Treat; Making Troubleshooting Easier. Depth: Skip Case Study and Negative Results Are Magic. Use the named method sections to write commands and expected observations for your small service, not an organization-wide incident process.
@@ -2135,23 +2129,20 @@ A running process is not necessarily ready to serve, and restarting it is not al
 
 ### Mini-project: Bounded async worker pipeline with overload, cancellation, telemetry and a container runbook
 
-**About 12 to 16 hours.** Give taskrunner an execution engine: a bounded async pipeline whose workers run tasks under deadlines and retry budgets, reject excess work and shut down cleanly. Profile it, make its failures visible through telemetry, and run it in a limited non-root container with a runbook another reader can follow.
+**About 12 to 16 hours.** Give the task runner an execution engine: a bounded async pipeline with deadlines, retries, telemetry and a container runbook. Profile it honestly and make every failure visible through signals another reader can follow.
 
-1. Choose executors from evidence. Run four equal Python-loop sums of 5,000,000 iterations, each checked against `n*(n-1)//2`, serially, on four threads and on four processes, on CPython 3.14.4 and on free-threaded 3.14.6 with the GIL disabled: one warm-up and five measured trials per mode, raw times saved with CPU, version and GIL state. Then show the event-loop blocking fault: a heartbeat stalls while a coroutine calls `time.sleep` and keeps ticking once the call moves to `asyncio.to_thread`.
-2. Build the pipeline: an `asyncio.Queue(maxsize=2)` fed with `put_nowait`, so excess submissions are rejected, and two workers created in a `TaskGroup`. Event-gate the workers to show four admitted runs (two held, two queued) and a fifth rejected with `QueueFull`. On shutdown, call `queue.shutdown()` so new work is refused, drain and `join`, and assert every accepted run id has a terminal outcome; with `shutdown(immediate=True)` or an expired drain deadline, report the abandoned ids instead of success. Guard counters shared with the thread executor with one lock.
-3. Run each task under a monotonic deadline with `asyncio.timeout_at` and a classified retry policy: retry transient errors only, at most three attempts, with full-jitter delays drawn from `[0, min(cap, base * 2**k)]`. Inject `random` and `sleep` so tests check the delay bounds without wall-clock waits. Against a fake dependency that fails twice then succeeds, assert three attempts; also test permanent failure, an exhausted budget, an expired deadline and cancellation during backoff, each with no later attempt and cleanup run.
-4. Profile a batch of 10,000 runs with `cProfile` and name the hottest function from its output. Take `tracemalloc` snapshots before and after the batch and find what still holds memory once it is done, such as a results dict that keeps every payload. Fix it, then benchmark one optimization before and after without the profiler (one warm-up, five trials, raw times, CPU and Python build), keep it only if the gain holds at two batch sizes, and record one optimization you rejected with its numbers.
-5. Instrument with the OpenTelemetry SDK and in-memory exporters: a span per run with the queue wait and each attempt as children, the producer's context carried with each queued item, JSON logs with run id, trace id and span id, and counters for completed, failed, rejected and retried runs plus a duration histogram labelled only by task name and outcome. Pass a dummy API token through the config and assert it appears in no exported log, span or metric. Seed one dependency failure among 100 runs and find that run from the signals alone.
-6. Add a health surface: liveness answers while the event loop runs; readiness requires a validated configuration and a reachable PostgreSQL. Build a container from a pinned base image digest with a non-root `USER` and an exec-form `CMD`, run it with `--cpus=1 --memory=128m --memory-swap=128m`, and read the limits back from `docker inspect` and the cgroup files inside the container.
-7. Exercise failure. Stop PostgreSQL: readiness fails while liveness stays healthy, and readiness returns without a restart once it is back. Send `SIGTERM` with runs in flight: readiness drops, new submissions are rejected and accepted runs drain before the stop timeout. Force a nonzero exit under `--restart on-failure:3` and record the exit status and restart count.
-8. Write the runbook: symptoms, the signal that confirms each hypothesis, commands and a recovery gate. Have someone else, or yourself from a clean clone a day later, follow it through the PostgreSQL outage, and fix every step they found unclear.
+1. Compare matched CPU work across serial, thread and process modes on the available Python builds, including a free-threaded one where available, then show an event-loop blocking fault and its move off the loop.
+2. Build the bounded pipeline with `TaskGroup` workers that rejects excess work, drains on shutdown and reports abandoned work instead of success when the drain expires, following the AlgoMaster Bounded Buffer problem.
+3. Run each task under a monotonic deadline with classified retries, jittered backoff and cancellation cleanup, tested against a fault-injected dependency that fails then succeeds.
+4. Profile a large batch for the hot spot and retained memory, fix one cause, then benchmark the improvement without the profiler and record one rejected optimization with its numbers.
+5. Instrument runs with spans, queue-wait children, JSON logs and bounded-label counters, exclude secrets from every signal, and locate one seeded failure from the signals alone.
+6. Ship a non-root bounded container with liveness and readiness gates, exercise the dependency outage and `SIGTERM` drain, and write a runbook a second reader follows to recovery.
 
 **Deliverables**
 
-- The pipeline with its overload, shutdown, deadline, retry and cancellation tests, and the raw executor timings from both builds.
-- A profiling note: the `cProfile` hot spot, the `tracemalloc` retention diff, the before and after benchmark and the rejected optimization.
-- Telemetry tests: span parentage across the queue, bounded metric attribute sets, secret absence and the located seeded failure.
-- The `Dockerfile`, the container transcripts (limits, outage, `SIGTERM` drain, restart count) and the exercised runbook.
+- The pipeline with overload, shutdown, deadline, retry and cancellation tests plus the executor timings.
+- A profiling note with the hot spot, the retention fix, the benchmark and the rejected optimization.
+- Telemetry tests, the container definition and the exercised runbook with outage and drain transcripts.
 
 **Checks**
 
@@ -2159,13 +2150,13 @@ A running process is not necessarily ready to serve, and restarting it is not al
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Bounded concurrency | The overload test admits four and rejects the fifth, and every accepted id ends with a recorded outcome or is reported abandoned. | Executor choices cite the raw timings from both builds, and the blocking fault shows the stalled and the advancing heartbeat. |
-| Failure handling | No retry follows a permanent failure, an exhausted budget, an expired deadline or cancellation, and no worker outlives the `TaskGroup`. | Backoff bounds are tested without wall-clock waits, and an idempotency policy says what happens when a retried run already took effect. |
-| Performance evidence | The hot spot and the retention site come from profiler output, and the kept optimization has raw unprofiled trials. | The note states the workload region where the gain holds and why the rejected optimization lost. |
-| Telemetry | Parent and trace ids agree across the queue, metrics carry only bounded labels, and the dummy secret is absent from every signal. | The seeded failure is traced from a metric to a span to a log line with no new `print` statements. |
-| Operations | The container runs non-root under the stated limits, survives the PostgreSQL outage without a restart, drains on SIGTERM and stops restarting at its bound. | A second reader followed the runbook to recovery, and the steps they found unclear were fixed. |
+| Bounded concurrency | The overload test rejects excess work, and every accepted run ends recorded or is reported abandoned. | Executor choices cite the matched-work timings, and the blocking fault shows the stalled and advancing heartbeat. |
+| Failure handling | No retry follows permanent failure, an exhausted budget, an expired deadline or cancellation, and no worker outlives its owner. | Backoff bounds are tested without wall-clock waits, and an idempotency note covers already-applied retries. |
+| Performance evidence | The hot spot and retention site come from profiler output, and the kept improvement has unprofiled trials. | The note states the workload region where the gain holds and why the rejected optimization lost. |
+| Failure telemetry | Parent and trace ids agree across the queue, metrics carry only bounded labels, and secrets appear in no signal. | The seeded failure is traced from a metric to a span to a log line without added prints. |
+| Container operations | The container runs non-root under its limits, survives the outage without a restart, and drains on `SIGTERM`. | A second reader followed the runbook to recovery, and the steps they found unclear were fixed. |
 
-Feeds into: Capstone failure and operations: the bounded pipeline with backpressure, cancellation and telemetry, the injected PostgreSQL outage and the clean-checkout runbook.
+Feeds into: The bounded pipeline with backpressure, cancellation and telemetry, the injected outage and the clean-checkout runbook for the capstone.
 
 ### Resource route
 
@@ -2237,7 +2228,7 @@ A native extension can compile successfully yet fail to link or import. Separati
 **Study**
 
 1. [Compilation Process](https://algomaster.io/learn/cpp/compilation-process) (AlgoMaster C++) - Recap of the Pipeline; Stage 1 through Stage 4; Putting It Together: A Two-File Build; Mapping Errors to Stages. Depth: Use the artifacts and error examples. Do not adopt the lesson's unmeasured optimization speedup ranges or its mention of trigraph translation: trigraphs were removed in C++17.
-2. [Language linkage](https://en.cppreference.com/w/cpp/language/language_linkage.html#Explanation) (cppreference) - Explanation and Notes, including the `__cplusplus` conditional header example. Depth: Skip compiler-specific function-type overload disputes.
+2. [Language linkage](https://en.cppreference.com/cpp/language/language_linkage#Explanation) (cppreference) - Explanation and Notes, including the `__cplusplus` conditional header example. Depth: Skip compiler-specific function-type overload disputes.
 3. [Cross-compiler interfaces](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#ri-abi) (C++ Core Guidelines) - I.26: If you want a cross-compiler ABI, use a C-style subset.
 4. [Linux dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html#DESCRIPTION) (`ld.so`: dynamic linker/loader) - DESCRIPTION, including dependency search order and Dynamic string tokens; ENVIRONMENT entry `LD_DEBUG`. Depth: Stop before legacy hardware-capability directories and auditing.
 
@@ -2290,11 +2281,11 @@ Native interfaces pass addresses and counts rather than Python objects. A correc
 
 **Study**
 
-1. [Integer representation and data models](https://en.cppreference.com/w/cpp/language/types.html) (cppreference) - Integral types: Standard integer types and Character types; Range of values; Data models. Depth: Skip floating-point tables and C++26 reflection. Use the C++20 rules.
-2. [Integer promotions and conversions](https://en.cppreference.com/w/cpp/language/implicit_conversion.html#Integral_promotion) (cppreference) - Integral promotion and Numeric conversions: Integral conversions.
+1. [Integer representation and data models](https://en.cppreference.com/cpp/language/types) (cppreference) - Integral types: Standard integer types and Character types; Range of values; Data models. Depth: Skip floating-point tables and C++26 reflection. Use the C++20 rules.
+2. [Integer promotions and conversions](https://en.cppreference.com/cpp/language/implicit_conversion#Integral_promotion) (cppreference) - Integral promotion and Numeric conversions: Integral conversions.
 3. [Pointer Arithmetic](https://algomaster.io/learn/cpp/pointer-arithmetic) (AlgoMaster C++) - The Setup: What Pointer Arithmetic Means through The Rules: One Past the End and Undefined Behavior.
 4. [References Basics](https://algomaster.io/learn/cpp/references) (AlgoMaster C++) - What a Reference Is through References as Return Values; Common Mistakes. Depth: Use the local-reference and dangling-return examples. The named-local rule of thumb is not the full set of temporary-lifetime extension rules.
-5. [`std::span`](https://en.cppreference.com/w/cpp/container/span.html) (cppreference) - Opening contract; Member functions: Element access, Observers and Subviews; Notes and Example. Depth: Use the C++20 interface. `span::at` is C++26, so write an explicit bounds check for this unit.
+5. [`std::span`](https://en.cppreference.com/cpp/container/span) (cppreference) - Opening contract; Member functions: Element access, Observers and Subviews; Notes and Example. Depth: Use the C++20 interface. `span::at` is C++26, so write an explicit bounds check for this unit.
 
 **Focus**
 
@@ -2347,7 +2338,7 @@ A dtype or stride mismatch changes which bytes native code reads. The same layou
 
 **Study**
 
-1. [Objects, representation and alignment](https://en.cppreference.com/w/cpp/language/object.html#Alignment) (cppreference) - Object representation and value representation; Size; Alignment, including the `S` and `X` examples. Depth: Skip implicit object creation and polymorphic layout. Use simple standard-layout structs for offset checks.
+1. [Objects, representation and alignment](https://en.cppreference.com/cpp/language/object#Alignment) (cppreference) - Object representation and value representation; Size; Alignment, including the `S` and `X` examples. Depth: Skip implicit object creation and polymorphic layout. Use simple standard-layout structs for offset checks.
 2. [Predictable memory access](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#rper-access) (C++ Core Guidelines) - Per.19: Access memory predictably, including the two matrix traversal orders.
 3. [AoS and SoA trade-offs](https://www.intel.com/content/www/us/en/developer/articles/technical/memory-layout-transformations.html) (Memory Layout Transformations) - Overview; Topics; AOS Form (Array of Structs); SOA Form (Struct of Arrays). Depth: Read the layouts, not the Intel-specific array-notation syntax. Stop before AOSOA and the LIBOR example. Treat performance statements as hypotheses for your own access pattern.
 4. [When AoS wins: whole-record access](https://en.algorithmica.org/hpc/cpu-cache/aos-soa/) (Algorithmica - AoS and SoA) - AoS and SoA: Experiment. Depth: Read the Experiment section only; the associativity and huge-page effects after it are beyond this unit. Its pointer chase reads every field of a randomly chosen record, the opposite of the Reproduce's single-field scan.
@@ -2359,7 +2350,7 @@ A dtype or stride mismatch changes which bytes native code reads. The same layou
 - AoS groups fields of one record; SoA groups one field across records. Field-wise scans and whole-record access can favor different layouts.
 - Keep allocation, initialization and layout conversion outside a kernel-only timing. Preserve results so the compiler cannot discard the work, and do not infer cache misses from wall time alone.
 
-**Reproduce:** On Linux x86-64 with g++ 15.2, `-std=c++20 -O0`, define `struct Row { char tag; std::int32_t count; char flag; };` print `offsetof` for all fields, `sizeof` and `alignof`. The observed values are offsets 0, 4, 8, size 12 and alignment 4. Thus `rows[2].flag` is at byte offset 2 * 12 + 8 = 32 from a three-element array's base. These are observations for that toolchain, not universal layout constants. Then compare summing `x` in `vector<Point>` where `Point` has `uint64_t` `x`,`y`,`z` against a separate `vector<uint64_t>` `x`: initialize both with `x[i] = i % 100`, use 1,048,576 records, g++ 15.2 `-std=c++20 -O2`, one warmup and seven timed scans per layout in alternating order, and consume each checksum. On the 12th Gen Intel Core i9-12900K, record all timings and their medians, with `sizeof(Point)` and allocated bytes. Python is not involved. Both checksums must be 51,903,600; no speed ranking is promised.
+**Reproduce:** On Linux x86-64 with g++ 15.2, `-std=c++20 -O0`, define `struct Row { char tag; std::int32_t count; char flag; };` print `offsetof` for all fields, `sizeof` and `alignof`. The observed values are offsets 0, 4, 8, size 12 and alignment 4. Thus `rows[2].flag` is at byte offset 2 * 12 + 8 = 32 from a three-element array's base. These are observations for that toolchain, not universal layout constants. Then compare summing `x` in `vector<Point>` where `Point` has `uint64_t` `x`,`y`,`z` against a separate `vector<uint64_t>` `x`: initialize both with `x[i] = i % 100`, use 1,048,576 records, g++ 15.2 `-std=c++20 -O2`, one warmup and seven timed scans per layout in alternating order, and consume each checksum. On your machine, record all timings and their medians with the CPU model, `sizeof(Point)` and allocated bytes. Python is not involved. Both checksums must be 51,903,600; no speed ranking is promised.
 
 **Traps**
 
@@ -2464,8 +2455,8 @@ Native APIs commonly expose templates and STL types. Reading their contracts is 
 2. [Class Templates](https://algomaster.io/learn/cpp/class-templates) (AlgoMaster C++) - Declaring a Class Template; Multiple Type Parameters; Member Functions: In-Class vs Out-of-Class; Member Type Aliases; Nested Types and the typename Keyword. Depth: Skip member templates, friend templates and metaprogramming.
 3. [`std::vector`](https://algomaster.io/learn/cpp/vector) (AlgoMaster C++) - Memory Layout: Contiguous Storage; Size vs Capacity; Removing Elements; Accessing Elements; `reserve`, `shrink_to_fit`, `resize`; Iterator Invalidation; Complexity Summary.
 4. [Iterators](https://algomaster.io/learn/cpp/iterators-basics) (AlgoMaster C++) - The Generalised Pointer through `const_iterator` and Read-Only Access; Iterator Invalidation. Depth: Skip reverse, insert and stream adapters for this pass.
-5. [Container contracts](https://en.cppreference.com/w/cpp/container.html#Iterator_invalidation) (cppreference) - Sequence containers; Associative containers; Unordered associative containers; Iterator invalidation table.
-6. [Vector invalidation](https://en.cppreference.com/w/cpp/container/vector.html#Iterator_invalidation) (cppreference) - Iterator invalidation table, particularly `reserve`, `push_back`, `insert` and `erase`.
+5. [Container contracts](https://en.cppreference.com/cpp/container#Iterator_invalidation) (cppreference) - Sequence containers; Associative containers; Unordered associative containers; Iterator invalidation table.
+6. [Vector invalidation](https://en.cppreference.com/cpp/container/vector#Iterator_invalidation) (cppreference) - Iterator invalidation table, particularly `reserve`, `push_back`, `insert` and `erase`.
 
 **Focus**
 
@@ -2519,7 +2510,7 @@ Undefined behavior has no promised result, including a crash. Tool evidence help
 
 **Study**
 
-1. [Undefined behavior](https://en.cppreference.com/w/cpp/language/ub.html) (cppreference) - Explanation; UB and optimization: Signed overflow, Access out of bounds and Uninitialized scalar. Depth: Use the C++20 rules. Do not mistake displayed assembly for guaranteed behavior; the C++26 erroneous-behavior distinction is outside this unit.
+1. [Undefined behavior](https://en.cppreference.com/cpp/language/ub) (cppreference) - Explanation; UB and optimization: Signed overflow, Access out of bounds and Uninitialized scalar. Depth: Use the C++20 rules. Do not mistake displayed assembly for guaranteed behavior; the C++26 erroneous-behavior distinction is outside this unit.
 2. [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html#usage) (Clang AddressSanitizer and UndefinedBehaviorSanitizer) - Introduction; Usage and `example_UseAfterFree.cc`; Symbolizing the Reports; Additional Checks: Stack Use After Return and Memory leak detection; Limitations.
 3. [UndefinedBehaviorSanitizer](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#usage) (Clang AddressSanitizer and UndefinedBehaviorSanitizer) - Introduction; Usage; Available checks, including `signed-integer-overflow` and the `undefined` group; Stack traces and report symbolization. Depth: Skip runtime suppression, minimal runtime and newer overflow-behavior attributes.
 4. [Debugger backtraces](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Backtrace.html) (GDB manual: Backtraces) - 8.2 Backtraces: `bt`, `-full`, frame numbering and optimized-out arguments. Depth: Skip frame filters and backtrace formatting options.
@@ -2577,7 +2568,7 @@ Native threads can access the same storage without Python's protections. Atomici
 
 1. [Threads Basics](https://algomaster.io/learn/cpp/threads) (AlgoMaster C++) - What `std::thread` Actually Is; Four Ways to Construct a Thread; Passing Arguments: By Value, By Reference, By Move; A Word on Destroying a Live Thread. Depth: Skip overhead estimates and timed-task examples. Correct the lesson's shorthand: a completed but unjoined `std::thread` is still joinable, and its destructor still terminates the process.
 2. [Atomic Operations](https://algomaster.io/learn/cpp/atomic-operations) (AlgoMaster C++) - Why a Plain `int` Isn't Safe; Enter `std::atomic<T>`; Core Operations; Atomic vs Mutex: When to Use Which. Depth: Use the race example only to identify undefined behavior, not to predict lost updates or instruction counts. Skip CAS algorithms, lock-free reclamation, timing estimates and assembly claims. Atomics can use internal locks; an uncontended mutex need not make a system call.
-3. [Memory ordering](https://en.cppreference.com/w/cpp/atomic/memory_order.html#Explanation) (cppreference) - Constants; Explanation: Relaxed ordering, Release-Acquire ordering, Sequentially-consistent ordering and Relationship with volatile. Depth: Read the C++20 rules and the publication example. Skip consume ordering and the full formal model.
+3. [Memory ordering](https://en.cppreference.com/cpp/atomic/memory_order#Explanation) (cppreference) - Constants; Explanation: Relaxed ordering, Release-Acquire ordering, Sequentially-consistent ordering and Relationship with volatile. Depth: Read the C++20 rules and the publication example. Skip consume ordering and the full formal model.
 4. [Avoid data races](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#rconc-races) (C++ Core Guidelines) - CP.2: Avoid data races, including concurrent mutation of the same buffer.
 
 **Focus**
@@ -2734,23 +2725,20 @@ A safe native change must survive a clean build, not just a working terminal ses
 
 ### Mini-project: Native run-duration histogram with a strict pybind11 binding and a sanitizer-backed repair
 
-**About 12 to 16 hours.** Move one piece of taskrunner's reporting, the run-duration histogram, into C++ behind a strict Python boundary. Build it with CMake in debug, release and sanitizer trees, test it against NumPy as an oracle, document its layout and ABI, and follow a seeded memory error from the sanitizer report to a regression test.
+**About 12 to 16 hours.** Move the run-duration histogram into C++ behind a strict Python boundary. Build it with CMake in debug, release and sanitizer trees, test it against NumPy, and follow one sanitizer report from evidence to regression test.
 
-1. Write the core as a library function `histogram(std::span<const double> x, double lo, double hi, std::span<std::int64_t> bins)` that rejects `lo >= hi` or zero bins with `std::invalid_argument`, skips `NaN` and out-of-range values, and puts a value equal to `hi` in the last bin. Add an owning `Histogram` class with a deep copy, a move that leaves the source empty and bin access that throws `std::out_of_range`, and test copy independence, both moves and self-assignment in a native test executable.
-2. Seed the defect: drop the clamp so a value equal to `hi` computes index $`n`$. In a clang++ 21.1 tree built with `-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer`, the input `{0.0, 0.5, 1.0}` over `[0, 1]` with four bins reports `heap-buffer-overflow`, `READ of size 8`, 0 bytes after the 32-byte bins region, with the source line of the increment. Keep that input as a regression test expecting `{1, 0, 1, 1}`, restore the clamp, and on a repaired `-O0 -g` build use `gdb` (`break histogram`, `run`, `bt`, `step` to the index and `print` it) to connect the report to the frame.
-3. Use `numpy.histogram` as the oracle. The plain index $`(v - \text{lo})/(\text{hi} - \text{lo}) \times n`$ agrees with it on random values, but values on or next to a bin edge expose a difference: with values at each `np.linspace` edge and its two neighbors over 20,000 random non-dyadic ranges, it disagreed with NumPy 2.5.4 in 18,420. NumPy re-checks each index against its computed edges, $`k \times ((\text{hi} - \text{lo})/n) + \text{lo}`$ with the last edge exactly `hi`. Port that check (step down when $`v`$ is below the lower edge, up when it reaches the next edge and is not in the last bin) for 0 disagreements, or document and test your own edge rule.
-4. Bind it with pybind11 3.1: take `py::array_t<double, py::array::c_style>` with `.noconvert()`, reject `ndim != 1` and a data pointer not aligned to `alignof(double)` with `ValueError`, let pybind11 turn `std::invalid_argument` into `ValueError`, release the GIL only around the core call, and return a new `int64` array owned by Python. Test that `float32` input, a list, `a[::2]` and `a[::-1]` raise `TypeError`, that a 2-D array and an unaligned `float64` view over a byte buffer at offset 1 raise `ValueError`, and that the result survives deletion of the input.
-5. Build with CMake 4.2: the core library, the native tests registered with `add_test`, and the extension through `pybind11_add_module`, in `build-debug`, `build-release` and a clang++ `build-asan` tree that adds the sanitizer flags to compiling and linking. Run the sanitizer tree on the native tests, not on the extension inside an unsanitized Python. A deliberately false check must fail CTest in `Debug` and `Release`, and `cmake --install` must not install the tests.
-6. Document the boundary: `nm` output for the core object and the extension (the exported `PyInit_` symbol beside mangled C++ symbols), the extension suffix and the libraries `ldd` lists for it. Diagnose one failure from its message: an undefined reference when the tests link without the core library, or a core built as a shared library and run without it on the loader path, which exits 127 with error while loading shared libraries: ... cannot open shared object file while `ldd` shows not found.
-7. Document layout and locality. For `struct RunRecord { std::uint8_t status; std::uint64_t duration_us; std::uint32_t worker; }`, g++ 15.2 on Linux x86-64 gives offsets 0, 8 and 16, size 24 and alignment 8; ordering the fields largest first gives offsets 0, 8 and 12 and size 16. Sum `duration_us` over a `vector<RunRecord>` and over a separate `vector<std::uint64_t>`, 1,048,576 records of `i % 100` with both checksums 51,903,600, at `-O2` with one warm-up and seven alternating timed scans per layout. Report raw times and medians, and keep cache explanations as hypotheses.
-8. Split one `histogram` call across two `std::thread` workers that fill private `bins` and merge after `join`, and check the total equals the in-range count. Compare it with shared `std::atomic<std::int64_t>` `bins` incremented with relaxed `fetch_add`, and state why `join` makes the final read safe in both.
+1. Write the histogram core over spans with an owning `Histogram` class, and test copy independence, moves and bounds errors in a native test executable, using the AlgoMaster RAII and Copy-and-Swap Idiom exercises as reference.
+2. Seed an off-by-one that overflows the bins, capture the sanitizer report in a sanitizer build tree, repair it, connect the report to the frame with `gdb`, and keep the input as a regression test.
+3. Test the histogram against `numpy.histogram` on random values and on values at and beside every edge, then adopt NumPy's edge rule or document and test your own.
+4. Bind the core with pybind11 under dtype, shape, stride, alignment, ownership, exception and GIL contracts, and test every accepted and rejected input plus output lifetime.
+5. Build debug, release and sanitizer trees with CMake following the CMake Tutorial building and testing steps and register the native tests with CTest, then document the exported symbols and linked libraries and diagnose one link or loader failure from its message.
+6. Document the record layout from measured offsets, compare array-of-struct and struct-of-array scans with equal checksums, and split one call across threads with private bins merged after `join`, alongside a shared atomic-bin variant.
 
 **Deliverables**
 
-- The native component: core library, owning `Histogram`, native tests, the extension module and the CMake project with debug, release and sanitizer trees.
-- The sanitizer write-up: the seeded defect, the preserved ASan report, the `gdb` session and the regression that fails on the seeded code.
-- Binding tests for every accepted and rejected input and for output lifetime, and the NumPy oracle test with edge values.
-- A boundary note: symbols, extension suffix and linked libraries, the diagnosed link or loader failure, the `RunRecord` layout and the two-layout timing table.
+- The native component: core library, owning `Histogram`, native tests, extension module and CMake trees.
+- The sanitizer write-up with the preserved report, the `gdb` session and the regression test.
+- Binding and oracle tests plus a boundary note with symbols, libraries, the diagnosed failure and the layout comparison.
 
 **Checks**
 
@@ -2758,13 +2746,13 @@ A safe native change must survive a clean build, not just a working terminal ses
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Oracle agreement | The binding agrees with `numpy.histogram` on random data and on values at and beside every edge, or a documented edge rule is tested instead. | Edge cases come from a generator (Hypothesis or a seeded one), and the plain-index version is kept as a comparison that fails. |
-| Strict boundary | Wrong dtype, a list, strided, reversed, 2-D and unaligned inputs are rejected with the stated exception types, and the result outlives the input. | The binding names the owner of every buffer and the GIL state at each point, and says what would break if the GIL were released before the views were taken. |
-| Sanitizer repair | The ASan report is preserved and explained line by line, and the regression fails on the seeded code in the sanitizer tree and passes after the repair. | The write-up names what ASan and UBSan cannot prove here, such as a wrong but in-bounds bin. |
-| Build and ABI | `Debug`, release and sanitizer trees build from scratch, CTest catches the false check in `Debug` and `Release`, and one link or loader failure is diagnosed from its message. | The note says which upgrades (Python, compiler, NumPy) force a rebuild of the extension and why. |
-| Layout evidence | Predicted offsets match the printed ones, both checksums are 51,903,600, and raw times are kept. | The report separates the measured difference from cache explanations it did not test. |
+| Oracle agreement | The binding agrees with `numpy.histogram` on random data and at every edge, or a documented edge rule is tested instead. | Edge cases come from a generator, and a naive index version is kept as a comparison that fails. |
+| Strict boundary | Wrong dtype, lists, strided, reversed and multi-dimensional inputs are rejected with the stated exception types, and the result outlives the input. | The binding names the owner of every buffer and the GIL state at each point. |
+| Sanitizer repair | The report is preserved and explained, and the regression fails on the seeded code and passes after the repair. | The write-up names what the sanitizers cannot prove here, such as a wrong but in-bounds bin. |
+| Build and ABI | Debug, release and sanitizer trees build from scratch, CTest catches a false check, and one failure is diagnosed from its message. | The note says which upgrades force a rebuild of the extension and why. |
+| Layout evidence | Predicted offsets match the measured ones, both layouts agree, and raw timings are kept. | The report separates the measured difference from cache explanations it did not test. |
 
-Feeds into: Capstone native and diagnosis: the Python-native histogram, its sanitizer-backed repair and the gdb-backed write-up that becomes the evidence-first debugging report.
+Feeds into: The Python-native histogram, its sanitizer-backed repair and the evidence-first debugging report for the capstone.
 
 ### Resource route
 
@@ -2806,9 +2794,9 @@ Review the stage through three artifacts of the taskrunner built in the section 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Package and interface | From a clean clone, uv sync --locked and one command build the wheel and run the CLI and the HTTP service over one service layer, with the schema, migration, transaction and idempotency tests passing against postgres:18. | The same service suite runs against the fake and the PostgreSQL store, and the README states every tool and service version the evidence came from. |
-| Failure and operations | The bounded pipeline rejects excess work, cancels and drains cleanly, and an injected PostgreSQL outage is diagnosed from logs, metrics and traces and recovered by following the runbook from a clean checkout. | Someone other than the author recovered from the outage with only the runbook, and the gaps they found were fixed. |
-| Native and diagnosis | The pipeline's duration report calls the native histogram through the strict binding, its sanitizer-backed repair has a regression test, and one debugging report records hypotheses, evidence and the fix. | The debugging report covers a defect the author did not plant, with quoted tool output for each rejected hypothesis. |
-| Reproducibility | Every run writes a manifest, and the gate passes from a clean checkout in one command. | Two runs from different commits are explained field by field from their manifests, and the gate also passes on a second machine. |
-| Evidence | Every performance or behavior claim in the README has raw data with the Python build, compiler and CPU. | Each claim states the workload or input region it covers and what was not tested. |
+| Package and interface | From a clean checkout, one command builds the wheel and runs the CLI and HTTP service over one service layer, with schema, migration, transaction and idempotency tests green. | The same service suite runs against the fake and the PostgreSQL store, and the `README` states every tool and service version behind the evidence. |
+| Failure and operations | The pipeline rejects excess work, cancels and drains cleanly, and the injected outage is diagnosed from signals and recovered through the runbook. | Someone other than the author recovered using only the runbook, and the gaps they found were fixed. |
+| Native and diagnosis | The duration report calls the native histogram through the strict binding, its repair has a regression test, and one debugging report records hypotheses, evidence and the fix. | The debugging report covers a defect the author did not plant, with quoted tool output for each rejected hypothesis. |
+| Reproducibility | Every run writes a manifest, and the gate passes from a clean checkout in one command. | Two runs from different commits are explained field by field from their manifests, and the gate also passes on a second host. |
+| Evidence | Every performance or behavior claim in the `README` has raw data with the Python build, compiler and CPU. | Each claim states the workload or input region it covers and what was not tested. |
 

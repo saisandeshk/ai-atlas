@@ -493,10 +493,10 @@ Reproducibility is what makes every earlier claim checkable. Without snapshots a
 
 **About 10 to 14 hours.** Rebuild the hourly UCI Bike Sharing demand problem in your own repository as a contract-first investigation: a one-page prediction contract, an immutable snapshot with a chronological split, an audit suite, a baseline ladder under one harness, and three seeded leakage defects that failing tests must catch. No model tuning happens until the contract and ladder are frozen.
 
-1. Write the contract for next-hour `cnt`: unit, prediction time, cutoff, horizon, the action it serves, the cost of over- and under-prediction, and an availability table that marks every `hour.csv` column available, forecast-only or prohibited. Declare same-hour weather as an oracle-forecast assumption, and prohibit `casual` and `registered`, which sum to `cnt`. If the action changes later demand (rebalancing moves bikes to where riders find them), record the feedback loop as a monitoring exclusion: log exposure and keep an unaffected holdout slice.
-2. Store `hour.csv` with its hash, row count (17379) and download date. Build the chronological split, 2011 to train and 2012 to test (8645 and 8734 rows), with assertions that no test timestamp precedes the last train timestamp and that no prohibited column reaches the feature list.
-3. Write the audit suite: schema and `dtypes` (`dteday` loads as a `string`), missingness, keys and duplicates, time continuity (75 rows do not follow the previous clock hour), ranges and normalizations, rare categories (`weathersit` 4 on 3 rows) and availability. Seed one defect per audit in a copy and show each test fails.
-4. Build the baseline ladder in one harness, scored by RMSE on the 2012 rows: train mean, train median, train-last constant, previous row and a label-free linear model on the 12 calendar and same-hour weather fields. Reference values with scikit-learn 1.9.1: 227.8, 243.8, 291.8, 121.6 and 192.3. State the rung a new model must beat and why.
+1. Write the contract for next-hour `cnt`: unit, prediction time, cutoff, horizon, served action, misprediction costs, and an availability table for `hour.csv` marking same-hour weather as oracle-forecast and `casual` and `registered` prohibited for the leak you name, with the feedback loop kept as a monitored exclusion.
+2. Store `hour.csv` with its hash and download date. Build the chronological split, the first year to train and the second to test, asserting no test timestamp precedes train and no prohibited column reaches features.
+3. Write the audit suite covering schema and `dtypes`, missingness, keys and duplicates, time continuity, ranges and normalizations, rare categories and availability. Seed one defect per audit in a copy and show each test fails.
+4. Build the baseline ladder in one harness scored by RMSE: train mean, train median, train-last constant, previous row and a label-free linear model, checked against scikit-learn, stating which rung a new model must beat and why.
 5. Seed three leakage defects: global scaling before the split, the target-derived `casual` and `registered` features, and cross-partition duplicates (copy 500 test rows into train). Catch each with a failing test, report the score before and after repair, and score the contaminated rows separately.
 6. Wrap preprocessing in a `ColumnTransformer` pipeline fitted on train only, write the lineage record (source URL, hash, split rule, seeds, library versions), and run a joblib round trip that asserts identical predictions on five probe rows.
 
@@ -514,8 +514,8 @@ Reproducibility is what makes every earlier claim checkable. Without snapshots a
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Contract | Every column is classified with a reason, and prediction time, cutoff and horizon are stated. | The oracle-forecast assumption is priced: the linear rung is rerun without same-hour weather and the change is reported. |
-| Split and audits | The split reproduces 8645 and 8734 rows, and every audit fails on its seeded defect. | One command runs all audits, and a property test shows the split builder never places a test row before a train row. |
-| Baseline ladder | All five rungs land within a few RMSE points of the reference under one harness. | The report explains why the previous row wins, and why the median loses to the mean (the 2012 test mean is 234.7 against 143.8 in 2011). |
+| Split and audits | The split is chronological with no prohibited column, and every audit fails on its seeded defect. | One command runs all audits, and a property test shows the split builder never places a test row before a train row. |
+| Baseline ladder | All five rungs land within a few RMSE points of the reference under one harness. | The report explains why the previous row wins, and why the median loses to the mean on the later test period. |
 | Leakage | Three defects are each caught by a failing test, with scores before and after repair. | The casebook shows a defect the score cannot reveal (scaler leakage leaves a least-squares RMSE unchanged) and one that only the separately scored rows expose. |
 | Lineage | The lineage record is complete and the joblib round trip passes. | A fresh clone rebuilds every reported number with one command. |
 
@@ -1035,7 +1035,7 @@ A probability is not a decision. The same fitted scores need different threshold
 2. Add ridge with the centered closed form and a penalty path. Match `Ridge` to 1e-12 and report validation error across $`\alpha`$ on a fixed split.
 3. Implement logistic regression on logits with the stable loss $`\max(z,0) - zy + \operatorname{log1p}(\exp(-|z|))`$ and an $`L_2`$ penalty. Pass a gradient check, then match `LogisticRegression` on its own objective ($`C`$ times the summed loss plus half the squared norm) with `tol` tightened.
 4. Implement Bernoulli or multinomial naive Bayes with Laplace smoothing in log space. Match scikit-learn's `feature_log_prob_` to 1e-8 and handle unseen values and single-class training data.
-5. Numerical failure: build a changed dataset that breaks one naive path, such as a near-collinear design for the normal equations, logits past 37 for a naive $`y = 0`$ loss, or a separable set under a relaxed $`C`$. Show the failure, the measurement that discriminates its cause, the repair and a regression test.
+5. Numerical failure: build a changed dataset that breaks one naive path, such as a near-collinear design, extreme logits for a naive loss, or a separable set. Show the failure, the measurement that discriminates its cause, the repair and a regression test.
 6. Assumption failure: build a dataset that violates one model assumption, such as XOR-labeled binary features for naive Bayes, heteroscedastic noise for least squares, or non-Gaussian classes for LDA. Show the diagnostic that reveals it and the response, validated on held-out data.
 7. Turn one fitted logistic model into a decision: derive the cost-optimal threshold for stated costs, apply it on validation, and move it for a stated prevalence change without refitting.
 
@@ -1048,13 +1048,13 @@ A probability is not a decision. The same fitted scores need different threshold
 
 **Checks**
 
-- external-tests: [Deep-ML 15, 106 and 140](https://www.deep-ml.com/problems). Public tests. Pass them after your local tests do; each card states what the tests pin, such as the 1000-step iterate in 15 and the summed loss in 106.
+- external-tests: [Deep-ML 15, 106 and 140](https://www.deep-ml.com/problems). Public tests. Pass them after your local tests do; each card states what the tests pin.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Correctness against oracles | Each implementation matches its scikit-learn counterpart within a stated tolerance. | Property tests vary seeds, shapes and penalties, and every analytic gradient matches central differences in `float64`. |
-| Numerical stability | The logit loss stays finite on the `(-800, 1)`, `(40, 0)` and `(800, 0)` probes, and ill-conditioned designs use an SVD-based solve. | The notes show where each naive form breaks, such as the `sigmoid` rounding to 1.0 near $`z = 36.7`$, and why the stable form is exact. |
+| Numerical stability | The logit loss stays finite on extreme logit probes, and ill-conditioned designs use an SVD-based solve. | The notes show where each naive form breaks and why the stable form stays exact. |
 | Numerical failure diagnosis | One failure is reproduced, explained, repaired and guarded by a test. | The discriminating measurement rules out a rival cause, for example a tighter `tol` showing that `lbfgs` stopped early rather than converged. |
 | Assumption failure | One violated assumption is shown with a diagnostic and a response. | The response is validated on held-out data and the report states what it still cannot fix. |
 | Decision | The threshold follows from stated costs and is chosen on validation data. | The prevalence adjustment is derived from prior odds and checked against a refit on resampled data. |
@@ -2722,11 +2722,10 @@ A higher score is not evidence until cheaper explanations are ruled out. Ablatio
 1. Freeze the protocol before any fitting: snapshot, a group- or time-aware split, nested or clean selection, one search budget per family, and a sealed test split.
 2. Store per-row predictions for every candidate, and hand-check the central metrics on small cases before trusting library calls.
 3. Compare candidates with a paired bootstrap interval and a paired permutation test on the same rows. Report the effect size, the comparison count and a Holm or Benjamini-Hochberg adjustment.
-4. Calibrate on data the model did not train on: a reliability table, ECE and a Platt or isotonic map fitted on a disjoint split. If calibration does not matter for the decision, say why.
-5. Set the threshold policy on validation: the cost-derived threshold beside `TunedThresholdClassifierCV`, plus a reject option reported as risk at coverage.
-6. Slice errors along deployment axes with support counts and intervals, and read a learning curve to decide whether more data would help.
-7. Run one controlled shift: move one variable or the class prior yourself, detect it with a domain classifier or prior re-estimation, and test the response against the ground truth you set.
-8. Write the decision memo, then perturb it: replace the best score with the lower end of its paired interval or rerun with another seed, and state whether the decision holds and which tripwire would reverse it. Report the test-set numbers once.
+4. Calibrate on held-out data with a reliability table, ECE checked against Deep-ML 260, and a Platt or isotonic map from a disjoint split. Set the cost-derived threshold beside `TunedThresholdClassifierCV` on validation, with a reject option reported as risk at coverage.
+5. Slice errors along deployment axes with support counts and intervals, and read a learning curve to decide whether more data would help.
+6. Run one controlled shift: move one variable or the class prior yourself, detect it with a domain classifier or prior re-estimation, and test the response against the ground truth you set.
+7. Write the decision memo, then perturb it: replace the best score with the lower end of its paired interval or rerun with another seed, and state whether the decision holds and which tripwire would reverse it. Report the test-set numbers once.
 
 **Deliverables**
 

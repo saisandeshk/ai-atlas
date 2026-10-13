@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "One run service behind a CLI and an HTTP API, on PostgreSQL",
     "hours": "12 to 16",
-    "brief": "Turn `taskrunner` into a service: one service layer validates run submissions, debits a project's credit budget and records runs in PostgreSQL, and both an `argparse` CLI and a FastAPI app drive it. Version the payload, migrate the schema both ways, prove the transaction and isolation behavior, and make submission idempotent.",
+    "brief": "Turn `taskrunner` into a service with one service layer behind a CLI and an HTTP API on PostgreSQL. Version the payload, migrate the schema both ways, and prove transaction, isolation and idempotency behavior with tests.",
     "units": [
       "typed-boundaries-config",
       "data-formats-ingestion",
@@ -14,20 +14,18 @@
       "http-apis-idempotency"
     ],
     "steps": [
-      "Write `RunService` against a `RunStore` `Protocol`, with no CLI, HTTP or database imports in the service module, plus an in-memory fake store for unit tests. The boundary model `RunRequestV1` (`project`, `task`, `params`) sets `extra='forbid'`, and a pydantic-settings `Settings` class with a `TASKRUNNER_` prefix holds the database `DSN`; test that an init argument beats the environment, which beats the default.",
-      "Add `taskrunner import FILE` for batch submissions in JSON Lines or CSV. Stream the file, send malformed rows (a truncated JSON line, a wrong type) to a quarantine file with their line numbers, accept a quoted CSV field that holds a comma and a newline, and write accepted rows to Parquet with pyarrow `Table.from_pylist`. Assert the schema types and that a missing value reads back as `null`, not `NaN`.",
-      "Create the schema with Alembic: revision 1 adds `projects` (`credits` integer with `CHECK (credits >= 0)`) and `runs` (`project` foreign key, `task`, `params` `jsonb`, `status`); revision 2 adds a nullable `priority` column. Run `upgrade head`, `downgrade base` and `upgrade head` on a scratch database in the `postgres:18` container. Evolve `RunRequestV1` to `RunRequestV2` with an optional `priority` and test both directions: a v1 payload validates as v2 with `priority` `None`, and a v2 payload sent to v1 fails on the `extra` field.",
-      "Make `submit()` debit the project's credits and insert the run in one transaction. Test that a debit below zero raises `CheckViolation` (`SQLSTATE 23514`) and leaves both the credits and the run count unchanged. Then interleave two sessions under `REPEATABLE READ`: session A reads 10 credits, session B debits 3 and commits, and A's debit of 2 raises `SerializationFailure` (`40001`). Retry the whole transaction with a bounded attempt count and assert the final balance is 5, each debit applied once.",
-      "Write the read side in SQL and predict each row count first: runs per project including projects with none (`LEFT JOIN` and `COUNT`), projects with failed runs filtered by `HAVING`, and the latest run per task with `ROW_NUMBER`. Load 5,000 runs, `ANALYZE`, compare `EXPLAIN (ANALYZE, BUFFERS)` for the list filter before and after adding the index it needs, and name one query on the same table the index does not help.",
-      "Add an `argparse` CLI, `taskrunner submit` and `taskrunner show`, over the same `RunService`: the run as JSON on `stdout` with exit `0`; validation errors, unknown runs and database errors on `stderr` with distinct nonzero exit codes. Swap the fake and the PostgreSQL store without editing the service.",
-      "Expose the same service through FastAPI: `POST /v1/runs` returns `201` with an output model that omits internal fields, a bad body returns `422`, an unknown id returns `404` with the `detail` envelope, and `GET /v1/runs` caps its page with `Query(le=100)`, so `limit=101` returns `422`. Add `POST /v2/runs` for the v2 payload.",
-      "Make `POST` idempotent with an `Idempotency-Key` header and a ledger table keyed by it. Claim the key with `INSERT ... ON CONFLICT (key) DO NOTHING RETURNING` in the same transaction as the debit, and store a hash of the request body: a replay with the same body returns the stored response, and a different body under the same key returns `409`. Assert that a double `POST` debits once and stores one run."
+      "Write `RunService` against a `RunStore` protocol with an in-memory fake for unit tests, validate the boundary model strictly, and test configuration precedence with the AlgoMaster Interfaces and Protocols exercise as reference.",
+      "Add a batch import that streams JSON Lines or CSV, quarantines malformed rows with line numbers, and writes accepted rows to Parquet with round-trip type and null checks.",
+      "Migrate the schema with Alembic through an upgrade, downgrade and re-upgrade round trip on a scratch database, and test the versioned payload in both directions following the Alembic tutorial downgrade round trip.",
+      "Debit credits and insert the run in one transaction with a rollback test, then reproduce a serialization anomaly under `REPEATABLE READ` with a bounded retry, following the PostgreSQL transactions tutorial.",
+      "Predict each read query's row count before running it, then compare the listed filter's plan before and after adding its index and name one query the index does not help, using the AlgoMaster `LEFT JOIN` and `GROUP BY` exercises as reference.",
+      "Serve the same service through a CLI and a FastAPI app over the untouched service layer, testing the status-code contract, the capped page and store swapping with the FastAPI tutorial Testing extended example.",
+      "Make submission idempotent with an `Idempotency-Key` ledger claimed in the same transaction as the debit, and prove a replay stores one run while a mismatched body is rejected."
     ],
     "deliverables": [
-      "The service package: `RunService`, the fake and PostgreSQL stores, the CLI and the FastAPI app over one service layer.",
-      "The Alembic revisions with the `head`, `base`, `head` transcript, and the v1 and v2 payload tests in both directions.",
-      "Transaction tests against the `postgres:18` container: the rollback, the `REPEATABLE READ` interleaving with its `40001` retry and the idempotent double `POST`.",
-      "The import transcript with its quarantine file and Parquet checks, plus the query predictions and the before and after plans."
+      "The service package: `RunService`, the fake and PostgreSQL stores, the CLI and the FastAPI app.",
+      "Alembic revisions with the round-trip transcript and both-directions payload tests.",
+      "Transaction, isolation, idempotency and import tests with quarantine file, plans and predictions."
     ],
     "checks": [
       {
@@ -38,30 +36,30 @@
     "rubric": [
       {
         "criterion": "One service layer",
-        "pass": "The CLI and HTTP paths call the same `RunService`, the service module imports no transport or database code, and both stores pass the service tests.",
+        "pass": "The CLI and HTTP paths call the same service, the service module stays transport-free, and both stores pass the suite.",
         "strong": "One parametrized suite runs every service test against the fake and the PostgreSQL store."
       },
       {
         "criterion": "Boundaries and evolution",
-        "pass": "Malformed, extra-field and v2-on-v1 payloads are rejected with field-level errors, and `head`, `base`, `head` succeeds.",
-        "strong": "The write-up classifies each schema change as additive or breaking and says which old clients keep working."
+        "pass": "Malformed, extra-field and cross-version payloads are rejected with field-level errors, and the migration round trip succeeds.",
+        "strong": "The write-up classifies each schema change as additive or breaking and names which old clients keep working."
       },
       {
-        "criterion": "Transactions",
-        "pass": "The failed debit leaves credits and run count unchanged, and the interleaving reproduces `40001` with a bounded retry that ends at 5.",
-        "strong": "The retry loop is also tested with an injected `SerializationFailure` and stops with a clear error at its limit."
+        "criterion": "Transaction behavior",
+        "pass": "The failed debit leaves credits and run count unchanged, and the anomaly test retries to the correct balance.",
+        "strong": "The retry loop is also tested with an injected serialization failure and stops clearly at its limit."
       },
       {
         "criterion": "HTTP contract and idempotency",
-        "pass": "`201`, `422`, `404` and the capped page behave as specified, and a keyed double `POST` stores one run and debits once.",
-        "strong": "A same-key request with a different body returns `409`, and a replay returns the stored response unchanged."
+        "pass": "Created, validation-error, not-found and capped-page behavior hold, and a keyed double submission stores one run.",
+        "strong": "A same-key different-body request is rejected, and a replay returns the stored response unchanged."
       },
       {
         "criterion": "Data evidence",
-        "pass": "The import quarantines malformed rows with line numbers without loading the whole file, and each query matches its predicted row count.",
-        "strong": "The plan comparison states table size, `ANALYZE` state and buffers, and explains the query the index does not help."
+        "pass": "The import quarantines malformed rows with line numbers without loading the whole file, and each query matches its predicted count.",
+        "strong": "The plan comparison states table size and buffers, and explains the query the index does not help."
       }
     ],
-    "feedsInto": "Capstone package and interface: the typed installable service through CLI and HTTP with its schema, migration, transaction and idempotency tests. Its PostgreSQL dependency becomes the readiness check in the operations work."
+    "feedsInto": "The typed installable service through CLI and HTTP with schema, migration, transaction and idempotency tests; its database becomes the readiness check in operations."
   }
 }

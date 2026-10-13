@@ -485,22 +485,22 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 
 </details>
 
-### Mini-project: Least squares and PCA from a blank file, with rank and conditioning failures
+### Mini-project: Least squares and PCA with rank and conditioning failures
 
-**About 10 to 14 hours.** Start the one repository the whole stage builds on, `numlab/`, with its linear-algebra package: a QR least-squares solver, power iteration, a cutoff-aware pseudoinverse and PCA, each checked against an independent NumPy oracle and each shown failing on a case you construct. The solver and the conditioning table carry into the capstone.
+**About 10 to 14 hours.** Start the shared `numlab/` repository with a linear-algebra package: a QR least-squares solver, power iteration, a cutoff-aware pseudoinverse and PCA. Each routine is checked against an independent NumPy oracle and shown failing on a case you construct, and the solver with its conditioning evidence carries into the capstone.
 
-1. Create `numlab/` with `linalg/`, `autodiff/`, `prob/`, `stats/`, `optim/` and `notes/` directories and one pytest suite. Every test fixes its `dtype` (`float64` unless it says otherwise) and its seed, and states its tolerance and why. Before coding, write `notes/linalg.md`: the normal equations, why the least-squares projector is symmetric and idempotent, and PCA as both maximum variance and best rank-k approximation.
-2. Implement thin QR by modified Gram-Schmidt or Householder reflections and solve least squares by back substitution on $`Rx=Q^\top b`$. On a new full-rank tall matrix, match `numpy.linalg.lstsq` and check $`A^\top r=0`$, $`P^2=P`$ and $`P^\top=P`$ within stated tolerances. Then make one column a combination of the others: show the tiny diagonal entry of $`R`$ and the exploding solution, detect it with a relative threshold on $`|r_{jj}|`$ that you justify, and either raise an error that names the rank deficiency or fall back to the minimum-norm solution.
-3. Add power iteration for a symmetric matrix that reports the Rayleigh quotient and the eigen-residual $`\|Av-\rho v\|`$ at every step. On a matrix with a separated dominant eigenvalue, match `numpy.linalg.eigh`. Then run $`\operatorname{diag}(2,-2,1)`$ from $`(1,0.5,1)`$: the iterate alternates sign in its second entry, the Rayleigh quotient settles at 1.2, which is not an eigenvalue, and the residual stays at 1.6. Make the stopping rule use the residual, so this case is reported as a failure instead of a converged 1.2.
-4. Build a pseudoinverse from `numpy.linalg.svd` with a cutoff relative to the largest singular value, and test it on a new matrix with an exact zero singular value against `numpy.linalg.pinv` and the four Penrose conditions. Show what the version without a cutoff returns. Implement PCA on centered data: the explained variances, and a reconstruction error equal to the sum of the discarded squared singular values. Compare components through projectors or reconstructions, never raw vectors, so that a sign flip cannot fail a correct answer.
-5. Add shape assertions to every function, including a batched `(B, m, n)` @ `(B, n, k)` case, and count the flops of the normal equations against QR. Then write the conditioning table: for a family of matrices with growing condition number, such as Vandermonde matrices of rising degree, solve with a known $`x^*`$ and report $`\kappa`$, relative residual and relative error for QR and for the normal equations. Explain from the residual bound why the residual stays near roundoff while the error grows, and why the normal equations lose about twice as many digits.
-6. Write `notes/linalg-defense.md`: why QR rather than the normal equations, how you chose the rank and pseudoinverse cutoffs, and what each tolerance in the tests protects against.
+1. Before coding, write `notes/linalg.md`: derive the normal equations, show the least-squares projector is symmetric and idempotent, and present PCA as both maximum variance and best rank approximation.
+2. Implement thin QR by modified Gram-Schmidt or Householder reflections and solve least squares by back substitution on $`Rx=Q^\top b`$. Check a full-rank tall case against `numpy.linalg.lstsq` with projector identities, keeping the matrix and tolerances your choice.
+3. Make one column a combination of the others, show the small diagonal entry of `R` and the exploding solution, then detect it with a relative threshold on `R` entries that you justify, either raising an error or falling back to the minimum-norm solution.
+4. Add power iteration on a symmetric matrix reporting the Rayleigh quotient and the eigen-residual $`\|Av-\rho v\|`$ each step. Match `numpy.linalg.eigh` on a separated case, then construct a tied-magnitude case where the quotient settles at a non-eigenvalue and the residual rule reports failure.
+5. Build a pseudoinverse from `numpy.linalg.svd` with a cutoff relative to the largest singular value, checking it against `numpy.linalg.pinv` and the Penrose conditions, and show the no-cutoff behavior. Implement PCA on centered data and compare components through projectors or reconstructions so sign flips cannot fail.
+6. Assert shapes in every routine, including a batched case, and compare flop counts for the normal equations against QR. Then solve a rising-condition family from a known $`x^*`$, tabulating conditioning, residual and error per solver and explaining the digit loss from the residual bound.
 
 **Deliverables**
 
 - `numlab/linalg/`: QR least squares with rank detection, power iteration, the cutoff pseudoinverse and PCA.
-- The tests: NumPy oracles, projector and Penrose checks, the rank-deficient and tied-magnitude failures, the sign-invariant PCA comparison and the shape assertions.
-- `notes/linalg.md` with the derivations and `notes/linalg-defense.md` with the conditioning table and its raw output.
+- Tests against NumPy oracles covering projector and Penrose checks, both failure cases, sign-invariant comparison and shapes.
+- `notes/linalg.md` with the derivations and `notes/linalg-defense.md` with the conditioning table and solver choice.
 
 **Checks**
 
@@ -508,13 +508,13 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Derivations | The normal equations, projector properties and both PCA characterizations are derived in the notes without copying. | Each derivation names the assumption it uses, such as full column rank, at the step that needs it. |
-| Least squares | QR least squares matches `numpy.linalg.lstsq` on a full-rank matrix, and the rank-deficient case is detected rather than returned as a huge solution. | The rank threshold is justified from the scale of $`R`$ and machine epsilon, and the fallback returns the minimum-norm solution checked against the pseudoinverse. |
-| Spectral methods | Power iteration matches `eigh` on the separated case and reports failure on the tied-magnitude case. | The note explains the 1.2 Rayleigh quotient from the two tied components, and the stopping rule uses the eigen-residual. |
-| SVD and PCA | The pseudoinverse passes the Penrose conditions on the zero-singular-value matrix, and PCA reconstruction error equals the discarded squared singular values. | Every comparison is sign-invariant, and the no-cutoff failure is shown with its output. |
-| Conditioning evidence | The table reports $`\kappa`$, residual and error for both solvers on at least four matrices. | The observed digit loss is compared with the residual bound and with the squared condition number of the normal equations. |
+| Written derivations | The notes derive the normal equations, projector properties and both PCA views without copying. | Each derivation names the assumption it needs at the step that uses it. |
+| Least squares | QR matches `numpy.linalg.lstsq` on a full-rank case, and the rank-deficient case is detected, not returned. | The rank threshold is justified from the scale of `R` and rounding, with a minimum-norm fallback checked against the pseudoinverse. |
+| Spectral methods | Power iteration matches `numpy.linalg.eigh` on the separated case and reports failure on the tied case. | The note explains the settled quotient from the tied components, and the stopping rule uses the eigen-residual. |
+| SVD and PCA | The pseudoinverse passes the Penrose conditions, and PCA reconstruction error matches the discarded singular values. | Every comparison is sign-invariant, and the no-cutoff behavior is shown. |
+| Conditioning evidence | The table reports conditioning, residual and error for both solvers across the family. | The observed digit loss is compared with the residual bound and the squared conditioning of the normal equations. |
 
-Feeds into: Capstone component 1, least squares and PCA: the QR solver with its rank failure and the PCA with its sign-invariant check. The conditioning table opens the defense note.
+Feeds into: Capstone least squares and PCA: the QR solver with its rank failure, sign-invariant PCA checks and the conditioning table behind the solver choice.
 
 ### Resource route
 
@@ -805,7 +805,7 @@ One reverse pass costs about one forward pass while forward mode costs one pass 
 1. [Forward and reverse-mode automatic differentiation](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_lec08_pdf/) (MIT 18.S096 - Matrix Calculus for ML) - Lecture 5, Part 3 notes (course notes Chapter 8, Sections 8.1 and 8.4): forward mode via dual numbers with the Babylonian square-root example, the cost rule (forward scales with inputs, reverse with outputs) and forward-over-reverse Hessian-vector products (Section 8.4.1).
 2. [Dual numbers and both AD engines](https://github.com/ageron/handson-mlp/blob/main/Appendix_A_autodiff.ipynb) (Hands-On ML - Autodiff notebook) - Cells Forward mode autodiff using dual numbers (`DualNumber` class; seeding `x` gives 24.0 and seeding `y` gives 10.0 for `f` at (3, 4)), Reverse mode autodiff (toy engine with `backpropagate` on the same `f`), Reverse mode autodiff using PyTorch (`torch.autograd.grad` with `create_graph=True` for second order). Depth: Rebuild the dual-number and reverse engines independently in your own file; do not copy the notebook cells.
 3. [Backpropagation cost and graph equations](https://mml-book.github.io/book/mml-book.pdf) (Mathematics for Machine Learning - Ch. 5) - Section 5.6 (pp. 159-164): explicit gradient (5.109)-(5.110) motivating the cost worry, forward and backward graph computation with accumulation over parents (5.135)-(5.145), reverse mode cheaper when inputs outnumber labels.
-4. [Reverse-mode graph, accumulation and grad modes](https://docs.pytorch.org/docs/stable/notes/autograd) (PyTorch Autograd mechanics) - How autograd encodes the history (reverse-mode graph recording); accumulation into `.grad` and `torch.autograd.grad` as a vector-Jacobian product; Grad Modes with Default, No-grad and Inference behavior. Depth: Consult after your handwritten engine. Skip multithreading and in-place correctness checks.
+4. [Reverse-mode graph, accumulation and grad modes](https://docs.pytorch.org/docs/2.14/notes/autograd) (PyTorch Autograd mechanics) - How autograd encodes the history (reverse-mode graph recording); accumulation into `.grad` and `torch.autograd.grad` as a vector-Jacobian product; Grad Modes with Default, No-grad and Inference behavior. Depth: Consult after your handwritten engine. Skip multithreading and in-place correctness checks.
 
 **Focus**
 
@@ -900,20 +900,20 @@ Backprop hides a sign, transpose or accumulation bug in every new layer. A two-e
 
 ### Mini-project: A small reverse-mode engine and a matrix-calculus gradient-check harness
 
-**About 8 to 12 hours.** Add `autodiff/` to `numlab`: a scalar reverse-mode engine, forward-mode duals, and a harness that checks closed-form matrix gradients with seeded directional finite differences. Derive a branched matrix computation by hand, then plant a gradient bug and show the harness isolating it.
+**About 8 to 12 hours.** Build a scalar reverse-mode engine with forward-mode duals and a harness that checks closed-form matrix gradients by directional finite differences. Derive one branched computation by hand, plant a gradient bug, and show the harness isolating it.
 
-1. Write a scalar `Value` class with `+`, `-`, `*`, `/`, a constant power, `exp`, `log` and `tanh`, each with its local derivative, and a `backward()` that visits a topological order and adds into `.grad`. Test a graph in which one node reaches the output through three paths against a hand derivative and central differences.
-2. Add forward mode with dual numbers. For a function from $`\mathbb{R}^3 \to \mathbb{R}^2`$, check that your Jacobian-vector and vector-Jacobian products agree through $`u^\top(Jv) = (J^\top u)^\top v`$ for seeded random $`u`$ and $`v`$.
-3. Build the matrix harness: a function `check(f, grad, X, V, h)` that compares $`\langle \operatorname{grad}(X), V \rangle`$ with $`(f(X + hV) - f(X - hV))/(2h)`$. Derive and check $`\operatorname{tr}(AXB)`$, $`\log \det X`$ on a symmetric positive definite $`X`$, softmax cross-entropy and the $`\tanh`$ layer from the backprop unit, then the matrix differential $`d(X^{-1}) = -X^{-1} V X^{-1}`$ against centered differences of the inverse, each in `float64` with seeded directions.
-4. Sweep $`h`$ over powers of ten from 1e-1 to 1e-12 for two of these checks and keep the raw table. In `float64` the error falls as $`h^2`$ down to about $`h = 10^{-5}`$ and then rises again as cancellation takes over. Explain both arms of the curve and choose the $`h`$ and the tolerance your harness uses from it.
-5. Derive by hand the gradient of a branched matrix computation in which one matrix is used twice, for example $`L = 0.5\|\tanh(WX + b) - T\|_F^2 + \lambda \operatorname{tr}(W^\top W)`$, writing each local vector-Jacobian product and the accumulation. Implement it in NumPy and check it with the harness. Add a Hessian-vector product by centered differences of your analytic gradient and compare it with the exact Hessian of a quadratic.
-6. Plant one gradient bug: a missing transpose, an overwrite instead of an accumulation on the shared matrix, or a wrong sign in the `tanh` derivative. Show the directional check failing, then localize the bug by checking each local vector-Jacobian product on its own. Keep the planted bug as a test that must fail.
+1. Write a scalar `Value` class with arithmetic, powers, `exp`, `log` and `tanh`, each with its local derivative, and a `backward()` over topological order accumulating into `grad`. Test one graph where a node reaches the output through several paths against a hand derivative and central differences.
+2. Add forward mode with dual numbers. For one function from $`\mathbb{R}^3 \to \mathbb{R}^2`$, check Jacobian-vector against vector-Jacobian products through $`u^\top(Jv) = (J^\top u)^\top v`$ with directions of your choice.
+3. Build a `check(f, grad, X, V, h)` harness comparing the directional derivative against central differences. Derive and check the trace, log-determinant, softmax cross-entropy, $`\tanh`$ layer and inverse differential in `float64` with directions of your choice, taking $`X`$ symmetric positive definite where needed.
+4. Sweep the step over powers of ten for two checks and keep the raw error table. Predict where the curve bends, then measure: explain the falling and rising arms and choose your harness step and tolerance from the curve.
+5. Derive by hand the gradient of a branched computation reusing one matrix, writing each local vector-Jacobian product and its accumulation. Implement it in NumPy and check it with the harness, plus a Hessian-vector product by centered differences against the exact Hessian of a quadratic.
+6. Plant one gradient bug, such as a missing transpose, an overwrite instead of an accumulation, or a wrong derivative sign. Show the directional check failing, localize the fault by checking each local vector-Jacobian product alone, and keep the bug as a test that must fail.
 
 **Deliverables**
 
-- `numlab/autodiff/`: the scalar reverse-mode engine, forward-mode duals and the gradient-check harness.
-- The tests: shared-path accumulation, the JVP-VJP identity, five closed-form matrix gradients, the branched derivation, the Hessian-vector product and the planted-bug test.
-- `notes/calculus.md`: the branched derivation and the h-sweep table with the chosen step and tolerance.
+- `numlab/autodiff/`: scalar reverse-mode engine, forward-mode duals and gradient-check harness.
+- Tests for shared-path accumulation, the JVP-VJP identity, the branched derivation, the Hessian-vector product and the planted bug.
+- `notes/calculus.md` with the branched derivation and the step-size curve with its chosen step.
 
 **Checks**
 
@@ -921,18 +921,18 @@ Backprop hides a sign, transpose or accumulation bug in every new layer. A two-e
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Engine correctness | Every operation matches central differences within a stated tolerance, including a node reached through three paths. | Forward and reverse mode agree through the dot-product identity on seeded random vectors. |
-| Matrix gradients | The five closed forms pass the directional check in `float64`. | Each closed form is derived in the notes from differentials, with the assumption it needs, such as an invertible or positive definite X. |
-| Step size | The $`h`$ sweep is kept as raw output and the chosen $`h`$ sits near its minimum. | The note explains the truncation and cancellation arms and derives the tolerance from them. |
-| Fault isolation | The planted bug fails the directional check and stays in the suite as a failing case. | The localization procedure checks local products one at a time and names the faulty operation. |
+| Engine correctness | Every operation matches central differences within a stated tolerance, including a node reached through several paths. | Forward and reverse mode agree through the dot-product identity on directions of your choice. |
+| Matrix gradients | Each closed form passes the directional check in `float64`. | Each closed form is derived in the notes from differentials, naming the assumption it needs. |
+| Step size | The sweep table is kept as raw output and the chosen step sits near its minimum. | The note explains the truncation and cancellation arms and derives the tolerance from them. |
+| Fault isolation | The planted bug fails the directional check and stays in the suite as a failing case. | Local products are checked one at a time to name the faulty operation. |
 
-Feeds into: Capstone component 2, reverse-mode differentiation: the engine, the harness and the planted-bug regression. The Deep Learning stage grows the engine into a tensor engine.
+Feeds into: Capstone reverse-mode differentiation: the engine, the harness and the planted-bug regression feeding the later tensor engine.
 
 ### Resource route
 
 - **Primary - Course:** [MIT 18.S096 - Matrix Calculus for ML](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/pages/lecture-notes-and-readings/) - Use lectures 1-5, the Hessian portion of lecture 7 and computational-graph portion of lecture 8; do the supplied problems and notebooks.
 - **Required - Implementation:** [Hands-On ML - Autodiff notebook](https://github.com/ageron/handson-mlp/blob/main/Appendix_A_autodiff.ipynb) - Work through numerical differentiation and both AD modes, then rebuild the essential reverse-mode engine independently.
-- **Required - Reference:** [PyTorch Autograd mechanics](https://docs.pytorch.org/docs/stable/notes/autograd) - Consult after the handwritten engine for accumulation, graph behavior, disabled tracking and vector-Jacobian products.
+- **Required - Reference:** [PyTorch Autograd mechanics](https://docs.pytorch.org/docs/2.14/notes/autograd) - Consult after the handwritten engine for accumulation, graph behavior, disabled tracking and vector-Jacobian products.
 - **Reference - Theory:** [Mathematics for Machine Learning - Ch. 5](https://mml-book.github.io/) - Use Chapter 5 as the compact derivative, Jacobian, chain-rule and backpropagation reference.
 - **Optional - Refresher:** [MIT 18.02SC - Multivariable Calculus Unit 2](https://ocw.mit.edu/courses/18-02sc-multivariable-calculus-fall-2010/pages/2.-partial-derivatives/) - Use sessions 24-38 only if partial derivatives, gradients, Hessians or the multivariable chain rule are weak.
 - **Support - Reference:** [CS231n - Linear Classification](https://cs231n.github.io/linear-classify/) - Read the Softmax classifier section for the cross-entropy loss formula with both the information-theory and MLE views, and Practical issues: Numeric stability for the max-subtraction trick. Derive the softmax gradient by hand; do not implement the course assignment here.
@@ -1373,20 +1373,20 @@ Classification losses, perplexity and variational objectives are cross-entropies
 
 ### Mini-project: A Monte Carlo verifier for conditional probability, posterior predictives and information
 
-**About 8 to 12 hours.** Add `prob/` to `numlab`: exact enumeration on finite spaces, a seeded Monte Carlo estimator that reports its standard error, a Beta-Binomial posterior predictive and the discrete information measures. Solve new conditioning problems exactly, confirm them by simulation with an error-aware rule, and show where a wrong model or a heavy tail breaks the check.
+**About 8 to 12 hours.** Build exact enumeration on finite spaces, a Monte Carlo estimator that reports its standard error, a Beta-Binomial posterior predictive and discrete information measures. Solve new conditioning problems exactly, confirm them by simulation with an error-aware rule, and show where a wrong model or a heavy tail breaks the check.
 
-1. Write an exact-enumeration helper over finite sample spaces with `fractions.Fraction`, and a Monte Carlo estimator that takes a seeded numpy `Generator` and returns the estimate, its standard error and $`n`$. A simulation check passes when the exact answer lies within four standard errors; say why four.
-2. Solve two conditioning problems the units did not work: Stat 110 Homework 2 Problem 6 (two children and a girl born in March) and 18.05 Problem Set 7 Problem 1 (sober and drunk Monty). Get each exactly by enumeration, then by simulating the story, including how the information was revealed. Encode one tempting wrong answer as well, such as ignoring the March condition or treating drunk Monty like sober Monty, and show the simulation rejecting it.
+1. Write an exact-enumeration helper over finite sample spaces with `fractions.Fraction`, and a Monte Carlo estimator that returns the estimate, its standard error and the sample count. State an acceptance rule for simulation checks and justify it.
+2. Solve Stat 110 Homework 2 Problem 6 and 18.05 Problem Set 7 Problem 1 exactly by enumeration, then by simulating each story including how the information was revealed. Encode one tempting wrong answer as well and show the simulation rejecting it.
 3. Check the law of total variance on a two-stage model of your own, comparing the exact decomposition with a simulation of both stages.
-4. Derive the Beta-Binomial posterior predictive for the number of successes in the next $`m`$ trials, naming each assumption: a Beta prior, independent trials given $`p`$, and a $`p`$ that does not change. Match `scipy.stats.betabinom` and a two-stage simulation that draws $`p`$ from the posterior. Then generate data whose $`p`$ drifts halfway through and show that the predictive intervals undercover on later batches.
-5. Compare Chebyshev and Hoeffding bounds with simulated tail probabilities for a bounded variable. Then simulate a Pareto variable with tail index 1.5, which has a mean but no variance, and show that standard-error intervals for its mean miss far more often than they claim.
-6. Implement entropy, cross-entropy and KL divergence in bits and nats with $`0\log 0=0`$ and an infinite KL when $`q`$ is zero where $`p`$ is not. Match `scipy.stats.entropy`, including its `inf`, and check $`H(p, q)=H(p)+\mathrm{KL}(p\|q)`$ and the asymmetry of KL on a pair of your own.
+4. Derive the Beta-Binomial posterior predictive for further trials, naming each assumption, and match `scipy.stats.betabinom` and a two-stage simulation drawing from the posterior. Then generate data whose chance drifts mid-stream and show the predictive intervals missing later batches more often than claimed.
+5. Compare Chebyshev and Hoeffding bounds with simulated tail probabilities for a bounded variable. Then simulate a heavy-tailed variable with a mean but no variance and show standard-error intervals for its mean missing far more often than claimed.
+6. Implement entropy, cross-entropy and KL divergence in bits and nats, handling zero probabilities and the infinite case. Match `scipy.stats.entropy` and check the cross-entropy identity and the asymmetry of KL on a pair of your own.
 
 **Deliverables**
 
-- `numlab/prob/`: enumeration, the Monte Carlo estimator, the posterior predictive and the information measures.
-- The tests: exact and simulated answers for both problems with the rejected wrong answer, the total-variance check, the predictive oracle, the drift and heavy-tail failures, and the information identities.
-- `notes/probability.md`: the derivations, each with its assumptions, and the acceptance rule for simulations.
+- `numlab/prob/`: enumeration, the Monte Carlo estimator, the posterior predictive and information measures.
+- Tests with exact and simulated answers for both problems and the rejected wrong answer, plus the variance, predictive, drift, tail and information checks.
+- `notes/probability.md` with the derivations, each with its assumptions, and the simulation acceptance rule.
 
 **Checks**
 
@@ -1395,11 +1395,11 @@ Classification losses, perplexity and variational objectives are cross-entropies
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Exact answers | Both conditioning problems are solved exactly by enumeration and match the official solutions. | The notes say which event was conditioned on in each version and why the tempting answer conditions on the wrong one. |
-| Simulation discipline | Every simulation is seeded and reports n and a standard error, and acceptance uses the stated rule. | The wrong answer is rejected by the same rule that accepts the right one. |
-| Posterior predictive | The Beta-Binomial predictive is derived, matches `scipy.stats.betabinom` and the two-stage simulation. | The drift experiment shows which assumption failed and how the predictive intervals undercover. |
-| Limits and information | The bounds are compared with simulated tails, the heavy-tail failure is shown, and the information measures match SciPy with zeros handled. | The heavy-tail note explains the failure through the missing variance, not through too few samples. |
+| Simulation discipline | Every simulation states its sample count and standard error, and acceptance uses the stated rule. | The wrong answer is rejected by the same rule that accepts the right one. |
+| Posterior predictive | The Beta-Binomial predictive is derived, matches `scipy.stats.betabinom` and agrees with the two-stage simulation. | The drift experiment names the failed assumption and shows how the predictive intervals miss. |
+| Limits and information | Bounds are compared with simulated tails, the heavy-tail failure is shown, and information measures match SciPy with zeros handled. | The heavy-tail note explains the failure through the missing variance, not through too few samples. |
 
-Feeds into: Capstone component 3, Monte Carlo uncertainty: the estimator with standard errors and its heavy-tail failure. The statistics section reuses the estimator for every simulation check.
+Feeds into: Capstone Monte Carlo uncertainty: the estimator with standard errors and its heavy-tail failure, reused by the statistics checks.
 
 ### Resource route
 
@@ -1890,21 +1890,21 @@ Prediction describes observations; causal identification asks what would happen 
 
 ### Mini-project: A statistical audit harness and the memo for a flattering experiment
 
-**About 14 to 18 hours.** Add `stats/` to `numlab`: a simulation harness with a known truth that tests estimators, intervals, multiplicity, regression assumptions, calibration, missingness and causal adjustment, each against an oracle and each with a failure case. Then audit an experiment that looks too good, rerun it under a plan written first, and write the decision memo.
+**About 14 to 18 hours.** Build a simulation harness with known truth that tests estimators, intervals, multiplicity, regression, calibration, missingness and causal adjustment, each with an oracle and a failure case. Then audit an experiment that looks too good, rerun it under a plan written first, and write the decision memo.
 
-1. Build the harness on the Monte Carlo estimator from the probability section: each check names its known truth, runs seeded repetitions and reports a Monte Carlo standard error. Compare the $`n`$ and $`n - 1`$ variance estimators for $`n`$ = 2, 5, 10 and 50 under normal sampling against the analytic bias, variance and MSE. Repeat under a $`t`$ distribution with 3 degrees of freedom, which has variance 3 but no fourth moment, and show the normal-theory variance formula failing.
-2. Measure percentile-bootstrap coverage for an exponential mean at $`n = 10`$ and $`n = 100`$; expect clear undercoverage at $`n = 10`$. Simulate $`m`$ hypotheses with $`m_0`$ true nulls and compare the realized FWER and FDR of Bonferroni and Benjamini-Hochberg. Then report the largest of $`k`$ noisy metric estimates whose true effects are equal, and measure the bias and the coverage of its naive interval.
-3. Generate separate fitting and evaluation data with a curved mean, variance growing with $`x`$ and serially dependent errors. Show the residual diagnostics, compare the usual OLS standard error and your own sandwich estimator with the sampling standard deviation from repetitions, and measure prediction-interval coverage on the evaluation data. Score fixed probability forecasts by the Brier decomposition into reliability, resolution and uncertainty, and by calibration within subgroups, without fitting Platt scaling.
-4. Compare complete-case, standardized and inverse-observation-weighted means under MCAR, MAR and MNAR. Add a stratum whose observation probability is zero and show the weighting break, draw a DAG in which selection depends on treatment, and for MNAR report a sensitivity range over an assumed shift in the missing outcomes instead of a single corrected number.
-5. Define one causal question in the generator as a potential-outcome estimand and draw its DAG with a confounder and a selection node. Show observed and interventional means differing, adjustment for a valid backdoor set recovering the effect, adjustment for a collider or mediator failing, and an overlap failure. Optionally report pre-treatment subgroup effects without claiming individual effects.
-6. Construct the flattering experiment: a configured 50/50 test analyzed on event rows rather than users, checked daily and stopped at the first $`p`$ below 0.05, reported on the best of ten metrics and on a post-treatment active-user segment, with a sample-ratio mismatch. Write the pre-analysis plan before touching it: estimand, randomization and analysis units, one primary metric, guardrails, a practical threshold, $`\alpha`$, the stopping rule and the multiplicity policy. Then list every validity failure with the check that exposes it, including a chi-square test of the assignment counts against the configured split.
-7. Rerun the experiment under the plan: compute the per-arm sample size with both rejection tails, randomize and analyze users, run to the fixed horizon and report the effect and interval against the practical threshold and the guardrails. Write a one-page decision memo that says ship, do not ship or extend, and why.
+1. Build the harness on the probability section's estimator: each check names its known truth and reports a Monte Carlo standard error. Compare the two variance estimators across sample sizes against analytic normal-sampling moments, then repeat under a heavy tail and show the normal-theory formula failing.
+2. Measure percentile-bootstrap coverage for an exponential mean at two sample sizes. Simulate many hypotheses with some true nulls and compare FWER and FDR under Bonferroni and Benjamini-Hochberg, then measure the bias and naive-interval coverage of the largest of several estimates with equal true effects.
+3. Generate separate fitting and evaluation data with a curved mean, growing variance and dependent errors. Compare the usual and sandwich standard errors against the sampling standard deviation, measure prediction-interval coverage, and score fixed forecasts by Brier decomposition with subgroup calibration.
+4. Compare complete-case, standardized and inverse-weighted means under MCAR, MAR and MNAR. Add a stratum with zero observation probability, draw a DAG where selection depends on treatment, and report MNAR as a sensitivity range over an assumed shift rather than a single corrected number.
+5. Define a potential-outcome estimand with a DAG holding a confounder and a selection node. Show observed and interventional means differing, a valid backdoor adjustment recovering the effect, an invalid adjustment failing, and an overlap failure, optionally reporting pre-treatment subgroup effects without claiming individual effects.
+6. Construct the flattering experiment: event-row analysis of a user-randomized test, daily peeking, best-of-several metrics and a post-treatment segment, plus a sample-ratio mismatch. Write the pre-analysis plan before touching it, then list every validity failure with the check that exposes it, including the assignment-count check.
+7. Rerun under the plan: size arms for both rejection tails, randomize and analyze users, hold the fixed horizon, and report the effect and interval against the practical threshold and guardrails. Write a one-page memo deciding ship, extend or do not ship, with reasons.
 
 **Deliverables**
 
-- `numlab/stats/`: the harness and every check, each with its oracle and its failure case.
-- The audit: the pre-analysis plan, the list of validity failures with their checks, the rerun and its output.
-- The decision memo, the two DAGs and `notes/statistics.md` with the derivations behind each check.
+- `numlab/stats/`: the harness and every check, each with its oracle and failure case.
+- The audit: the pre-analysis plan, validity failures with checks, the rerun and its output.
+- The decision memo, the two DAGs, and `notes/statistics.md` with the derivations behind each check.
 
 **Checks**
 
@@ -1912,13 +1912,13 @@ Prediction describes observations; causal identification asks what would happen 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Estimators and intervals | The variance-estimator table matches the normal-theory oracle, the $`t_3`$ failure is shown, and bootstrap coverage is measured at both sample sizes. | Each Monte Carlo result reports its standard error, and the notes say which assumption each failure breaks. |
+| Estimators and intervals | The variance-estimator comparison matches the normal-theory oracle, the heavy-tail failure is shown, and bootstrap coverage is measured at both sample sizes. | Each Monte Carlo result reports its standard error, and the notes say which assumption each failure breaks. |
 | Multiplicity and selection | Realized FWER and FDR match what each procedure controls, and the winner's-curse bias is measured. | The notes distinguish the two error rates and explain why the selected estimate needs its own interval. |
 | Regression and calibration | Diagnostics, the sandwich comparison, prediction-interval coverage and the Brier decomposition are all on separate evaluation data. | Subgroup calibration finds a failure that the overall reliability term hides. |
-| Missingness and causality | Each missingness mechanism, the zero-overlap failure, valid and invalid adjustment and the overlap failure are shown against the known truth. | The MNAR result is a sensitivity range, and every causal claim names its untestable assumption. |
-| Experiment audit and memo | The plan predates the analysis, every validity failure has a check, and the rerun reports the effect against the practical threshold. | The memo makes a decision a reader could act on, with the guardrails and the residual risks stated. |
+| Missingness and causality | Each missingness mechanism, both overlap failures and the valid and invalid adjustments are shown against the known truth. | The MNAR result is a sensitivity range, and every causal claim names its untestable assumption. |
+| Experiment audit and memo | The plan predates the analysis, every validity failure has a check, and the rerun reports the effect against the practical threshold. | The memo makes a decision a reader could act on, with guardrails and residual risks stated. |
 
-Feeds into: Capstone component 4, experiment analysis: the harness, the audit with its failures and the decision memo.
+Feeds into: Capstone experiment analysis: the harness, the audit with its failures, the rerun and the decision memo.
 
 ### Resource route
 
@@ -2416,20 +2416,20 @@ A solver stops because of a rule, not because mathematics declares the answer co
 
 ### Mini-project: An optimizer and numerics test bench
 
-**About 12 to 16 hours.** Add `optim/` to `numlab`: gradient descent, heavy-ball and AdamW with clipping, schedules and restartable state; a KKT and proximal-gradient pair checked against a solver; and the stable reductions. Compare the optimizers on changed geometry against eigenvalue predictions, then diagnose one divergence and one finite-precision failure.
+**About 12 to 16 hours.** Build gradient descent, heavy-ball and AdamW with clipping, schedules and restartable state, a KKT and proximal-gradient pair checked against a solver, and stable reductions. Compare the optimizers on changed geometry against eigenvalue predictions, then diagnose one divergence and one finite-precision failure.
 
-1. Implement gradient descent, heavy-ball and AdamW with norm clipping (the exact projection), an update-indexed schedule and a state object holding parameters, moments, step count and schedule clock. Every loop exits with one status: residual converged, stagnated, non-finite or iteration cap, and a test forces each one.
-2. Run all three on quadratics with condition numbers 10, 100 and 1000, once diagonal and once rotated by a random orthogonal matrix. Before running, predict the gradient-descent rate from the eigenvalues; report the full gradient norm and objective gap against gradient evaluations, and compare with the prediction.
-3. Diagnose one divergence: take a step slightly above $`2/L`$, project the iterates onto the eigenvectors and show that only the top mode grows, at the predicted factor $`|1-\eta L|`$ per step. Then add minibatch noise to a finite-sum least-squares problem: check the with-replacement gradient covariance $`\Sigma/B`$ empirically and the constant-step plateau variance against $`\eta\sigma^2/(\lambda(2-\eta\lambda))`$ on a scalar model.
-4. Feed a constant gradient $`g`$ and check the moments against the finite geometric sums $`(1-\beta_1^t)g`$ and $`(1-\beta_2^t)g^2`$. Then, on one deterministic quadratic, match `torch.optim.AdamW` in `float64` on the same clipped gradients and per-step learning rates, as in the adaptive unit. Save the state halfway, resume and check the final state against an uninterrupted run within 1e-12, and use the unclipped full gradient as the stationarity residual.
-5. Change the two-coordinate QP from the KKT unit, solve it by hand and with CVXPY and Clarabel, and record every KKT residual and the solver status. Derive soft thresholding, then run proximal gradient on a lasso with a non-identity $`A`$ and step $`1/\|A\|_2^2`$; check it against a closed form on a diagonal $`A`$ and against CVXPY and the lasso optimality residual on the general $`A`$.
-6. Build the reductions: a log-sum-exp for finite nonempty inputs, left-to-right, balanced and Kahan sums, and online mean and variance, tested on cancellation, large offsets and `float16` storage with `float32` accumulation against `math.fsum` and `float64` oracles. Diagnose one finite-precision failure end to end, such as the `float16` running sum that stalls or the one-pass variance that returns zero, and show the repair.
+1. Implement gradient descent, heavy-ball and AdamW with norm clipping, an update-indexed schedule and a state object holding parameters, moments, step count and schedule clock. Exit every loop with a status of converged, stagnated, non-finite or iteration cap, and force each status in tests.
+2. Run all three on ill-conditioned quadratics, once diagonal and once rotated, predicting the gradient-descent rate from the eigenvalues first. Report the gradient norm and objective gap against gradient evaluations and compare with the prediction.
+3. Diagnose one divergence past the stability limit by projecting iterates onto the eigenvectors and showing only the top mode growing at the predicted factor. Then add minibatch noise to finite-sum least squares and check the gradient covariance and the constant-step plateau against their formulas.
+4. Check the AdamW moments against their finite geometric sums on a constant gradient. Then match `torch.optim.AdamW` on one deterministic quadratic under the same clipped gradients and per-step rates, save and resume mid-run, and use the unclipped full gradient as the stationarity residual.
+5. Solve a changed two-coordinate QP by hand and with CVXPY and Clarabel, recording every KKT residual with solver status. Derive soft thresholding, then check a lasso proximal loop against a closed form on a diagonal case and against a solver residual on the general case.
+6. Build log-sum-exp, left-to-right, balanced and Kahan sums, and online mean and variance, testing cancellation, large offsets and low-precision storage with higher-precision accumulation against `math.fsum` and higher-precision oracles. Diagnose one finite-precision failure end to end and show the repair.
 
 **Deliverables**
 
-- `numlab/optim/`: the optimizers with exit statuses and restartable state, the KKT and proximal code, and the reductions.
-- The tests: rate predictions, the divergence projection, the noise checks, the AdamW oracle and resume, the KKT residual table, the lasso checks and the reduction oracles.
-- `notes/optimization.md`: the predictions beside the measurements and both failure diagnoses.
+- `numlab/optim/`: optimizers with exit statuses and restartable state, KKT and proximal code, and the reductions.
+- Tests for rate predictions, the divergence projection, noise checks, the AdamW oracle and resume, KKT residuals, lasso checks and reduction oracles.
+- `notes/optimization.md` with predictions beside measurements and both failure diagnoses.
 
 **Checks**
 
@@ -2437,13 +2437,13 @@ A solver stops because of a rule, not because mathematics declares the answer co
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Geometry | Measured gradient-descent rates on all six quadratics are compared with the eigenvalue predictions. | Rotation is shown not to change the gradient-descent rate, with the reason, and momentum's gain is reported per gradient evaluation. |
-| Divergence and noise | The divergent run is traced to the top eigenmode at the predicted factor, and the noise covariance and plateau match their formulas within Monte Carlo error. | The stopping statuses separate the divergent, stagnated and converged runs without manual inspection. |
-| Adaptive state | AdamW matches PyTorch within 1e-12 and resume equals the uninterrupted run. | A test shows that restoring parameters without moments or the schedule clock changes the trajectory. |
-| Certificates | The QP has every KKT residual and the solver status recorded, and the lasso passes its optimality residual. | Residuals carry stated tolerances, and solver success is never accepted without them. |
+| Descent geometry | Measured gradient-descent rates on diagonal and rotated quadratics are compared with eigenvalue predictions. | Rotation is shown not to change the gradient-descent rate, with the reason, and momentum gains are reported per gradient evaluation. |
+| Divergence and noise | The divergent run is traced to the top eigenmode at the predicted factor, and noise covariance and plateau match their formulas. | Exit statuses separate divergent, stagnated and converged runs without manual inspection. |
+| Adaptive state | AdamW matches PyTorch within a stated tolerance and resume equals the uninterrupted run. | A test shows restoring parameters without moments or the schedule clock changes the trajectory. |
+| Optimality certificates | The QP records every KKT residual with solver status, and the lasso passes its optimality residual. | Residuals carry stated tolerances, and solver success is never accepted without them. |
 | Finite precision | Each reduction matches its oracle, and one finite-precision failure is diagnosed and repaired. | The note separates precision lost in storage from precision lost in accumulation. |
 
-Feeds into: Capstone component 5, optimizer stability: the comparison, the divergence diagnosis and the finite-precision failure.
+Feeds into: Capstone optimizer stability: the optimizer comparison, the divergence diagnosis and the finite-precision failure.
 
 ### Resource route
 
@@ -2486,10 +2486,10 @@ Build a small NumPy project that connects least squares and PCA, reverse-mode di
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Least squares and PCA | The linear-algebra mini-project meets Pass on every criterion, and its rank-deficient case and conditioning table run from the suite. | The capstone README links the conditioning table to the solver choice in the defense note. |
-| Reverse-mode differentiation | The engine and harness pass, and the planted bug fails its directional check. | One command reruns the h sweep and the planted-bug test. |
-| Monte Carlo uncertainty | Every simulation check in the repository reports n and a standard error and uses the stated acceptance rule. | The heavy-tail failure and the drifting-predictive failure are both kept as tests. |
+| Least squares and PCA | The linear-algebra project meets Pass on every criterion, with its rank-deficient case and conditioning table runnable from the suite. | The README links the conditioning table to the solver choice in the defense note. |
+| Reverse-mode differentiation | The engine and harness pass, and the planted bug fails its directional check. | One command reruns the step-size sweep and the planted-bug test. |
+| Monte Carlo uncertainty | Every simulation check in the repository reports its sample count and standard error and uses the stated acceptance rule. | The heavy-tail failure and the drifting-predictive failure are both kept as tests. |
 | Experiment analysis | The audit, the rerun and the decision memo are in the repository with the plan that preceded them. | The memo stands on its own for a reader who has not seen the code. |
 | Optimizer stability | The optimizer comparison, the divergence diagnosis and the finite-precision failure are reproduced by the suite. | Each prediction sits beside its measurement in the notes. |
-| Defense and rebuild | A short defense note justifies each solver, estimator and tolerance choice, and a README lists the commands that rebuild every reported number from a clean clone. | Every component has one failure case and one independent check named in the README, and the rebuild time is stated. |
+| Defense and rebuild | A short defense note justifies each solver, estimator and tolerance choice, and a README lists the commands that rebuild every reported number. | Every component names one failure case and one independent check in the README. |
 

@@ -495,20 +495,20 @@ Precomputation trades linear space for constant queries, and the prefix-plus-has
 
 ### Mini-project: Hash map, two tag-hidden linear problems and a shrunk wrong solution
 
-**About 8 to 12 hours.** In your own repository, build an open-addressing hash map and check it against `dict` with randomized operation histories, solve two tag-hidden linear-structure problems with each invariant written before the code, and let Hypothesis expose and minimize a plausible wrong solution.
+**About 8 to 12 hours.** Build an open-addressing hash map checked against `dict` with randomized operation histories. Solve two tag-hidden linear-structure problems from invariants stated before code. Shrinking exposes one plausible wrong solution, and a probe-cost prediction tested by measurement closes the loop on the cost model.
 
-1. Implement a linear-probing hash map with `get`, `put`, `delete` by tombstone, and resizing at a load factor you state. Write its invariant (every stored key is reachable from its home slot without crossing an empty slot) and the amortized cost of `put` from the doubling argument.
-2. Write a Hypothesis rule-based state machine that runs `put`, `get`, `delete` and `len` against a `dict` oracle, with an `invariant` method that checks the probe invariant and the load factor after every step. Draw some keys as multiples of the capacity so probe chains and tombstones are exercised.
-3. Seed two defects in copies: `delete` that empties the slot instead of leaving a tombstone, and `resize` that copies slots by index instead of reinserting. Show the state machine fails on each, and keep the shrunk histories as regression tests.
-4. Solve LC 1248 Count Number of Nice Subarrays without reading its tags. Write the invariant first (a running count of odd numbers and a map of prefix counts seeded with `{0: 1}`), state $`O(n)`$ time and space, check the three examples (2, 0 and 16), and differential-test against an $`O(n^2)`$ brute force.
-5. Solve LC 862 Shortest Subarray with Sum at Least K without reading its tags. First write the plausible two-pointer window that shrinks while the sum is at least $`k`$, and let Hypothesis find and shrink a failing input against brute force (expect something as small as `[-1, 1]` with $`k = 1`$, where the window answers -1 instead of 1). State the assumption negative numbers break, then solve with prefix sums and a monotone deque, writing its invariant (the deque holds indices with increasing prefix sums).
-6. Measure probes per successful lookup at load factors 0.5 and 0.75 for three key distributions: sequential ints, random 62-bit ints and multiples of the capacity. Predict each row first. Random keys should land near the linear-probing estimate $`(1 + 1/(1 - a))/2`$, 1.5 and 2.5; explain why sequential ints take one probe and capacity multiples take about $`n/2`$.
+1. Implement a linear-probing hash map with `get`, `put`, tombstone `delete` and resizing at a stated load factor. Write its probe invariant and the amortized cost of `put` from the doubling argument.
+2. Test it with a Hypothesis rule-based state machine against a `dict` oracle, checking the probe invariant and the load factor after every step. Draw colliding keys so probe chains and tombstones are exercised.
+3. Seed one defect of each kind, a `delete` that empties the slot and a `resize` that copies slots by index. Show the state machine fails on each, and keep the shrunk histories as regression tests.
+4. Solve LC 1248 Count Number of Nice Subarrays with tags hidden. Write the counting invariant and the time and space bounds first, then check the result against an $`O(n^2)`$ brute force.
+5. Solve LC 862 Shortest Subarray with Sum at Least K with tags hidden. First write the shrinking-window attempt and let Hypothesis shrink a failing input against brute force, then solve with prefix sums and a monotone deque and state the broken assumption.
+6. Predict probe counts across load factors and key distributions, then measure and compare the random-key rows against the linear-probing estimate. Record predictions beside measurements and explain the gaps.
 
 **Deliverables**
 
-- The hash map module with its invariant and cost notes, the state machine and the two seeded-defect histories.
-- Solutions to LC 1248 and LC 862 with the invariant and bound above the code, brute-force differential tests and the shrunk window counterexample.
-- A probe-count table for three key distributions at two load factors, with predictions beside the measurements.
+- The hash map module with its invariant, cost notes, state machine and seeded-defect histories.
+- Both LC solutions with invariants and bounds stated first, differential tests and the shrunk counterexample.
+- A probe-count table with predictions beside measurements and the comparison against the estimate.
 
 **Checks**
 
@@ -518,10 +518,10 @@ Precomputation trades linear space for constant queries, and the prefix-plus-has
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Hash map correctness | The state machine runs 200 derandomized histories against `dict`, including colliding keys, and both seeded defects fail with shrunk histories. | Each shrunk history is a few readable steps, is kept as a regression test, and the invariant method names the property it broke. |
-| Invariants before code | Both solutions carry the invariant and the time and space bound above the code, written before submitting. | The invariants are also asserted in a debug mode that the random tests switch on. |
-| Wrong solution exposed | Hypothesis finds and shrinks a failing input for the window, and the write-up states the broken assumption: removing an element never raises the sum. | A property test restricted to nonnegative inputs shows the same window is correct there. |
-| Measurement | The probe table covers three key distributions at two load factors, and the random-key rows are compared with the linear-probing estimate. | Predictions are written before measuring, and a timing against `dict` states the Python version and CPU and explains the gap. |
+| Hash map correctness | The state machine agrees with the `dict` oracle on randomized histories with colliding keys, and both seeded defects fail with shrunk histories. | Each shrunk history is short and readable, kept as a regression test and mapped to the invariant clause it broke. |
+| Invariants before code | Both solutions state the invariant and the time and space bounds before the code, and differential tests against brute force pass. | The invariants are also asserted in a debug mode that the randomized tests switch on. |
+| Wrong solution exposed | Hypothesis shrinks a failing window input, and the write-up states the assumption the counterexample breaks. | A property test on restricted inputs shows where the same window stays correct. |
+| Probe measurement | The probe table covers several load factors and key distributions, with predictions recorded before measuring and random-key rows compared against the estimate. | A timing comparison against `dict` names the setup and explains the gap from implementation costs. |
 
 Feeds into: Capstone correctness library: the hash map and its state machine. Failure evidence: the two seeded hash-map defects and the shrunk window counterexample.
 
@@ -1028,20 +1028,20 @@ Intervals turn sorting into scheduling. One sort plus one left-to-right walk ans
 
 ### Mini-project: Mutable-priority heap, a derived boundary and a room scheduler
 
-**About 10 to 14 hours.** Build an indexed heap with `update` and `remove`, derive one binary-search-on-the-answer boundary from its predicate before running examples, and solve an unseen tree problem and a two-heap scheduling problem with adversarial tests and a worst-case defense.
+**About 10 to 14 hours.** Build an indexed heap with `update` and `remove`, checked against a brute-force oracle. Derive one binary-search boundary from its predicate, then solve an unseen tree problem and a two-heap scheduling problem with adversarial tests and a worst-case defense.
 
-1. Implement an indexed min-heap with `push`, `pop`, `peek`, `update(item, priority)` and `remove(item)`, backed by a position map. Write both invariants (heap order on the array, and `pos[item]` equals the item's index) and the cost of each operation.
-2. Test it with a Hypothesis rule-based state machine against a `dict` oracle that answers the minimum by scanning, checking both invariants after every step. Seed one defect, such as an update that only sifts down or a swap that forgets the position map, and keep the shrunk history.
-3. Solve LC 1011 Capacity To Ship Packages Within D Days without reading its tags. Write the predicate `feasible(c)`, prove it monotone, set `lo = max(weights)` and `hi = sum(weights)`, and derive the loop condition and updates from the invariant (`feasible(hi)` holds, everything below `lo` fails) before running any example. The examples answer 15, 6 and 3.
-4. Solve LC 236 Lowest Common Ancestor of a Binary Tree recursively, then defend the worst case: a path-shaped tree of $`10^5`$ nodes exceeds CPython's default recursion limit of 1000, so add an iterative version with a parent map and test both against an ancestor-set oracle on random trees.
-5. Solve LC 2402 Meeting Rooms III with two heaps, free rooms by number and busy rooms by end time and number. Write adversarial tests for chained delays, equal end times and a meeting that starts exactly when a room frees, and compare against a brute-force simulator on small random inputs. The examples answer 0 and 1.
-6. Write the worst-case notes: the $`O(m \log m + m \log n)`$ bound for LC 2402, and why delayed end times can reach about $`5 \times 10^{10}`$ with one room, which overflows 32-bit integers in a fixed-width language.
+1. Implement an indexed min-heap with `push`, `pop`, `peek`, `update` and `remove` over a position map. State both invariants, heap order and index agreement, with the cost of each operation.
+2. Test it with a Hypothesis state machine against a scanning oracle, checking both invariants after every step. Seed one defect, such as an `update` that only sifts one way, and keep the shrunk history.
+3. Solve LC 1011 Capacity To Ship Packages Within D Days with tags hidden. Write the feasibility predicate, prove it monotone and derive the bounds and updates from the loop invariant before running any example.
+4. Solve LC 236 Lowest Common Ancestor of a Binary Tree recursively, then add an iterative version with a parent map, since deep paths exceed the default recursion limit. Test both against an ancestor-set oracle on random trees.
+5. Solve LC 2402 Meeting Rooms III with two heaps, freeing rooms by number and busy rooms by end time. Write adversarial tests for delays, ties and back-to-back meetings, and compare against a brute-force simulator on small random inputs.
+6. Write the worst-case notes: the time bound for LC 2402, and why delayed end times overflow fixed-width integers, naming the largest end time the constraints allow.
 
 **Deliverables**
 
 - The indexed heap module with invariants, cost notes, the state machine and the seeded-defect history.
-- The LC 1011 boundary derivation, written before code, with the monotonicity proof.
-- LC 236 and LC 2402 solutions with adversarial and differential tests and the worst-case notes.
+- The LC 1011 boundary derivation with the monotonicity proof, written before code.
+- LC 236 and LC 2402 solutions with adversarial and differential tests and worst-case notes.
 
 **Checks**
 
@@ -1052,10 +1052,10 @@ Intervals turn sorting into scheduling. One sort plus one left-to-right walk ans
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Indexed heap | The state machine passes with both invariants checked after every step, and the seeded defect fails with a shrunk history. | Update and remove are tested on the root and the last slot, and swap counts on random histories stay within the stated logarithmic bounds. |
-| Boundary derivation | The invariant and updates are written before any example runs, and all three examples pass on the first run. | A property test checks that the answer is the smallest feasible capacity: `feasible(answer)` holds and `feasible(answer - 1)` fails. |
-| Tree worst case | Both versions agree with the oracle, and the iterative version handles the $`10^5`$-node path. | The write-up shows the recursive failure on the deep tree and states the $`O(h)`$ space of each version. |
-| Scheduler | LC 2402 is accepted, and the brute-force simulator agrees on random small inputs with ties and back-to-back meetings. | The tie rules are stated as invariants of the two heaps, and the overflow note names the largest end time the constraints allow. |
+| Indexed heap | The state machine agrees with the oracle with both invariants checked after every step, and the seeded defect fails with a shrunk history. | Edge positions such as the root and the last slot are covered, with operation costs checked against the stated bounds. |
+| Boundary derivation | The invariant and updates are written before any example runs, and the judge accepts the derived solution. | A property test checks the answer is the smallest feasible capacity: it holds, and one less fails. |
+| Tree worst case | Both versions agree with the oracle, and the iterative version handles a deep path the recursive one cannot. | The write-up shows the recursive failure on the deep tree and states the space of each version. |
+| Room scheduler | LC 2402 is accepted, and the simulator agrees on small random inputs with ties and back-to-back meetings. | The tie rules are stated as heap invariants, with the largest end time derived from the constraints. |
 
 Feeds into: Capstone correctness library: the mutable-priority heap. Failure evidence: its seeded defect. The room scheduler is a first scheduler artifact for the milestone.
 
@@ -1617,14 +1617,14 @@ Flows and matchings are recognition vocabulary at this stage: routing, assignmen
 
 ### Mini-project: Union-find, two narratives as graphs and a refuted method
 
-**About 10 to 14 hours.** Build a tested union-find, turn two unfamiliar narratives into graphs with algorithms that return certificates, and reject one plausible method with a minimized counterexample.
+**About 10 to 14 hours.** Build a tested union-find and turn two unfamiliar narratives into graphs whose algorithms return checkable certificates. Refuting one plausible method with a minimized counterexample trains the modeling judgment the capstone needs.
 
-1. Implement union-find with union by rank and path compression. State the invariants (`parent` pointers form a forest, and a root of rank $`r`$ has at least $`2^r`$ members) and the amortized cost. Test it with a Hypothesis state machine against a component-labeling oracle that runs BFS over the unions so far, asserting the rank-size invariant after every step.
-2. Narrative 1, AlgoMaster Alien Dictionary (https://algomaster.io/learn/dsa/alien-dictionary): model letters as vertices and first-difference pairs as edges, and treat a longer word before its own prefix as invalid. Return a certificate: for an order, a check that every extracted edge points forward; for an empty answer, the cycle or the bad prefix pair.
-3. Test the dictionary solver on generated inputs: draw a random alphabet order, generate words, sort them by that order, and check the output against the extracted edges, since several orders can be valid. Add cyclic and bad-prefix cases.
-4. Narrative 2, LC 1631 Path With Minimum Effort: write the model (cells, edges weighted by height difference, path cost the maximum edge) before code, and solve it with a Dijkstra variant. Return the path and a cut certificate: the cells reachable using only edges below the answer do not include the target. The examples answer 2, 1 and 0.
-5. Solve LC 1631 a second way with your union-find (add edges in increasing weight until the corners connect) and assert both methods agree on random grids.
-6. Refute a right-and-down-only DP for LC 1631. It already answers 1 on the third example, whose answer is 0. Let Hypothesis against an exhaustive path search shrink a smaller counterexample (expect 6 cells, since every path in a $`2 \times 2`$ grid is monotone), and state the assumption that fails.
+1. Implement union-find with union by rank and path compression. State its invariants and amortized cost, and test it with a Hypothesis state machine against a component-labeling oracle over the unions so far.
+2. Model the AlgoMaster Alien Dictionary narrative as a graph of letters and first-difference edges, treating a longer word before its prefix as invalid. Ship a certificate with every answer: a forward-edge check for an order, or the cycle or bad pair for an empty one.
+3. Test the dictionary solver on generated inputs: draw a random alphabet order, generate words sorted by it, and check outputs against the extracted edges, since several orders can be valid. Add cyclic and bad-prefix cases.
+4. Model LC 1631 Path With Minimum Effort as cells joined by edges weighted by height difference, with path cost as the maximum edge. Solve it with a Dijkstra variant that returns the path and a cut certificate showing the target unreachable below the answer.
+5. Solve LC 1631 a second way with union-find, adding edges in increasing weight until the corners connect. Assert both methods agree on random grids.
+6. Refute a right-and-down-only dynamic program for LC 1631 with Hypothesis against an exhaustive path search, keeping the shrunk counterexample. State the movement assumption that fails.
 
 **Deliverables**
 
@@ -1639,10 +1639,10 @@ Flows and matchings are recognition vocabulary at this stage: routing, assignmen
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Union-find | The state machine agrees with the component oracle, and the rank-size invariant holds after every step. | Tree heights are measured with and without path compression on an adversarial union order and compared with the $`\log n`$ bound. |
-| Modeling | Each narrative has a written model (vertices, edges, weights, the question asked) before code. | The write-up names one modeling alternative that fails and why. |
-| Certificates | Every answer ships with a checker that validates it without trusting the solver. | The checker catches a seeded solver bug that the examples miss. |
-| Refutation | The right-and-down DP is refuted with a minimized counterexample from the exhaustive search. | The write-up states the failed assumption (some optimal path moves up or left) and why a shortest-path method repairs it. |
+| Union-find correctness | The state machine agrees with the component oracle, and the rank-size invariant holds after every step. | Tree heights are measured with and without path compression on an adversarial union order and compared against the bound. |
+| Graph modeling | Each narrative has a written model of vertices, edges, weights and the question asked, stated before code. | The write-up names one modeling alternative that fails and why. |
+| Answer certificates | Every answer ships with a checker that validates it without trusting the solver. | The checker catches a seeded solver bug that the worked examples miss. |
+| Method refutation | The restricted dynamic program is refuted with a minimized counterexample from the exhaustive search. | The write-up states the failed movement assumption and why a shortest-path method repairs it. |
 
 Feeds into: Capstone correctness library: union-find and one graph routine, the LC 1631 Dijkstra variant with its certificate. Failure evidence: the refuted method.
 
@@ -2029,22 +2029,22 @@ Streams do not fit in memory and shuffles must be uniform, not merely random-loo
 
 </details>
 
-### Mini-project: A proved greedy, a pruned search and a seeded sampler check
+### Mini-project: A proved greedy, a pruned search and a sampler check
 
-**About 8 to 12 hours.** Prove one greedy rule and refute a tempting alternative before coding, implement a backtracking search whose prunes are each sound, and verify a weighted sampler with a seeded statistical test.
+**About 8 to 12 hours.** Prove one greedy rule and refute a tempting alternative before coding. Implement a backtracking search whose prunes are each sound, and verify a weighted sampler with a statistical test over seeds you choose.
 
-1. LC 1029 Two City Scheduling, without reading its tags: before coding, state the rule (sort by $`\text{cost to A} - \text{cost to B}`$ and send the first half to $`A`$) and prove it with an exchange argument. The examples answer 110 and 1859.
-2. Refute the alternative that sends each person to their cheaper city, in order of their smaller cost, until a city fills. Search with brute force over all splits; two people suffice: `[[1, 1], [1, 2]]` costs 3 against the optimal 2.
-3. LC 698 Partition to $`K`$ Equal Sum Subsets: backtrack over buckets with prunes stated as claims: sort in decreasing order, fail at once when a number exceeds the target, and skip a bucket whose current sum equals one already tried at this level. Prove the last prune sound by symmetry. The examples answer `true` and `false`.
-4. Differential-test the pruned search against the unpruned one on random small inputs and report node counts with and without each prune. Then remove the backtracking over buckets (place each number in the first bucket that fits) and let the test find a counterexample; `[4, 3, 3, 2, 2, 2]` with $`k = 2`$ is one.
-5. LC 528 Random Pick with Weight: prefix sums and a binary search. With `random.Random(0)` and `weights` `[1, 3, 5, 1]`, draw 20,000 picks and compute a chi-square statistic against the weights: 3 degrees of freedom, 0.001 critical value 16.27. With `randint(1, total)` and `bisect_left` the statistic is about 4.9.
-6. Plant the off-by-one (`bisect_right` on the same 1-based draw) and show the test catches it: every count shifts, and index 4 appears although only 0 to 3 exist. Make the check a pytest that passes for seeds 0 to 19 on the correct sampler and fails on the planted one.
+1. State the LC 1029 Two City Scheduling rule, sorting by the difference between the two costs and sending the first half to one city, and prove it with an exchange argument before coding.
+2. Refute the alternative that sends each person to their cheaper city until one city fills, searching over all splits with brute force. Keep the minimized counterexample and name the information the refuted order ignores.
+3. Solve LC 698 Partition to $`K`$ Equal Sum Subsets by backtracking over buckets, stating each prune as a claim: order, early failure and skipping an equivalent bucket. Prove the skip sound by symmetry.
+4. Differential-test the pruned search against the unpruned one on small random inputs, recording how each prune changes the node count. Then drop the bucket backtracking for a first-fit variant and let the test find a counterexample.
+5. Solve LC 528 Random Pick with Weight with prefix sums and a binary search. Check the distribution with a chi-square test against the weights, keeping the check as a pytest over seeds you choose.
+6. Plant the off-by-one in the index mapping and show the test catches it, with counts shifting onto an index that should never appear. Keep the pytest passing on the correct sampler and failing on the planted one.
 
 **Deliverables**
 
-- The LC 1029 exchange proof, written before code, with the refuted rule and its counterexample.
+- The LC 1029 exchange proof with the refuted rule and its counterexample.
 - The LC 698 pruned search with soundness claims, node counts and the caught unsound variant.
-- The LC 528 sampler with its seeded chi-square test and the planted off-by-one.
+- The LC 528 sampler with its chi-square test and the planted off-by-one.
 
 **Checks**
 
@@ -2056,8 +2056,8 @@ Streams do not fit in memory and shuffles must be uniform, not merely random-loo
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Greedy proof | The exchange argument is written before code, LC 1029 is accepted, and the refuted rule has a minimized counterexample. | The proof handles ties, and the write-up explains what information the refuted order ignores. |
-| Pruned search | Every prune has a one-line soundness claim, and the pruned and unpruned searches agree on random inputs. | Node counts per prune are reported, and the differential test catches the first-fit variant. |
-| Randomized check | The chi-square test states seed, trials, statistic and critical value, and the planted off-by-one fails it. | The pytest passes for seeds 0 to 19 on the correct sampler (the statistic stays far below 16.27) and fails on the planted one for every seed. |
+| Pruned search | Every prune has a one-line soundness claim, and the pruned and unpruned searches agree on random inputs. | Node counts per prune are recorded, and the differential test catches the first-fit variant. |
+| Randomized check | The chi-square test states its seeds, trials and decision rule, and the planted off-by-one fails it. | The pytest passes across the chosen seeds on the correct sampler and fails on the planted one for every seed. |
 
 Feeds into: Capstone failure evidence: the refuted greedy, the first-fit variant and the off-by-one sampler. Transfer: LC 1029 solved cold with its proof.
 
@@ -2611,13 +2611,13 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 
 ### Mini-project: Two tag-hidden schedules with witnesses and a repaired recurrence
 
-**About 10 to 14 hours.** Derive two scheduling dynamic programs from blank files, return a witness from each, and use a Hypothesis differential harness to shrink, pin and repair a subtly wrong recurrence.
+**About 10 to 14 hours.** Derive two scheduling dynamic programs from blank files, each returning a witness for an independent checker. A differential harness shrinks, pins and repairs one subtly wrong recurrence, training the formulation judgment the capstone needs.
 
-1. LC 983 Minimum Cost For Tickets, without reading its tags: write the English specification of the subproblem, the recurrence, the base case and the evaluation order before code. Return the cost and a witness, the passes bought with their start days. The examples answer 11 and 17.
-2. Build the harness: Hypothesis generates small day sets and costs; compare memoized, tabulated and brute-force answers (enumerate every purchase plan) with `derandomize=True`, and check that the witness covers every travel day and costs exactly the reported total.
-3. Plant the off-by-one recurrence in which a 7-day pass bought on day $`d`$ covers $`d`$ through $`d + 7`$ and a 30-day pass $`d`$ through $`d + 30`$. Let Hypothesis shrink a failure (expect two travel days 7 apart, such as days `[1, 8]` with costs `[1, 1, 2]`, where the bug reports 1 against the true 2), pin it with `@example`, and repair the recurrence.
-4. LC 1335 Minimum Difficulty of a Job Schedule, without reading its tags: $`\text{dp}`$ over (first unscheduled job, days left), returning the cut points as a witness. The examples answer 7, -1 and 3. Differential-test against brute force over all cut positions on small inputs.
-5. Prove both recurrences by induction: name the case split (the pass bought on the first uncovered travel day; the first day's block of jobs), why the state is sufficient, and why no invalid schedule is admitted.
+1. Solve LC 983 Minimum Cost For Tickets with tags hidden: write the subproblem specification, recurrence, base case and evaluation order before code. Return the cost with a witness of the passes bought.
+2. Build the harness: Hypothesis generates small inputs and compares memoized, tabulated and brute-force answers, while a checker validates that each witness covers every travel day at exactly the reported total.
+3. Plant an off-by-one in the pass coverage, let Hypothesis shrink a failure, pin it with `@example` and repair the recurrence. Map the shrunk input to the exact claim the planted recurrence made.
+4. Solve LC 1335 Minimum Difficulty of a Job Schedule with tags hidden, with a state over the first unscheduled job and days left that returns its cut points as a witness. Differential-test against brute force over all cut positions on small inputs.
+5. Prove both recurrences by induction: name the case split, why the state is sufficient, and why no invalid schedule is admitted.
 6. Write a transfer note for each problem: the smallest sufficient state and one smaller state that fails, with a counterexample.
 
 **Deliverables**
@@ -2634,10 +2634,10 @@ DP transfers to batching, caching and allocation. The skill is recognizing the s
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Formulation | Specification, recurrence, base cases and order are written before code for both problems. | Each transfer note refutes a smaller state with a concrete counterexample. |
-| Witnesses | Both solutions return witnesses that an independent checker validates. | The witness checker runs inside the Hypothesis harness on every example. |
-| Harness and repair | Memoized, tabulated and brute-force answers agree on 200 derandomized examples; the planted recurrence fails, its shrunk input is pinned with `@example`, and the repair passes. | The write-up maps the shrunk input to the exact claim the planted recurrence made. |
-| Proof | One recurrence is proved by induction with its case split named. | Both are proved, including why no invalid schedule is admitted. |
+| Recurrence formulation | Specification, recurrence, base cases and order are written before code for both problems. | Each transfer note refutes a smaller state with a concrete counterexample. |
+| Witness reconstruction | Both solutions return witnesses that an independent checker validates. | The witness checker runs inside the Hypothesis harness on every example. |
+| Harness and repair | Memoized, tabulated and brute-force answers agree on generated examples, while the planted recurrence fails with its shrunk input pinned and the repair passing. | The write-up maps the shrunk input to the exact claim the planted recurrence made. |
+| Inductive proof | One recurrence is proved by induction with its case split named. | Both are proved, including why no invalid schedule is admitted. |
 
 Feeds into: Capstone correctness library: one reconstructing DP. Failure evidence: the planted recurrence and its repair. Transfer: two tag-hidden scheduling problems.
 
@@ -2682,6 +2682,6 @@ Review the stage through three small artifacts drawn from the Algorithms and Dat
 | Correctness library | A hash map, a mutable-priority heap, union-find, one graph routine and one reconstructing DP, each with its invariant, a complexity note and a test against an independent oracle, all run by one command. | Each structure has a stateful or property test over operation histories, and every invariant is also asserted in a debug mode. |
 | Failure evidence | At least two seeded defects, each with the generated history or adversarial case that exposed it, the minimized failure and the repair. | Every minimized failure is kept as a regression test and mapped to the invariant it broke. |
 | Transfer | One unfamiliar problem solved cold, with the invariant and bound written before code: a tag-hidden problem from the mini-projects or a new free LeetCode problem. | The cold solve records a rejected first idea and the counterexample that killed it. |
-| Measurement | One benchmark connects asymptotic behavior, input distribution and memory locality, such as the hash map's probes across key distributions, or a NumPy gather through a shuffled index against a sequential one at sizes below and above the cache. | Predictions are written before measuring, and the benchmark shows the working-set effect: on a 12th Gen Intel Core i9-12900K with NumPy 2.5.4, a shuffled gather is about 1.8 times slower than a sequential one at 10^5 elements and about 5 times slower at 10^7. |
-| Rebuild | A README lists the commands that rerun every test and benchmark. | One command reruns everything, with the Python version and CPU stated. |
+| Measurement | One benchmark connects asymptotic behavior, input distribution and memory locality, such as the hash map's probes across key distributions, or a NumPy gather through a shuffled index against a sequential one at sizes below and above the cache. | Predictions are written before measuring, and the benchmark shows the working-set effect across sizes. |
+| Rebuild | A README lists the commands that rerun every test and benchmark. | One command reruns everything, with the setup needed to reproduce it stated. |
 
