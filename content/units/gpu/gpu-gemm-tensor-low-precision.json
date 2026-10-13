@@ -10,6 +10,16 @@
       "access": "Free",
       "use": "Coverage and correctness gap: the pool lacks a precise WMMA contract and Lab 6 misstates TF32 conversion and register types. Use Programming Guide 10.24 and PTX ISA 9.0 mma.m16n8k8 fragments, mma and cvt, archived with CUDA 13.0.0; also consult cp.async completion semantics.",
       "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions"
+    },
+    {
+      "id": "nvidia-quantization-gpu5",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "TensorRT quantization schemes and workflows",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Coverage gap: the existing pool does not derive scale granularity and reconstruction conventions precisely. Read INT8/FP8 equations, per-tensor/per-channel/block quantization and dynamic quantization in documentation dated October 5, 2026. Skip engine building and replace the block pseudocode's floor-divided scale count with ceiling division.",
+      "url": "https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/quantized-types-schemes.html"
     }
   ],
   "units": [
@@ -600,47 +610,65 @@
         "quant-error-contract"
       ],
       "outcomes": [
-        "TODO"
+        "Derive quantization and reconstruction with an explicit positive scale convention.",
+        "Compare per-tensor, per-channel and reduction-block scales including metadata and tail costs.",
+        "Measure clipping and output error against a predefined numerical tolerance rather than accepting speed alone."
       ],
-      "why": "TODO",
+      "why": "Low-precision range becomes useful only with a scaling policy. Its granularity changes both error and where scale factors can be applied in GEMM.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-gemm-tensor-low-precision/epilogue-fusion-grouped-gemm",
+          "note": "Apply valid reconstruction scales in a fused epilogue."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nvidia-quantization-gpu5",
+          "title": "Scale convention and representable range",
+          "url": "https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/quantized-types-schemes.html",
+          "locator": "Quantization Schemes: INT8, FP8 and Table 14, documentation dated October 5, 2026",
+          "depth": "Read symmetric INT8 and E4M3 formulas. Separate these framework-supported schemes from a general affine zero-point exercise."
+        },
+        {
+          "resource": "nvidia-quantization-gpu5",
+          "title": "Granularity and dynamic scale selection",
+          "url": "https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/quantized-types-workflows.html",
+          "locator": "Quantization Granularity: Per-Tensor, Per-Channel and Block Quantization; Dynamic Quantization, documentation dated October 5, 2026",
+          "depth": "Skip calibration implementation and FP4. In block pseudocode use ceiling division for the number of scales; ceil(R//B) loses a partial block."
         }
       ],
       "focus": [
-        "TODO"
+        "Define a reconstruction scale \\(s>0\\): symmetric INT8 uses \\(q=\\operatorname{roundEven}(\\operatorname{clip}(x/s,-128,127))\\) and \\(\\hat{x}=sq\\). FP8 rounds to its nonuniform representable set, not to integers.",
+        "With one scale per row of the first operand and per column of the second, \\(\\hat{C}_{ij}=s_{A,i}s_{B,j}\\sum_k q_{A,ik}q_{B,kj}\\). Scales varying along the reduction require scaled partial sums inside the reduction, not one final factor.",
+        "Specify zero-block handling, scale dtype, nearest-even ties, clipping and nonfinite-input policy. Dynamic scales cost a reduction and metadata traffic; calibration scales can fail on unseen outliers.",
+        "Measure maximum absolute error, relative error only away from zero, normalized Frobenius error and clipping count against an original-input double reference. A converted-input reference tests implementation but does not establish task accuracy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Quantize the two rows [0.01, 0.02, 0.03, 0.04] and [10, 20, 30, 40] to symmetric INT8 using a maximum-magnitude scale divided by 127. A shared scale makes the first row all zeros; separate row scales preserve nonzero values in both rows. Reconstruct, record maximum absolute error and clipping count, then repeat with an unseen value 80 using the previously fixed scale to expose saturation. For reduction length 65 and block size 32, allocate three scales and explicitly test the one-element tail. Choose a positive neutral scale for an all-zero block.",
       "traps": [
-        "TODO"
+        "Multiplying by a forward quantization multiplier when the API expects the inverse reconstruction scale.",
+        "Pulling reduction-block scales outside the full dot product when those scales vary with the reduction block.",
+        "Using LeetGPU Challenge 32's FP32 matmul reference as an arbitrary-range exact integer oracle. Its large products can exceed exact FP32 integer range."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What happens to an all-zero block under amax-based scaling?",
+          "a": "Naively it produces a zero scale and division by zero. Choose a defined positive scale and emit zero codes."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "When can scales move to the epilogue?",
+          "a": "When each output's scale product is constant over its entire reduction. Reduction-dependent scales require scaled partial products."
+        },
+        {
+          "q": "Why is relative error alone a poor gate near cancellation?",
+          "a": "The reference can be almost zero, making a tiny absolute error produce a huge or undefined relative error. Use an absolute tolerance there."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` per-tensor/per-channel/block quantization comparison, integer-accumulator reference, scale-tail tests and predeclared error acceptance table.",
+      "stopWhen": "Your scale policies pass zero, outlier and partial-block tests, and a numerical acceptance table rejects at least one inaccurate policy regardless of its speed.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for precise scale granularity, reconstruction and dynamic-selection contracts. The official TensorRT scheme/workflow family fills that gap; the mini-project supplies task-tolerance measurement."
       }
     },
     {
