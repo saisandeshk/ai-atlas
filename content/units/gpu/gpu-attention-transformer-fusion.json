@@ -84,7 +84,7 @@
     {
       "id": "online-softmax-attention-tiling",
       "title": "Online softmax state, query and key-value tiling and output tolerance",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -95,47 +95,71 @@
         "attention-numerics"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the running maximum, normalizer and weighted numerator invariants.",
+        "Implement a tiled forward pass that retains only query-tile state on chip.",
+        "Validate accumulation and rescaling with an independent reference and a stated extreme-value policy."
       ],
-      "why": "TODO",
+      "why": "Online softmax lets a query row consume keys in pieces. Rescaling both the denominator and weighted numerator is what makes those pieces one attention operation.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/attention-masks-head-grouping",
+          "note": "Extend the tiled state to masked rows and shared KV heads."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "online-softmax-attn-gpu6",
+          "title": "Online Normalizer Calculation, arXiv:1805.02867v2",
+          "url": "https://arxiv.org/abs/1805.02867v2",
+          "locator": "Section 3, Algorithm 3 and its induction proof; Section 3.1, equations 3 and 4 (pp. 2 to 4)",
+          "depth": "Stop before Section 4. The proof assumes finite logits; its associativity is a real-arithmetic statement, not bitwise floating-point equivalence."
+        },
+        {
+          "resource": "cs336-a2-flashattention-gpu6",
+          "title": "CS336 Assignment 2: weighted sum and tiled forward",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Commit ca8bc81: Section 4.2.1, Example - Weighted Sum, forward pass (pp. 17 to 20); Section 4.2.2, Details of the FlashAttention forward pass and Algorithm 1 (pp. 24 to 25); problem `flash_forward` parts (a) and (b) (pp. 26 to 27)",
+          "depth": "Read the weighted-sum forward example before attention; defer its backward kernel. Start with the public test sizes, not the B200 sweep. Add bounds checks beyond the handout's power-of-two contract."
         }
       ],
       "focus": [
-        "TODO"
+        "For processed keys, keep \\(m = \\max_j s_j\\), \\(\\ell = \\sum_j \\exp(s_j-m)\\) and \\(u = \\sum_j \\exp(s_j-m)v_j\\). Output is \\(u/\\ell\\). A rising maximum changes the scale of all old contributions.",
+        "For new tile scores \\(T\\), use \\(m' = \\max(m,\\max T)\\), \\(a = \\exp(m-m')\\), \\(\\ell' = a\\ell + \\sum_j \\exp(T_j-m')\\) and \\(u' = au + \\sum_j \\exp(T_j-m')v_j\\). Normalize once at the end.",
+        "Keep the query tile and row state while streaming key/value tiles. Accumulate reductions and weighted outputs in `tl.float32`; record dot-product precision and casts separately from output dtype.",
+        "For finite inputs, compare with a dense double-precision reference using absolute and relative error. Handle empty tiles explicitly. Define all-masked rows as zero output and negative-infinite logsumexp, or reject them; reject NaN and infinite unmasked logits unless you implement another policy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without the source, merge two tiles with logits `torch.tensor([0., 1., 2., 3.], dtype=torch.float64)` and scalar values `torch.tensor([1., 2., 3., 4.], dtype=torch.float64)`, split after the second entry. In PyTorch 2.14.1 the weighted output is approximately 3.492652734585769. Then implement query/key tiling for seed 0 standard-normal inputs of shapes 2 by 17 by 7 and 2 by 19 by 7, with scale \\(1/\\sqrt{7}\\). Both 4 by 5 and 8 by 8 tiles must match the double-precision dense reference within `rtol=1e-12, atol=1e-12` on CPU.",
       "traps": [
-        "TODO"
+        "Rescaling the denominator but leaving the old weighted numerator unchanged. A later larger maximum then changes the answer.",
+        "Padding keys with zero scores. They still receive probability mass; invalid keys must contribute neither to the normalizer nor the numerator.",
+        "Evaluating a difference of two negative infinities for an empty tile. Branch or use safe neutral-state handling rather than letting NaNs enter the recurrence."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can you postpone normalization until the final tile?",
+          "a": "The numerator and denominator share the same running exponential scale. Their ratio is the normalized weighted sum over all keys processed so far."
+        },
+        {
+          "q": "Is merging tile states associative?",
+          "a": "For finite logits it is associative in exact real arithmetic: each state summarizes the same weighted exponential sums. Floating-point merge order can change rounding."
+        },
+        {
+          "q": "Does subtracting the maximum solve every extreme-value case?",
+          "a": "No. It controls exponential overflow for finite scores, but cannot repair overflow in the dot product or define softmax of an all-masked row. Those need separate contracts."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `flash_forward` (a) and (b)",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_attention.py",
+          "locator": "Connect both attention classes through `tests/adapters.py`; run `pytest tests/test_attention.py -k test_flash_forward_pass` after adding causal support in the next unit",
+          "note": "First pass the PyTorch case and the noncausal Triton case. The public inputs use batch size 4, sequence length 128 and head width 64, and compare output and saved logsumexp with `rtol=1e-2, atol=1e-2`. They do not check tails or extremes. Add those in `kernellab`; do not reuse the tiled algorithm as its own oracle."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the two-state merge, pass both noncausal forward tests, and your own partial-tile and extreme-finite tests pass a justified error budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The online-normalizer proof and CS336 forward algorithm cover derivation and implementation, with public tests and mini-project edge tests. TensorTonic's client-rendered statement was not verifiable, so CS336 is the checked practice route."
       }
     },
     {
