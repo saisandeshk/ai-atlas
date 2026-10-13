@@ -204,7 +204,7 @@ Reproduce a controlled deadly-triad failure, implement DQN and Double DQN with f
 - [ ] Actor-critic data and update dependencies _(Required)_
 - [ ] One-step and n-step advantage estimates _(Required)_
 - [ ] Generalized Advantage Estimation _(Required)_
-- [ ] Gamma and lambda bias-variance behavior _(Required)_
+- [ ] $`\gamma`$ and $`\lambda`$ bias-variance behavior _(Required)_
 - [ ] Entropy regularization and exploration effects _(Required)_
 - [ ] Old and new policy log probabilities _(Required)_
 - [ ] Importance probability ratios and direction _(Required)_
@@ -228,7 +228,7 @@ Reproduce a controlled deadly-triad failure, implement DQN and Double DQN with f
 - **Primary - Course:** [Stanford CS224R Spring 2026 - Policy Gradients and Actor-Critic](https://cs224r.stanford.edu/) - Study the Policy Gradients and Actor-Critic lectures and Homework 2 sections on online RL. Derive each estimator first, implement it independently, and use fixed trajectories plus a small continuous-control task.
 - **Required - Book:** [Reinforcement Learning: An Introduction - Chapter 13](https://mitpress.mit.edu/9780262352703/reinforcement-learning/) - Study the policy-gradient theorem, REINFORCE, baselines and actor-critic sections. Derive the gradient and baseline result in the notation used by the shared trajectory schema.
 - **Required - Paper:** [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) - Read the clipped objective, implementation variants and experiments. Build hand cases for positive and negative advantages, compare clipped and unclipped losses and show that clipping alone does not enforce a hard KL bound.
-- **Required - Paper:** [High-Dimensional Continuous Control Using Generalized Advantage Estimation](https://arxiv.org/abs/1506.02438) - Derive GAE from TD residuals, implement backward recursion with terminal and truncation masks and sweep gamma and lambda on fixed trajectories before training.
+- **Required - Paper:** [High-Dimensional Continuous Control Using Generalized Advantage Estimation](https://arxiv.org/abs/1506.02438) - Derive GAE from TD residuals, implement backward recursion with terminal and truncation masks and sweep $`\gamma`$ and $`\lambda`$ on fixed trajectories before training.
 - **Support - Implementation:** [CleanRL PPO](https://docs.cleanrl.dev/rl-algorithms/ppo/) - Use the single-file implementation and implementation-details notes as a post-implementation audit. Trace rollout shapes, advantage calculation, minibatch epochs, ratios, clipping, value loss, entropy, seeding and environment semantics.
 - **Support - Tutorial:** [Hands-on Modern RL - Chapters 6 to 8](https://walkinglabs.github.io/hands-on-modern-rl/en/) - Use the REINFORCE, actor-critic and PPO chapters for hands-on CartPole, Pendulum or BipedalWalker experiments. Complete Sections 6.4, 6.5, 7.4, 8.2, 8.3 and 8.4 selectively and pin the source revision.
 - **Required - Project:** [Reinforcement Learning Control Laboratory - Policy Core](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/reinforcement-learning-control-laboratory.md) - Complete REINFORCE with baseline, actor-critic, GAE and PPO requirements. Match hand-computed log probabilities, advantages, ratios and clipped losses and diagnose stale-policy, ratio, GAE and evaluation leakage defects.
@@ -253,7 +253,7 @@ Derive REINFORCE and baseline unbiasedness, match actor-critic, GAE and PPO loss
 ### Learn this much
 
 - [ ] Exploration and exploitation as a data-collection problem _(Required)_
-- [ ] Undirected epsilon and entropy-based exploration _(Required)_
+- [ ] Undirected $`\epsilon`$ and entropy-based exploration _(Required)_
 - [ ] Optimism and upper-confidence vocabulary _(Required)_
 - [ ] Count, pseudocount and intrinsic-reward vocabulary _(Required)_
 - [ ] Curiosity and representation-dependent novelty _(Required)_
@@ -544,7 +544,7 @@ Train or simulate a preference reward model and build an executable verifier, th
 - [ ] Bradley-Terry substitution and DPO derivation _(Required)_
 - [ ] Chosen and rejected sequence log probabilities _(Required)_
 - [ ] Policy and frozen reference log-ratio margins _(Required)_
-- [ ] DPO logistic loss and beta _(Required)_
+- [ ] DPO logistic loss and $`\beta`$ _(Required)_
 - [ ] Gradient weighting for easy, hard and mislabeled pairs _(Required)_
 - [ ] Completion-only masks and prompt cancellation _(Required)_
 - [ ] Summed versus length-normalized log probabilities _(Required)_
@@ -561,7 +561,7 @@ Train or simulate a preference reward model and build an executable verifier, th
 - [ ] Fixed-batch loss, gradient and invariance tests _(Required)_
 - [ ] Tokenizer, chat-template and truncation consistency _(Required)_
 - [ ] Preference accuracy versus downstream behavior _(Required)_
-- [ ] Overoptimization as beta, epochs or data reuse increase _(Required)_
+- [ ] Overoptimization as $`\beta`$, epochs or data reuse increase _(Required)_
 - [ ] Held-out prompt and annotator slices _(Required)_
 - [ ] Compute-matched rejection and SFT controls _(Required)_
 - [ ] External task, safety and style evaluation _(Required)_
@@ -573,20 +573,20 @@ Train or simulate a preference reward model and build an executable verifier, th
 - **Required - Paper:** [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) - Read the complete derivation, objective and experiments. State the preference-model and reference assumptions, then compare a scratch DPO update with SFT and rejection-style baselines on a held-out slice.
 - **Required - Paper:** [A General Theoretical Paradigm to Understand Learning from Human Preferences](https://arxiv.org/abs/2310.12036) - Study the preference-model misspecification argument and IPO objective. Use one synthetic preference problem to compare DPO and IPO behavior as noise, margin and data reuse change.
 - **Support - Course:** [Stanford CS224R 2026 - LLM Preference Optimization](https://cs224r.stanford.edu/) - Study the LLM Preference Optimization lecture and the IPO portion of the Default Project specification. Implement independently, preserve the reference policy and follow course material restrictions.
-- **Support - Documentation:** [TRL DPO Trainer](https://huggingface.co/docs/trl/dpo_trainer) - After the scratch loss passes, inspect the current DPOTrainer data contract and options. Differential-test one tiny batch against the local objective and record library version, loss type, beta, padding, truncation and reference behavior.
-- **Support - Tutorial:** [Hands-on Modern RL - Chapter 14 DPO](https://walkinglabs.github.io/hands-on-modern-rl/en/) - Use Sections 14.1, 14.2 and 14.4 for a bounded hands-on DPO experiment and metrics. Pin the revision, replace any opaque trainer-only step with a checked local loss and retain a beta or length regime where quality worsens.
+- **Support - Documentation:** [TRL DPO Trainer](https://huggingface.co/docs/trl/dpo_trainer) - After the scratch loss passes, inspect the current DPOTrainer data contract and options. Differential-test one tiny batch against the local objective and record library version, loss type, $`\beta`$, padding, truncation and reference behavior.
+- **Support - Tutorial:** [Hands-on Modern RL - Chapter 14 DPO](https://walkinglabs.github.io/hands-on-modern-rl/en/) - Use Sections 14.1, 14.2 and 14.4 for a bounded hands-on DPO experiment and metrics. Pin the revision, replace any opaque trainer-only step with a checked local loss and retain a $`\beta`$ or length regime where quality worsens.
 - **Required - Project:** [LLM Post-Training Laboratory - Direct Preference Objective](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md) - Complete the DPO-style objective with exact sequence log probabilities, frozen reference identity, fixed loss and gradient tests, common raw evaluation records, support analysis and reward, length, style and judge-hacking probes.
 
 ### Exit checkpoint
 
-Derive and implement DPO from sequence log probabilities, pass sign, masking, reference and gradient oracles, and show with held-out evaluation how beta, length, label noise or dataset support can reverse an apparent preference gain.
+Derive and implement DPO from sequence log probabilities, pass sign, masking, reference and gradient oracles, and show with held-out evaluation how $`\beta`$, length, label noise or dataset support can reverse an apparent preference gain.
 
 <details>
 <summary>Deliberately left for later</summary>
 
 - Calling an offline pairwise objective on-policy reinforcement learning
 - A survey of every preference-loss variant without a hypothesis that distinguishes one
-- Model selection on the same preferences used to tune beta, epochs or checkpoints
+- Model selection on the same preferences used to tune $`\beta`$, epochs or checkpoints
 
 </details>
 

@@ -363,16 +363,16 @@ Produce a tested SFT or continued-pretraining baseline plus one low-rank or dist
 ### Resource route
 
 - **Primary - Book:** [RLHF Book - Reward Models, Direct Alignment and Preferences](https://rlhfbook.com/) - Read Chapters 5, 8, 10, 11, 14 and 15 with the chapter exercises. Trace preference generation through reward modeling or DPO, then list each distribution and evaluator assumption before training.
-- **Required - Paper:** [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) - Derive the objective from the KL-constrained reward formulation, implement it from policy and reference log probabilities, and gradient-check beta, sign, masking and identical-pair cases.
+- **Required - Paper:** [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) - Derive the objective from the KL-constrained reward formulation, implement it from policy and reference log probabilities, and gradient-check $`\beta`$, sign, masking and identical-pair cases.
 - **Required - Assignment:** [CS336 Assignment 5 Supplement - Preference Data and DPO](https://github.com/stanford-cs336/assignment5-alignment) - Complete preference-data inspection and dpo_loss. Run a bounded DPO comparison only after the external baseline and evaluator are frozen; replace the 1-B200 target with a smaller controlled run if necessary.
 - **Support - Implementation:** [RLHF Book Code - Reward Models and Direct Alignment](https://github.com/natolambert/rlhf-book/tree/main/code) - Run the smallest Bradley-Terry reward-model and DPO examples. Compare DPO, IPO and normalized DPO on one fixed sample and explain margins, accuracy and reward signals rather than raw loss alone.
 - **Support - Practice:** [TensorTonic - Preference Optimization Set](https://www.tensortonic.com/study-plans/language-modeling-from-scratch) - Solve Canonicalize Pairwise Preference Data, Score a KL-Regularized Policy Batch and Implement the DPO Loss. Add swapped-label, duplicate, length and reference-mismatch cases.
-- **Support - Reference:** [TRL DPO Trainer](https://huggingface.co/docs/trl/dpo_trainer) - After the scratch loss passes, map dataset format, reference model, beta, loss variants and logging into TRL. Confirm the library run matches the scratch objective on one frozen batch.
+- **Support - Reference:** [TRL DPO Trainer](https://huggingface.co/docs/trl/dpo_trainer) - After the scratch loss passes, map dataset format, reference model, $`\beta`$, loss variants and logging into TRL. Confirm the library run matches the scratch objective on one frozen batch.
 - **Optional - Lab:** [Modern LLM Notebook - RLHF Alignment](https://walkinglabs.github.io/modern-llm-notebook/?lang=en) - Use notebook 19 as a compact end-to-end orientation. Do not substitute its overview for the RLHF Book derivations or CS336 objective tests.
 
 ### Exit checkpoint
 
-Gradient-check the chosen preference objective, audit its data and policy versions, then show that its improvement over SFT survives external evaluation and controls for response length, style, judge bias, beta and reference mismatch.
+Gradient-check the chosen preference objective, audit its data and policy versions, then show that its improvement over SFT survives external evaluation and controls for response length, style, judge bias, $`\beta`$ and reference mismatch.
 
 <details>
 <summary>Deliberately left for later</summary>

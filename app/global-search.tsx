@@ -9,6 +9,8 @@ import {
 } from 'react';
 import { Search } from 'lucide-react';
 
+import { tex } from '@/lib/math';
+
 export type SearchKind = 'unit' | 'project' | 'section' | 'topic' | 'resource';
 
 export type SearchEntry = {
@@ -169,8 +171,8 @@ export function GlobalSearch({
                       {kindLabels[entry.kind]}
                     </span>
                     <span className="hit-copy">
-                      <strong>{entry.title}</strong>
-                      <small>{entry.context}</small>
+                      <strong>{tex(entry.title)}</strong>
+                      <small>{tex(entry.context)}</small>
                     </span>
                   </button>
                 </li>

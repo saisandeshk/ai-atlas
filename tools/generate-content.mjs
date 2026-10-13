@@ -16,6 +16,13 @@ const curriculum = mergeUnits(
 const stageOutputDirectory = path.join(projectRoot, 'content', 'stages');
 const trackOutputDirectory = path.join(projectRoot, 'content', 'tracks');
 
+// Content marks inline math as \( ... \) for KaTeX on the site. GitHub
+// renders inline math written as $`...`$, which no shell variable or price in
+// the content can be mistaken for.
+function githubMath(markdown) {
+  return markdown.replace(/\\\(([\s\S]+?)\\\)/g, (_, source) => `$\`${source}\`$`);
+}
+
 function label(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -249,7 +256,7 @@ await writeUnitIndex();
 await mkdir(stageOutputDirectory, { recursive: true });
 for (const stage of curriculum.stages) {
   const outputPath = path.join(stageOutputDirectory, `${stage.id}.md`);
-  await writeFile(outputPath, routeMarkdown(stage, 'Stage'));
+  await writeFile(outputPath, githubMath(routeMarkdown(stage, 'Stage')));
   console.log(`Generated ${path.relative(projectRoot, outputPath)}`);
 }
 
@@ -259,6 +266,6 @@ const authoredTracks = curriculum.advancedTracks.filter((track) =>
 await mkdir(trackOutputDirectory, { recursive: true });
 for (const track of authoredTracks) {
   const outputPath = path.join(trackOutputDirectory, `${track.id}.md`);
-  await writeFile(outputPath, routeMarkdown(track, 'Track'));
+  await writeFile(outputPath, githubMath(routeMarkdown(track, 'Track')));
   console.log(`Generated ${path.relative(projectRoot, outputPath)}`);
 }

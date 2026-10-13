@@ -1,5 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import katex from 'katex';
 import { loadUnitFiles, validateUnitFiles } from './units.mjs';
 
 const projectRoot = process.cwd();
@@ -163,29 +164,63 @@ for (const sourceField of ['sourceRoadmap', 'sourceSurvey']) {
   await validateSourceReference(sourcePath, `product.${sourceField}`);
 }
 
-function rejectLongDashes(value, label) {
-  if (typeof value === 'string') {
-    if (/[–—]/.test(value))
-      errors.push(`${label} contains an en dash or em dash`);
+// Inline math is LaTeX between \( and \), typeset by KaTeX (lib/math.tsx).
+// Every formula must parse strictly, delimiters must pair up, and fields that
+// are addresses, identifiers or shell commands never hold math.
+const mathPattern = /\\\(([\s\S]+?)\\\)/g;
+const noMathKeys = new Set([
+  'id',
+  'url',
+  'resource',
+  'unit',
+  'route',
+  'command',
+  'localPath',
+  'roadmapSource',
+]);
+
+function checkMath(value, label, key) {
+  if (!value.includes('\\(') && !value.includes('\\)')) return;
+  if (noMathKeys.has(key)) {
+    errors.push(`${label} holds math delimiters, but this field is not typeset`);
     return;
   }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) =>
-      rejectLongDashes(item, `${label}[${index}]`),
-    );
-    return;
-  }
-  if (value && typeof value === 'object') {
-    for (const [key, item] of Object.entries(value)) {
-      rejectLongDashes(item, `${label}.${key}`);
+  const rest = value.replace(mathPattern, '');
+  if (rest.includes('\\(') || rest.includes('\\)'))
+    errors.push(`${label} has an unpaired math delimiter`);
+  for (const [, source] of value.matchAll(mathPattern)) {
+    try {
+      katex.renderToString(source, { throwOnError: true, strict: 'error' });
+    } catch (error) {
+      errors.push(`${label} has math KaTeX cannot parse: ${source} (${error.message})`);
     }
   }
 }
 
-rejectLongDashes(curriculum, 'curriculum');
+function checkStrings(value, label, key = '') {
+  if (typeof value === 'string') {
+    if (/[–—]/.test(value))
+      errors.push(`${label} contains an en dash or em dash`);
+    checkMath(value, label, key);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      checkStrings(item, `${label}[${index}]`, key),
+    );
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [itemKey, item] of Object.entries(value)) {
+      checkStrings(item, `${label}.${itemKey}`, itemKey);
+    }
+  }
+}
+
+checkStrings(curriculum, 'curriculum');
 
 const unitFiles = await loadUnitFiles(projectRoot);
-for (const file of unitFiles) rejectLongDashes(file.data, file.relative);
+for (const file of unitFiles) checkStrings(file.data, file.relative);
 validateUnitFiles(curriculum, unitFiles, errors, {
   strict: process.argv.includes('--strict'),
 });
