@@ -1,6 +1,27 @@
 {
   "section": "gpu-multigpu-communication",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "splitwise-gpu9",
+      "role": "paper",
+      "priority": "support",
+      "name": "Splitwise: Efficient Generative LLM Inference Using Phase Splitting",
+      "provider": "Microsoft Research",
+      "access": "Free",
+      "use": "Read the phase characterization and the homogeneous and heterogeneous cluster designs. Test the throughput, cost and power claims as hardware-specific results, and compare its placement with DistServe on your workload.",
+      "url": "https://www.microsoft.com/en-us/research/publication/splitwise-efficient-generative-llm-inference-using-phase-splitting/"
+    },
+    {
+      "id": "mooncake-gpu9",
+      "role": "paper",
+      "priority": "support",
+      "name": "Mooncake: Trading More Storage for Less Computation",
+      "provider": "USENIX FAST 25",
+      "access": "Free",
+      "use": "Study the KVCache-centric disaggregated architecture, the global cache with its transfer engine, and the prefill scheduling with early rejection. Test the effective-capacity claims as trace-specific results.",
+      "url": "https://www.usenix.org/conference/fast25/presentation/qin"
+    }
+  ],
   "units": [
     {
       "id": "interconnect-topology",
@@ -697,47 +718,100 @@
         "distserve-splitwise-mooncake"
       ],
       "outcomes": [
-        "TODO"
+        "Derive KV transfer bytes and transfer time for a stated model and sequence length, and call the disaggregation crossover against colocated interference.",
+        "Contrast DistServe, Splitwise and Mooncake placement, hardware and scheduling choices for a stated TTFT and TPOT SLO.",
+        "Explain the NIXL connector path from memory registration through metadata exchange to transfer completion."
       ],
-      "why": "TODO",
+      "why": "Prefill is compute-bound and decode is memory-bound, so colocation forces one phase to wait for the other. Disaggregation removes the interference at the price of one KV transfer per request.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/comm-measurement-simulation",
+          "note": "Validate the crossover with the sweep and simulation contract."
+        },
+        {
+          "route": "inference",
+          "note": "Hand scheduler and request-identity ownership to serving design."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-gpu9",
+          "title": "Disaggregation, interference and goodput",
+          "url": "https://arxiv.org/html/2401.09670",
+          "locator": "Sections 2.3 (prefill-decoding interference and why chunked prefill cannot remove it), 3.1 to 3.3 (phase analysis with the 512-token OPT-66B transfer sizing), and 4.1 to 4.2 (high and low node-affinity placement); read arXiv:2401.09670v3"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Disaggregated pools, KV sizing and hardware split",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 17, Why Prefill-Decode Disaggregation? with Disaggregated Prefill and Decode Cluster Pools; Chapter 18, Fast KV Cache Transfer Between Prefill and Decode with Connector and Data Path Design and Compute-Optimized Versus Memory-Optimized Hardware"
+        },
+        {
+          "resource": "nixl-gpu9",
+          "title": "Transfer API and backends",
+          "url": "https://github.com/ai-dynamo/nixl",
+          "locator": "docs/nixl.md Design and Example procedure: create_agent, registerMem, metadata exchange, then prepXfer, postXfer and checkXfer; docs/BackendGuide.md for UCX, GDS, POSIX and MOONCAKE backend selection by memory type",
+          "depth": "Inspect the API and run only supported single-host transports. Multi-node RDMA paths need hardware you do not have here."
+        },
+        {
+          "resource": "splitwise-gpu9",
+          "title": "Phase-specific machines",
+          "url": "https://www.microsoft.com/en-us/research/publication/splitwise-efficient-generative-llm-inference-using-phase-splitting/",
+          "locator": "Phase characterization with homogeneous and heterogeneous cluster designs: up to 1.4x higher throughput at 20 percent lower cost, or 2.35x more throughput under the same power and cost"
+        },
+        {
+          "resource": "mooncake-gpu9",
+          "title": "KVCache-centric disaggregation",
+          "url": "https://www.usenix.org/conference/fast25/presentation/qin",
+          "locator": "KVCache-centric architecture with the global cache, transfer engine, prefill scheduling and early rejection: 59 to 498 percent higher effective capacity on the paper's traces"
         }
       ],
       "focus": [
-        "TODO"
+        "Goodput is the maximum request rate served within both TTFT and TPOT at a stated attainment such as 90 percent. DistServe reports up to 7.4x more requests and 12.6x tighter SLOs on its workloads; treat both as paper-specific, not portable speedups.",
+        "KV bytes per token are \\(2 \\times L \\times H_{kv} \\times d \\times b\\) for \\(L\\) layers, \\(H_{kv}\\) key-value heads, head dim \\(d\\) and \\(b\\) bytes per element. The short form without dtype and grouped-query heads undercounts grouped models by the head ratio.",
+        "A 40-layer, 40-head, dim-128 FP16 model holds about 0.82 MB per token, or 3.36 GB decimal for 4096 tokens. At 100 GB/s that transfer takes about 34 ms; disaggregation wins only when the removed interference exceeds it.",
+        "Move KV in slabs, not blocks: coalesce 16-token paged blocks into roughly 128-token payloads per RDMA write, overlap the transfer with decode compute, and keep first-token logits off the transfer path."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute per-token and per-request KV bytes for a stated layer count, key-value heads, head dim, dtype and sequence length, convert to transfer time at two stated link rates, and call whether disaggregation wins given stated TTFT and TPOT slack.",
       "traps": [
-        "TODO"
+        "Quoting the paper's 1.13GB transfer without recomputing. The byte count behind it is about 1.2e9 bytes (1.13 GiB scale) for 512 tokens on OPT-66B; recompute from the formula and label GB versus GiB before sizing any link.",
+        "Trusting 1 GB per 4k to 8k tokens for a 70B model. That range holds only with grouped-query heads plus FP8; the same model in full-head FP16 needs about 1.3 MB per token, so size from the formula and round buffers to 256 MB.",
+        "Believing chunked prefill removes interference. It trades TPOT relief for extra prefill work with quadratic KV reloads across chunks; only separate pools remove the coupling."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the KV bytes for 4096 tokens on a 40-layer, 40-head, dim-128 FP16 model?",
+          "a": "\\(2 \\times 40 \\times 40 \\times 128 \\times 2 = 819{,}200\\) bytes per token, about 0.82 MB, times 4096 is about 3.36 GB decimal. Transfer time is that divided by the effective link rate."
+        },
+        {
+          "q": "At 10 rps with 1.2 GB per request, what link does the transfer need?",
+          "a": "12 GB/s, or about 96 Gbps before overheads. That is why link sizing matters: a 100 Gb/s link saturates while an 800 Gb/s link stays comfortable."
+        },
+        {
+          "q": "What distinguishes Splitwise placement from DistServe placement?",
+          "a": "Splitwise assigns phases to different machine types (compute-optimized prefill, memory-optimized decode, including heterogeneous mixes), while DistServe co-optimizes GPU counts and parallelism per phase for goodput under TTFT and TPOT."
+        },
+        {
+          "q": "What does Mooncake add beyond separating prefill and decode pools?",
+          "a": "A KVCache-centric global cache that reuses stored KV across requests plus SLO-aware scheduling with early rejection when a request cannot meet its objectives."
+        },
+        {
+          "q": "When does NCCL serve the transfer and when does NIXL?",
+          "a": "NCCL for many-to-many synchronized collectives such as gradient or activation reductions; NIXL for one-to-one asynchronous KV moves with polling overlap. NCCL send and receive exist but carry more overhead for this path."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code ch15: single-GPU KV handoff and cache math",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch15/baseline_single_gpu_kv_handoff.py",
+          "locator": "Run baseline_single_gpu_kv_handoff.py against optimized_single_gpu_kv_handoff.py with kv_cache_management_math.py; compute the transfer crossover for your sequence lengths",
+          "note": "Single-host paths only. Multi-GPU disaggregated pairs need two GPUs, so record them as blockers with the topology dump."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand KV sizing matches the math script, your crossover calls the measured handoff correctly, and you can defend the DistServe, Splitwise and Mooncake choice for one stated SLO.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for primary Splitwise and Mooncake trade-offs; the two added papers supply them beside DistServe and Chapters 17 and 18."
       }
     },
     {
