@@ -680,47 +680,78 @@
         "vllm-sglang-flashinfer"
       ],
       "outcomes": [
-        "TODO"
+        "Build and register one custom operator with stream, lifetime and fallback contracts.",
+        "Meet a workspace, metadata, layout and capture-safe kernel interface for one paged operation.",
+        "Compare vLLM, SGLang and FlashInfer component boundaries for that operation."
       ],
-      "why": "TODO",
+      "why": "Engines keep the scheduler and memory; kernels win only behind a stable interface with registration, workspace and fallback contracts.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-kernel-inference-integration/output-quality-equivalence",
+          "note": "Gate the integrated path on output equivalence."
+        },
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/endpoint-measurement-attribution",
+          "note": "Measure the integrated path at endpoint scale."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-integration-gpu8",
+          "title": "Serving-kernel wrapper contract",
+          "url": "https://docs.flashinfer.ai/api/attention.html",
+          "locator": "`BatchDecodeWithPagedKVCacheWrapper`: constructor with `float_workspace_buffer` and `kv_layout`, `plan` with `indptr`, `indices` and `last_page_len`, `run` with `q` and `paged_kv_cache`, `workspace_size` and `reset_workspace_buffer`; `use_cuda_graph` buffer rules"
+        },
+        {
+          "resource": "flashinfer-integration-gpu8",
+          "title": "Plan-run and custom-op registration path",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/decode.py",
+          "locator": "`BatchDecodeWithPagedKVCacheWrapper.plan` and `run` in `flashinfer/decode.py`; `get_batch_decode_module` with `register_custom_op` and `register_fake_op` in the same file"
+        },
+        {
+          "resource": "sglang-gpu8",
+          "title": "Alternative runtime architecture",
+          "url": "https://arxiv.org/html/2312.07104",
+          "locator": "Section 2, programming model with `gen`, `fork` and cache-aware scheduling context; Section 3, RadixAttention reuse as the alternative component boundary"
         }
       ],
       "focus": [
-        "TODO"
+        "Caller-owned workspace comes first: allocate the 128 MB float buffer aligned to 16 bytes, call `plan` with `indptr`, `indices` and `last_page_len`, then reuse the plan across layers with `run`. `plan` never runs inside a graph or `torch.compile`.",
+        "Graph-safe wrappers pin batch size and page-table buffers. Changing batch size, `q_len_per_req` or page-table capacity needs a new wrapper or re-plan, not a silent in-place edit.",
+        "Register the custom op with a fake implementation for shape inference, keep execution on the current PyTorch stream, and keep an eager fallback that passes the same differential tests."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, register the fused residual-add plus RMSNorm as a custom op with a fake shape rule, allocate the FlashInfer decode workspace, `plan` a batch of 7 requests in `NHD` layout with `page_size = 16`, and `run` one layer. State which buffers must stay stable for graph capture and which eager fallback runs on an unsupported dtype.",
       "traps": [
-        "TODO"
+        "Calling `plan` inside a captured graph. Planning copies metadata on the host; only `run` with stable bindings captures.",
+        "Forgetting workspace alignment or zero-initialization on first use. Split-KV scratch then reads garbage.",
+        "Shipping the fast path without a fallback. Unsupported dtypes, layouts orshapes must route to a tested eager path."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does a custom op need a fake implementation?",
+          "a": "Shape inference, compilation and autotuning need output metadata without launching kernels. The fake implementation supplies it; without it capture and compilation fail."
+        },
+        {
+          "q": "What is frozen once a graph-safe decode wrapper is planned?",
+          "a": "Batch size, page-table buffers, `q_len_per_req` and workspace binding. A re-plan with different values raises; only order-tensor contents may change without recapture on supported routes."
+        },
+        {
+          "q": "Where does a custom kernel sit relative to vLLM, SGLang and FlashInfer?",
+          "a": "vLLM owns scheduling plus paged blocks, SGLang owns radix reuse plus program-level caching, FlashInfer owns the attention and sampling kernels. Your op replaces one kernel behind a stable plan-run boundary, not a scheduler."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU 83 Fused Residual Add RMS Norm, integrated locally",
+          "url": "https://leetgpu.com/challenges/fused-residual-add-and-rms-norm",
+          "locator": "Challenge 83 in `challenges/medium/83_fused_residual_add_rms_norm/challenge.py`: implement `solve`, pass the hosted tests, then wrap it as a `torch.library.custom_op` with a fake implementation and an eager fallback and integrate it into one small endpoint step with differential tests",
+          "note": "Hosted runs need an account; the reference implementation and tests are public in the challenges repository. Do not stop at the hosted score: the local integration with fallback is the deliverable."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your op passes differential tests through both the custom path and the eager fallback, with a pinned plan-run interface and a stated unsupported-shape policy.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "FlashInfer supplies the serving-kernel interface, SGLang the alternative architecture, and the companion extension path the local build contract."
       }
     },
     {
