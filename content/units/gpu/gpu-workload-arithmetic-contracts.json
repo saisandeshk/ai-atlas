@@ -1,11 +1,42 @@
 {
   "section": "gpu-workload-arithmetic-contracts",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "jax-training-gpu1",
+      "role": "book",
+      "priority": "required",
+      "name": "How to Scale Your Model - Training",
+      "provider": "JAX Scaling Book",
+      "access": "Free",
+      "use": "Work Some Problems to Work Questions 1 to 3 for training-step parameters, Adam and activation bytes and step time; read Data Parallelism and Fully-Sharded Data Parallelism for the comms-bound batch rule.",
+      "url": "https://jax-ml.github.io/scaling-book/training/"
+    },
+    {
+      "id": "amdahl-law",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Amdahl's law",
+      "provider": "Wikipedia",
+      "access": "Free",
+      "use": "Read Definition and Derivation for the overall-speedup formula with the worked share examples; apply it to kernel time shares at fixed workload.",
+      "url": "https://en.wikipedia.org/wiki/Amdahl%27s_law"
+    },
+    {
+      "id": "distserve-gpu1",
+      "role": "paper",
+      "priority": "support",
+      "name": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving",
+      "provider": "Zhong et al. (OSDI 2024)",
+      "access": "Free",
+      "use": "Read Section 1 with Figure 1 for per-GPU goodput: the highest request rate served while a target share of requests meets the TTFT and TPOT SLOs.",
+      "url": "https://arxiv.org/html/2401.09670v3"
+    }
+  ],
   "units": [
     {
       "id": "request-lifecycle-shapes",
       "title": "One request through prefill and decode, and the shapes that set its cost",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain",
         "derive"
@@ -15,47 +46,82 @@
         "model-shape-manifest"
       ],
       "outcomes": [
-        "TODO"
+        "Trace one request from tokenized prompt through prefill to the last decode step, naming the tensors produced and reused at each stage.",
+        "Write a shape manifest for a small model (layers, hidden size, heads, key-value heads, sequence lengths, batch, precision) and point at the entries that set its cost.",
+        "Explain why prefill is compute-bound while decode is bandwidth-bound, using TTFT and per-token latency."
       ],
-      "why": "TODO",
+      "why": "Every later count in this section hangs off one request through these two phases. If the lifecycle is vague, FLOPs, bytes and latency have nothing to attach to.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/transformer-flop-accounting",
+          "note": "Count the operations in the shapes you manifest here."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/inference-memory-accounting",
+          "note": "Weigh the same shapes in bytes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-inference-gpu1",
+          "title": "One request: prefill, decode and what to optimize",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "The Basics of Transformer Inference: What do we actually want to optimize? (TTFT and per-token latency) and A more granular view of the Transformer (linears, attention, everything else)"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Prefill and decode inside a serving engine",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Designing an Effective Inference Engine: Continuous batching, with its orchestration of prefill and generate steps"
+        },
+        {
+          "resource": "etalon-gpu1",
+          "title": "Prefill and decode with the KV-cache",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 2.1, LLM Inference Process"
         }
       ],
       "focus": [
-        "TODO"
+        "Prefill processes the whole prompt at once and writes one key-value pair per prompt token per layer; decode reads the full cache back for each new token and appends one pair.",
+        "TTFT covers scheduling delay plus prompt processing; per-token latency covers one decode step. Offline batch work cares about tokens per second, chat cares about both.",
+        "The manifest entries that move every estimate are layer count, hidden size, head counts with key-value heads, prompt and output lengths, batch size and precision."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the request path for the invented 64-layer model in the inference chapter's Worked Problems (\\(D = 4096\\), \\(F = 16384\\), \\(N = 32\\), \\(K = 8\\), \\(H = 256\\)): total parameters 18.4e9, int8 key-value bytes per token 262,144, and the per-layer append of one \\([K, H]\\) key plus one \\([K, H]\\) value per new token. Derive both numbers from the manifest.",
       "traps": [
-        "TODO"
+        "Treating prefill and decode as one regime. Prefill is a batched parallel pass; decode is serial with cache reads, so one batch size or one roofline cannot cover both.",
+        "Counting tokens without naming prefill versus output tokens. Cost, latency and cache all scale with the two lengths differently.",
+        "Assuming batching speeds up every part. Batching reuses weights across requests, but each request adds its own key-value reads."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A 512-token prompt arrives. What does prefill produce, and what does each decode step then read and write?",
+          "a": "Prefill processes all 512 tokens in parallel, writes 512 key-value pairs per layer and returns first-token logits. Each decode step reads the full cache, samples one token, and appends its pair."
+        },
+        {
+          "q": "Which manifest entries must a shape manifest contain for this section's estimates?",
+          "a": "Layer count, hidden size, feed-forward size, query and key-value head counts with head dimension, prompt and output lengths, batch size, precision, and later the sharding."
+        },
+        {
+          "q": "Why does batching raise linear-layer efficiency but not remove the decode bottleneck?",
+          "a": "Batching reuses each weight across requests, but every request adds its own key-value bytes, so cache traffic grows with batch while weight traffic does not."
+        },
+        {
+          "q": "Which latency does a longer prompt directly worsen, TTFT or per-token latency?",
+          "a": "TTFT, through prompt processing time. Per-token latency is set by one decode step over weights plus cache."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "How to Scale Your Model applied inference Question 4: LLaMA 3 inference from downloaded weights",
+          "url": "https://jax-ml.github.io/scaling-book/applied-inference/",
+          "locator": "Worked Problems, Question 4, steps 1 to 3 (step 4 optional)",
+          "note": "Steps 1 to 3 load the weights and count the parameters, run a plain forward pass with greedy sampling, then add a key-value cache, which splits the loop into one prefill pass and one decode step per token. Step 4 (separate prefill and decode servers) is optional, and step 5 (FlashAttention in Pallas) is TPU work that later sections replace. The question assumes JAX on Colab; any framework works. LLaMA 3 8B is about 16 GB in bf16 and fits a 24 GB GPU; on a 6 GB GPU use Llama 3.2 1B (about 2.5 GB in bf16), and count its tied embeddings once. Both downloads are gated: accept the license on Hugging Face and sign in first."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive 18.4e9 parameters and 262,144 int8 key-value bytes per token from the manifest without notes, and your steps 1 to 3 implementation samples coherent tokens through one prefill pass and cached decode steps.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The inference chapter plus Etalon Section 2.1 cover the request path at explain and derive depth, and applied Question 4 gives checked implementation practice."
       }
     },
     {
@@ -70,53 +136,89 @@
         "attention-operations"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the \\(2P\\) per-token dense operations rule from the qkv, output and MLP walks.",
+        "Derive prefill and decode attention operations separately and state when attention rivals the dense count.",
+        "State exactly what a FLOP count omits (softmax, norms, sampling, unembedding) and when the omission stops being safe."
       ],
-      "why": "TODO",
+      "why": "Operation counts are the numerator of every intensity and roofline in this section. A count that mixes prefill with decode, or drops the attention term at long context, corrupts all of them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/prefill-decode-roofline",
+          "note": "Divide these counts by bytes for intensity and bounds."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/training-step-arithmetic",
+          "note": "Contrast inference counts with the 6ND training step."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "Dense walk: 2P operations per token",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "flops counting, with the How many flops in a matmul? box in kv cache",
+          "depth": "The \\(2P\\) count covers the dense weights once per token, in prefill and decode alike. Attention comes on top, and in prefill it grows with the square of prompt length."
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Attention operations: prefill versus decode",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "What about attention? (the \\(ST/(S+T)\\) intensity derivation) and Theoretical estimates for LLM latency and throughput (Min Step Time with the small-batch quiz)"
+        },
+        {
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "Key-value cache FLOP savings grow with sequence",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "kv cache: the one-sixth saving paragraph and the no-cache quadratic paragraph"
         }
       ],
       "focus": [
-        "TODO"
+        "One matmul through all parameters costs \\(2P\\) operations by the \\(2mnp\\) rule; the layer walk (qkv, output, MLP) sums to the same within 2%.",
+        "Decode attention per token scales with cached length (\\(4SN_{\\text{heads}}H\\) per layer for scores plus values); prefill attention scales with prompt length squared.",
+        "Softmax, norms, sampling and the unembedding are \\(O(d_{\\text{model}})\\) per layer against \\(O(d_{\\text{model}}^2)\\) dense work; they matter only when the dense term shrinks or a profile says otherwise.",
+        "Use head count times head dimension, not model width, wherever key-value heads differ from query heads."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive decode operations per token for the invented 18.4e9-parameter model at cached length 8192: dense \\(2 \\times 18.4 \\times 10^9 = 3.68 \\times 10^{10}\\), attention \\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), total about \\(5.4 \\times 10^{10}\\).",
       "traps": [
-        "TODO"
+        "Taking \\(2P\\) per token as the whole prefill cost. Prefill pays the dense term per prompt token plus attention that grows with prompt length squared, so at long prompts the dense count understates the work.",
+        "Writing the attention scale as division by head dimension. The implemented scale is \\(1/\\sqrt{d_{\\text{head}}}\\); the count is unchanged but a kernel you write later must use the root.",
+        "Calling attention free in decode because 2P dominates. At 8192 cached tokens the invented model's attention is nearly half the dense count; recompute the share before dropping it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "How many dense operations does one decode step take for the invented 18.4e9-parameter model?",
+          "a": "About \\(3.68 \\times 10^{10}\\), from \\(2 \\times 18.4 \\times 10^9\\)."
+        },
+        {
+          "q": "At cached length 8192, what is its decode attention count, and what share is that?",
+          "a": "\\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), nearly half the dense count, so it cannot be dropped there."
+        },
+        {
+          "q": "Why is \\(2P\\) per token not the whole cost of a prefill?",
+          "a": "\\(2P\\) counts the dense weights once per token. Prefill also computes attention across all prompt tokens, which grows with prompt length squared, so at long prompts the dense count understates the work."
+        },
+        {
+          "q": "Without a cache, how does per-step work grow with sequence length \\(n\\)?",
+          "a": "Each step recomputes keys and values for all \\(n\\) tokens: \\(2 \\times 2 \\times n \\times L \\times d^2\\) operations, or \\(n/6\\) of a one-token forward pass, so totals grow quadratically."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "How to Scale Your Model inference Question 1: parameters and int8 key-value bytes per token",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Worked Problems, Question 1 (reproduce 18.4e9 parameters and 262,144 bytes per token closed-book before opening the answer)"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the 5.4e10 decode count at length 8192 without notes and reproduce Question 1 exactly.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The arithmetic article plus the inference chapter's attention section cover dense and attention counts at derive depth, with Question 1 as checked practice."
       }
     },
     {
       "id": "inference-memory-accounting",
       "title": "Parameter, activation, workspace and KV-cache memory",
-      "hours": 5,
+      "hours": 4,
       "target": [
         "derive"
       ],
@@ -127,53 +229,90 @@
         "memory-residency"
       ],
       "outcomes": [
-        "TODO"
+        "Derive parameter bytes under storage versus execution precision for a named model.",
+        "Derive key-value bytes per token and per request for MHA, GQA and MQA from layer, head and precision entries.",
+        "Fit a batch under a capacity bound with an explicit overhead line, and name what the fit ignores (activations, workspace, allocator)."
       ],
-      "why": "TODO",
+      "why": "Memory decides the maximum batch before any timing starts. A fit that forgets precision, head grouping or allocator overhead fails at load time, not at arithmetic time.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/prefill-decode-roofline",
+          "note": "Turn these bytes into intensities and bounds."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/workload-distributions-warmup",
+          "note": "Vary the sequence lengths this fit assumes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-inference-gpu1",
+          "title": "LLaMA-2-13B bytes: parameters, activations, key-value cache",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "What about memory? and Modeling throughput and latency for LLaMA 2-13B, including the parameter table and both batch tables",
+          "depth": "The tables label memory GiB but divide decimal gigabytes by bytes per second (32.7e9 bytes at 6.56e12 bytes/s gives 4.98 ms). Recompute in bytes and keep GB apart from GiB."
+        },
+        {
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "Weights, key-value bytes per token and the capacity fit",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "kv cache: the bytes-per-token formula; capacity",
+          "depth": "Recompute both byte lines: 52e9 parameters at 2 bytes is 104e9 bytes (about 104 GB), and exact key-value bytes per token are 2,097,152. The article's rounded 0.002 GB per token gives about 28000 tokens on 4 GPUs, not the printed 23000; use your own number with a stated overhead."
+        },
+        {
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "Intermediate and workspace bytes",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "intermediate memory costs: tensor contractions, statistical normalizations and element-wise operators, with GPU Kernel Fusion"
         }
       ],
       "focus": [
-        "TODO"
+        "Parameters cost bytes-per-value times count under the stored precision; execution precision can differ (int8 weights with bf16 compute) and changes later intensities, not this line.",
+        "Key-value bytes per token are \\(2 \\times \\text{bytes} \\times L \\times K \\times H\\); the \\(4 \\times L \\times d_{\\text{model}}\\) shortcut assumes key-value width equals model width and breaks under GQA and MQA.",
+        "Activations are megabytes where the cache is gigabytes at 8k context (80 MB against 6.7 GB in the 13B example), but they still set the workspace and fragmentation overhead you must state.",
+        "Capacity fits subtract weights first, then divide by per-request cache; always add an overhead line for allocator, workspace and graphs instead of absorbing it into rounding."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the 13B bf16 cache at 8192 context (\\(2 \\times 2 \\times 128 \\times 40 \\times 40 \\times 8192 = 6.7 \\times 10^9\\) bytes), then the GQA variant with 8 key-value heads in int8 (81,920 bytes per token), then fit 8192-length requests beside 26 GB of weights on 8 16 GB cards (about 150).",
       "traps": [
-        "TODO"
+        "Reading the inference chapter's tables as GiB. The step times divide decimal gigabytes by bytes per second; recompute in bytes and keep GB apart from GiB.",
+        "Copying the article's 23000-token fit. Its own rounded 0.002 GB per token gives about 28000 (about 26700 with exact bytes); the printed 23000 carries an unstated discount, so publish your own overhead instead.",
+        "Calling activations negligible everywhere. They are negligible beside an 8k cache; at short context with large batch they set the workspace line."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "How many key-value bytes per token does the invented model (\\(L = 64\\), \\(K = 8\\), \\(H = 256\\)) use in bf16?",
+          "a": "\\(2 \\times 2 \\times 64 \\times 8 \\times 256 = 524{,}288\\) bytes (about 0.5 MB); in int8 it is 262,144. Full multi-head attention with \\(K = 32\\) would need 2,097,152 bytes in bf16."
+        },
+        {
+          "q": "How many per token for a 40-layer, 8 key-value head, 128-dim model in int8?",
+          "a": "\\(2 \\times 40 \\times 8 \\times 128 = 81{,}920\\) bytes (80 kB)."
+        },
+        {
+          "q": "Three 40 GB cards hold the 52B weights (104 GB). Can they serve batch 4 at 2048 tokens each?",
+          "a": "No, though the article says it can. 16 GB remain, and \\(16 \\times 10^9 / 2{,}097{,}152 \\approx 7600\\) tokens fit against \\(4 \\times 2048 = 8192\\) needed; even the rounded 8000 falls short. Serve batch 3, shorten context, add a card, or shrink the cache."
+        },
+        {
+          "q": "When does the per-token shortcut \\(4 \\times L \\times d_{\\text{model}}\\) fail?",
+          "a": "Whenever key-value width differs from model width: GQA and MQA need the explicit \\(K\\) and \\(H\\) entries."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "How to Scale Your Model inference Question 2: largest batch at 128k context",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Worked Problems, Question 2, including the \\(K = 1\\) variant (reproduce batch 7, about 56 with one key-value head)"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your closed-book byte lines match 6.7e9, 81,920 and the 150-request fit, and Question 2 reproduces 7 (about 56 with one key-value head).",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The inference chapter's memory sections plus the article's capacity walk cover all four topics at derive depth, with Question 2 as checked practice."
       }
     },
     {
       "id": "prefill-decode-roofline",
       "title": "Arithmetic intensity, a first roofline and the prefill and decode regimes",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive",
         "measure"
@@ -183,47 +322,88 @@
         "roofline-first-estimate"
       ],
       "outcomes": [
-        "TODO"
+        "Derive arithmetic intensity for a matmul and a decode step, and the batch where each turns compute-bound.",
+        "Place prefill and decode of one model on the same roofline and name the bound on each side.",
+        "Measure a batch crossover on your own GPU with synchronized event timing and reconcile the knee with your measured peak and bandwidth."
       ],
-      "why": "TODO",
+      "why": "The roofline turns counts and bytes into a prediction: which side of the ridge each phase sits on, and how much batch it takes to cross. Without it, prefill and decode tuning is guessing.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/latency-throughput-goodput",
+          "note": "Translate bounds into TTFT, per-token latency and throughput."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/cost-categories-amdahl",
+          "note": "Bound the end-to-end effect of moving either side."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-inference-gpu1",
+          "title": "Roofline, arithmetic intensity and the critical batch",
+          "url": "https://jax-ml.github.io/scaling-book/roofline/",
+          "locator": "Where Does the Time Go?: Visualizing rooflines and Matrix multiplication; A Few Problems to Work, Questions 1 and 2 (int8 and mixed-precision answers)"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Linear and attention bottlenecks: the critical batch and attention intensity",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Linear operations: what bottlenecks us? (the \\(B = 240\\) derivation) and What about attention? (the \\(ST/(S+T)\\) derivation)"
+        },
+        {
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "The 208 ratio and per-stage flop-per-byte limits",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "kv cache: Flops vs Memory Boundedness; batch sizes: the qkv/o/w1/w2 table",
+          "depth": "The article writes the crossover as \\(A_{\\text{bw}}/A_f\\); the ratio it computes is peak operations per second over bytes per second, \\((312 \\times 10^{12}) / (1.5 \\times 10^{12}) = 208\\) FLOP/byte. Its remark that comms latency was still 11% for a 52B model at batch 512 points at an example the article never works; its worked 260B example at batch 512 gives 3 ms of latency against 53 ms, about 6%. Recompute instead of quoting."
         }
       ],
       "focus": [
-        "TODO"
+        "Intensity is operations over bytes moved (\\(I = F/Q\\)); the ridge is peak operations per second over bytes per second, and the bound is the minimum of the two ceilings.",
+        "A bf16 matmul with batch far below width has intensity near the batch size; the chapter's 240 on TPU v5e and 295 on H100 are the same ratio on different hardware.",
+        "Decode attention sits near \\(I \\approx 1\\) FLOP/byte at one query token, so batch cannot move it; prefill attention sits near \\(I \\approx T/2\\).",
+        "Report the lower (max) and upper (sum) bounds; the gap is the overlap assumption, and profiles decide it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Sweep bf16 \\([B, 4096] \\times [4096, 4096]\\) matmuls on your GPU with event timing, warmup and interleaved repeats; plot achieved TFLOP/s against \\(B\\) and report the knee and the small-batch floor. Measured on an RTX 3050 6 GB with PyTorch 2.14 (SM clock near 1.94 GHz): every \\(B\\) from 1 to 16 took 0.24 to 0.29 ms; throughput was 6.5 TFLOP/s at \\(B = 64\\), 13.4 at 128, 14.2 at 256, 14.8 at 1024 and 16.0 at 4096; a device-to-device copy reached 151 GB/s. A plateau near 14.5 TFLOP/s over 151 GB/s is about 95 FLOP/byte, and the knee fell between \\(B = 64\\) and \\(B = 128\\). The floor is one pass over the 33.6 MB weight matrix: 0.22 ms at 151 GB/s. Your numbers will differ; the target is a knee near your own measured ratio.",
       "traps": [
-        "TODO"
+        "Quoting a ridge without naming the precision. int8 weights with bf16 compute halve the critical batch (120 versus 240 on v5e); int8 compute restores it.",
+        "Reading achieved peaks as vendor peaks. Dense H100 bf16 without sparsity is half the headline (9.89e14, not 1.979e15); measure your own plateau.",
+        "Expecting step time to fall with smaller batch below the knee. One full weight pass already costs about 0.22 ms on the RTX 3050 above; batching toward the knee buys throughput, not latency."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "At what batch does a bf16 matmul turn compute-bound on H100, and why half the headline?",
+          "a": "About 295 (9.89e14/3.35e12). The headline 1.979e15 needs structured sparsity, so dense math uses half."
+        },
+        {
+          "q": "What is decode attention intensity at one query token against a long cache, and what follows?",
+          "a": "About 1 FLOP/byte from \\(ST/(S+T)\\); it stays memory-bound at any batch, since each request adds its own cache bytes."
+        },
+        {
+          "q": "On TPU v5e, past what prompt length is prefill attention compute-bound?",
+          "a": "Past about 480 tokens: intensity \\(T/2\\) must clear the 240 ridge."
+        },
+        {
+          "q": "State the lower and upper runtime bounds for the roofline int8 matmul question.",
+          "a": "Lower \\(\\max(T_{\\text{math}}, T_{\\text{comms}})\\), upper their sum, with \\(T_{\\text{math}} = 2BDF/3.94 \\times 10^{14}\\) and comms bytes over 8.2e11 per second."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Roofline Questions 1, 2 and 5: int8, mixed-precision and H100 critical batch",
+          "url": "https://jax-ml.github.io/scaling-book/roofline/",
+          "locator": "A Few Problems to Work, Questions 1, 2 and 5 (reproduce 240, 120 and 295 before opening the answers)"
+        },
+        {
+          "name": "How to Scale Your Model inference Question 3: parameter-load lower bound",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Worked Problems, Question 3 (reproduce the 1.4 ms bound for 18.4e9 int8 parameters on 16 chips)"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your sweep shows the knee near your measured peak-over-bandwidth ratio, roofline Questions 1, 2 and 5 reproduce their answers, and you state both bounds for one decode step.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The roofline chapter plus the inference chapter's bottleneck derivations cover intensity and regimes at derive and measure depth, with two named problem sets as practice."
       }
     },
     {
@@ -241,47 +421,90 @@
         "goodput-slos"
       ],
       "outcomes": [
-        "TODO"
+        "Define TTFT, TBT, TPOT, normalized latency, capacity and goodput, and state what each hides (scheduling delay, jitter, prompt-length spread).",
+        "Compute fluidity-index for a timestamp trace and derive the fluid token generation rate at a stated SLO.",
+        "Show peak token throughput ranking two systems differently from SLO-qualified rate, using the paper's vLLM versus Sarathi-Serve and Groq numbers."
       ],
-      "why": "TODO",
+      "why": "Throughput without a latency SLO ranks systems by their averages and hides the stalls users feel. SLO-qualified thinking is what turns a benchmark into a serving decision.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/workload-distributions-warmup",
+          "note": "SLOs need the workload they hold under."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/claims-manifests-lineage",
+          "note": "Record the SLO before the sweep, not after."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "etalon-gpu1",
+          "title": "TTFT, TBT, TPOT, normalized latency, capacity and their pitfalls",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Sections 2.2 and 3.1 with Figures 1 to 3 (the vLLM versus Sarathi-Serve Arxiv-Summarization comparison at 1.5 QPS)"
+        },
+        {
+          "resource": "distserve-gpu1",
+          "title": "Goodput: the request rate served within the SLO",
+          "url": "https://arxiv.org/html/2401.09670v3#S1",
+          "locator": "Section 1 with Figure 1 (per-GPU goodput; a 13B model on one A100 reaches about 1.6 requests per second at 90% SLO attainment)"
+        },
+        {
+          "resource": "etalon-gpu1",
+          "title": "fluidity-index, fluid rate and the two evaluation recipes",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.1 (Algorithm 1, Figure 4) and Section 4.2 (black-box and capacity recipes); Section 5.1 Figure 5 with Section 5.2 Figure 6",
+          "depth": "Etalon defines no metric named goodput. Its SLO-qualified rates are the fluid token generation rate and capacity under a fluidity SLO (99% of requests at 0.9 or higher). The text cross-reference to the algorithm is mistyped; read Algorithm 1 itself."
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Latency-throughput tradeoff and cost per token",
+          "url": "https://jax-ml.github.io/scaling-book/applied-inference/",
+          "locator": "What is the LLaMA Serving Story? through Visualizing the Latency Throughput Tradeoff, including the NumPy roofline snippet (`kv_comms_time` with `attn_time` always bandwidth-bound for generate)"
         }
       ],
       "focus": [
-        "TODO"
+        "TTFT mixes scheduling delay with prompt processing and grows with prompt length (Figure 1, Yi-34B on 2 H100); never set it as one static SLO across lengths.",
+        "TPOT and normalized latency divide by decode count, so a 10 s stall over a 228-token median moves them by milliseconds; tail TBT sees the stall but not its timing or frequency.",
+        "fluidity-index banks early slack and resets deadlines after a miss (Algorithm 1, Figure 4); the fluid rate is the inverse of the smallest TBT deadline holding 99% of requests at 0.9 or higher.",
+        "Goodput is the highest request rate served while a target share of requests (say 90%) meets the TTFT and TPOT SLOs (DistServe). Etalon's fluid token generation rate and capacity under a fluidity SLO are SLO-qualified rates of the same kind, with the SLO set on every token deadline."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, score the Section 4 pair at TBT deadline 100 ms: both traces take one TBT miss in 11, while fluidity-index gives 1.0 to the 10 ms system and 10/11 to the 100 ms system. Derive both from Algorithm 1's slack and reset rules.",
       "traps": [
-        "TODO"
+        "Averaging TBT across requests. Means hide per-request stall timing; request-level deadline accounting exists because the CDFs and means disagreed (the P85 versus P99 flip in Figure 3c).",
+        "Fitting the prefill deadline on the wrong system. \\(D_p\\) comes from the evaluated system's isolated prefill curve (10 repeats), not from a constant or another engine's curve.",
+        "Reading Figure 5d as raw speed. It plots acceptance against TBT target at a fixed 10% miss line; Groq leads there while trailing on prefill in Figure 5c."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What two components make up TTFT, and why can a short request show a large one?",
+          "a": "Scheduling delay plus prompt processing. Queueing behind earlier work inflates TTFT even when the prompt itself is cheap."
+        },
+        {
+          "q": "Why must the prefill deadline \\(D_p\\) be a fitted function of prompt length?",
+          "a": "Prefill grows about quadratically (Figure 1), and the workload spreads 417 median to 1418 p90 tokens; a static target is either slack or impossible."
+        },
+        {
+          "q": "The toy pair has TPOT 22.7 ms versus 104.5 ms, so TPOT separates them. Why is fluidity-index still needed?",
+          "a": "TPOT separates different means but hides stall structure at equal means: vLLM and Sarathi-Serve tie on TPOT while a 10 s stall wrecks one of them. Fluidity credits early slack and penalizes miss timing."
+        },
+        {
+          "q": "How do the three Figure 5a rates rank Groq, and what does each assume?",
+          "a": "TPOT inverse gives about 600 tok/s (ignores stalls), tail-TBT inverse about four times less (over-penalizes the tail), fluid rate sits between at the rate holding the 99%/0.9 SLO."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Etalon Algorithm 1 on the two Section 4 systems",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4 motivating example (10 tokens at 10 ms versus 100 ms, 11th at 150 ms) with Algorithm 1 in Section 4.1",
+          "note": "Implement Algorithm 1 in your own repository, score both traces at 100 ms deadline (expect 1.0 versus 10/11 against a tied 1/11 TBT miss rate), then apply it to one real timestamp trace with a fitted \\(D_p\\)."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your implementation returns 1.0 and 10/11 on the two traces, and you can read TPOT, tail-TBT and fluid rates off Figures 3b and 5a with the ranking flip explained.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Etalon covers metric definitions, pitfalls and SLO-qualified methodology at explain, derive and measure depth, with Algorithm 1 as named practice."
       }
     },
     {
@@ -297,47 +520,83 @@
         "cold-warm-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Describe a serving workload by prompt, output, batch, dtype and shape medians plus an arrival note, citing production-style spreads.",
+        "Separate cold cost (compilation, weight load, allocator and autotune warmup) from warm steady state, and state which trials each keeps.",
+        "Record a cold and a warm trace for one workload and show where the section checkpoint's reconciliation starts."
       ],
-      "why": "TODO",
+      "why": "A model reconciled on one shape at steady state says nothing about serving. Distributions set which shapes matter; cold and warm separation decides which trials count.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/claims-manifests-lineage",
+          "note": "File the workload card with the manifest."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/baselines-correctness-contracts",
+          "note": "Reconcile both traces against the baseline."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "etalon-gpu1",
+          "title": "Prompt-length spread and day-long load variation",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.1 (LMSys-Chat-1M medians 417 and 1418 prefill tokens) with Figure 1; Section 5.1 (hourly runs over 24 hours for traffic variance)"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Compilation pipeline: what a cold run pays for",
+          "url": "https://jax-ml.github.io/scaling-book/profiling/",
+          "locator": "A Thousand-Foot View of the TPU Software Stack (tracing to StableHLO, HLO, LLO and machine code)",
+          "depth": "The chapter describes the TPU stack (JAX tracing to StableHLO, then XLA). On a GPU the same cold costs come from framework tracing and graph capture, CUDA or Triton compilation, module loading and autotuning. The chapter gives no warmup protocol, so pair it with the next item for the measurement rule."
+        },
+        {
+          "resource": "gpu-kernel-project-gpu1",
+          "title": "Cold and warm separation with environment capture",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Architecture constraints (compilation, autotuning, cold and warm results separated); Milestone B (cold, warm and end-to-end invocation recorded separately); Measurement requirements"
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Medians, eviction and the prefill-generate ratio",
+          "url": "https://jax-ml.github.io/scaling-book/applied-inference/",
+          "locator": "Median-length examples (prefill 8192 with decode 512 and 4096), the eviction math and the disaggregated prefill to generate ratio"
         }
       ],
       "focus": [
-        "TODO"
+        "Report medians with spread, not points: 417 versus 1418 prefill tokens at median versus p90, 2k to 32k sliders, 24 hourly runs.",
+        "Cold pays tracing plus staged compilation, weight loading, allocator growth and autotuning; none of it belongs in a steady-state median.",
+        "Prefill length spread punishes whole-batch prefill (padding, blocking); eviction math (96 tokens per step at \\(P = 8192\\), \\(G = 4096\\), \\(B = 32\\)) turns medians into capacity."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the workload card for \\(P = 4096\\), \\(G = 1024\\), \\(B = 16\\): sequences finishing per step 1/64, tokens evicted per step 80, and the cold trials (first compile, first load, first autotune) you discard before the warm median.",
       "traps": [
-        "TODO"
+        "Sweeping batch at fixed length and calling it a workload. Prompts spread widely (417 median against 1418 at p90 in LMSys-Chat-1M) and decode lengths vary as much (the applied chapter's examples run 512 and 4096), so fix both axes.",
+        "Warming up with the timed shapes. Autotuning on the benchmark shapes leaks tuning into the measurement; the project schema records autotuning separately from warm trials.",
+        "Keeping the first trial. First compile and allocation can exceed steady state by orders of magnitude; converge warmup first, then record."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which workload spreads does this unit cite, and why medians plus spread?",
+          "a": "LMSys-Chat-1M 417 median with 1418 p90 prefill tokens, 2k to 32k sliders, hourly runs over 24 hours. Points hide the padding, blocking and queueing that spreads cause."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What belongs in cold cost but never in a warm median?",
+          "a": "Tracing and staged compilation, weight loading, allocator growth and autotuning. Warm trials start after these converge."
+        },
+        {
+          "q": "At \\(P = 8192\\), \\(G = 4096\\), \\(B = 32\\), how many tokens leave the cache per step, and why?",
+          "a": "96: \\(B/G\\) sequences finish per step, each evicting \\(P + G\\) tokens, so \\(32 \\times 12288 / 4096 = 96\\)."
+        },
+        {
+          "q": "Why did Etalon run public APIs hourly for 24 hours instead of once?",
+          "a": "Traffic and load vary through the day; one run confuses time-of-day effects with system differences."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: warmup-convergence behavior in the benchmark harness with separate cold and warm traces.",
+      "stopWhen": "Your workload card states medians, spread, arrival assumption and the cold-warm split, and two traces filed under it reconcile warm medians with the roofline within stated uncertainty.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Compilation mechanism from the profiler chapter plus cold-warm separation and workload spreads from Etalon, applied inference and the project schema cover both topics; harness practice lives in the mini-project."
       }
     },
     {
@@ -352,47 +611,83 @@
         "amdahl-end-to-end-bound"
       ],
       "outcomes": [
-        "TODO"
+        "Split one decode step into compute, memory, launch, synchronization, host and communication categories with an equation per term.",
+        "Derive the Amdahl bound from a measured time share and state the maximum end-to-end gain.",
+        "Predict whether an optimization is worth integrating, using share times speedup against dispatch and synchronization overhead."
       ],
-      "why": "TODO",
+      "why": "A kernel speedup is not a system speedup. Shares plus Amdahl decide whether an optimization moves the request or only the profile.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/baselines-correctness-contracts",
+          "note": "Bound first, then beat the baseline."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/claims-manifests-lineage",
+          "note": "File the bound as the declared prediction."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "Compute, memory, comms latency and throughput terms",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "latency calculations (small-batch and large-batch equations); model parallelism (the four \\((N-1)d_{\\text{model}}/N\\) communications per layer)",
+          "depth": "The 53 ms large-batch result for the 260B model is the formula value; the 62 ms in the same sentence is a slip."
+        },
+        {
+          "resource": "scaling-transformer-inference-gpu1",
+          "title": "Share evidence: attention fraction, serial layers, prefill-decode configs",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 4.2 with Figure 8 and Table 1 (attention 8 to 31% of decode); Section 4.3 (serial layers cost 14%); Section 4.4 with Figure 1 and Table 2 (prefill versus decode configurations)"
+        },
+        {
+          "resource": "amdahl-law",
+          "title": "Amdahl's law statement and derivation",
+          "url": "https://en.wikipedia.org/wiki/Amdahl%27s_law",
+          "locator": "Definition and Derivation (overall speedup from optimized share and its speedup, with the worked share examples)"
         }
       ],
       "focus": [
-        "TODO"
+        "Small batch time is weight bytes over bandwidth plus 4 latency messages per layer; large batch adds \\(2P\\) operations over peak plus model-width vectors over comms bandwidth; the max assumes parallel compute and comms.",
+        "Shares come from profiles, not assumptions: attention is 8 to 31% of decode in the ESTI slice, intermediates about 10% in the FasterTransformer reconciliation.",
+        "Amdahl bounds latency at fixed workload; growing batch or chips to hide a share is a throughput argument, not a bound violation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, bound attention work at 31% share (at most 1.45x end to end) and intermediates at 10% (at most 1.11x), then state which you would optimize for latency and why.",
       "traps": [
-        "TODO"
+        "Multiplying kernel speedup by 100% of time. A \\(20\\times\\) attention win at 31% share gives \\(1/(0.69 + 0.31/20) \\approx 1.42\\times\\) overall; the unaccelerated 69% dominates.",
+        "Assuming overlap. The article takes the max of comms and compute; without measured overlap the honest bound is the sum.",
+        "Beating the bound by adding hardware. More chips remap the workload and change the shares; the bound holds the workload fixed."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Attention is 31% of decode time and you make it infinitely fast. What is the end-to-end gain?",
+          "a": "At most \\(1/(1-0.31) = 1.45\\)x; the remaining 69% is untouched."
+        },
+        {
+          "q": "Intermediates are 10% (2.2 of 22 ms). What is the most a perfect fusion earns?",
+          "a": "\\(1/0.9 = 1.11\\)x. Measure before fusing; a 10% share caps every fusion there."
+        },
+        {
+          "q": "When is \\(\\max(\\text{compute}, \\text{comms})\\) the wrong bound?",
+          "a": "When the stack does not overlap them. Then time is closer to the sum; state which you assumed and check a timeline."
+        },
+        {
+          "q": "Why can't more chips push decode latency toward zero?",
+          "a": "Per-layer comms latency does not shrink with batch, so beyond some chip count it dominates; Amdahl on the serial share says the same from the other side."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Transformer Inference Arithmetic exercises 4 and 10: extra GPUs and large-batch verification",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "Exercises 4 (more GPUs than capacity needs, 52B on 8 or 16 versus 4) and 10 (52B on 4 GPUs at batch 256: about 21 ms compute, 4 ms comms)",
+          "note": "Show every substitution; for exercise 10 use \\(d_{\\text{model}} = 8192\\) with 64 layers and the 300 GB/s comms figure."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You bound two shares from memory and verify exercises 4 and 10 with every substitution shown.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the Amdahl statement itself; the reference supplies the formula and worked share examples beside the pool's share evidence."
       }
     },
     {
@@ -407,47 +702,78 @@
         "correctness-quality-contract"
       ],
       "outcomes": [
-        "TODO"
+        "Choose a strong baseline (library, compiler or engine) at a matched workload and state why a weaker one would flatter the result.",
+        "Reconcile prediction with measurement by naming each residual (bandwidth efficiency, intermediates, comms, launches) with its size.",
+        "Write the correctness contract for an optimization: independent reference, tolerance policy, fallback path and consumed outputs."
       ],
-      "why": "TODO",
+      "why": "A speedup against a weak baseline, or with unchecked outputs, is marketing. Strong baselines plus a correctness contract are what make a later kernel claim believable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/claims-manifests-lineage",
+          "note": "File the baseline and contract with the claim."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-arithmetic-gpu1",
+          "title": "Model versus FasterTransformer reconciliation",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "comparing against real benchmarks (the 1-GPU 76% and 2-GPU 62% accounting; the prefill shortfall with 72% and 54% skinny-GEMM efficiency)",
+          "depth": "The benchmark totals cover the context (prefill) time plus 10 generated tokens: \\((283.60 - 63.17)/10 = 22.0\\) ms per token is the 1-GPU run and \\((180.86 - 45.45)/10 = 13.5\\) ms the 2-GPU run. Several intermediate values are rounded loosely (18.5, 20.7 and 9.5 ms); recompute them."
+        },
+        {
+          "resource": "jax-inference-gpu1",
+          "title": "Expected-versus-observed profile checks",
+          "url": "https://jax-ml.github.io/scaling-book/profiling/",
+          "locator": "Looking at a real(ish) example profile (95.6 ms expected against 96 ms observed; the 128 MB ReduceScatter check)"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu1",
+          "title": "Reference and fallback contracts",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Architecture constraints (independent references, output consumed before any speed claim, fallback for every custom path); Correctness requirements"
         }
       ],
       "focus": [
-        "TODO"
+        "Predict first in bytes and operations (8.4 ms on 2 GPUs, 16.8 on 1), then account the gap: 90% versus 87% bandwidth, 2.2 versus 2.0 ms intermediates, 1.7 ms unparallelized comms.",
+        "Prefill shortfalls diagnose differently from decode: 72% and 54% of peak on skinny GEMMs is an efficiency finding, not a bandwidth one.",
+        "The reference never shares the target's logic, outputs are consumed before any speed claim, and every custom path keeps a fallback."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, reconcile the 1-GPU case: \\(16.8/0.9 \\approx 18.7\\) ms plus 2.2 ms of intermediates gives about 20.9 ms against 22.0 measured, leaving about 1.1 ms of named sub-millisecond residuals (the article rounds to 18.5, 20.7 and 1.4). Then reconcile the 2-GPU case at 87% bandwidth.",
       "traps": [
-        "TODO"
+        "Comparing predictions with the benchmark totals. The 180.86 and 283.60 ms runs include the context time and 10 output tokens; subtract the context and divide by 10 before reconciling per-token steps.",
+        "Fitting constants after the fact. Each residual needs an independent line (profiled bandwidth, counted passes, timed comms); unexplained remainder stays unexplained.",
+        "Skipping output consumption. An unmaterialized or unchecked output can delete the very work you claim to time; the harness constraint exists for this."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What do the 76% and 62% figures mean, and what closes each gap?",
+          "a": "Prediction over measurement per token. 1 GPU: 90% bandwidth plus 2.2 ms intermediates closes to about 20.9 of 22.0. 2 GPUs: 87% bandwidth, 2.0 ms intermediates and 1.7 ms comms close to 13.4 of 13.5."
+        },
+        {
+          "q": "Why is the prefill shortfall not a bandwidth finding?",
+          "a": "Prefill there is compute-bound, yet GEMMs reach only 72% and 54% of peak; skinny shapes underuse the matmul units, matching the cited paper's Figure 14 pattern."
+        },
+        {
+          "q": "Why must the reference avoid sharing the target's logic?",
+          "a": "A shared bug passes both sides. Independence is what lets agreement mean correctness instead of coincidence."
+        },
+        {
+          "q": "When is an exact match required, and when is a tolerance the contract?",
+          "a": "Exact where the math is exact (integer counts, layouts); dtype, order and conditioning set the tolerance everywhere else."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Transformer Inference Arithmetic: reconcile the FasterTransformer comparison by hand",
+          "url": "https://kipply.github.io/blog/transformer-inference-arithmetic/",
+          "locator": "comparing against real benchmarks (recompute the article's 18.5 and 20.7 ms at 90% bandwidth, about 18.7 and 20.9, and its 9.5 and 11.7 ms at 87%, about 9.7 and 11.7, then explain the prefill gap from the 72% and 54% efficiencies before reading on)"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand reconciliation lands within a millisecond per case with every residual named, and you can state the baseline and contract for your unit-4 sweep.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The article's benchmark section plus the profiler chapter's expected-versus-observed checks and the project contracts cover baselines and correctness with named practice."
       }
     },
     {
@@ -465,47 +791,70 @@
         "raw-artifact-lineage"
       ],
       "outcomes": [
-        "TODO"
+        "Write a hardware and software manifest that lets a stranger rerun one timing (device, driver, toolkit, clocks and power, config, code revision).",
+        "Declare workload, baseline, timing boundaries, prediction and falsifying signal before profiling, in a fixed claim schema.",
+        "Store raw trials, traces and generated reports with lineage from code revision to number, separating cold, warm and end-to-end invocation."
       ],
-      "why": "TODO",
+      "why": "Numbers without manifests and lineage cannot be checked, so they cannot gate later work. The section checkpoint demands a versioned claim with artifacts; this unit builds that file.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-workload-arithmetic-contracts/training-step-arithmetic",
+          "note": "Carry the manifest discipline to the training bridge."
+        },
+        {
+          "route": "inference",
+          "note": "Later serving work reuses these manifests and claim files."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gpu-kernel-project-gpu1",
+          "title": "Harness schema, manifest and lineage",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Core requirements (harness fields, raw samples); Architecture constraints (named timing boundaries with cold and warm separated); Measurement requirements (labeled hardware with bytes, operations and uncertainty); Milestones A and B"
+        },
+        {
+          "resource": "etalon-gpu1",
+          "title": "Declare the SLO before the sweep",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.2 (black-box and capacity recipes); Section 5.2 (the service SLO fixed before the capacity search: 99% of requests below a 10% deadline miss rate at a 25 ms target TBT)"
         }
       ],
       "focus": [
-        "TODO"
+        "Name every timing boundary (which event starts and stops each interval); asynchronous launch makes an unnamed boundary meaningless.",
+        "Predictions precede profiles: the SLO is fixed before the load sweep, and a miss moves the claim, not the target.",
+        "Raw samples are kept with environment capture; medians and uncertainty are computed from them, never quoted from a single best run."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From memory, write the manifest and claim record for your unit-4 sweep: hardware, driver, toolkit, clocks and power note, workload, baseline, timing boundaries, prediction with falsifying signal, and raw-file lineage.",
       "traps": [
-        "TODO"
+        "Filing the manifest after tuning. Changed configs invalidate recorded trials; resume only under identical configuration.",
+        "Storing summaries instead of trials. A median without raw samples cannot be re-cut when the SLO changes.",
+        "Declaring the prediction after seeing the profile. A bound fitted to its own measurement predicts nothing; residuals explain, constants do not."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What must a manifest contain for one GPU timing?",
+          "a": "Device model and memory, driver, toolkit and compiler versions, clocks and power capture, workload and config, timing boundaries, and the code revision behind the binary."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What fields does a performance claim fix before profiling?",
+          "a": "Workload, hardware, baseline, timing boundaries, correctness method, prediction with a falsifying signal, and the artifact lineage."
+        },
+        {
+          "q": "Why keep raw trials instead of just medians?",
+          "a": "SLOs change, and re-cutting percentiles plus uncertainty needs the samples; a single best run is not evidence at all."
+        },
+        {
+          "q": "The sweep misses the declared SLO. What changes: the target or the claim?",
+          "a": "The claim. Moving the target after the fact turns the evaluation into a description of whatever happened."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: environment manifest, independent references and raw-trial storage with artifact lineage.",
+      "stopWhen": "A stranger can rerun your unit-4 sweep from your manifest and claim alone and land inside your stated uncertainty.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The project schema plus Etalon's declare-first recipes cover manifests, claims and lineage, with mini-project implementation practice."
       }
     },
     {
@@ -519,47 +868,76 @@
         "training-arithmetic-bridge"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-step training operations (about \\(6ND\\)) from the forward plus backward walks.",
+        "Account parameter, Adam-state and checkpoint-activation bytes for a named config.",
+        "Predict compute-bound versus comms-bound training for a batch and topology from the sharding rule."
       ],
-      "why": "TODO",
+      "why": "Inference arithmetic is half the track's modeling. Training steps set the scale of the systems later sections parallelize, and the 6ND plus memory lines are the bridge.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "route": "distributed-training",
+          "note": "Full parallelism analysis lives there."
+        },
+        {
+          "unit": "gpu/gpu-workload-arithmetic-contracts/transformer-flop-accounting",
+          "note": "Compare 2P inference with 6ND training per token."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-training-gpu1",
+          "title": "Training problems: parameters, Adam and activation bytes, step time",
+          "url": "https://jax-ml.github.io/scaling-book/training/",
+          "locator": "Some Problems to Work, Questions 1 to 3 with answers (13B parameters; 130 GB optimizer-state line; 42 TB checkpoint activations at 16M tokens; the 300 ms step with its comms-bound verdict)"
+        },
+        {
+          "resource": "jax-training-gpu1",
+          "title": "Data-parallel and FSDP comms-bound rules",
+          "url": "https://jax-ml.github.io/scaling-book/training/",
+          "locator": "Data Parallelism (10 bytes per parameter with Adam) and Fully-Sharded Data Parallelism (FSDP) (the per-device batch over \\(C/W_{\\text{ici}}\\) rule with the LLaMA-3 70B 6.3e24 example)"
         }
       ],
       "focus": [
-        "TODO"
+        "Forward is about \\(2ND\\), backward about \\(4ND\\) (weight gradients plus input gradients); the \\(6ND\\) total shows directly in the step recomputation.",
+        "Adam in fp32 with bf16 weights costs 10 bytes per parameter (2+4+4); the 13B line is 130 GB before any activation.",
+        "Checkpoint activations scale with batch times layers (42 TB at 16M tokens); batch, not depth alone, forces the sharding choice.",
+        "FSDP and data parallelism stay compute-bound while the per-device batch exceeds the interconnect ratio, 2550 divided by the number of mesh axes on v5p (850 over all three); below it, comms sets the step."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the Question 3 step: \\(6 \\times 3 \\times 10^6 \\times 13 \\times 10^9 = 2.34 \\times 10^{20}\\) operations at 40% of \\(4096 \\times 4.6 \\times 10^{14}\\) FLOP/s gives about 310 ms (the chapter rounds to 300), and state why pure FSDP is comms-bound there.",
       "traps": [
-        "TODO"
+        "Using \\(2ND\\) for a training step. Inference's forward-only count misses the backward's two matmuls per layer; the step is \\(6ND\\).",
+        "Forgetting optimizer state in the fit. The two fp32 moments cost 8 bytes against 2 for weights; the bf16 parameters are a fifth of the 130 GB line, not all of it.",
+        "Quoting the chapter's 300 ms as exact. It rounds 310 ms at assumed 40% utilization; your utilization and hardware change the step, not the operation count."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why \\(6ND\\) per training step and not \\(2ND\\)?",
+          "a": "Forward costs about \\(2ND\\); backward costs about \\(4ND\\) (one gradient per weight matrix plus one per input), totaling \\(6ND\\), or \\(6N\\) per token."
+        },
+        {
+          "q": "How much memory do 13B bf16 parameters with fp32 Adam take, and why?",
+          "a": "\\((2 + 4 + 4) \\times 13 \\times 10^9 = 130\\) GB: 2 bytes of weight plus 4 bytes per moment accumulator."
+        },
+        {
+          "q": "What forces sharding at 16M tokens with 3 checkpoints per layer?",
+          "a": "About 42 TB of checkpoint activations: \\(2LB(D + 2F) = 2 \\times 40 \\times 16 \\times 10^6 \\times (5120 + 2 \\times 13824) \\approx 4.2 \\times 10^{13}\\) bytes. No single device holds that beside the optimizer state."
+        },
+        {
+          "q": "Why is Question 3 comms-bound under pure FSDP?",
+          "a": "3M tokens sit below the 3.48M minimum for 4096 chips (\\(850 \\times 4096\\)), so communication exceeds compute at that batch."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Training Problems 2 and 3: Adam and activation bytes with the step-time verdict",
+          "url": "https://jax-ml.github.io/scaling-book/training/",
+          "locator": "Some Problems to Work, Questions 2 and 3 (recompute the 130 GB line, the 42 TB line at 16M tokens, and the 310 ms step at 40% utilization before opening the answers)"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive 6ND, 130 GB, 42 TB and the 310 ms step without notes and call the comms-bound verdict with the batch rule.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for training-step arithmetic (optional bridge topic); the Training chapter's Problems 1 to 3 supply operation, memory and step-time derivations beside the inference pool."
       }
     }
   ]
