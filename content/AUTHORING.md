@@ -123,4 +123,4 @@ Write code between backticks: `` `torch.zeros(3, 4)` ``. The site sets it in the
 
 ### Addresses
 
-Write a web address in prose as the bare `https://` URL, with no angle brackets. The site turns it into a link, and sentence punctuation after it is left out of the link. Prefer a `study` or `practice` item with its own `url` when the address is the thing to open.
+Write a web address in prose as the bare `https://` URL, with no angle brackets or backticks. The site turns it into a link, and sentence punctuation after it is left out of the link. An address without the scheme (`algomaster.io/learn/...`) is not linked, and the content check rejects it. Prefer a `study` or `practice` item with its own `url` when the address is the thing to open.

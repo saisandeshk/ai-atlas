@@ -213,6 +213,13 @@ function checkStrings(value, label, key = '') {
     if (/[–—]/.test(value))
       errors.push(`${label} contains an en dash or em dash`);
     checkMath(value, label, key);
+    if (!plainKeys.has(key)) {
+      const bare = value
+        .replace(spanPattern, ' ')
+        .match(/(?<![\w./@-])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|io|net|dev|ai|edu|academy)\/[^\s)]*/);
+      if (bare)
+        errors.push(`${label} has an address without https://, which the site cannot link: ${bare[0]}`);
+    }
     return;
   }
   if (Array.isArray(value)) {
