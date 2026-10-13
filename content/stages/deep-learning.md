@@ -80,8 +80,8 @@ Every network is affine maps plus nonlinearities, and the raw affine outputs (lo
 
 **Practice**
 
-- [TensorTonic: Evaluate a Dense Layer (autograd-l07-dense-layer-forward)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l07-dense-layer-forward) - Neural-Network Modules section: Evaluate a Dense Layer; implement the batched affine forward in your own repository. Check your output shape and bias broadcasting against the reproduce derivation before submitting.
-- [TensorTonic: Differentiate a Tanh Activation (autograd-l04-tanh-forward-backward)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l04-tanh-forward-backward) - Neurons and Activation Gradients section: Differentiate a Tanh Activation, then Backpropagate Through a Scalar Neuron. Derive $`1 - \tanh^2`$ by hand first; confirm the peak value 1 at input 0.
+- [TensorTonic: Evaluate a Dense Layer (autograd-l07-dense-layer-forward)](https://www.tensortonic.com/problems/autograd-l07-dense-layer-forward) - Neural-Network Modules section: Evaluate a Dense Layer; implement the batched affine forward in your own repository. Check your output shape and bias broadcasting against the reproduce derivation before submitting.
+- [TensorTonic: Differentiate a Tanh Activation (autograd-l04-tanh-forward-backward)](https://www.tensortonic.com/problems/autograd-l04-tanh-forward-backward) - Neurons and Activation Gradients section: Differentiate a Tanh Activation, then Backpropagate Through a Scalar Neuron. Derive $`1 - \tanh^2`$ by hand first; confirm the peak value 1 at input 0.
 
 **Stop when:** You write the $`(4 \times 3)`$ example gradients and all three activation derivatives from memory, and both TensorTonic problems pass with failures, if any, limited to sign conventions you can fix on sight.
 
@@ -118,7 +118,7 @@ Classification and contrastive objectives call softmax and cross-entropy on raw 
 1. [Losses from maximum likelihood](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Chapters 3 to 7) - Chapter 5, Sections 5.1 to 5.2 (Eq 5.1 to 5.6, printed pp. 56 to 60) for likelihood to negative log-likelihood; Section 5.3 (Eq 5.7 to 5.15, pp. 61 to 64) for least squares; Section 5.4 (Eq 5.16 to 5.20, pp. 64 to 66) for sigmoid plus binary cross-entropy; Section 5.5 (Eq 5.21 to 5.24, pp. 67 to 69) and Section 5.7 (Eq 5.27 to 5.31, pp. 71 to 72) for softmax plus multiclass cross-entropy.
 2. [Naive softmax and the spelled-out cross-entropy](https://d2l.ai/chapter_linear-classification/softmax-regression-scratch.html) (D2L - tensors, autograd, MLP and backpropagation) - The Softmax: the three-step naive code plus the warning that it is not robust and not for serious use; The Cross-Entropy Loss: `y_hat[[0, 1], y]` indexing and the `reduce_mean` of negative logs. Depth: Do not copy the naive softmax or the log-of-probability loss into your own code. Use them only to see what the stable versions below replace.
 3. [The max-subtraction trick](https://cs231n.github.io/linear-classify/#softmax-classifier) (CS231n Linear Classification - Softmax classifier and numeric stability) - Softmax classifier: $`L_i = -f_{y_i} + \log \sum_j e^{f_j}`$; Practical issues: Numeric stability: the `f -= np.max(f)` code turning `[123, 456, 789]` into `[-666, -333, 0]`.
-4. [Masked reductions in `cross_entropy`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html) (`torch.nn.functional.cross_entropy` - `reduction` and `ignore_index`) - `ignore_index` and `reduction` parameters: ignored targets contribute no gradient, and mean averages over the non-ignored targets only.
+4. [Masked reductions in `cross_entropy`](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.cross_entropy.html) (`torch.nn.functional.cross_entropy` - `reduction` and `ignore_index`) - `ignore_index` and `reduction` parameters: ignored targets contribute no gradient, and mean averages over the non-ignored targets only.
 
 **Focus**
 
@@ -138,7 +138,7 @@ Classification and contrastive objectives call softmax and cross-entropy on raw 
 **Practice**
 
 - [Deep-ML 1227: Numerically Stable Softmax](https://www.deep-ml.com/problems/1227) - Implement `softmax(t, dim)` by subtracting the max along `dim`. The two platform tests use a small $`(2 \times 3)`$ tensor along rows and along columns, so they do not exercise overflow. After it passes, add your own large-logit test: `[1000, 1001, 1002]` must give `[0.0900, 0.2447, 0.6652]`, and your log-softmax plus mean cross-entropy must stay finite.
-- [TensorTonic: Calculate Squared-Error Loss Gradients (autograd-l08-squared-error-loss-gradients)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l08-squared-error-loss-gradients) - Losses, Training, and Zeroing Gradients section: Calculate Squared-Error Loss Gradients. State whether your derivation sums or means over examples, and how that choice scales the gradient.
+- [TensorTonic: Calculate Squared-Error Loss Gradients (autograd-l08-squared-error-loss-gradients)](https://www.tensortonic.com/problems/autograd-l08-squared-error-loss-gradients) - Losses, Training, and Zeroing Gradients section: Calculate Squared-Error Loss Gradients. State whether your derivation sums or means over examples, and how that choice scales the gradient.
 
 **Stop when:** Your fused loss matches centered differences, survives logits of magnitude 1000, and you can state the divisor and the masked-position gradient for sum, mean and masked mean without notes.
 
@@ -193,7 +193,7 @@ Frameworks hide this loop, but every gradient bug in later sections is a broken 
 
 **Practice**
 
-- [TensorTonic: Topologically Sort a Computation DAG (autograd-l05-topological-sort)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l05-topological-sort) - Automatic Reverse-Mode Autodiff section: Topologically Sort a Computation DAG, then Run Reverse-Mode Autodiff. Implement both in your own repository; the sort must handle shared nodes visited once.
+- [TensorTonic: Topologically Sort a Computation DAG (autograd-l05-topological-sort)](https://www.tensortonic.com/problems/autograd-l05-topological-sort) - Automatic Reverse-Mode Autodiff section: Topologically Sort a Computation DAG, then Run Reverse-Mode Autodiff. Implement both in your own repository; the sort must handle shared nodes visited once.
 - [D2L Backprop Exercises: add a bias](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) - Exercises: add a bias to the hidden layer, draw the computational graph, and derive the forward and backward equations. Compare your bias gradient against the affine-unit rule $`dL/db`$ = row-summed upstream gradient.
 
 **Stop when:** Your engine differentiates the scalar neuron graph, matches centered differences, and you can hand-run the UDL toy chain and name every saved value backward needs.
@@ -232,7 +232,7 @@ Real graphs reuse nodes and stretch small tensors across batches. Each reuse add
 
 1. [Accumulation and non-scalar seeds](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Section 2.5.1: PyTorch does not reset the gradient buffer, so the new gradient is added and `x.grad.zero_()` resets it, which suits sums of objectives; Section 2.5.2: the `gradient` argument as the seed vector $`v`$.
 2. [Broadcasting and in-place memory](https://d2l.ai/chapter_preliminaries/ndarray.html) (D2L - tensors, autograd, MLP and backpropagation) - Broadcasting: `a` of shape `(3, 1)` plus `b` of shape `(1, 2)` giving a $`(3 \times 2)`$ result by copying along length-1 axes; Saving Memory: `Y = Y + X` reallocates (`id` changes) while `Z[:] = X + Y` and `X += Y` reuse storage. Depth: The page shows forward broadcasting only. Derive the backward rule in Focus below; the PyTorch note gives the exact forward contract it inverts.
-3. [Exact broadcast contract](https://docs.pytorch.org/docs/stable/notes/broadcasting.html) (PyTorch Broadcasting semantics) - General semantics: trailing-dimension rules, prepend-1 alignment, result size as the per-dimension max, with `(5, 1, 4, 1)` plus `(3, 1, 1)` giving `(5, 3, 4, 1)`; In-place semantics: an in-place tensor may not change shape.
+3. [Exact broadcast contract](https://docs.pytorch.org/docs/2.14/notes/broadcasting.html) (PyTorch Broadcasting semantics) - General semantics: trailing-dimension rules, prepend-1 alignment, result size as the per-dimension max, with `(5, 1, 4, 1)` plus `(3, 1, 1)` giving `(5, 3, 4, 1)`; In-place semantics: an in-place tensor may not change shape.
 4. [Saved forward values](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Chapters 3 to 7) - Chapter 7, Section 7.2 Observation 1 (printed pp. 97 to 98): run the network and store the activations of all hidden units in the forward pass for later gradient computation.
 
 **Focus**
@@ -252,7 +252,7 @@ Real graphs reuse nodes and stretch small tensors across batches. Each reuse add
 
 **Practice**
 
-- [TensorTonic: Accumulate Shared-Path Gradients (autograd-l06-shared-path-gradient-accumulation)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l06-shared-path-gradient-accumulation) - Accumulation and Complete Scalar Operators section: Accumulate Shared-Path Gradients. Extend your engine so a doubly used node sums both path contributions, then re-run your earlier gradient checks.
+- [TensorTonic: Accumulate Shared-Path Gradients (autograd-l06-shared-path-gradient-accumulation)](https://www.tensortonic.com/problems/autograd-l06-shared-path-gradient-accumulation) - Accumulation and Complete Scalar Operators section: Accumulate Shared-Path Gradients. Extend your engine so a doubly used node sums both path contributions, then re-run your earlier gradient checks.
 - [D2L Data Manipulation Exercises: broadcasting with other shapes](https://d2l.ai/chapter_preliminaries/ndarray.html) - Exercises: replace the two broadcast operands with other shapes, including 3-dimensional tensors, and check the result matches the trailing-dimension rules. For each shape pair, also write down the backward summation axes before running anything.
 
 **Stop when:** Your engine accumulates shared-node gradients, unbroadcasts a `(2, 3)` plus `(3,)` graph, matches centered differences, and you can state the summation axes for any broadcast pair without notes.
@@ -289,7 +289,7 @@ An analytic gradient is a claim, and this unit is the assay. Every engine and lo
 
 1. [The gradient-check protocol](https://cs231n.github.io/neural-networks-3/#gradcheck) (CS231n Neural Networks 3 - Gradient checks) - Gradient Checks: the centered formula with $`O(h^2)`$ error, relative error with the 1e-2 / 1e-4 / 1e-7 bands, double precision, $`h`$ near 1e-5, kinks at ReLU, few datapoints, burn-in point, regularization and dropout discipline, and checking a few dimensions per parameter.
 2. [Where the formula comes from](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/single-variable-calculus.html) (D2L - tensors, autograd, MLP and backpropagation) - The limit definition of the derivative and the linear approximation $`f(x + \epsilon) \approx f(x) + \epsilon f'(x)`$: finite differences evaluate the quotient at small nonzero $`\epsilon`$ instead of taking the limit. Depth: Read for the definition only. The centered formula, error orders and protocol all come from the CS231n note above.
-3. [Framework defaults and the overlap warning](https://docs.pytorch.org/docs/stable/generated/torch.autograd.gradcheck.gradcheck.html) (`torch.autograd.gradcheck` API and tolerances) - Signature defaults `eps` 1e-6, `atol` 1e-5, `rtol` 1e-3; the note that checked tensors with overlapping memory, for example `expand` outputs, will likely fail.
+3. [Framework defaults and the overlap warning](https://docs.pytorch.org/docs/2.14/generated/torch.autograd.gradcheck.gradcheck.html) (`torch.autograd.gradcheck` API and tolerances) - Signature defaults `eps` 1e-6, `atol` 1e-5, `rtol` 1e-3; the note that checked tensors with overlapping memory, for example `expand` outputs, will likely fail.
 
 **Focus**
 
@@ -308,8 +308,8 @@ An analytic gradient is a claim, and this unit is the assay. Every engine and lo
 
 **Practice**
 
-- [TensorTonic: Check a Product-Chain Gradient (autograd-l01-gradient-check-product-chain)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l01-gradient-check-product-chain) - Derivatives and Gradient Checks section: Check a Product-Chain Gradient, after Estimate a Scalar Derivative and Measure Scalar Expression Partials. Write your own centered checker first with the bands above, then confirm it agrees with the platform tests.
-- [TensorTonic: Gradient-Check an Autodiff Graph (autograd-l05-autodiff-gradient-check)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l05-autodiff-gradient-check) - Automatic Reverse-Mode Autodiff section: Gradient-Check an Autodiff Graph. Check a few dimensions per parameter in float64, past a short burn-in, with any noise disabled.
+- [TensorTonic: Check a Product-Chain Gradient (autograd-l01-gradient-check-product-chain)](https://www.tensortonic.com/problems/autograd-l01-gradient-check-product-chain) - Derivatives and Gradient Checks section: Check a Product-Chain Gradient, after Estimate a Scalar Derivative and Measure Scalar Expression Partials. Write your own centered checker first with the bands above, then confirm it agrees with the platform tests.
+- [TensorTonic: Gradient-Check an Autodiff Graph (autograd-l05-autodiff-gradient-check)](https://www.tensortonic.com/problems/autograd-l05-autodiff-gradient-check) - Automatic Reverse-Mode Autodiff section: Gradient-Check an Autodiff Graph. Check a few dimensions per parameter in float64, past a short burn-in, with any noise disabled.
 
 **Stop when:** Your checker reproduces the exp and ReLU-at-0 numbers from memory, and every earlier engine and loss in this section passes it in `float64` with a defended threshold.
 
@@ -346,8 +346,8 @@ A tensor is storage plus an interpretation. Backward passes that assume contiguo
 **Study**
 
 1. [Tensor creation, shape and memory reuse](https://d2l.ai/chapter_preliminaries/ndarray.html) (D2L - tensors, autograd, MLP and backpropagation) - Getting Started: `arange`, `zeros`, `ones`, `shape`, `size` and `reshape` with `-1` inference; Indexing and Slicing; Saving Memory: `Y = Y + X` reallocates (`id` changes) while `Z[:] = X + Y` and `X += Y` reuse storage. Depth: The page never defines `stride`, `view` or `storage`: those come from the two PyTorch notes below. Use this page for construction, shape inference and the realloc-versus-reuse demos.
-2. [Which ops share storage](https://docs.pytorch.org/docs/stable/tensor_view.html) (PyTorch Tensor Views) - The view/storage sharing example with `data_ptr` and mutation through the view; the transpose example turning a contiguous tensor non-contiguous with no data movement; the full view-ops list; `reshape` may-copy and `contiguous` conditional-copy notes; basic indexing returns views while advanced indexing copies.
-3. [Strides as element steps](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.stride.html) (`torch.Tensor.stride` - stride and storage offset) - Stride definition: per-dimension element steps that, with `storage_offset`, locate every element; combine with the Tensor Views `transpose` and `expand` layouts.
+2. [Which ops share storage](https://docs.pytorch.org/docs/2.14/tensor_view.html) (PyTorch Tensor Views) - The view/storage sharing example with `data_ptr` and mutation through the view; the transpose example turning a contiguous tensor non-contiguous with no data movement; the full view-ops list; `reshape` may-copy and `contiguous` conditional-copy notes; basic indexing returns views while advanced indexing copies.
+3. [Strides as element steps](https://docs.pytorch.org/docs/2.14/generated/torch.Tensor.stride.html) (`torch.Tensor.stride` - stride and storage offset) - Stride definition: per-dimension element steps that, with `storage_offset`, locate every element; combine with the Tensor Views `transpose` and `expand` layouts.
 
 **Focus**
 
@@ -400,9 +400,9 @@ Views alias memory, in-place ops rewrite history, and `detach` cuts the graph wi
 
 **Study**
 
-1. [In-place hazards and the version counter](https://docs.pytorch.org/docs/stable/notes/autograd.html) (PyTorch Autograd mechanics - in-place operations) - In-place operations with autograd: in-place is discouraged because it rewrites the graph instead of allocating new nodes; In-place correctness checks: every tensor keeps a version counter, and accessing a saved tensor whose version changed raises an error.
+1. [In-place hazards and the version counter](https://docs.pytorch.org/docs/2.14/notes/autograd.html) (PyTorch Autograd mechanics - in-place operations) - In-place operations with autograd: in-place is discouraged because it rewrites the graph instead of allocating new nodes; In-place correctness checks: every tensor keeps a version counter, and accessing a saved tensor whose version changed raises an error.
 2. [Detach and the training loop contract](https://d2l.ai/chapter_preliminaries/autograd.html) (D2L - tensors, autograd, MLP and backpropagation) - Section 2.5.3 Detaching Computation: `u = y.detach()` with `z = u * x` gives gradient $`u`$, not $`3x^2`$, while the graph to y persists; Section 2.5.1: the gradient buffer accumulates, so `x.grad.zero_()` resets it between objectives.
-3. [Parameters versus buffers](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html) (`torch.nn.Module` - parameters, buffers and state) - Parameters and buffers documentation: modules collect parameters recursively for the optimizer; `register_buffer` holds persistent non-parameter tensors that are saved alongside parameters without getting gradients.
+3. [Parameters versus buffers](https://docs.pytorch.org/docs/2.14/generated/torch.nn.Module.html) (`torch.nn.Module` - parameters, buffers and state) - Parameters and buffers documentation: modules collect parameters recursively for the optimizer; `register_buffer` holds persistent non-parameter tensors that are saved alongside parameters without getting gradients.
 
 **Focus**
 
@@ -421,8 +421,8 @@ Views alias memory, in-place ops rewrite history, and `detach` cuts the graph wi
 
 **Practice**
 
-- [TensorTonic: Collect Module Parameters Recursively (autograd-l07-recursive-parameter-collection)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l07-recursive-parameter-collection) - Neural-Network Modules section: Collect Module Parameters Recursively, after Build a Scalar Neuron Module and Evaluate a Multi-Layer Perceptron. Then state for each collected tensor whether the optimizer may mutate it and whether it needs a gradient.
-- [TensorTonic: Apply One Full SGD Training Step (autograd-l08-sgd-training-step)](https://www.tensortonic.com/study-plans/autograd-from-scratch/autograd-l08-sgd-training-step) - Losses, Training, and Zeroing Gradients section: Apply One Full SGD Training Step. Confirm gradients are zeroed before the step and the parameter update itself runs outside gradient tracking.
+- [TensorTonic: Collect Module Parameters Recursively (autograd-l07-recursive-parameter-collection)](https://www.tensortonic.com/problems/autograd-l07-recursive-parameter-collection) - Neural-Network Modules section: Collect Module Parameters Recursively, after Build a Scalar Neuron Module and Evaluate a Multi-Layer Perceptron. Then state for each collected tensor whether the optimizer may mutate it and whether it needs a gradient.
+- [TensorTonic: Apply One Full SGD Training Step (autograd-l08-sgd-training-step)](https://www.tensortonic.com/problems/autograd-l08-sgd-training-step) - Losses, Training, and Zeroing Gradients section: Apply One Full SGD Training Step. Confirm gradients are zeroed before the step and the parameter update itself runs outside gradient tracking.
 
 **Stop when:** You can predict the version error, the detach signature and the accumulation signature on sight, and your module separates parameters from buffers with a stated mutation rule for each.
 
@@ -447,7 +447,7 @@ Views alias memory, in-place ops rewrite history, and `detach` cuts the graph wi
 1. Implement a `Tensor` class on NumPy with `add`, `mul`, `matmul`, `sum` over axes, `exp`, `log`, `tanh` and `ReLU`, each with a `backward` rule, and a `backward()` that visits a topological order and accumulates into `.grad`.
 2. Make every binary op broadcast-aware: sum each incoming gradient over the broadcast axes back to the operand shape. Test `(3, 1)` with `(1, 4)`, `(4,)` with `(3, 4)`, and a scalar, against PyTorch.
 3. Add log-softmax and mean cross-entropy as one fused op whose gradient is softmax minus one-hot over the batch size. Test `float32` logits of magnitude 1000 for finite loss and gradients, against `torch.nn.functional.cross_entropy`.
-4. Build a branched graph where one tensor reaches the loss through at least three paths, one of them broadcast, for example `L = sum(x * w + x.sum(0) * b + tanh(x))`. Check every leaf gradient against central differences and against PyTorch, both in `float64`, with a step and tolerance you justify.
+4. Build a branched graph where one tensor reaches the loss through at least three paths including a broadcast. Check every leaf gradient against central differences and PyTorch in `float64`, keeping the comparison as evidence.
 5. Train a two-layer tensor MLP with your engine on a small synthetic classification set, and show its first-step gradients match a PyTorch copy with the same weights.
 6. Layout tests: feed transposed and noncontiguous arrays into your engine and match gradients from contiguous copies. For PyTorch views, assert shared storage through `untyped_storage().data_ptr()`, and compute the element offset from strides and `storage_offset` for a `slice`, a `transpose` and an `expand`.
 7. Reproduce one saved-value or mutation defect, such as an input edited in place between forward and backward. Show the wrong or refused gradient, fix it with a copy on save or a version counter, and keep a regression test.
@@ -467,7 +467,7 @@ Views alias memory, in-place ops rewrite history, and `detach` cuts the graph wi
 | --- | --- | --- |
 | Gradient correctness | Every op matches PyTorch in `float64` within a stated tolerance on random inputs. | The branched broadcast graph matches both finite differences and PyTorch, and the note justifies the step size and tolerance. |
 | Broadcasting | Gradients reduce to each operand shape in the tested broadcast cases. | A property test draws random broadcast-compatible shape pairs and compares against PyTorch. |
-| Numerical stability | Cross-entropy is finite for `float32` logits of magnitude 1000. | A test shows the naive form failing on the same input, and the note explains why the max shift leaves the gradient unchanged. |
+| Numerical stability | Cross-entropy stays finite on extreme `float32` logits. | A test shows the naive form failing on the same input, and the note explains why the max shift leaves the gradient unchanged. |
 | Saved values and mutation | One defect is reproduced, fixed and guarded by a test. | The note lists every saved value per op, and the engine either refuses or survives an in-place edit of a saved input, with a test for each case. |
 | Layout | Transposed and noncontiguous inputs give the same gradients as contiguous copies. | Storage and offset assertions cover a `slice`, a `transpose` and an `expand`, checked against PyTorch strides. |
 
@@ -481,13 +481,13 @@ Feeds into: Capstone artifact 1, the neural core proof pack.
 - **Optional - Practice:** [Deep-ML candidate - autograd and loss problems](https://www.deep-ml.com/problems) - After the five-sample platform check passes, use at most one of 26 Basic Autograd Operations, 997 Manual Cross-Entropy Backprop or 1227 Stable Softmax as a changed-prompt drill.
 - **Reference - Reference:** [CS231n Linear Classification - Softmax classifier and numeric stability](https://cs231n.github.io/linear-classify/#softmax-classifier) - Read the Softmax classifier section for the cross-entropy form $`L_i = -f_{y_i} + \log \sum_j e^{f_j}`$, then the Practical issues: Numeric stability part for the max-subtraction code `f -= np.max(f)`.
 - **Reference - Reference:** [CS231n Neural Networks 3 - Gradient checks](https://cs231n.github.io/neural-networks-3/#gradcheck) - Read the Gradient Checks section only: centered formula with $`O(h^2)`$ error, relative error with thresholds, double precision, step size $`h`$ near 1e-5, kinks, few datapoints, burn-in, regularization and dropout discipline, and checking a few dimensions per parameter.
-- **Reference - Reference:** [PyTorch Broadcasting semantics](https://docs.pytorch.org/docs/stable/notes/broadcasting.html) - Read General semantics for the trailing-dimension rules, prepend-1 alignment and max-size result, with the `(5, 1, 4, 1)` plus `(3, 1, 1)` examples; read In-place semantics for why an in-place tensor may not change shape.
-- **Reference - Reference:** [`torch.autograd.gradcheck` API and tolerances](https://docs.pytorch.org/docs/stable/generated/torch.autograd.gradcheck.gradcheck.html) - Read the `gradcheck` signature defaults (`eps` 1e-6, `atol` 1e-5, `rtol` 1e-3) and the note that inputs with overlapping memory, such as `expand` outputs, will likely fail the check.
-- **Reference - Reference:** [`torch.nn.functional.cross_entropy` - `reduction` and `ignore_index`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html) - Read the `ignore_index` and `reduction` parameters: ignored targets contribute no gradient, and mean reduction averages over the non-ignored targets only.
-- **Reference - Reference:** [PyTorch Tensor Views](https://docs.pytorch.org/docs/stable/tensor_view.html) - Read the view and storage sharing example (`data_ptr`, mutating the view changes the base), the transpose non-contiguous example, the full view-ops list, and the special notes: `reshape` may copy, `contiguous` copies only when needed, basic indexing returns views while advanced indexing copies.
-- **Reference - Reference:** [`torch.Tensor.stride` - stride and storage offset](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.stride.html) - Read the stride definition: strides are per-dimension element steps, and with `storage_offset` they locate every element. Combine with the Tensor Views page for transposed and expanded layouts.
-- **Reference - Reference:** [PyTorch Autograd mechanics - in-place operations](https://docs.pytorch.org/docs/stable/notes/autograd.html) - Read In-place operations with autograd (why in-place rewrites the graph and is discouraged) and In-place correctness checks (the version counter and the error on accessing a modified saved tensor).
-- **Reference - Reference:** [`torch.nn.Module` - parameters, buffers and state](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html) - Read the parameters and buffers documentation: modules collect parameters recursively for the optimizer, while `register_buffer` holds persistent non-parameter tensors saved alongside them.
+- **Reference - Reference:** [PyTorch Broadcasting semantics](https://docs.pytorch.org/docs/2.14/notes/broadcasting.html) - Read General semantics for the trailing-dimension rules, prepend-1 alignment and max-size result, with the `(5, 1, 4, 1)` plus `(3, 1, 1)` examples; read In-place semantics for why an in-place tensor may not change shape.
+- **Reference - Reference:** [`torch.autograd.gradcheck` API and tolerances](https://docs.pytorch.org/docs/2.14/generated/torch.autograd.gradcheck.gradcheck.html) - Read the `gradcheck` signature defaults (`eps` 1e-6, `atol` 1e-5, `rtol` 1e-3) and the note that inputs with overlapping memory, such as `expand` outputs, will likely fail the check.
+- **Reference - Reference:** [`torch.nn.functional.cross_entropy` - `reduction` and `ignore_index`](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.cross_entropy.html) - Read the `ignore_index` and `reduction` parameters: ignored targets contribute no gradient, and mean reduction averages over the non-ignored targets only.
+- **Reference - Reference:** [PyTorch Tensor Views](https://docs.pytorch.org/docs/2.14/tensor_view.html) - Read the view and storage sharing example (`data_ptr`, mutating the view changes the base), the transpose non-contiguous example, the full view-ops list, and the special notes: `reshape` may copy, `contiguous` copies only when needed, basic indexing returns views while advanced indexing copies.
+- **Reference - Reference:** [`torch.Tensor.stride` - stride and storage offset](https://docs.pytorch.org/docs/2.14/generated/torch.Tensor.stride.html) - Read the stride definition: strides are per-dimension element steps, and with `storage_offset` they locate every element. Combine with the Tensor Views page for transposed and expanded layouts.
+- **Reference - Reference:** [PyTorch Autograd mechanics - in-place operations](https://docs.pytorch.org/docs/2.14/notes/autograd.html) - Read In-place operations with autograd (why in-place rewrites the graph and is discouraged) and In-place correctness checks (the version counter and the error on accessing a modified saved tensor).
+- **Reference - Reference:** [`torch.nn.Module` - parameters, buffers and state](https://docs.pytorch.org/docs/2.14/generated/torch.nn.Module.html) - Read the parameters and buffers documentation: modules collect parameters recursively for the optimizer, while `register_buffer` holds persistent non-parameter tensors saved alongside them.
 
 ### Exit checkpoint
 
@@ -601,7 +601,7 @@ In-place edits and hidden views are the most common source of corrupt gradients 
 **Study**
 
 1. [Tensor Views: view ops, indexing and reshape ambiguity](https://docs.pytorch.org/docs/2.14/tensor_view.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - View definition and `data_ptr` example; transpose contiguity example; full view-ops list with detach; basic versus advanced indexing note; reshape and contiguous special behavior.
-2. [Autograd mechanics: saved tensors, `requires_grad`, grad modes, in-place checks](https://docs.pytorch.org/docs/stable/notes/autograd.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Saved tensors; Setting `requires_grad`; Grad Modes table with no-grad versus inference reuse; In-place operations with autograd and In-place correctness checks. Depth: Skip Multithreaded Autograd, Autograd for Complex Numbers and the division-by-zero section.
+2. [Autograd mechanics: saved tensors, `requires_grad`, grad modes, in-place checks](https://docs.pytorch.org/docs/2.14/notes/autograd.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Saved tensors; Setting `requires_grad`; Grad Modes table with no-grad versus inference reuse; In-place operations with autograd and In-place correctness checks. Depth: Skip Multithreaded Autograd, Autograd for Complex Numbers and the division-by-zero section.
 3. [Autograd: `no_grad`, `detach` and the accumulation demo](https://docs.pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html) (PyTorch - Learn the Basics) - Disabling Gradient Tracking (`no_grad` block and `detach`); Optional Reading: Tensor Gradients and Jacobian Products (accumulation across calls, zeroing).
 4. [Autograd loop mechanics: `zero_grad` and `no_grad` updates](https://github.com/deep-learning-with-pytorch/dlwpt-code-2e/blob/main/p1ch5/2_autograd.ipynb) (Deep Learning with PyTorch, 2nd edition - framework foundations) - Book Sections 5.5.1 Computing the gradient automatically and 5.5.5 Autograd nits and switching it off (printed pp. 128-132 and 142-144). Notebook cells with `params.grad.zero_()`, `loss.backward()` and the `torch.no_grad()` parameter update.
 
@@ -714,7 +714,7 @@ Gradients accumulate silently, grad modes look alike, and eval state hides insid
 1. [Autograd: computing gradients, `retain_graph`, accumulation](https://docs.pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html) (PyTorch - Learn the Basics) - Computing Gradients (`loss.backward`, leaf-only grad, `retain_graph`); Optional Reading: Tensor Gradients and Jacobian Products (ones seed, accumulation doubling, zeroing).
 2. [Zeroing out gradients recipe](https://docs.pytorch.org/tutorials/recipes/recipes/zeroing_out_gradients.html) (PyTorch - Learn the Basics) - Introduction (accumulation into `.grad`); Steps 4 and 5 (optimizer, `zero_grad` before forward, backward, step); `model.zero_grad()` equivalence condition.
 3. [Gradcheck mechanics: central differences and Jacobian rebuild](https://docs.pytorch.org/docs/2.14/notes/gradcheck.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Default backward mode gradcheck behavior: Real-to-real functions (central-difference formula, column-by-column numerical rebuild, row-by-row analytical rebuild). Depth: Skip complex inputs, fast mode and `gradgradcheck`; the real-to-real section is the whole assignment.
-4. [Autograd mechanics: `requires_grad`, grad modes, evaluation mode](https://docs.pytorch.org/docs/stable/notes/autograd.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Setting `requires_grad` (leaf freezing); Grad Modes table with Default, No-grad and Inference rows; Evaluation Mode (`nn.Module.eval`, orthogonal to grad modes, `Dropout` and `BatchNorm`).
+4. [Autograd mechanics: `requires_grad`, grad modes, evaluation mode](https://docs.pytorch.org/docs/2.14/notes/autograd.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Setting `requires_grad` (leaf freezing); Grad Modes table with Default, No-grad and Inference rows; Evaluation Mode (`nn.Module.eval`, orthogonal to grad modes, `Dropout` and `BatchNorm`).
 
 **Focus**
 
@@ -769,7 +769,7 @@ Custom Functions are where the VJP becomes your code. One correct handwritten ba
 **Study**
 
 1. [Extending `torch.autograd`: custom `Function` contract and examples](https://docs.pytorch.org/docs/2.14/notes/extending.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - When to use and When not to use; How to use steps 1 to 4 (`forward`, `setup_context`, `backward`, `ctx` rules, `once_differentiable`, `gradcheck`); Example (`LinearFunction`, `MulConstant`, `gradcheck` with `dtype=torch.double`, `eps=1e-6`, `atol=1e-4`); Combined or separate `forward()` and `setup_context()`. Depth: Skip the `__torch_function__` protocol, C++ extensions, forward-mode `jvp` and `torch.func` transforms. Stop at Combined or separate `forward()` and `setup_context()`.
-2. [Autograd mechanics: how saved tensors work](https://docs.pytorch.org/docs/stable/notes/autograd.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Saved tensors (what `pow` and `exp` save, packing versus unpacking, saved-tensor hooks). Depth: Read only the Saved tensors section here; the grad-mode and in-place sections belong to earlier units.
+2. [Autograd mechanics: how saved tensors work](https://docs.pytorch.org/docs/2.14/notes/autograd.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Saved tensors (what `pow` and `exp` save, packing versus unpacking, saved-tensor hooks). Depth: Read only the Saved tensors section here; the grad-mode and in-place sections belong to earlier units.
 
 **Focus**
 
@@ -822,7 +822,7 @@ The loader decides order, batching, dtype and device of every tensor the loop ev
 
 1. [Datasets and DataLoaders: FashionMNIST, custom Dataset, batching](https://docs.pytorch.org/tutorials/beginner/basics/data_tutorial.html) (PyTorch - Learn the Basics) - Loading a `Dataset` (`root`, `train`, `download`, `transform`); Iterating and Visualizing; Creating a Custom `Dataset` (`__init__`, `__len__`, `__getitem__` with `decode_image`); Preparing your data with DataLoaders (`batch_size`, `shuffle`); Iterate through the `DataLoader` (batch shapes `[64, 1, 28, 28]`, Samplers link).
 2. [Transforms: v2 pipeline and Lambda label encoding](https://docs.pytorch.org/tutorials/beginner/basics/transforms_tutorial.html) (PyTorch - Learn the Basics) - `ToImage()` and `ToDtype()` with `scale=True`; `Lambda` Transforms with `one_hot` labels.
-3. [Reproducibility: DataLoader worker seeding](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - `DataLoader` section (per-worker reseeding, `worker_init_fn` with `torch.initial_seed`, generator seeding). Depth: Read only the DataLoader section here; the nondeterminism catalog belongs to the checkpoint unit.
+3. [Reproducibility: DataLoader worker seeding](https://docs.pytorch.org/docs/2.14/notes/randomness.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - `DataLoader` section (per-worker reseeding, `worker_init_fn` with `torch.initial_seed`, generator seeding). Depth: Read only the DataLoader section here; the nondeterminism catalog belongs to the checkpoint unit.
 
 **Focus**
 
@@ -932,7 +932,7 @@ An experiment you cannot resume is an anecdote. Checkpoints plus config plus see
 
 1. [Saving and Loading Models: `state_dict`, checkpoints, devices](https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - What is a `state_dict` (model and optimizer dicts); Saving and Loading Model for Inference (Save and Load `state_dict`, `model.eval`); Saving and Loading a General Checkpoint for Inference and/or Resuming Training (epoch, model and optimizer state, loss); Saving and Loading Model Across Devices (`map_location`, `DataParallel` module prefix). Depth: Skip Saving an Exported Program, Saving Multiple Models in One File and Warmstarting. The deprecated general-checkpoint recipe redirects to this page.
 2. [Automatic Mixed Precision recipe: saving and resuming the GradScaler](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html#saving-resuming) (PyTorch Automatic Mixed Precision recipe - Saving/Resuming) - Saving/Resuming: the scaler `state_dict` saved beside model and optimizer, when to save it, and resuming across runs with and without AMP.
-3. [Reproducibility: randomness control and nondeterminism limits](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Reproducibility intro (no cross-release, cross-platform or CPU-versus-GPU guarantee); Controlling sources of randomness (`manual_seed`, Python and NumPy seeds, cudnn benchmark); Avoiding nondeterministic algorithms (`use_deterministic_algorithms`, uninitialized memory); `DataLoader` (`worker_init_fn`, generator). Depth: Read the section intros and the `DataLoader` part fully. Skim the per-op catalog (convolution, SDPA backends, RNN); the boundary table is the assignment, not every kernel.
+3. [Reproducibility: randomness control and nondeterminism limits](https://docs.pytorch.org/docs/2.14/notes/randomness.html) (PyTorch - Autograd mechanics, serialization and reproducibility) - Reproducibility intro (no cross-release, cross-platform or CPU-versus-GPU guarantee); Controlling sources of randomness (`manual_seed`, Python and NumPy seeds, cudnn benchmark); Avoiding nondeterministic algorithms (`use_deterministic_algorithms`, uninitialized memory); `DataLoader` (`worker_init_fn`, generator). Depth: Read the section intros and the `DataLoader` part fully. Skim the per-op catalog (convolution, SDPA backends, RNN); the boundary table is the assignment, not every kernel.
 
 **Focus**
 
@@ -1004,7 +1004,7 @@ Feeds into: Capstone artifact 2, the reproducible training run: this trainer run
 ### Resource route
 
 - **Primary - Course:** [PyTorch - Learn the Basics](https://docs.pytorch.org/tutorials/beginner/basics/) - Complete Tensors, Datasets and DataLoaders, Transforms, Build Model, Autograd, Optimization, and Save and Load Model. Rebuild each essential example in a small src package instead of retaining a tutorial notebook.
-- **Required - Reference:** [PyTorch - Autograd mechanics, serialization and reproducibility](https://docs.pytorch.org/docs/stable/notes/autograd.html) - Read Autograd mechanics, Serialization semantics and Reproducibility. Test leaf behavior, saved tensors, grad modes, state dictionaries and the exact tolerance promised by one interrupted and resumed run.
+- **Required - Reference:** [PyTorch - Autograd mechanics, serialization and reproducibility](https://docs.pytorch.org/docs/2.14/notes/autograd.html) - Read Autograd mechanics, Serialization semantics and Reproducibility. Test leaf behavior, saved tensors, grad modes, state dictionaries and the exact tolerance promised by one interrupted and resumed run.
 - **Required - Practice:** [Learn PyTorch - selected framework exercises](https://www.learnpytorch.io/) - Complete exercise 00, tasks 1-5 in 01, tasks 1-7 in 02, tasks 5-13 in 03, tasks 1-3 in 05, and exercises 1-2 in 07. Recreate solutions independently and verify behavior against current official docs.
 - **Support - Implementation:** [Deep Learning with PyTorch, 2nd edition - framework foundations](https://github.com/deep-learning-with-pytorch/dlwpt-code-2e) - Read Sections 3.8-3.9 and 5.5 when tensor storage, strides or autograd need a second explanation, with the Chapter 3 and 5 companion notebooks for runnable cells. Inspect the Chapter 4 and 7 code only for a diagnosed data-representation or loading gap.
 - **Optional - Practice:** [NeetCode ML - PyTorch closing drills](https://neetcode.io/practice/machine-learning) - After the module gate, solve Pytorch Basics, Layer Normalization, Batch Normalization and RMS Normalization cold. Explain shapes, state and train-evaluation behavior aloud. These do not replace the package and resume test.
@@ -1183,8 +1183,8 @@ Normalization decides which axes share statistics and whether evaluation depends
 
 1. [Batch, layer and prediction behavior](https://d2l.ai/chapter_convolutional-modern/batch-norm.html#batch-normalization-layers) (D2L - optimization and regularization slice) - Batch Normalization Layers (fully connected and convolutional), Layer Normalization, and Batch Normalization During Prediction.
 2. [Batch normalization (equations and behavior)](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Chapter 11, Section 11.4 (pp. 192 to 194): batch equations, train versus test statistics, and costs with benefits.
-3. [Group normalization axes](https://docs.pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html) (PyTorch GroupNorm reference) - `GroupNorm` page: channel grouping, normalized axes and the affine parameters.
-4. [RMS normalization formula](https://docs.pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html) (PyTorch RMSNorm reference) - `RMSNorm` page: RMS formula, `normalized_shape` axes, and absent centering.
+3. [Group normalization axes](https://docs.pytorch.org/docs/2.14/generated/torch.nn.GroupNorm.html) (PyTorch GroupNorm reference) - `GroupNorm` page: channel grouping, normalized axes and the affine parameters.
+4. [RMS normalization formula](https://docs.pytorch.org/docs/2.14/generated/torch.nn.RMSNorm.html) (PyTorch RMSNorm reference) - `RMSNorm` page: RMS formula, `normalized_shape` axes, and absent centering.
 5. [HOML: batch norm and layer norm in PyTorch](https://www.oreilly.com/library/view/hands-on-machine-learning/9798341607972/) (Hands-On Machine Learning with Scikit-Learn and PyTorch) - Chapter 11, Batch Normalization and Layer Normalization (printed pp. 375-382). Depth: Read it for the PyTorch conventions: the BN `momentum` is the weight of the new batch statistic (default 0.1), the opposite of the usual running-average meaning; `BatchNorm1d` expects `[batch, features, length]`; `nn.LayerNorm` normalizes the trailing `normalized_shape` dimensions, with an explicit `unbiased=False` equivalent on p. 381.
 
 **Focus**
@@ -1243,7 +1243,7 @@ Regularization trades training fit for held-out behavior. Each method changes a 
 2. [Dropout, label smoothing and augmentation](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Chapter 9, Sections 9.3.3, 9.3.4 and 9.3.8 (pp. 147 to 154): dropout, applying noise with label smoothing, and augmentation. Depth: Read Sections 9.3.3, 9.3.4 and 9.3.8 only. Skip Bayesian inference, transfer learning and self-supervised learning.
 3. [Dropout scaling and behavior](https://d2l.ai/chapter_multilayer-perceptrons/dropout.html#sec-dropout) (D2L - optimization and regularization slice) - Dropout in Practice and Implementation from Scratch: inverted scaling and the train and eval split.
 4. [Weight decay under SGD](https://d2l.ai/chapter_linear-regression/weight-decay.html#sec-weight-decay) (D2L - optimization and regularization slice) - Norms and Weight Decay and Implementation from Scratch: penalized objective, SGD shrinkage update, and bias exclusion.
-5. [Decoupled weight decay](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html) (PyTorch torch.optim.AdamW reference) - AdamW algorithm box: the decoupled decay line and its defaults.
+5. [Decoupled weight decay](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) (PyTorch torch.optim.AdamW reference) - AdamW algorithm box: the decoupled decay line and its defaults.
 
 **Focus**
 
@@ -1303,7 +1303,7 @@ The optimizer is the difference between a loss that falls and one that stalls or
 3. [AdaGrad recognition and failure regime](https://d2l.ai/chapter_optimization/adagrad.html#sec-adagrad) (D2L - optimization and regularization slice) - Sparse Features, Preconditioning and The Algorithm: accumulating denominator and its decay.
 4. [RMSProp recognition and failure regime](https://d2l.ai/chapter_optimization/rmsprop.html#sec-rmsprop) (D2L - optimization and regularization slice) - The Algorithm: leaking average fix for the unbounded denominator.
 5. [Adam with bias correction](https://d2l.ai/chapter_optimization/adam.html#sec-adam) (D2L - optimization and regularization slice) - The Algorithm and Yogi: bias correction and the divergence fix.
-6. [AdamW state and update equations](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html) (PyTorch torch.optim.AdamW reference) - AdamW algorithm box: decoupled decay step, moments, corrections and defaults.
+6. [AdamW state and update equations](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) (PyTorch torch.optim.AdamW reference) - AdamW algorithm box: decoupled decay step, moments, corrections and defaults.
 
 **Focus**
 
@@ -1359,7 +1359,7 @@ Schedules, batch size and clipping jointly set the update scale. Each one silent
 
 1. [Schedules and warmup](https://d2l.ai/chapter_optimization/lr-scheduler.html#sec-scheduler) (D2L - optimization and regularization slice) - Schedulers and Policies: factor, multi-factor, cosine with formula, and warmup.
 2. [Gradient clipping by global norm](https://d2l.ai/chapter_recurrent-neural-networks/rnn-scratch.html#gradient-clipping) (D2L - optimization and regularization slice) - Gradient Clipping: Lipschitz bound, the $`\min(1, \theta/\|g\|)`$ projection, and its limits. Depth: Read the Gradient Clipping section only. Skip the RNN implementation around it.
-3. [Clip API semantics](https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.clip_grad_norm_.html) (PyTorch - optimization and automatic mixed precision examples) - `clip_grad_norm_` page: global-norm definition over concatenated per-parameter norms, in-place edit, returned total norm, `error_if_nonfinite`.
+3. [Clip API semantics](https://docs.pytorch.org/docs/2.14/generated/torch.nn.utils.clip_grad_norm_.html) (PyTorch - optimization and automatic mixed precision examples) - `clip_grad_norm_` page: global-norm definition over concatenated per-parameter norms, in-place edit, returned total norm, `error_if_nonfinite`.
 4. [Scaler order with clipping](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) (PyTorch - optimization and automatic mixed precision examples) - Adding `GradScaler` and Inspecting/modifying gradients: `autocast` forward, scale, backward, unscale, clip, step, update, `zero_grad`.
 5. [LR range test](https://arxiv.org/abs/1506.01186) (Cyclical Learning Rates for Training Neural Networks (Smith, 2017)) - Abstract and range-test description: linearly increasing the rate for a few epochs to read reasonable bounds.
 6. [HOML: PyTorch schedulers and gradient clipping](https://www.oreilly.com/library/view/hands-on-machine-learning/9798341607972/) (Hands-On Machine Learning with Scikit-Learn and PyTorch) - Chapter 11, Gradient Clipping (printed pp. 382-383) and Learning Rate Scheduling from Cosine Annealing through 1cycle Scheduling (pp. 400-405). Depth: The warm-up loop on p. 402 calls `warmup_scheduler.step()` at the start of each epoch. On PyTorch 2.14 that trains at 40, 70 and 100 percent of the rate and never at the 10 percent the text promises; step at the end of each epoch to get 10, 40, 70, 100.
@@ -1417,7 +1417,7 @@ A failing run is usually a broken objective before it is a broken optimizer. Sha
 **Study**
 
 1. [Loss construction from likelihood](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Chapter 5: Maximum likelihood (5.1), Recipe for constructing loss functions (5.2) and multiclass classification (5.5).
-2. [Target shapes, masks, weights and reductions](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html) (PyTorch CrossEntropyLoss reference) - Shape, Parameters (`weight`, `ignore_index`, `reduction`, `label_smoothing`) and both Examples.
+2. [Target shapes, masks, weights and reductions](https://docs.pytorch.org/docs/2.14/generated/torch.nn.CrossEntropyLoss.html) (PyTorch CrossEntropyLoss reference) - Shape, Parameters (`weight`, `ignore_index`, `reduction`, `label_smoothing`) and both Examples.
 3. [Random-label fitting evidence](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - fitting, gradients and regularization) - Section 8.4 with 15 percent randomized labels, and Chapter 20, Section 20.2.1: fitting random pixels and labels as capacity evidence.
 4. [Overfit, underfit and selection](https://d2l.ai/chapter_linear-regression/generalization.html#underfitting-or-overfitting) (D2L - optimization and regularization slice) - Underfitting or Overfitting and Model Selection: capacity versus error and cross-validation discipline.
 
@@ -1438,7 +1438,7 @@ A failing run is usually a broken objective before it is a broken optimizer. Sha
 
 **Practice**
 
-- [PyTorch CrossEntropyLoss doc examples, extended](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html) - Examples with class indices and class probabilities; extend the first with `ignore_index` and `weight` and check the denominator by hand
+- [PyTorch CrossEntropyLoss doc examples, extended](https://docs.pytorch.org/docs/2.14/generated/torch.nn.CrossEntropyLoss.html) - Examples with class indices and class probabilities; extend the first with `ignore_index` and `weight` and check the denominator by hand
 - [D2L Generalization: Exercises](https://d2l.ai/chapter_linear-regression/generalization.html) - Exercises: the zero-training-error question and the cross-validation questions
 
 **Stop when:** Your hand-computed masked loss matches the framework to three decimals, and both controls give the predicted reading on a broken and a healthy run.
@@ -1521,7 +1521,7 @@ Loss curves alone never name the broken mechanism. Diagnosis is a designed exper
 
 1. Instrument the run: per-layer activation mean and std, dead or saturated fractions, gradient norms, update-to-weight ratios, loss, and train and validation metrics, logged per step.
 2. Run the controls first and keep them as tests: overfit one fixed batch to near-zero loss, and train on shuffled labels until training accuracy rises while held-out accuracy stays at chance.
-3. Write a fault script that applies one of at least six faults chosen from a seed and writes the choice to a file you open only after committing your diagnosis. Include a `softmax` before `CrossEntropyLoss`, a missing `zero_grad`, eval mode left on, a learning rate 100 times too high, a bad initialization scale and validation data passed through training augmentation.
+3. Write a fault script that applies one fault from a seeded list and seals the choice until diagnosis is committed. Cover a `softmax` before `CrossEntropyLoss`, missing `zero_grad`, eval mode left on, an excessive learning rate, bad init scale and augmented validation data.
 4. Diagnose three injected faults. For each, write rival hypotheses first, run one control that separates them, repair, and add a regression test that fails on the fault and passes on the repair.
 5. Compare SGD with momentum and AdamW with decoupled weight decay at matched budgets, with warmup, a cosine schedule and gradient clipping, across two seeds.
 6. Check gradient accumulation: $`k`$ micro-batches of size $`b`$ match one batch of size $`k`$ times $`b`$ within tolerance for a model without batch normalization or dropout, and show what breaks when the loss is not divided by $`k`$.
@@ -1538,11 +1538,11 @@ Loss curves alone never name the broken mechanism. Diagnosis is a designed exper
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Controls | The fixed batch reaches near-zero loss, and shuffled labels leave held-out accuracy at chance. | Both run as automated tests in under a minute on a CPU. |
+| Controls | The fixed batch reaches near-zero loss, and shuffled labels leave held-out accuracy at chance. | Both run as automated CPU tests. |
 | Diagnosis | Each of three faults is found with a stated discriminating control. | Each postmortem names at least two rival hypotheses and shows why the control separates them. |
 | Regression guards | Each repair has a test that fails on the fault. | The tests run on both seeds and check a mechanism, such as a norm, a mode flag or a reduction, not only the final loss. |
 | Configuration evidence | Two seeds for the chosen configuration, with activation, gradient and update statistics. | Update-to-weight ratios and the validation gap support the chosen learning rate and decay against one rejected alternative. |
-| Accumulation | Accumulated gradients match the large batch within tolerance. | You also show the mismatch caused by an undivided loss and explain why batch normalization breaks exact equivalence. |
+| Accumulation | Accumulated gradients match the large batch within a stated tolerance. | You also show the mismatch caused by an undivided loss and explain why batch normalization breaks exact equivalence. |
 
 Feeds into: Capstone artifact 3, the diagnosis and profile casebook: the objective or data postmortem and the numerical or state postmortem can come from here.
 
@@ -1553,10 +1553,10 @@ Feeds into: Capstone artifact 3, the diagnosis and profile casebook: the objecti
 - **Reference - Reference:** [PyTorch - optimization and automatic mixed precision examples](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) - Check optimizer, scheduler, gradient clipping and AMP API semantics. Preserve the correct order for zeroing, scaling, backward, unscaling, clipping, stepping and updating.
 - **Optional - Practice:** [Deep-ML candidate - optimization and normalization problems](https://www.deep-ml.com/problems) - After the platform admission check, use at most one of 146 Momentum, 169 AdamW, 197 Global-Norm Clipping, 109 LayerNorm or 115 BatchNorm as a changed-prompt drill.
 - **Support - Practice:** [TrenTorch - training mechanics questions](https://trentorch.com/) - Solve only the questions the units name: Weight Initialization, Layer Normalization, Label Smoothing, Gradient Accumulation, and Warmup and Cosine Decay. Read the tests first; they run in the browser IDE.
-- **Reference - Reference:** [PyTorch GroupNorm reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html) - Read how input channels are split into `num_groups` groups and which axes each group normalizes; compare `num_groups` 1 against `num_channels`.
-- **Reference - Reference:** [PyTorch RMSNorm reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.RMSNorm.html) - Read the RMS formula and which axes `normalized_shape` covers; note the missing mean centering and bias.
-- **Reference - Reference:** [PyTorch torch.optim.AdamW reference](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html) - Read the AdamW algorithm box for the decoupled weight-decay step, the bias-corrected moments and the defaults, and follow the Decoupled Weight Decay Regularization link for the argument.
-- **Reference - Reference:** [PyTorch CrossEntropyLoss reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html) - Read Shape, Parameters (`weight`, `ignore_index`, `reduction`, `label_smoothing`) and both Examples; extend the class-index example with `ignore_index` and a class `weight`.
+- **Reference - Reference:** [PyTorch GroupNorm reference](https://docs.pytorch.org/docs/2.14/generated/torch.nn.GroupNorm.html) - Read how input channels are split into `num_groups` groups and which axes each group normalizes; compare `num_groups` 1 against `num_channels`.
+- **Reference - Reference:** [PyTorch RMSNorm reference](https://docs.pytorch.org/docs/2.14/generated/torch.nn.RMSNorm.html) - Read the RMS formula and which axes `normalized_shape` covers; note the missing mean centering and bias.
+- **Reference - Reference:** [PyTorch torch.optim.AdamW reference](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) - Read the AdamW algorithm box for the decoupled weight-decay step, the bias-corrected moments and the defaults, and follow the Decoupled Weight Decay Regularization link for the argument.
+- **Reference - Reference:** [PyTorch CrossEntropyLoss reference](https://docs.pytorch.org/docs/2.14/generated/torch.nn.CrossEntropyLoss.html) - Read Shape, Parameters (`weight`, `ignore_index`, `reduction`, `label_smoothing`) and both Examples; extend the class-index example with `ignore_index` and a class `weight`.
 - **Reference - Reference:** [Cyclical Learning Rates for Training Neural Networks (Smith, 2017)](https://arxiv.org/abs/1506.01186) - Read the abstract and the range test: increase the rate linearly for a few epochs and read usable bounds off the loss curve.
 - **Reference - Reference:** [Deep Learning Tuning Playbook FAQ: debugging optimization failures](https://github.com/google-research/tuning_playbook) - Read How can optimization failures be debugged and mitigated (identifying unstable workloads, warmup, clipping) and Batch normalization implementation details.
 - **Support - Theory:** [Hands-On Machine Learning with Scikit-Learn and PyTorch](https://www.oreilly.com/library/view/hands-on-machine-learning/9798341607972/) - Read the Chapter 11 sections named in the units for the PyTorch side of initialization, normalization, clipping and schedules.
@@ -1623,7 +1623,7 @@ Every CNN bug report starts with a shape mismatch. Channels, padding and groups 
 2. [Padding and stride shapes](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html) (D2L - convolutional and recurrent architecture route) - Sections 7.3.1 and 7.3.2: the padding formula (7.3.1), the stride formula (7.3.2), and the `comp_conv2d` shape demos including kernel $`(3, 5)`$ with padding $`(0, 1)`$ and stride $`(3, 4)`$.
 3. [Channels and $`1 \times 1`$ convolutions](https://d2l.ai/chapter_convolutional-neural-networks/channels.html) (D2L - convolutional and recurrent architecture route) - Section 7.4: multiple input channels, multiple output channels, and $`1 \times 1`$ convolutions with the reshape-plus-matmul check. Depth: Skip the ResNeXt preview at the end. Grouped cost returns through the PyTorch reference below.
 4. [Stride, dilation and channels](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - convolution and residual networks) - Chapter 10, Sections 10.2.3 to 10.2.5 (pp. 164 to 165): stride, kernel size, dilation rate as zeros-plus-one, and channel counts $`Ci`$ by $`Co`$ by $`K`$.
-5. [The exact shape and groups contract](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html) (PyTorch nn.Conv2d reference) - Signature and Shape: the floor formula with dilation, the groups divisibility rule with the `groups=2` and depthwise examples, and the Variables weight shape.
+5. [The exact shape and groups contract](https://docs.pytorch.org/docs/2.14/generated/torch.nn.Conv2d.html) (PyTorch nn.Conv2d reference) - Signature and Shape: the floor formula with dilation, the groups divisibility rule with the `groups=2` and depthwise examples, and the Variables weight shape.
 
 **Focus**
 
@@ -1958,7 +1958,7 @@ Decoding and masking turn a trained seq2seq net into honest predictions. One unm
 
 1. [Masked loss, greedy prediction and BLEU](https://d2l.ai/chapter_recurrent-modern/seq2seq.html) (D2L - convolutional and recurrent architecture route) - Sections 10.7.5, 10.7.7 and 10.7.8: Loss Function with Masking ((l times mask).sum() over `mask.sum()`), greedy `predict_step`, and the BLEU measure. Depth: Use D2L `bleu()` as a relative probe only. It weights n-grams by $`(1/2)^n`$, unlike the uniform $`1/k`$ of Papineni et al.
 2. [Greedy, exhaustive and beam search](https://d2l.ai/chapter_recurrent-modern/beam-search.html) (D2L - convolutional and recurrent architecture route) - Sections 10.8.1 to 10.8.4: Greedy Search with the 0.048 and 0.054 examples, Exhaustive Search cost, Beam Search, and the length penalty with $`\alpha`$ 0.75.
-3. [Packed sequences at recognition depth](https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.rnn.pack_padded_sequence.html) (PyTorch sequence packing utilities) - `pack_padded_sequence`: the `lengths` argument, `enforce_sorted` and batch-first. Depth: Recognition only. Know what packing skips and what contract it demands; do not reimplement the packed format.
+3. [Packed sequences at recognition depth](https://docs.pytorch.org/docs/2.14/generated/torch.nn.utils.rnn.pack_padded_sequence.html) (PyTorch sequence packing utilities) - `pack_padded_sequence`: the `lengths` argument, `enforce_sorted` and batch-first. Depth: Recognition only. Know what packing skips and what contract it demands; do not reimplement the packed format.
 
 **Focus**
 
@@ -2002,7 +2002,7 @@ Decoding and masking turn a trained seq2seq net into honest predictions. One unm
 
 1. Pass the CS231n Assignment 2 checks for the naive convolution and max-pooling passes in `ConvolutionalNetworks.ipynb` and for the vanilla RNN step and sequence passes in `RNN_Captioning_pytorch.ipynb`.
 2. Write `conv2d` with padding, stride, dilation and groups, using `unfold` or loops, and match `torch.nn.functional.conv2d` in `float64` over a grid of settings that includes groups equal to channels.
-3. For a stated CNN of four to six layers, derive every output shape, the last layer's receptive field, the parameter count and the forward multiply-adds by hand. Check shapes and parameters in code. Check the receptive field by which input pixels get a nonzero gradient from one output, after setting weights to ones, removing ReLUs and swapping max for average pooling so no path is zeroed by chance.
+3. For a stated small CNN, derive every output shape, the last receptive field, the parameter count and forward cost by hand. Check shapes and parameters in code, and check the receptive field by input gradients under a linearized setup that keeps every path alive.
 4. Implement a GRU or LSTM cell in PyTorch's gate convention, load weights from `torch.nn.GRUCell` or `LSTMCell`, and match outputs and gradients over a 20-step unroll in `float64`.
 5. Batch variable-length sequences with padding plus masks or packing, and test that changing padded values leaves every valid output and the final valid hidden state unchanged.
 6. For a unidirectional model, test that changing the input at step $`t`$ leaves outputs before $`t`$ unchanged. Run the same test on a bidirectional model and show that it fails, which proves the test can fail.
@@ -2024,7 +2024,7 @@ Decoding and masking turn a trained seq2seq net into honest predictions. One unm
 | Convolution | Matches `F.conv2d` in `float64` for the tested padding, stride, dilation and group settings. | Gradients also match, and a property test samples random valid settings. |
 | Derivation | Hand-derived shapes, parameters and multiply-adds match the code. | The gradient-based receptive field matches the derivation, including a dilated layer. |
 | Gated cell | Outputs match the PyTorch cell with loaded weights. | Gradients through the 20-step unroll match too, and you show that a D2L-convention GRU does not match PyTorch even with the same weights, because the reset gate acts before rather than after the hidden-state matmul. |
-| Leak tests | Padding and future-input interventions leave valid outputs unchanged within tolerance. | The bidirectional counter-case fails the future-input test, and the padding test covers an all-padding row under a stated convention. |
+| Leak tests | Padding and future-input interventions leave valid outputs unchanged within a stated tolerance. | The bidirectional counter-case fails the future-input test, and the padding test covers an all-padding row under a stated convention. |
 | Gradients through time | Gradient norms by time step are plotted for both cells. | You tie the decay to measured gate values or to norms of the recurrent Jacobian. |
 
 Feeds into: Capstone artifact 2: this CNN or recurrent model is one option for the reproducible training run, and the leak tests can support a casebook postmortem.
@@ -2036,8 +2036,8 @@ Feeds into: Capstone artifact 2: this CNN or recurrent model is one option for t
 - **Support - Practice:** [Stanford CS231n - Assignments 1 and 2](https://cs231n.stanford.edu/2025/assignments.html) - Use only the neural network, normalization, dropout, convolution and PyTorch components that match this section. Do not complete the course or unrelated vision tasks.
 - **Optional - Practice:** [Deep-ML candidate - convolution and recurrence problems](https://www.deep-ml.com/problems) - After the platform admission check, use at most one of 41 Conv2D, 62 RNN with BPTT, 287 GRU or 59 LSTM as a changed-prompt drill.
 - **Support - Practice:** [TrenTorch - convolution cost and recurrent cells](https://trentorch.com/) - Solve FLOPs Estimation, GRU Forward and LSTM Forward after the D2L scratch models. Each reference cell matches torch.nn.GRUCell or LSTMCell.
-- **Reference - Reference:** [PyTorch nn.Conv2d reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html) - Read Signature and Shape for the exact floor formula with dilation, the groups divisibility rule with grouped and depthwise examples, and the weight layout $`(C_{\text{out}}, C_{\text{in}}/\text{groups}, kH, kW)`$. D2L and UDL teach the mechanism; this page is the shape contract to code against.
-- **Reference - Reference:** [PyTorch sequence packing utilities](https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.rnn.pack_padded_sequence.html) - Read `pack_padded_sequence` for `lengths`, `enforce_sorted` and batch-first at recognition depth: what packing skips and what contract it demands. Do not reimplement the packed format; pair it with the masked-loss implementation in D2L seq2seq.
+- **Reference - Reference:** [PyTorch nn.Conv2d reference](https://docs.pytorch.org/docs/2.14/generated/torch.nn.Conv2d.html) - Read Signature and Shape for the exact floor formula with dilation, the groups divisibility rule with grouped and depthwise examples, and the weight layout $`(C_{\text{out}}, C_{\text{in}}/\text{groups}, kH, kW)`$. D2L and UDL teach the mechanism; this page is the shape contract to code against.
+- **Reference - Reference:** [PyTorch sequence packing utilities](https://docs.pytorch.org/docs/2.14/generated/torch.nn.utils.rnn.pack_padded_sequence.html) - Read `pack_padded_sequence` for `lengths`, `enforce_sorted` and batch-first at recognition depth: what packing skips and what contract it demands. Do not reimplement the packed format; pair it with the masked-loss implementation in D2L seq2seq.
 
 ### Exit checkpoint
 
@@ -3031,7 +3031,7 @@ Attention is the only communication path between positions in a transformer. If 
 2. [Notebook 12.1: self-attention](https://github.com/udlbook/udlbook/blob/main/Notebooks/Chap12/12_1_Self_Attention.ipynb) (Understanding Deep Learning - Transformers) - The complete notebook, referenced in the margin of the matrix-form derivation.
 3. [Queries, keys and values](https://d2l.ai/chapter_attention-mechanisms-and-transformers/queries-keys-values.html) (D2L - attention and transformer implementation route) - Section 11.1: the attention-pooling equation, the nonnegative, convex-combination, single-selection and average-pooling cases, and `show_heatmaps`.
 4. [Dot-product attention and scaling](https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html) (D2L - attention and transformer implementation route) - Section 11.3.1 including the variance-$`d`$ derivation of the scaled scoring function, then the Scaled Dot Product Attention class with the `(2, 1, 2)` query toy and heatmap check. Depth: Skip Additive Attention; it is not a unit topic. Read the batch matrix multiplication part of Section 11.3.2 for shapes only.
-5. [Equivalent-implementation box](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The Efficient implementation equivalent code box: default scale $`1/\sqrt{E}`$, score-times-scale order, and softmax-then-dropout order.
+5. [Equivalent-implementation box](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The Efficient implementation equivalent code box: default scale $`1/\sqrt{E}`$, score-times-scale order, and softmax-then-dropout order.
 
 **Focus**
 
@@ -3087,7 +3087,7 @@ Masks decide which tokens may speak to which. A leak through a future position o
 1. [Masked self-attention and interaction matrices](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.7.2 (pp. 222 to 223): setting dot products to negative infinity before softmax, with Figure 12.12 loss wiring; Section 12.9 with Figure 12.15 (pp. 227 to 228) for encoder versus decoder interaction counts.
 2. [Masked softmax operation](https://d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html) (D2L - attention and transformer implementation route) - Section 11.3.2 Masked Softmax Operation: the `-1e6` fill, and both runnable examples on `(2, 2, 4)` inputs with valid lengths `[2, 3]` and `[[1, 3], [2, 4]]`.
 3. [Decoder causal lengths](https://d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html) (D2L - attention and transformer implementation route) - `TransformerDecoderBlock`: the training branch building `dec_valid_lens` rows `[1, 2, ..., num_steps]`, and the inference branch passing `None` with cached `key_values`.
-4. [Mask semantics, causality and dropout](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The boolean-mask Note (`True` means participate, inverse of `MultiheadAttention` `key_padding_mask`), the `is_causal` parameter entry including the non-square upper-left bias, and the dropout Warning that dropout applies in every mode.
+4. [Mask semantics, causality and dropout](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The boolean-mask Note (`True` means participate, inverse of `MultiheadAttention` `key_padding_mask`), the `is_causal` parameter entry including the non-square upper-left bias, and the dropout Warning that dropout applies in every mode.
 
 **Focus**
 
@@ -3313,7 +3313,7 @@ Attention scales quadratically in sequence length. The budget must be derived be
 
 1. [Complexity, sequential ops and path lengths](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html) (D2L - attention and transformer implementation route) - Comparing CNNs, RNNs, and Self-Attention: $`O(k n d^2)`$ with $`O(1)`$ ops and $`O(n/k)`$ path for CNNs, $`O(n d^2)`$ with $`O(n)`$ ops and path for RNNs, $`O(n^2 d)`$ with $`O(1)`$ ops and path for self-attention.
 2. [Quadratic attention and model sizes](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.2.1 (p. 209) for $`N^2`$ attention weights independent of width; Section 12.9 (pp. 227 to 228) for roughly half the interactions in decoders and the sparsification gallery; BERT and GPT-3 parameter listings (pp. 219 and 224 to 225) as worked sizes. Depth: Treat the sparsification gallery as orientation only; sparse kernels are a later topic.
-3. [Backends and precision behavior](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The three-implementation Note with backend selection functions, and the Numerical accuracy paragraph: math backend keeps `fp32` intermediates for `half` and `bf16` inputs, and outputs may differ by backend. Depth: Skip grouped-query attention; it belongs to decoder specialization.
+3. [Backends and precision behavior](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - The three-implementation Note with backend selection functions, and the Numerical accuracy paragraph: math backend keeps `fp32` intermediates for `half` and `bf16` inputs, and outputs may differ by backend. Depth: Skip grouped-query attention; it belongs to decoder specialization.
 
 **Focus**
 
@@ -3370,7 +3370,7 @@ Attention fails quietly: transposed axes still run, padding still mixes, fused k
 
 1. [Architecture comparison and hazard sites](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html) (D2L - attention and transformer implementation route) - Comparing CNNs, RNNs, and Self-Attention with its figure, plus the `transpose_qkv` and `transpose_output` pair and the `valid_lens` `repeat` in the multi-head implementation for the axis checklist.
 2. [Transformer summary and long-sequence gallery](https://udlbook.github.io/udlbook/) (Understanding Deep Learning - Transformers) - Section 12.11 (p. 232) for parallel computation with quadratic scaling; Section 12.9 gallery (pp. 227 to 228) for sparsification patterns at recognition depth; Section 12.10 (pp. 228 to 231) for convolutional inductive bias versus data scale. Depth: Stop at recognition of the gallery patterns; sparse and image architectures are not built here.
-3. [Backend selection and determinism limits](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - Backend selection functions, the outputs-may-differ paragraph, and the cuDNN nondeterminism Note with its deterministic flag.
+3. [Backend selection and determinism limits](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html) (PyTorch - scaled dot product attention) - Backend selection functions, the outputs-may-differ paragraph, and the cuDNN nondeterminism Note with its deterministic flag.
 
 **Focus**
 
@@ -3444,7 +3444,7 @@ Feeds into: Capstone artifact 2 can use a model built on this block; the LLM Fou
 
 - **Primary - Theory:** [Understanding Deep Learning - Transformers](https://udlbook.github.io/udlbook/) - Use Chapter 12.1-12.11 and the matching notebooks for dot-product self-attention, extension to transformers, transformer layers and vision transformers.
 - **Required - Implementation:** [D2L - attention and transformer implementation route](https://d2l.ai/) - Use queries-keys-values, attention-scoring-functions, multihead-attention, self-attention-and-positional-encoding, transformer and vision-transformer. Implement masked single-head attention, multi-head attention and one pre-normalized block before comparing with PyTorch.
-- **Reference - Reference:** [PyTorch - scaled dot product attention](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) - Use the official function documentation as a differential oracle for shapes, masks, dropout and backend behavior after the manual version passes intervention tests.
+- **Reference - Reference:** [PyTorch - scaled dot product attention](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html) - Use the official function documentation as a differential oracle for shapes, masks, dropout and backend behavior after the manual version passes intervention tests.
 - **Optional - Practice:** [Deep-ML candidate - attention problems](https://www.deep-ml.com/problems) - Use 490 Scaled Dot-Product Attention as the fifth platform admission sample. If the judge catches a seeded masking error, use at most one of 490, 491, 53, 904 or 905 as a changed-prompt drill.
 - **Support - Practice:** [TrenTorch - attention and block questions](https://trentorch.com/) - Solve the multi-head split, sinusoidal positional encoding, causal mask and pre-norm versus post-norm questions the units name, then carry the same checks into your own block.
 
@@ -3508,9 +3508,9 @@ Every memory number and profiler row later in this section is a consequence of t
 
 **Study**
 
-1. [How autograd encodes the history](https://docs.pytorch.org/docs/stable/notes/autograd.html#how-autograd-encodes-the-history) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - How autograd encodes the history: Function graph rebuilt each iteration, `grad_fn` entry points, what-you-run-is-what-you-differentiate.
-2. [Saved tensors](https://docs.pytorch.org/docs/stable/notes/autograd.html#saved-tensors) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Saved tensors: the x-squared example, `save_for_backward`, `_saved` attribute inspection, the `pow` identity-`True` and `exp` identity-`False` examples with shared storage.
-3. [In-place checks and saved-tensor hooks](https://docs.pytorch.org/docs/stable/notes/autograd.html#in-place-operations-with-autograd) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - In-place operations with autograd and In-place correctness checks: version counters and the no-error-means-correct-gradients guarantee. Depth: Skim Hooks for saved tensors after the `pack_hook` and `unpack_hook` contract. Skip the multithreading and complex-number sections.
+1. [How autograd encodes the history](https://docs.pytorch.org/docs/2.14/notes/autograd.html#how-autograd-encodes-the-history) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - How autograd encodes the history: Function graph rebuilt each iteration, `grad_fn` entry points, what-you-run-is-what-you-differentiate.
+2. [Saved tensors](https://docs.pytorch.org/docs/2.14/notes/autograd.html#saved-tensors) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Saved tensors: the x-squared example, `save_for_backward`, `_saved` attribute inspection, the `pow` identity-`True` and `exp` identity-`False` examples with shared storage.
+3. [In-place checks and saved-tensor hooks](https://docs.pytorch.org/docs/2.14/notes/autograd.html#in-place-operations-with-autograd) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - In-place operations with autograd and In-place correctness checks: version counters and the no-error-means-correct-gradients guarantee. Depth: Skim Hooks for saved tensors after the `pack_hook` and `unpack_hook` contract. Skip the multithreading and complex-number sections.
 
 **Focus**
 
@@ -3563,8 +3563,8 @@ Every speedup claim in this section stands or falls on timing discipline. Async 
 
 **Study**
 
-1. [Asynchronous execution and CUDA streams](https://docs.pytorch.org/docs/stable/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Asynchronous execution: enqueue semantics, `CUDA_LAUNCH_BLOCKING`, and the `Event` timing example; CUDA streams: default-stream auto-sync, the `wait_stream` plus `record_stream` fix, and `Stream` semantics of backward passes. Depth: Skip the TF32, GEMM precision, allocator-tuning and CUDA-graph sections here. They belong to later units.
-2. [Pinned memory and asynchronous copies](https://docs.pytorch.org/docs/stable/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Best practices, Use pinned memory buffers: `pin_memory`, `non_blocking` copies, and overlapping transfer with compute.
+1. [Asynchronous execution and CUDA streams](https://docs.pytorch.org/docs/2.14/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Asynchronous execution: enqueue semantics, `CUDA_LAUNCH_BLOCKING`, and the `Event` timing example; CUDA streams: default-stream auto-sync, the `wait_stream` plus `record_stream` fix, and `Stream` semantics of backward passes. Depth: Skip the TF32, GEMM precision, allocator-tuning and CUDA-graph sections here. They belong to later units.
+2. [Pinned memory and asynchronous copies](https://docs.pytorch.org/docs/2.14/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Best practices, Use pinned memory buffers: `pin_memory`, `non_blocking` copies, and overlapping transfer with compute.
 3. [Operations that force synchronization](https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html) (PyTorch - reliability and performance recipes) - GPU specific optimizations, Avoid unnecessary CPU-GPU synchronization: the `print`, `item`, `copy`, `nonzero` and data-dependent-control-flow list.
 
 **Focus**
@@ -3574,7 +3574,7 @@ Every speedup claim in this section stands or falls on timing discipline. Async 
 - `non_blocking=True` is a request, not a command. From pageable host memory the copy still syncs; pin the source first.
 - Backward follows forward stream placement. Grads produced under a side-stream backward must be consumed in the same stream context or after an explicit wait.
 
-**Reproduce:** On a CUDA GPU, warm up, then time a $`2048 \times 2048`$ `fp32` matmul both ways: CUDA events around the op with a `synchronize` before reading, versus a bare `perf_counter` around the launch. The matmul is $`2 \times 2048^3`$, about 17.2 GFLOP, so the event time is a few milliseconds at most (4.1 ms on a laptop RTX 3050), while the bare clock reads microseconds (0.007 ms there) because it measures enqueue only. Exact numbers depend on hardware; the size of the gap is the assertion.
+**Reproduce:** On a CUDA GPU, warm up, then time a $`2048 \times 2048`$ `fp32` matmul both ways: CUDA events around the op with a `synchronize` before reading, versus a bare `perf_counter` around the launch. The matmul is $`2 \times 2048^3`$, about 17.2 GFLOP, so the event time is a few milliseconds at most (4.1 ms on an RTX 3050 6 GB), while the bare clock reads microseconds (0.007 ms there) because it measures enqueue only. Exact numbers depend on hardware; the size of the gap is the assertion.
 
 **Traps**
 
@@ -3618,8 +3618,8 @@ OOM errors name a requested size but never the cause. The fix differs completely
 
 **Study**
 
-1. [Caching-allocator memory management](https://docs.pytorch.org/docs/stable/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Memory management: `memory_allocated` and `max_memory_allocated` for tensors, `memory_reserved` and `max_memory_reserved` for the allocator, `empty_cache` releasing only unused segments.
-2. [Snapshot-based memory debugging](https://docs.pytorch.org/docs/stable/torch_cuda_memory.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Generating a Snapshot with `_record_memory_history` and `_dump_snapshot`; Allocator State History: segments, blocks and `active_allocated` versus inactive states; Identifying Non-PyTorch allocations. Depth: Skip pinned host-memory capture. Use device-only snapshots for this unit.
+1. [Caching-allocator memory management](https://docs.pytorch.org/docs/2.14/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Memory management: `memory_allocated` and `max_memory_allocated` for tensors, `memory_reserved` and `max_memory_reserved` for the allocator, `empty_cache` releasing only unused segments.
+2. [Snapshot-based memory debugging](https://docs.pytorch.org/docs/2.14/torch_cuda_memory.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Generating a Snapshot with `_record_memory_history` and `_dump_snapshot`; Allocator State History: segments, blocks and `active_allocated` versus inactive states; Identifying Non-PyTorch allocations. Depth: Skip pinned host-memory capture. Use device-only snapshots for this unit.
 3. [Profiler memory analysis](https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html) (PyTorch - reliability and performance recipes) - Step 4, Using profiler to analyze memory consumption: `profile_memory` with `self` versus `total` memory and the `aten::empty` example.
 4. [Mixed-Precision Training Memory Accountant](https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant) (TensorTonic - mixed-precision memory and transformer FLOPs) - Compute exact storage for parameters, gradients, saved activations, and optimizer state from tensor shapes and byte widths.
 
@@ -3675,8 +3675,8 @@ Mixed precision is the cheapest memory and speed win in training, but it moves r
 **Study**
 
 1. [Automatic Mixed Precision recipe](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) (PyTorch - reliability and performance recipes) - Adding `torch.autocast` with the `fp16` linear output and `fp32` loss asserts; Adding `GradScaler` with `scale`, `backward`, `step` and `update`; Inspecting/modifying gradients with `unscale_` before `clip_grad_norm_` at `max_norm` 0.1; Saving/Resuming with scaler `state_dict`.
-2. [TF32 precision controls](https://docs.pytorch.org/docs/stable/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - TensorFloat-32 on Ampere and later devices: the new `fp32_precision` settings per backend and operator, `matmul` versus cuDNN defaults, and the rule against mixing old and new APIs.
-3. [Reduced-precision accumulation](https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Reduced Precision Reduction for FP16 and BF16 GEMMs with the off switches; Reduced Precision Reduction for FP16 and BF16 in SDPA with the `fp32` upcast default.
+2. [TF32 precision controls](https://docs.pytorch.org/docs/2.14/notes/cuda.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - TensorFloat-32 on Ampere and later devices: the new `fp32_precision` settings per backend and operator, `matmul` versus cuDNN defaults, and the rule against mixing old and new APIs.
+3. [Reduced-precision accumulation](https://docs.pytorch.org/docs/2.14/notes/numerical_accuracy.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Reduced Precision Reduction for FP16 and BF16 GEMMs with the off switches; Reduced Precision Reduction for FP16 and BF16 in SDPA with the `fp32` upcast default.
 4. [HOML: why float16 underflows and how mixed precision fixes it](https://www.oreilly.com/library/view/hands-on-machine-learning/9798341607972/) (Hands-On Machine Learning with Scikit-Learn and PyTorch) - Appendix B, Reduced Precision Models and Mixed-Precision Training (printed pp. 798-802): `float16` and `bfloat16` ranges, the 123 + 0.045 rounding example, `fp32` primary weights, and the `train_mpt` loop with `autocast` and `GradScaler`. Depth: One correction: p. 801 says `GradScaler` also scales down the learning rate. It does not; it unscales the gradients before the step and skips the step when they hold `inf` or `NaN`.
 
 **Focus**
@@ -3731,8 +3731,8 @@ A `NaN` loss names no culprit. The only cheap evidence is the first invalid valu
 
 **Study**
 
-1. [Nonassociativity, batches, slices and extremal values](https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Opening paragraphs on limited accuracy and nonassociativity; Batched computations or slice computations with the `bmm` and `sum` examples; Extremal values with the `norm` overflow example and the `isfinite` advice.
-2. [Anomaly detection reference](https://docs.pytorch.org/docs/stable/autograd.html#torch.autograd.set_detect_anomaly) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - `detect_anomaly` and `set_detect_anomaly`: forward traceback of the failing operation plus the `check_nan` error on `NaN` generated in backward; debug-only slowdown warning.
+1. [Nonassociativity, batches, slices and extremal values](https://docs.pytorch.org/docs/2.14/notes/numerical_accuracy.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Opening paragraphs on limited accuracy and nonassociativity; Batched computations or slice computations with the `bmm` and `sum` examples; Extremal values with the `norm` overflow example and the `isfinite` advice.
+2. [Anomaly detection reference](https://docs.pytorch.org/docs/2.14/autograd.html#torch.autograd.set_detect_anomaly) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - `detect_anomaly` and `set_detect_anomaly`: forward traceback of the failing operation plus the `check_nan` error on `NaN` generated in backward; debug-only slowdown warning.
 3. [Debugging APIs stay off in timed runs](https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html) (PyTorch - reliability and performance recipes) - General optimizations, Disable debugging APIs: anomaly detection, profiler hooks and `gradcheck` off for regular training.
 
 **Focus**
@@ -3786,7 +3786,7 @@ Checkpointing converts the activation term of the memory model into extra comput
 
 **Study**
 
-1. [`torch.utils.checkpoint` API](https://docs.pytorch.org/docs/stable/checkpoint.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - `checkpoint` signature and semantics: only `args` stay alive, region outputs are recomputed in backward; `use_reentrant` `False` versus `True` differences; `preserve_rng_state` with the multi-device caveat; `determinism_check` and `debug`.
+1. [`torch.utils.checkpoint` API](https://docs.pytorch.org/docs/2.14/checkpoint.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - `checkpoint` signature and semantics: only `args` stay alive, region outputs are recomputed in backward; `use_reentrant` `False` versus `True` differences; `preserve_rng_state` with the multi-device caveat; `determinism_check` and `debug`.
 2. [Which layers to checkpoint](https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html) (PyTorch - reliability and performance recipes) - General optimizations, Checkpoint intermediate buffers: large layer outputs with small recompute cost as targets.
 
 **Focus**
@@ -3841,7 +3841,7 @@ Resume bugs waste entire training runs: the loss looks fine while the data order
 **Study**
 
 1. [General checkpoints for resume](https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html) (PyTorch - reliability and performance recipes) - What is a `state_dict`; Saving and Loading a General Checkpoint: `save` and `load` patterns, optimizer state, 2 to 3 times model size, `.tar` convention, `eval` versus `train` mode; the `best_model_state` reference pitfall. Depth: Skip Saving an Exported Program and the `DataParallel` section unless your model uses them.
-2. [Reproducibility: seeds, determinism and data loading](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Controlling sources of randomness including `manual_seed` across devices; Avoiding nondeterministic algorithms with the cross-release and CPU-versus-GPU limits; `DataLoader` worker seeding with `worker_init_fn` and `generator`; CUDA convolution benchmarking versus determinism.
+2. [Reproducibility: seeds, determinism and data loading](https://docs.pytorch.org/docs/2.14/notes/randomness.html) (PyTorch - checkpointing, numerical accuracy and CUDA semantics) - Controlling sources of randomness including `manual_seed` across devices; Avoiding nondeterministic algorithms with the cross-release and CPU-versus-GPU limits; `DataLoader` worker seeding with `worker_init_fn` and `generator`; CUDA convolution benchmarking versus determinism.
 3. [Atomic renames for checkpoint writes](https://docs.python.org/3/library/os.html#os.replace) (Python os - `os.replace`) - `os.replace`: a successful rename is atomic, so write the checkpoint to a temp file in the same directory, `flush` and `fsync`, then replace the final name.
 
 **Focus**
@@ -3895,8 +3895,8 @@ Compile silently accepts partial graphs: a break just runs that part eagerly. Wi
 
 **Study**
 
-1. [`torch.compile` parameters](https://docs.pytorch.org/docs/stable/generated/torch.compile.html) (PyTorch - compiler troubleshooting) - `fullgraph`, `dynamic`, `backend` and `mode`; guard failures with `TORCH_LOGS=guards`; `recompile_limit` of 8 before falling back to eager.
-2. [Breaks, guards, recompiles and logs](https://docs.pytorch.org/docs/stable/user_guide/torch_compiler/torch.compiler_troubleshooting.html) (PyTorch - compiler troubleshooting) - Terminology with the graph break, `guards`, recompilation and dynamic shapes definitions; Logging Tools with `TORCH_LOGS` `graph_breaks`, `guards` and `recompiles`; Simple Workarounds including data-dependent fixes; Reporting Issues, Ablation with `eager` and `inductor` backends. Depth: Read Terminology, Logging Tools and Simple Workarounds fully. Skim TorchDynamo internals and Reporting Issues.
+1. [`torch.compile` parameters](https://docs.pytorch.org/docs/2.14/generated/torch.compile.html) (PyTorch - compiler troubleshooting) - `fullgraph`, `dynamic`, `backend` and `mode`; guard failures with `TORCH_LOGS=guards`; `recompile_limit` of 8 before falling back to eager.
+2. [Breaks, guards, recompiles and logs](https://docs.pytorch.org/docs/2.14/user_guide/torch_compiler/torch.compiler_troubleshooting.html) (PyTorch - compiler troubleshooting) - Terminology with the graph break, `guards`, recompilation and dynamic shapes definitions; Logging Tools with `TORCH_LOGS` `graph_breaks`, `guards` and `recompiles`; Simple Workarounds including data-dependent fixes; Reporting Issues, Ablation with `eager` and `inductor` backends. Depth: Read Terminology, Logging Tools and Simple Workarounds fully. Skim TorchDynamo internals and Reporting Issues.
 
 **Focus**
 
@@ -4025,8 +4025,8 @@ Feeds into: Capstone artifact 3: the performance or compile postmortem comes fro
 ### Resource route
 
 - **Primary - Course:** [PyTorch - reliability and performance recipes](https://docs.pytorch.org/tutorials/recipes/recipes_index.html) - Use the Profiler, Automatic Mixed Precision, model loading and Benchmark recipes, then the Performance Tuning Guide. Apply each to one compact model from an earlier section and keep a CPU fallback when CUDA is unavailable.
-- **Required - Reference:** [PyTorch - compiler troubleshooting](https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html) - Read graph breaks, guards, recompilations and logging. Compile one stable fragment, intentionally trigger a graph break or recompilation, inspect it, and compare eager and compiled outputs and gradients.
-- **Required - Reference:** [PyTorch - checkpointing, numerical accuracy and CUDA semantics](https://docs.pytorch.org/docs/stable/checkpoint.html) - Use the official user-guide entries for torch.utils.checkpoint, numerical accuracy, CUDA semantics, reproducibility and serialization. Predict memory categories before measuring and define resume equivalence before running.
+- **Required - Reference:** [PyTorch - compiler troubleshooting](https://docs.pytorch.org/docs/2.14/torch.compiler_troubleshooting.html) - Read graph breaks, guards, recompilations and logging. Compile one stable fragment, intentionally trigger a graph break or recompilation, inspect it, and compare eager and compiled outputs and gradients.
+- **Required - Reference:** [PyTorch - checkpointing, numerical accuracy and CUDA semantics](https://docs.pytorch.org/docs/2.14/checkpoint.html) - Use the official user-guide entries for torch.utils.checkpoint, numerical accuracy, CUDA semantics, reproducibility and serialization. Predict memory categories before measuring and define resume equivalence before running.
 - **Reference - Assessment:** [Deep Learning Training Debugger](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/deep-learning-training-debugger.md) - Use the failure-injection, measurement and evidence rules as the deeper standard. The full Tier 2 project is a later route and is not added to this stage milestone.
 - **Support - Practice:** [TensorTonic - mixed-precision memory and transformer FLOPs](https://www.tensortonic.com/study-plans/language-modeling-from-scratch) - Solve only Mixed-Precision Training Memory Accountant and Transformer Training FLOP Estimator. Reconcile both with the compact model's profiler and document every included and excluded term.
 - **Optional - Implementation:** [Learn PyTorch - profiler walkthrough](https://www.learnpytorch.io/) - Use notebook 10 only if the official profiler route remains unclear. Transfer the relevant annotations into the compact model instead of keeping the tutorial code.
