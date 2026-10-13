@@ -202,7 +202,7 @@
     {
       "id": "ring-tree-collectives",
       "title": "Ring and tree all-reduce, all-gather and reduce-scatter volume",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -212,47 +212,103 @@
         "allgather-reducescatter"
       ],
       "outcomes": [
-        "TODO"
+        "Derive step counts and per-rank bytes for ring and tree all-reduce, all-gather and reduce-scatter, and state which regime each algorithm wins.",
+        "Implement all-reduce and all-to-all from point-to-point calls with correctness and timing checks against the library versions.",
+        "Decompose tensor-parallel forward and backward communication into all-gather, all-reduce and reduce-scatter pieces."
       ],
-      "why": "TODO",
+      "why": "Data-parallel sync and tensor-parallel shards are these three collectives in different orders. The volume derivation decides the design; the MPI build makes the steps concrete without needing eight GPUs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/nccl-algorithms-placement",
+          "note": "Map ring, tree and all-to-all volumes onto NCCL algorithm selection."
+        },
+        {
+          "unit": "gpu/gpu-multigpu-communication/comm-compute-overlap",
+          "note": "Use per-rank bytes to predict exposed communication."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a2-comm-analysis-gpu9",
+          "title": "Ring constructions and the alternate algorithm",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.1 Communication Primitives (pp. 39-40): ring all-gather chunk passing, ring reduce-scatter with partial sums, all-reduce as their composition, and Problem (alternate_ring_all_reduce)"
+        },
+        {
+          "resource": "aisys-multigpu-gpu9",
+          "title": "NCCL ring, tree, CollNet and PAT",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, NCCL Communication Algorithms: Ring bandwidth-optimality at \\(2 \\times\\) data size over ranks per link, Tree in \\(O(\\log N)\\) steps for small messages, CollNet leader hierarchy, PAT hybrid"
+        },
+        {
+          "resource": "cse291a-pa2-comm-gpu9",
+          "title": "Collectives from point-to-point MPI",
+          "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
+          "locator": "Sections 2.0 and 2.1: mpi-test.py allreduce, allgather, reduce_scatter and split cases, then myAllreduce and myAlltoall in mpi_wrapper/comm.py from Send, Recv and Sendrecv only"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Point-to-point building blocks",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/p2p.html",
+          "locator": "Two-sided communication: ncclSend and ncclRecv pairs compose ring steps; ordering across ranks follows the same matched-call discipline as collectives"
         }
       ],
       "focus": [
-        "TODO"
+        "Ring all-reduce moves \\(2S(N-1)/N\\) bytes per rank in \\(2(N-1)\\) steps: bandwidth-optimal because every link carries the same share. Tree all-reduce finishes in \\(O(\\log N)\\) steps but leaves leaf links idle, so it wins small messages and loses large ones.",
+        "All-to-all is personalized, not a reduction: each rank sends a distinct chunk to every other rank. Reusing an all-reduce where an all-to-all belongs silently sums data that should stay separate.",
+        "Reduce-scatter followed by all-gather equals all-reduce, and each half costs \\(S(N-1)/N\\) per rank. Read any tensor-parallel layer as one of these halves: gather shards before shared compute, reduce partial outputs after sharded compute.",
+        "The PA2 restriction (no library collectives inside myAllreduce and myAlltoall) is the point: ring steps from Send and Recv expose the \\(N-1\\) round structure that the volume formulas summarize."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive per-rank bytes and step counts for ring all-gather, ring reduce-scatter, ring all-reduce and the alternate algorithm for general \\(N\\) and \\(S\\), then evaluate each at \\(N = 4\\) and \\(S = 1\\) GB and state the winner and its margin.",
       "traps": [
-        "TODO"
+        "Counting steps instead of bytes for large messages. Ring takes more steps than tree yet wins large transfers because balanced links dominate; step count alone picks tree everywhere.",
+        "Assuming tree links share load like ring links. Leaves send once upward and then wait, so quoting ring volume for a tree run overstates the link rate the measurement should show.",
+        "Calling myAlltoall with a reduction operator. All-to-all permutes blocks between ranks; applying MIN, SUM or MAX semantics to it corrupts every expert or shard assignment downstream."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "At \\(N = 4\\) and \\(S = 1\\) GB, what does each rank send in ring all-reduce versus the alternate algorithm?",
+          "a": "Ring: \\(2 \\times 1 \\times 3/4 = 1.5\\) GB per rank. Alternate: \\((4-1) \\times 1 = 3\\) GB per rank, twice as much, because it ships full buffers instead of chunks."
+        },
+        {
+          "q": "Why does tree all-reduce beat ring at 16 KB but lose at 400 MB?",
+          "a": "At 16 KB the \\(O(\\log N)\\) steps against \\(O(N)\\) dominate and tree starts fewer transfers. At 400 MB bytes dominate and ring keeps every link busy while tree leaves sit idle."
+        },
+        {
+          "q": "A tensor-parallel row needs full input on each rank from shards. Which collective, and what does each rank hold after?",
+          "a": "All-gather: each rank starts with its input slice and ends with the full tensor ordered by rank, matching the PA2 naive_collect_forward_input exercise."
+        },
+        {
+          "q": "Each rank holds a same-shaped partial output that must be summed everywhere. Which collective?",
+          "a": "All-reduce with SUM, matching naive_collect_forward_output over the fc_o input-dimension shards."
+        },
+        {
+          "q": "When is CollNet the right answer rather than plain ring or tree?",
+          "a": "Across groups joined by slower links with reduction-capable fabric: ring or tree inside each fast group, then leader ranks exchange across groups so the slow fabric carries fewer rounds."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "UCSD CSE 291A PA2 Part 2: Tensor Parallel Communication, Sections 2.1 to 2.5",
+          "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
+          "locator": "Section 2.1 myAllreduce and myAlltoall in mpi_wrapper/comm.py checked by `mpirun -n 8 python mpi-test.py --test_case myallreduce` and myalltoall; Sections 2.2 to 2.5 split_data, get_info and naive forward/backward collects checked by tests/test_data_split.py, tests/test_get_info.py, tests/test_transformer_forward.py and tests/test_transformer_backward.py",
+          "note": "CPU-only with Open MPI and mpi4py in a throwaway venv; record the discussion2-1.txt timing comparison against the library versions. The remote grader needs a course token, so the local cases are the gate."
+        },
+        {
+          "name": "TensorTonic: Synchronize Data-Parallel Gradients",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-data-parallel-gradient-sync",
+          "locator": "Solve the problem: average one gradient buffer across ranks and match the ring all-reduce volume"
+        },
+        {
+          "name": "TensorTonic: Reconstruct a Column-Parallel MLP Layer",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-column-parallel-mlp",
+          "locator": "Solve the problem: place the all-gather and all-reduce halves around the sharded multiplies"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand volumes match the PA2 timing ratios up to the expected constant, the local MPI cases pass, and you can place each PA2 collect call as a ring half without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 constructions, the book algorithm survey, PA2 Sections 2.1 to 2.5 with local MPI cases and two TensorTonic problems cover ring, tree and personalized collectives at derive and implement depth."
       }
     },
     {
