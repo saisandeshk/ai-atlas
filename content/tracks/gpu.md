@@ -252,7 +252,7 @@ The roofline turns counts and bytes into a prediction: which side of the ridge e
 
 - Quoting a ridge without naming the precision. int8 weights with bf16 compute halve the critical batch (120 versus 240 on v5e); int8 compute restores it.
 - Reading achieved peaks as vendor peaks. Dense H100 bf16 without sparsity is half the headline (9.89e14, not 1.979e15); measure your own plateau.
-- Expecting step time to fall with smaller batch below the knee. One full weight pass already costs about 0.22 ms on the RTX 3050 above; batching toward the knee buys throughput, not latency.
+- Expecting step time to fall with smaller batch below the knee. One full weight pass already costs about 0.22 ms on the RTX 3050 example above (recompute the floor from your own copy bandwidth); batching toward the knee buys throughput, not latency.
 
 **Practice**
 
@@ -603,21 +603,20 @@ Inference arithmetic is half the track's modeling. Training steps set the scale 
 
 ### Mini-project: Workload arithmetic and a falsifiable claim record for kernellab
 
-**About 10 to 14 hours.** Start the one repository the whole track builds on. Create kernellab with `harness/`, `kernels/cuda/`, `kernels/triton/`, `refs/`, `tests/`, `profiles/`, `reports/` and `manifests/`, then fix one transformer workload, derive its operations and bytes, sweep one batched matmul from floor to plateau, and file a claim record with a prediction and a falsifier before any later kernel is timed. The harness, the manifests and the sweep carry into every later section.
+**About 10 to 14 hours.** Build the kernellab harness and fix one transformer workload with its operation and byte arithmetic. Sweep one batched matmul from floor to plateau, score latency with an SLO rule, and file a falsifiable claim record that later sections test. The harness, manifests and sweep carry into every later section.
 
-1. Create kernellab with `harness/`, `kernels/cuda/`, `kernels/triton/`, `refs/`, `tests/`, `profiles/`, `reports/` and `manifests/` directories. Write `manifests/env.json` with GPU name, driver, toolkit, PyTorch and CUDA versions, `nvidia-smi -q -d CLOCK` output and the SM clock observed during timing, plus the code revision. Every later run appends its raw trials to `reports/` with the revision that produced them, so any number traces back to code, workload and hardware.
-2. Fix one workload card with medians, spread and an arrival note: prompt length, output length, batch, dtype and shape medians plus whether arrivals are closed loop or Poisson. Include the worked card with $`P = 4096`$, $`G = 1024`$ and $`B = 16`$: sequences finishing per step 1/64 and tokens evicted per step 80. State which cold trials are discarded (first compile, first weight load, first autotune) before the warm median is read.
-3. Sweep bf16 `[B, 4096] x [4096, 4096]` matmuls on the desktop RTX 3050 6 GB with CUDA events, warmup and interleaved repeats, plus a device-to-device copy at the same sizes. Plot achieved TFLOP/s against $`B`$ and report the knee and the small-batch floor. On the reference card with PyTorch 2.14.1 every $`B`$ from 1 to 16 took 0.24 to 0.29 ms, throughput was 6.5 TFLOP/s at $`B = 64`$, 13.4 at 128, 14.2 at 256, 14.8 at 1024 and 16.0 at 4096, and the copy reached 151.4 GB/s for a plateau ratio near 95 with the knee between 64 and 128. Your numbers will differ; the target is a knee near your own measured peak-over-bandwidth ratio, with raw samples kept.
-4. Derive the workload arithmetic closed-book for the invented 18.4e9 parameter model: dense decode work $`2 \times 18.4 \times 10^9 = 3.68 \times 10^{10}`$ operations per token, attention $`4 \times 8192 \times 32 \times 256 \times 64 = 1.72 \times 10^{10}`$ at cached length 8192 for a total near $`5.4 \times 10^{10}`$, int8 key-value bytes per token 262144, and the 13B bf16 cache at 8192 context near $`6.7 \times 10^9`$ bytes with the 81920 byte per token GQA int8 variant. Time the sweep from the previous step against these counts and name the bound on each side of the ridge.
-5. Implement Etalon Algorithm 1 in `refs/` and score the two Section 4 traces at 100 ms deadline: both take one TBT miss in 11 while fluidity-index gives 1.0 to the 10 ms system and 10/11 to the 100 ms system. Apply it to one real timestamp trace with a fitted prefill deadline, then bound attention work at 31 percent share (at most 1.45x end to end) and intermediates at 10 percent (at most 1.11x) with the formula $`S = 1/(1-f+f/r)`$, and reconcile the 1-GPU FasterTransformer case as $`16.8/0.9`$ near 18.7 ms plus 2.2 ms of intermediates near 20.9 ms against 22.0 measured.
-6. File one claim record in `manifests/` before profiling: workload, hardware, baseline, timing boundary, correctness method, prediction and the falsifying signal that would reject it. Name a strong baseline at matched workload (library, compiler or engine, with precision and flags), keep an independent reference that shares no logic with the timed path, and consume and check outputs before any speed claim. Add the training-step check as a derived extra: $`6 \times 3 \times 10^6 \times 13 \times 10^9`$ operations near 310 ms at the stated peak share, with the comms-bound verdict for pure FSDP stated as a prediction.
+1. Create kernellab with `harness/`, `kernels/cuda/`, `kernels/triton/`, `refs/`, `tests/`, `profiles/`, `reports/` and `manifests/`. Build every kernel with `-arch=native`, size work to fit your GPU's memory, and record hardware, toolkit and revision in `manifests/env.json`.
+2. Fix one workload card with medians, spread and arrival behavior, and keep separate cold and warm traces. Discard cold trials by rule, read the warm median from interleaved repeats, and keep raw samples with revision lineage.
+3. Derive dense operations, attention operations and parameter plus cache bytes for your workload closed-book. Check each line against an independent reference, for example a published shape manifest, and keep the arithmetic sheet.
+4. Sweep one batched matmul plus a device-to-device copy with event timing and interleaved repeats. Plot achieved throughput against batch, report the knee and floor, and name the bound on each side of the ridge.
+5. Implement Etalon Algorithm 1 in `refs/` and score one real timestamp trace with a fitted prefill deadline. Bound one kernel share with Amdahl, reconcile one baseline prediction with named residuals, and keep both reports.
+6. File one claim record in `manifests/` before profiling with workload, baseline, timing boundary, prediction and falsifier. Add the training-step operations and memory check as a derived prediction, and keep the lineage from revision to number.
 
 **Deliverables**
 
-- kernellab with `harness/`, `kernels/cuda/`, `kernels/triton/`, `refs/`, `tests/`, `profiles/`, `reports/` and `manifests/`, the environment manifest and the workload card with medians, spread and arrival note.
-- The bf16 batch sweep with raw interleaved trials, the copy result, the knee and floor, and the ridge calculation from measured peak over measured bandwidth.
-- The closed-book arithmetic sheet, the Algorithm 1 scores 1.0 and 10/11, the Amdahl bounds and the 1-GPU reconciliation with named residuals.
-- One filed claim record with prediction, falsifier, baseline, boundary and lineage from revision to number.
+- kernellab with the environment manifest, workload card, and cold plus warm traces with raw samples.
+- The arithmetic sheet, batch sweep with knee and ridge bound, and the falsifiable claim record.
+- Etalon scores, Amdahl bounds and the baseline reconciliation with named residuals.
 
 **Checks**
 
@@ -625,9 +624,9 @@ Inference arithmetic is half the track's modeling. Training steps set the scale 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Arithmetic before timing | The sheet derives dense, attention and byte counts against independent references, and every timed number traces to a manifest, a workload card and raw trials. | Each residual names an independent line (profiled bandwidth, counted passes, timed comms) and leaves unexplained remainder unexplained. |
-| Cold and warm separation | Cold trials are discarded by rule, warm medians come from interleaved repeats with raw samples kept, and the knee is compared with the measured ratio. | The report shows a rotating-buffer repeat and states which cache state each run preserves. |
-| SLO and bound discipline | Algorithm 1 returns 1.0 and 10/11 on the toy pair, Amdahl bounds are derived before profiling, and the strong baseline is matched in workload, precision and flags. | The write-up shows a case where peak throughput ranks two systems differently from the SLO qualified rate. |
+| Arithmetic before timing | The sheet derives operations and bytes against independent references, and every number traces to manifest and raw trials. | Each residual names an independent line and leaves unexplained remainder unexplained. |
+| Cold and warm separation | Cold trials are discarded by rule, warm medians come from interleaved repeats, and raw samples are kept. | The report states which state each run preserves and shows convergence before the median. |
+| SLO and bound discipline | Your Algorithm 1 implementation scores the paper's example traces, Amdahl bounds precede profiling, and the baseline matches workload. | The write-up shows a case where peak throughput and SLO qualified rate rank systems differently. |
 
 Feeds into: Capstone laboratory: the harness, manifests, workload card, sweep and claim record are its foundation. Later sections add kernels, counters, timelines and integrations inside the same kernellab layout.
 
@@ -778,7 +777,7 @@ A launch describes logical parallelism, not simultaneous execution. Latency hidi
 
 **Practice**
 
-- [MIT 6.S894 Fall 2025 Lab 2: FMA prelab Questions 1 to 3](https://github.com/accelerated-computing-class/lab2/blob/main/fma_latency.cu) - Complete `fma_latency`, `fma_latency_interleaved` and `fma_latency_no_interleave`. Build locally with `nvcc -O3 -arch=sm_86 fma_latency.cu -o fma_latency`, not Telerun. Use long dependent chains, consume their results, and inspect SASS for retained FMAs. Reset inputs between variants and use bounded finite values. The starter prints whole-snippet cycles, so divide by the retained FMA count and account for timer overhead. Repeat interleaved trials and report medians, hardware and toolkit; no course latency or speedup is a target. This is an investigative lab, not an autograded correctness suite.
+- [MIT 6.S894 Fall 2025 Lab 2: FMA prelab Questions 1 to 3](https://github.com/accelerated-computing-class/lab2/blob/main/fma_latency.cu) - Complete `fma_latency`, `fma_latency_interleaved` and `fma_latency_no_interleave`. Build in your own harness with `nvcc -O3 -arch=native fma_latency.cu -o fma_latency`, not Telerun. Use long dependent chains, consume their results, and inspect SASS for retained FMAs. Reset inputs between variants and use bounded finite values. The starter prints whole-snippet cycles, so divide by the retained FMA count and account for timer overhead. Repeat interleaved trials and report medians, hardware and toolkit; no course latency or speedup is a target. This is an investigative lab, not an autograded correctness suite.
 
 **Stop when:** You predict the two-block warp map correctly and can explain the prelab's dependent-chain and independent-chain measurements using the actual SASS, without claiming a fixed speedup.
 
@@ -1079,7 +1078,7 @@ The compiler can remove, fuse, predicate or scalarize the code you intended to m
 
 1. [CUDA Programming Guide 13.4.2: compiler trajectory and targets](https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/nvcc.html) (CUDA Programming Guide) - Sections 2.7.2, 2.7.3.1, 2.7.4.2 and 2.7.4.3.
 2. [CUDA Binary Utilities 13.4: resource reports and disassembly](https://docs.nvidia.com/cuda/cuda-binary-utilities/index.html) (CUDA Binary Utilities 13.4) - Sections 1.1 to 1.2, 2.1.1 to 2.1.3, 3.1.1 and 3.1.4. Depth: Use command examples and line correlation only; skip control-flow graph tooling and instruction tables for architectures other than your target.
-3. [PTX ISA 9.4: goals, state spaces and module directives](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html) (Parallel Thread Execution ISA) - Sections 1.2 (Goals of PTX), 5.1 to 5.1.7 (state spaces, including `.reg`, `.param`, `.global`, `.local` and `.shared`) and 11.1.1 to 11.1.3 (`.version`, `.target` and `.address_size`). Depth: Read these sections against your own `map.ptx`: with CUDA 13.4, `-arch=compute_86 -ptx` emits `.version 9.4` and `.target sm_86`, kernel arguments in `.param` and virtual `.reg` registers. Skip the instruction reference beyond the loads, stores and FMA your kernel uses.
+3. [PTX ISA 9.4: goals, state spaces and module directives](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html) (Parallel Thread Execution ISA) - Sections 1.2 (Goals of PTX), 5.1 to 5.1.7 (state spaces, including `.reg`, `.param`, `.global`, `.local` and `.shared`) and 11.1.1 to 11.1.3 (`.version`, `.target` and `.address_size`). Depth: Read these sections against your own `map.ptx`. In the compute capability 8.6 example with CUDA 13.4, `-arch=compute_86 -ptx` emits `.version 9.4` and `.target sm_86`, kernel arguments in `.param` and virtual `.reg` registers; your own target is the one `nvidia-smi --query-gpu=compute_cap --format=csv` reports. Skip the instruction reference beyond the loads, stores and FMA your kernel uses.
 
 **Focus**
 
@@ -1088,7 +1087,7 @@ The compiler can remove, fuse, predicate or scalarize the code you intended to m
 - PTX registers are virtual and do not equal allocated hardware registers. Use `ptxas` reports, kernel attributes and final binary resource information.
 - Annotate global loads/stores, bounds handling, FMA instructions and any local loads/stores in the final code. A source expression is not a guaranteed instruction sequence.
 
-**Reproduce:** For the bounded grid-stride map, run `nvcc -O3 -lineinfo -arch=sm_86 -Xptxas=-v map.cu -o map`, `nvcc -O3 -arch=compute_86 -ptx map.cu -o map.ptx`, and `nvcc -O3 -lineinfo -arch=sm_86 -cubin map.cu -o map.cubin`. Inspect with `cuobjdump --dump-sass --dump-resource-usage map` and `nvdisasm --print-line-info map.cubin`. These are the local RTX 3050 targets; choose matching targets on another device. Locate the retained index calculation, tail handling and stores, then validate and event-time the executable. Report actual registers and spills without assuming a fixed allocation or speedup.
+**Reproduce:** For the bounded grid-stride map, run `nvcc -O3 -lineinfo -arch=native -Xptxas=-v map.cu -o map`, `nvcc -O3 -arch=native -ptx map.cu -o map.ptx`, and `nvcc -O3 -lineinfo -arch=native -cubin map.cu -o map.cubin`. Inspect with `cuobjdump --dump-sass --dump-resource-usage map` and `nvdisasm --print-line-info map.cubin`. These build for your own GPU; the `sm_86` and `compute_86` targets elsewhere in this unit are the example for compute capability 8.6. Locate the retained index calculation, tail handling and stores, then validate and event-time the executable. Report actual registers and spills without assuming a fixed allocation or speedup.
 
 **Traps**
 
@@ -1224,21 +1223,21 @@ Compilation for a new target does not make a feature available on an older devic
 
 ### Mini-project: Execution and memory mapping with a PTX and SASS evidence bundle
 
-**About 12 to 16 hours.** Build the execution model inside kernellab: an explicit-memory vector-add baseline, grid-stride tails, a block-local publication test, a source to PTX to SASS bundle with a resource table, a native extension with an explicit contract, and a capability manifest with dispatch and fallback. Hopper and Blackwell features are reading and static audit only on the available hardware.
+**About 12 to 16 hours.** Build the execution model in kernellab: an explicit-memory baseline, grid-stride tails, a block-local publication test, a source to SASS bundle, a native extension and a capability manifest. Predictions precede profiles throughout, and unsupported features are audited statically. The baseline, manifest and selector carry into later timing work.
 
-1. Write `kernels/cuda/map.cu` as an explicit-memory single-precision vector add for 1003 elements with inputs `a[i] = float(i)` and `b[i] = 1.0f`, four blocks of 256 threads, explicit allocation and copies, a bounds check and a checked launch. All 1003 results must equal `float(i + 1)` exactly against an independent host reference, 21 launched threads must do no memory access, every CUDA return value is checked and all allocations are freed. Cover the two-dimensional index map with a kernel that writes each thread linear index, warp index and lane index for `dim3 block(16, 3, 1)`: warp 0 holds rows 0 and 1, warp 1 holds row 2 with 16 unused positions, and two such blocks allocate four warps.
-2. Derive before running: sector counts 4, 5 and 32 with useful fractions 100 percent, 80 percent and 12.5 percent for the three 32-lane four-byte patterns from a 32-byte aligned base; bank degrees 1, 2, 1, 32 and 1 for strides 1, 2, 3, 32 and 33 with degree 1 on broadcast; and the simplified occupancy example with 100 threads per block, 64 registers per effective thread and 2048 shared bytes per block giving four warps and 128 effective threads per block, four resident blocks, 16 resident warps and 50 percent occupancy. Check the arithmetic with a byte-interval union counter and a bank enumerator, then on the GPU: time paired coalesced (`4l`), shifted (`4l+4`) and strided (`32l`) copies and a conflicting (stride 32) against padded (stride 33) shared-memory kernel with interleaved events; sweep the compiled vector-add at 128, 256 and 512 threads with 0, 16384 and 32768 dynamic shared bytes through `cudaOccupancyMaxActiveBlocksPerMultiprocessor` (12, 5 and 3 blocks per SM at 128 threads on an RTX 3050 with CUDA 13.4) with `cuobjdump -res-usage` kept; force one spill with `-maxrregcount` and show it in `-Xptxas=-v`; and show a block above `maxThreadsPerBlock` failing with a checked launch error.
-3. Convert the baseline to a grid-stride loop. For 1003 elements with one block of 128 threads, thread 0 handles indices 0, 128, 256, 384, 512, 640, 768 and 896 and thread 127 handles seven indices ending at 895; validate every result against the host reference, then repeat with a one-thread launch at lengths 0, 1, 31, 32 and 33. Pair a uniform control kernel with a divergent one, annotate the retained branch, predication and reconvergence in PTX and SASS, and state which timing difference the annotation explains.
-4. Draw then implement a two-warp one-block publication test: thread 0 initializes a shared integer flag to zero, all 64 threads reach a block barrier, thread 0 writes payload 42 then release-stores flag 1 with `cuda::atomic_ref<int, cuda::thread_scope_block>`, and thread 32 acquire-loads until it sees 1 then writes the payload to an output slot that the host checks equals 42 after checked completion. Write the scope-and-progress audit separately for the initialization barrier and the release and acquire path. Keep deliberately racy variants as analyzed cases with the missing ordering named, never as timed kernels.
-5. Bundle source, PTX, cubin and SASS for the bounded grid-stride map with `nvcc -O3 -lineinfo -arch=sm_86 -Xptxas=-v map.cu -o map`, `nvcc -O3 -arch=compute_86 -ptx map.cu -o map.ptx` and `nvcc -O3 -lineinfo -arch=sm_86 -cubin map.cu -o map.cubin`, inspected with `cuobjdump --dump-sass --dump-resource-usage map` and `nvdisasm --print-line-info map.cubin`. Keep the compiler resource table and test one disassembly-backed paired timing hypothesis with event timing, for example aligned vector copies against scalar tails on odd shapes.
-6. Build an inference-only out-of-place float32 vector-add extension that requires equal shapes on one CUDA device, normalizes noncontiguous inputs explicitly, guards the device, uses its current stream with wide grid-stride indices, returns an empty output without a zero-block launch and checks launch errors. Compare with `a + b` at lengths 0, 1, 31, 32, 33 and 1003, a transposed two-dimensional view and a contiguous view offset by one element; reject mismatched shapes, dtypes, devices and gradient-requiring inputs in a rejection matrix, and check lifetime on a non-default stream. Record TMA, cluster and tensor-memory paths as a static audit only.
-7. Query `cudaGetDeviceProperties`, `cudaFuncGetAttributes` and the occupancy API into a capability manifest, recording `clusterLaunch` as a feature-eligibility observation without claiming cluster execution. Implement a vector-copy selector that takes a 16-byte aligned path only with compatible type, handled tail and legal launch resources and otherwise takes the scalar grid-stride copy. Test synthetic dispatch facts on the CPU and all three launch branches on the RTX 3050, compare automatic against forced-baseline timing with events, and file an explicit unsupported-feature report for paths the hardware cannot run.
+1. Write an explicit-memory single-precision vector add in `kernels/cuda/map.cu`. Check every result against an independent host reference, and keep the tests.
+2. Predict sector, bank and occupancy behavior before running, using TensorTonic Occupancy Calculator, Coalescing Counter and Bank Conflict Analyzer. Check predictions with event timings and compiler resource reports, and keep the derivation sheet.
+3. Convert the baseline to a grid-stride loop with checked tails, including empty inputs. Pair uniform and divergent kernels, annotate the retained branch and reconvergence in PTX and SASS, and keep the annotated bundle.
+4. Build a two-warp block-local publication test with a barrier, release store and acquire load. Check the payload on the host, write the scope and progress audit, and keep racy variants as analyzed cases only.
+5. Bundle source, PTX, cubin and SASS for the bounded kernel with compiler resource tables. Test one disassembly-backed paired timing hypothesis with event timing, and keep the bundle with the hypothesis report.
+6. Build an inference-only vector-add extension with an explicit shape and device contract. Test views, alignment and rejections plus lifetime on a non-default stream, and keep the rejection matrix.
+7. Write a capability manifest from device queries and a selector that falls back to the baseline, with dispatch tests and automatic against forced-baseline timing. Audit TMA, clusters, `wgmma` (Hopper) and `tcgen05` (Blackwell) statically unless your GPU has them.
 
 **Deliverables**
 
-- `kernels/cuda/map.cu` with the 1003-element baseline, the two-dimensional index map, grid-stride tails and the host reference tests.
-- The derivation sheet with sector, bank and occupancy predictions beside the measured counters, union outputs and `cuobjdump -res-usage` reports.
-- The publication test with its audit, the source to SASS bundle with the resource table and one paired timing hypothesis, the native extension with its rejection matrix, and the capability manifest with dispatch tests and the unsupported-feature report.
+- `kernels/cuda/map.cu` with the baseline, index map, grid-stride tails and host reference tests.
+- The derivation sheet with sector, bank and occupancy predictions beside measured evidence and resource reports.
+- The publication test with audit, SASS bundle with hypothesis, extension with rejection matrix, and capability manifest.
 
 **Checks**
 
@@ -1246,9 +1245,9 @@ Compilation for a new target does not make a feature available on an older devic
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Mapping correctness | The 1003-element baseline matches the host reference exactly, the warp map is verified by per-thread outputs, and lengths 0, 1, 31, 32 and 33 pass with the empty path avoiding an invalid launch. | A seeded bounds or index defect is kept as a regression that the reference catches. |
-| Prediction before measurement | Sector, bank and occupancy derivations are written before the runs and reconciled with measured evidence, with the simplified-model limits stated. | The paired timing hypothesis names the SASS lines it depends on and a signal that would falsify it. |
-| Synchronization and dispatch | The publication test shows 42 through the release and acquire path, racy variants name the missing ordering, and the selector tests cover native, forced fallback and forced-below-minimum branches. | The audit separates initialization from publication, and the report marks cluster paths as static audit. |
+| Mapping correctness | The baseline matches the host reference, the index map is verified, and tails pass with an empty path. | An injected defect is kept as a regression that the reference catches. |
+| Prediction before measurement | Sector, bank and occupancy derivations precede runs and are reconciled with measured evidence. | The paired hypothesis names the disassembly lines it depends on and a falsifying signal. |
+| Synchronization and dispatch | Your publication test passes through release and acquire, and dispatch tests cover fallback branches. | The audit separates initialization from publication, and paths your GPU cannot run are marked as static audit. |
 
 Feeds into: Capstone laboratory: the baseline, tails, publication test, SASS bundle, extension contract and capability manifest. Later sections time and profile these kernels and reuse the selector.
 
@@ -1353,7 +1352,7 @@ A host call can return before its GPU work finishes. A speedup is meaningful onl
 
 **Practice**
 
-- [CS336 Assignment 2: `benchmarking_script` (a) and (b)](https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf) - Problem (`benchmarking_script`), pp. 3 to 4. Part (b) times the Table 1 sizes at context 512. On a 6 GB GPU use the small model at batch 4 and context 256: one full AdamW step peaked at 2.93 GiB on an RTX 3050 6 GB with PyTorch 2.14, while context 512 needs 4.83 GiB and did not fit beside a desktop session. A 24 GB GPU runs small and medium at context 512. Record every change from the handout, and time forward-only and full training steps separately. These are written deliverables with no public timing tests; add your own correctness checks.
+- [CS336 Assignment 2: `benchmarking_script` (a) and (b)](https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf) - Problem (`benchmarking_script`), pp. 3 to 4. Part (b) times the Table 1 sizes at context 512; time the sizes that fit your GPU's memory and record every change from the handout. For example, on an RTX 3050 6 GB with PyTorch 2.14, one full AdamW step of the small model at batch 4 and context 256 peaked at 2.93 GiB, while context 512 needs 4.83 GiB and did not fit beside a desktop session; a 24 GB GPU runs small and medium at context 512. Time forward-only and full training steps separately. These are written deliverables with no public timing tests; add your own correctness checks.
 
 **Stop when:** Your harness reports both completed host latency and event time with explicit boundaries, validates the output, and rejects an unsynchronized launch-only result as a kernel-time claim.
 
@@ -1660,7 +1659,7 @@ Differential tests can miss an invalid access or intermittent race. Sanitizers a
 - A logical tensor overrun can remain inside an allocation or land in another valid allocation. Allocation padding improves detection; shape and sentinel tests are still necessary.
 - Use `--error-exitcode 1` for automation. Keep source line, access type, thread/block coordinates, tool version and the smallest failing input with each regression.
 
-**Reproduce:** In separate tiny CUDA programs, seed a one-past-the-end write, an uninitialized global read and a shared-memory neighbor read without a barrier. Build them for `sm_86` with `-lineinfo` and run memcheck with `--padding 32`, initcheck and racecheck; each reports its defect. For synccheck, seed `__syncwarp(0x0000ffff)` called by all 32 threads of a warp and build it with `-G`: synccheck reports "Barrier error detected. Invalid arguments." An `-O3` build reports nothing, because the compiler removed the barrier (the SASS has no `WARPSYNC`). A `__syncthreads()` reached by half the block is not a synccheck error on compute capability 7.0 and later; run racecheck on it and read the race it reports. All of this was observed with Compute Sanitizer 2026.3 and CUDA 13.4 on an RTX 3050 6 GB. Repair each defect, rerun the tool and the output tests, and bound every run with a timeout.
+**Reproduce:** In separate tiny CUDA programs, seed a one-past-the-end write, an uninitialized global read and a shared-memory neighbor read without a barrier. Build them for your own GPU with `-arch=native` and `-lineinfo` and run memcheck with `--padding 32`, initcheck and racecheck; each reports its defect. For synccheck, seed `__syncwarp(0x0000ffff)` called by all 32 threads of a warp and build it with `-G`: synccheck reports "Barrier error detected. Invalid arguments." An `-O3` build reports nothing, because the compiler removed the barrier (the SASS has no `WARPSYNC`). A `__syncthreads()` reached by half the block is not a synccheck error on compute capability 7.0 and later; run racecheck on it and read the race it reports. All of this was observed with Compute Sanitizer 2026.3 and CUDA 13.4 on an RTX 3050 6 GB. Repair each defect, rerun the tool and the output tests, and bound every run with a timeout.
 
 **Traps**
 
@@ -1723,7 +1722,7 @@ A kernel profiler cannot explain time spent waiting for the host to launch work.
 
 **Practice**
 
-- [CS336 Assignment 2: `nsys_profile`](https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf) - Problem (`nsys_profile`), parts (a) to (e), p. 6. The problem asks for two Table 1 sizes and three power-of-two contexts above 128. One full AdamW step at batch 4 peaked at 2.93, 4.83 and 10.74 GiB for the small model at contexts 256, 512 and 1024, and at 8.41 and 13.55 GiB for the medium model at 256 and 512; medium at 1024 did not fit in 24 GB (RTX A5000, PyTorch 2.11). On a 24 GB GPU, profile small and medium at 256 and 512 and small also at 1024. On a 6 GB GPU, profile small training at 256, small forward passes at 512 and 1024 and medium forward passes at 256 and 512, and record the deviation. Keep captures short. These write-up questions have no public autograder.
+- [CS336 Assignment 2: `nsys_profile`](https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf) - Problem (`nsys_profile`), parts (a) to (e), p. 6. The problem asks for two Table 1 sizes and three power-of-two contexts above 128. One full AdamW step at batch 4 peaked at 2.93, 4.83 and 10.74 GiB for the small model at contexts 256, 512 and 1024, and at 8.41 and 13.55 GiB for the medium model at 256 and 512; medium at 1024 did not fit in 24 GB (measured on an RTX A5000 with PyTorch 2.11). Profile the sizes that fit your GPU's memory: on a 24 GB GPU, profile small and medium at 256 and 512 and small also at 1024; on a 6 GB GPU, profile small training at 256, small forward passes at 512 and 1024 and medium forward passes at 256 and 512, and record the deviation. Keep captures short. These write-up questions have no public autograder.
 
 **Stop when:** Your annotated trace connects a measured phase to source, kernels and dependencies, attributes one observed gap or transfer, and reconciles busy time with event and completed wall intervals.
 
@@ -1807,7 +1806,7 @@ A throughput number needs an operation and byte definition. A roofline supplies 
 
 **Study**
 
-1. [Operations, traffic and the first GPU roofline](https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/) (AI Systems Performance Engineering - Chapters 6 to 8) - Chapter 6, Roofline Model: Compute-Bound or Memory-Bound Workloads; Chapter 8, Kernel Memory Throughput Versus Peak HBM Memory Bandwidth and Kernel Compute Throughput Versus Peak GPU FLOPS. Depth: Use the model, not the Blackwell peak values, for an Ampere GPU. Low arithmetic intensity identifies the lower roof; it does not prove that measured execution saturates bandwidth.
+1. [Operations, traffic and the first GPU roofline](https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/) (AI Systems Performance Engineering - Chapters 6 to 8) - Chapter 6, Roofline Model: Compute-Bound or Memory-Bound Workloads; Chapter 8, Kernel Memory Throughput Versus Peak HBM Memory Bandwidth and Kernel Compute Throughput Versus Peak GPU FLOPS. Depth: Use the model with your own GPU's peaks, not the book's Blackwell values. Low arithmetic intensity identifies the lower roof; it does not prove that measured execution saturates bandwidth.
 2. [Original roofline model and additional ceilings](https://www2.eecs.berkeley.edu/Pubs/TechRpts/2008/EECS-2008-134.html) (Roofline: An Insightful Visual Performance Model) - Technical report EECS-2008-134, October 2008 revision: sections 3, The Roofline Model, and 4, Adding Ceilings to the Model, including Figure 1. Depth: Stop before the platform survey and application case studies. Note that the paper defines operational intensity using traffic after cache filtering, between caches and DRAM.
 3. [Nsight Compute 2026.3.1: roofline and memory boundaries](https://docs.nvidia.com/nsight-compute/ProfilingGuide/#roofline-charts) (Nsight Compute Profiling Guide) - Section 2.9, Roofline Charts, Overview and Analysis; section 2.10, Memory Chart, Overview. Depth: Match the precision and execution path of the roofline section to the kernel. Keep modeled useful work distinct from profiler operation counters.
 
@@ -1957,35 +1956,33 @@ A local kernel improvement may disappear under dispatch, transfers or unchanged 
 
 ### Mini-project: Correctness-first harness with timelines, counters and regime evidence
 
-**About 12 to 16 hours.** Harden the kernellab harness: a manifest with machine state, paired interleaved trials with raw samples, independent references over an adversarial matrix, four sanitizer reproducers, minimal counter captures, a roofline point, three classified regimes and an end-to-end bound with retained losses. Counter steps run under `sudo ncu` or record the permission block with counter-free evidence.
+**About 12 to 16 hours.** Harden the kernellab harness with manifests, interleaved trials, independent references, sanitizer reproducers, timelines, counters and regime evidence. Correctness precedes speed throughout, and every number keeps raw samples and lineage. The harness and bound carry into every kernel section.
 
-1. Extend `manifests/env.json` with a timestamped machine-state log: SM clock, power and temperature from `nvidia-smi -q -d CLOCK,POWER,TEMPERATURE`, background processes, whether clocks can be locked without privilege, and allocator behavior. Run one short timing twice with interleaved variants, attach both logs, and write an interference and isolation audit that explains any state difference without attributing every fluctuation to one cause. Add the rotating-buffer cache experiment: fresh-process first call against rotating preallocated inputs against reused inputs, with warmup samples kept and the preserved state declared for each.
-2. Implement paired randomized interleaved trials in `harness/run.py` with a recorded seed, raw per-trial samples, a drift plot and a documented resampling unit with uncertainty. Show the method on synthetic paired latencies baseline `[10, 20, 30]` against candidate `[5, 10, 15]`: both medians and paired speedups give 2, and perfectly proportional pairs can resample with zero spread without proving noise-free hardware. Apply the same summaries to retained interleaved GPU samples from two seeded 512 by 512 `torch.float32` matmuls on the RTX 3050 (10 warmup, 20 timed) with event and synchronized host boundaries and a CPU double-precision check of the last output.
-3. Write independent copy and reduction references in `refs/` that share no logic with the kernels. Cover lengths 0, 1, 31, 32, 33, 255, 256 and 257, a stride-two view of a known sequence at zero tolerance with every element compared, and output prefilled with `NaN` so omitting the last element fails; the empty path must avoid an invalid zero-block launch. Keep seeded tail and stride regressions, then add cancellation, `NaN`, infinity, overflow, underflow and all-masked policy tests with a stated tolerance rule. Run the four CS336 accumulation loops unchanged on CPU and explain them: 10.000133514404297 and 9.953125 for the fp32 and fp16 loops, 10.00213623046875 for both fp32-accumulated loops as 1000 times the fp16 value 0.01000213623046875, separating input rounding from accumulation rounding.
-4. Seed four minimal reproducers in `kernels/cuda/diag/`: a one-past-the-end write, an uninitialized global read, a shared-memory neighbor read without a barrier, and `__syncwarp(0x0000ffff)` called by all 32 threads of a warp. Build the first three for `sm_86` with `-lineinfo` and run `compute-sanitizer --tool memcheck --padding 32`, initcheck and racecheck so each reports its defect; build the last with `-G` so synccheck reports Barrier error detected with invalid arguments while an `-O3` build reports nothing because the compiler removed the barrier. Keep each log, repair and regression test.
-5. Capture one NVTX-annotated `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none` timeline for the matmul batch, follow one API call to its kernel, identify the final synchronization and report the union of kernel intervals beside the event interval and completed wall time. Then take a minimal hypothesis linked `sudo ncu` capture requesting only `LaunchStats` plus one section, recording replay mode, pass count, cache and clock control and observer overhead against unprofiled time. Where counters are denied, keep the `ERR_NVGPUCTRPERM` record and substitute event timing plus `cuobjdump -res-usage` and occupancy API evidence with no overhead ratio claimed.
-6. Derive the operation and byte model for out-of-place fp32 scaled vector addition with a register scalar: $`F = 2n`$ and minimum requested bytes $`Q = 12n`$ for intensity $`I = 1/6`$ FLOP/byte, with streaming no-reuse bound $`t`$ above $`\max(2n/P, 12n/B)`$. Place one event-timed point with useful FLOPs and modeled bytes labeled, using sourced or calibrated ceilings, and add traffic-counter checks only where permitted; without counters never call $`12n/t`$ measured DRAM bandwidth.
-7. Predeclare three regimes with one falsifier each: a tiny copy as launch sensitive, a streaming copy larger than L2 as bandwidth sensitive, and a GEMM size sweep as compute sensitive. Collect interleaved event timings, a timeline and static launch and resource evidence, adding minimal counter sections only under `sudo ncu` where permitted. Report each hypothesis as confirmed, contradicted or unresolved rather than forcing all three labels when evidence is incomplete.
-8. Apply the end-to-end bound $`T_{e} = T(1-f+f/s)+d`$: for a synthetic 100 ms workload with a 40 ms kernel at speedup 2 the total is 80 ms (1.25x), and 85 ms near 1.176x with 5 ms of dispatch and conversion. Apply the same formula with critical-path share to one retained trace, report kernel time beside completed invocation latency across the shape matrix including retained losing shapes, and file a device-scoped reproduction manifest. Include the CS336 memory note as a labeled observation: one full AdamW step on the small model at batch 4 peaked at 2.93 GiB at context 256, 4.83 at 512 and 10.74 at 1024, with medium at 8.41 and 13.55 GiB at 256 and 512 and OOM at 1024 on 24 GB.
+1. Extend `manifests/env.json` with a timestamped machine-state log and an interference audit. Separate cold from warm trials, and keep both traces.
+2. Run paired randomized interleaved trials in `harness/run.py` with raw samples, drift plots and stated uncertainty. Check the method against CS336 `benchmarking_script`, and keep the trial design with event-timed evidence.
+3. Write independent copy and reduction references in `refs/` over an adversarial matrix with prefilled outputs. Test your own tail, stride, cancellation and extreme-value policy, and check the numerical note with CS336 `mixed_precision_accumulation`.
+4. Write minimal reproducers for memory, initialization, race and barrier defects and diagnose each with `compute-sanitizer`. Capture one NVTX-annotated `nsys` timeline, check it with CS336 `nsys_profile`, and keep logs, repairs and regressions.
+5. Take one minimal, hypothesis-linked capture: hardware counters if you have access (on Linux, `sudo ncu`), otherwise event timings, bytes over time, `cuobjdump -res-usage` and `nsys` timelines. Place one roofline point with sourced ceilings.
+6. Predeclare three regimes with one falsifier each, then collect interleaved timings, a timeline and resource evidence. Report each hypothesis as confirmed, contradicted or unresolved, and keep the regime reports.
+7. Apply the end-to-end bound with critical-path share to one retained trace, reporting kernel time beside completed latency with losing shapes kept. Check the memory note with CS336 `memory_profiling`, and file a device-scoped reproduction manifest.
 
 **Deliverables**
 
-- The hardened harness with the machine-state log, paired interleaved trials, raw samples, drift plots and the rotating-buffer cache evidence.
-- Independent references with the adversarial matrix, seeded tail and stride regressions and the extreme value policy beside the four-loop numerical note.
-- Four sanitizer reproducers with logs, repairs and regressions; one `nsys` timeline with NVTX correlation; one minimal `sudo ncu` capture or the permission-block record with counter-free evidence.
-- The roofline point with labeled models and ceilings, three regime reports with falsifiers, and the end-to-end bound with losing shapes and the reproduction manifest.
+- The hardened harness with machine-state log, interleaved trials, raw samples and drift plots.
+- Independent references with adversarial matrix and extreme-value policy, plus sanitizer reproducers with logs.
+- One `nsys` timeline, one minimal counter capture or permission-block record, and roofline plus regime evidence.
+- The end-to-end bound with losing shapes and the device-scoped reproduction manifest.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [CS336 Assignment 2 local tests](https://github.com/stanford-cs336/assignment2-systems). Run the `benchmarking_script`, `nsys_profile`, `mixed_precision_accumulation` and `memory_profiling` problems locally on sizes that fit 6 GB.
+- external-tests: [CS336 Assignment 2 public tests](https://github.com/stanford-cs336/assignment2-systems). Run the `benchmarking_script`, `nsys_profile`, `mixed_precision_accumulation` and `memory_profiling` problems on sizes that fit your GPU's memory.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| References and tolerances | Independent references pass the full length matrix and stride-two views at stated tolerance, seeded tail and stride regressions fail on the seeded omission, and extreme inputs follow the written policy. | The four-loop note separates input rounding from accumulation rounding with the exact values quoted. |
-| Sanitizers and timelines | Each reproducer reports under its stated tool and flags, the `-G` synccheck case and the `-O3` silence are both kept, and the timeline attributes one host gap or transfer without reaching for counters first. | Regressions are minimal single-defect programs with the exact log line that identifies each defect. |
-| Counters and regimes | The `sudo ncu` capture is minimal and hypothesis linked with replay and overhead recorded, or the permission block is kept with event plus `cuobjdump -res-usage` evidence, and each regime carries a falsifier and a verdict of confirmed, contradicted or unresolved. | The roofline labels useful against requested against actual bytes and never claims measured bandwidth without traffic counters. |
-| End-to-end honesty | The bound is applied with critical-path share, kernel time sits beside completed invocation latency, losing shapes are retained, and the manifest scopes reproduction to one device. | The report states which invocation costs the kernel win cannot move. |
+| References and tolerances | The copy and reduction references pass the adversarial matrix, and extreme inputs follow your written policy. | Tail and stride regressions fail on the defective kernel and pass after repair. |
+| Sanitizers and timelines | Each reproducer reports under its stated tool, and the timeline attributes one host gap without reaching for counters. | Regressions are minimal single-defect programs with the identifying log line kept. |
+| Counters and regimes | The counter capture is minimal and hypothesis linked with overhead recorded, or the permission block is kept, and each regime carries a falsifier and verdict. | The roofline labels useful against requested bytes, and the end-to-end report retains losing shapes. |
 
 Feeds into: Capstone laboratory: the harness, references, sanitizer regressions, timelines, counters and regime evidence. Later kernel sections reuse the trial design and the bound.
 
@@ -2081,7 +2078,7 @@ Every later primitive reuses this loop. If the map is wrong on tails or wastes t
 - Coarsening trades fewer blocks and amortized index math for more registers per thread and less parallel slack. PMPP frames it as paying less for parallelism.
 - Coalescing is about the warp, not the thread: consecutive threads should touch consecutive words so one 128-byte request fills four 32-byte transactions.
 
-**Reproduce:** From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop, and predict each variant's per-warp transaction count before running. On 1000003 random floats all three match a CPU reference computed with `fmaf` bit-exactly. `nvcc` contracts `a * x[i] + y[i]` into one fused multiply-add by default, so a CPU reference that multiplies and then adds differs in the last bit: on an RTX 3050 6 GB with CUDA 13.4 it disagreed at 282,894 of the 1,000,003 elements.
+**Reproduce:** From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop, and predict each variant's per-warp transaction count before running. On 1000003 random floats all three match a CPU reference computed with `fmaf` bit-exactly. `nvcc` contracts `a * x[i] + y[i]` into one fused multiply-add by default, so a CPU reference that multiplies and then adds differs in the last bit: on an RTX 3050 6 GB with CUDA 13.4 it disagreed at 282,894 of the 1,000,003 elements; your count will differ, so check the mismatch pattern on your own GPU rather than the exact count.
 
 **Traps**
 
@@ -2136,7 +2133,7 @@ Transpose is the smallest kernel where layout decides bandwidth. The tile, barri
 - The copy kernel is the ceiling: it moves the same twice-the-matrix traffic with ideal access. A transpose near copy bandwidth is done.
 - Fewer threads than tile elements (a $`32 \times 8`$ block for a $`32 \times 32`$ tile) amortizes index math, with 4 elements per thread.
 
-**Reproduce:** Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data and time each with events, median of 11 trials. On an RTX 3050 6 GB with CUDA 13.4 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s, counting one read and one write per element, and the tiled output matched a CPU transpose exactly, including a 1000x1000 check of the edge guards. Expect the same ranking on your GPU, with tiled near copy.
+**Reproduce:** Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data and time each with events, median of 11 trials. On an RTX 3050 6 GB with CUDA 13.4 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s, counting one read and one write per element, and the tiled output matched a CPU transpose exactly, including a 1000x1000 check of the edge guards. Expect the same ranking on your GPU, with tiled near copy; your GB/s values will differ, so compare each kernel to your own measured copy bandwidth.
 
 **Traps**
 
@@ -2236,7 +2233,7 @@ No single block sees the whole vector. This unit turns a block-local tree into a
 **Study**
 
 1. [Divergence, memory and hierarchical reduction](https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0) (Programming Massively Parallel Processors, 4th edition - Chapters 6 and 9 to 12) - Chapter 10, Sections 10.4 to 10.7: minimizing control divergence, memory divergence and global accesses, plus hierarchical reduction for arbitrary input length.
-2. [Shuffle prelab](https://github.com/accelerated-computing-class/lab7) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lab 7, Part 0 (`shuffle.cu`): `__shfl_up_sync(0xffffffff, threadIdx.x, 1)` semantics, no wrap-around, and the two 32-integer cumulative-sum kernels with and without shared memory. Depth: Build for your own GPU with `nvcc -arch=sm_86` and recompute any SM count the questions assume. Use only Part 0 here; the scan parts belong to later units.
+2. [Shuffle prelab](https://github.com/accelerated-computing-class/lab7) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lab 7, Part 0 (`shuffle.cu`): `__shfl_up_sync(0xffffffff, threadIdx.x, 1)` semantics, no wrap-around, and the two 32-integer cumulative-sum kernels with and without shared memory. Depth: Build for your own GPU with `nvcc -arch=native` and recompute any SM count the questions assume. Use only Part 0 here; the scan parts belong to later units.
 3. [Warp completion and cascading](https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf) (Optimizing Parallel Reduction in CUDA) - Slides 21 and 22 (unrolling the last warp with `warpReduce`) and slides 31 to 33 (multiple adds per thread with a grid-stride loop). Depth: The deck predates Volta. Its `warpReduce` assumes lockstep warps, so rewrite it with `__shfl_down_sync` before you reuse it.
 4. [Coarsened reduction code](https://github.com/gpu-mode/lectures) (GPU MODE - Reductions and Scans) - Lecture 9 code in `lecture_009/reduce_coarsening.cu`: per-thread accumulation with `COARSE_FACTOR` before the block tree.
 
@@ -2267,8 +2264,8 @@ No single block sees the whole vector. This unit turns a block-local tree into a
    - No grid-wide barrier exists for independently scheduled blocks. One partial per block plus a second launch is the portable completion; single-pass schemes risk deadlock.
 2. A tail warp has 20 lanes with data and reduces with a full `0xffffffff` mask. When does this go wrong, and what is the fix?
    - If the other 12 lanes skip the shuffle inside a branch, the call is invalid and may hang. If they have exited, the call is allowed but shuffles that read from them return undefined values. Keep all 32 lanes in the reduction with identity values for the missing elements.
-3. A 1,000,003-element reduction uses 256-thread blocks. How many blocks does it launch at coarsening 4 and at coarsening 64, and why can the second be slower on an 18-SM GPU?
-   - 977 blocks at 4 and 62 at 64. Compute capability 8.6 holds up to six 256-thread blocks per SM, 108 on 18 SMs, so 62 blocks leave SMs partly idle and too few warps to hide memory latency.
+3. A 1,000,003-element reduction uses 256-thread blocks. How many blocks does it launch at coarsening 4 and at coarsening 64, and why can the second be slower on your GPU?
+   - 977 blocks at 4 and 62 at 64. As the worked example, compute capability 8.6 holds up to six 256-thread blocks per SM, 108 on 18 SMs, so 62 blocks leave SMs partly idle with too few warps to hide memory latency; redo the block-to-SM arithmetic for your own GPU.
 4. What exactly does first-add-during-load halve?
    - The launched blocks and the threads that sit in the shared-memory tree: each thread sums two elements on load. Every element is still read once from global memory.
 
@@ -2294,7 +2291,7 @@ Scan turns per-element predicates into global write positions. Compaction, sort 
 2. [Segmented and single-pass scans](https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0) (Programming Massively Parallel Processors, 4th edition - Chapters 6 and 9 to 12) - Section 11.6 (printed p. 253): three-kernel hierarchical scan for long inputs; Section 11.7 (printed p. 256): single-pass motivation with its atomic, fence and barrier deadlock risk. Depth: Read Section 11.7 for the argument only. Do not implement the domino scheme here.
 3. [Decoupled look-back protocol](https://research.nvidia.com/sites/default/files/pubs/2016-03_Single-pass-Parallel-Prefix/nvr-2016-002.pdf) (Single-pass Parallel Prefix Scan with Decoupled Look-back) - Sections 4.1 and 4.2: tile states X (invalid), A (aggregate ready) and P (prefix ready), with the look-back, fence and constant-bound properties. Depth: Read for the state machine after two-pass scans pass. Implement a bounded version only if hardware and time allow a fair comparison.
 4. [Scan, segmented scan and global strategies](https://accelerated-computing.academy/fall25/lectures) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lecture 7, Pattern #5: Scan (slides 39 to 67), with scan-and-add versus reduce-then-scan versus decoupled look-back; Lecture 9, Pattern #5.5: Segmented Scan (slides 16 to 28), with head flags and the quicksort use case.
-5. [Associative scan implementation](https://github.com/accelerated-computing-class/lab7) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lab 7, Part 1 (`scan.cu`, `launch_scan`): an inclusive scan templated over an associative operator, tested with `SumOp` and `DebugRangeConcatOp`, no external libraries such as CUB, benchmarked at length $`2^{26}`$ with throughput defined as twice the bytes over time. Depth: Build for your own GPU with `nvcc -arch=sm_86`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth.
+5. [Associative scan implementation](https://github.com/accelerated-computing-class/lab7) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lab 7, Part 1 (`scan.cu`, `launch_scan`): an inclusive scan templated over an associative operator, tested with `SumOp` and `DebugRangeConcatOp`, no external libraries such as CUB, benchmarked at length $`2^{26}`$ with throughput defined as twice the bytes over time. Depth: Build for your own GPU with `nvcc -arch=native`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth.
 
 **Focus**
 
@@ -2312,7 +2309,7 @@ Scan turns per-element predicates into global write positions. Compaction, sort 
 
 **Practice**
 
-- [MIT Lab 7 Part 1: associative scan](https://github.com/accelerated-computing-class/lab7) - Part 1 `launch_scan` in `scan.cu`: pass the `SumOp` and `DebugRangeConcatOp` tests without CUB, then benchmark at length $`2^{26}`$ against the retargeted bandwidth goal. Build with `nvcc -arch=sm_86` (or your GPU's architecture) and run locally; the course runner needs an MIT token. Recompute every SM count, clock and bandwidth the questions assume.
+- [MIT Lab 7 Part 1: associative scan](https://github.com/accelerated-computing-class/lab7) - Part 1 `launch_scan` in `scan.cu`: pass the `SumOp` and `DebugRangeConcatOp` tests without CUB, then benchmark at length $`2^{26}`$ against the retargeted bandwidth goal. Build with `nvcc -arch=native` and run in your own harness; the course runner needs an MIT token. Recompute every SM count, clock and bandwidth the questions assume.
 - [LeetGPU challenge 16: Prefix Sum](https://leetgpu.com/challenges/prefix-sum) - Challenge 16: `solve(input, output, N)` inclusive float scan at tolerance 0.01, with functional cases for a single element, an 8-element power of two and a 2025-element random input, and a performance case of $`N = 250000`$. Run it on LeetGPU or locally with the harness from the transpose unit.
 - [LeetGPU challenge 70: Segmented Exclusive Prefix Sum](https://leetgpu.com/challenges/segmented-exclusive-prefix-sum) - Challenge 70: `solve(values, flags, output, N)` with `flags[0]` set and the first output of every segment 0.0, and a performance case of $`N = 50000000`$. Attempt only after the required challenges 3, 4, 5, 13 and 16 pass.
 
@@ -2358,7 +2355,7 @@ Histograms are the first primitive where threads collide on the same addresses. 
 - Privatization replicates bins per block in shared memory, which is fast and block-scoped, then merges at a cost of blocks times bins adds. Coarsening into fewer blocks cuts the merge.
 - Work PMPP Exercise 6 by hand before coding: it quantifies basic versus privatized versus coarsened update counts on the same input.
 
-**Reproduce:** Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins and on input that falls entirely in one bin, both match `torch.bincount` and the privatized version is faster. On an RTX 3050 6 GB, 50M updates took 17.8 ms with global atomics over 256 uniform bins and 27.4 ms into one bin, against 1.3 ms privatized in both cases. State the int32 bin overflow limit (2147483647) and your merge policy above it.
+**Reproduce:** Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins and on input that falls entirely in one bin, both match `torch.bincount` and the privatized version is faster. On an RTX 3050 6 GB, 50M updates took 17.8 ms with global atomics over 256 uniform bins and 27.4 ms into one bin, against 1.3 ms privatized in both cases; your times will differ, so compare the ratios on your own GPU. State the int32 bin overflow limit (2147483647) and your merge policy above it.
 
 **Traps**
 
@@ -2404,7 +2401,7 @@ Compaction is the first complete irregular primitive: data-dependent output posi
 
 1. [Compaction from scan and scatter](https://accelerated-computing.academy/fall25/lectures) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lecture 7, Pattern #4: Stream Compaction (slides 32 to 38): predicate array, exclusive scan as scatter addresses, and the return to compaction after the scan pattern.
 2. [Split and load-balance search](https://accelerated-computing.academy/fall25/lectures) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lecture 9, Pattern #4.5: Split (slides 5 to 8) for stable partitioning by scan, and Load-balance Search (slides 9 to 15) for count, scan and scatter expansion.
-3. [Run-length compression](https://github.com/accelerated-computing-class/lab7) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lab 7, Part 2 (`rle_compress.cu`, `launch_rle_compress`): run starts as an implicit predicate plus scan for positions over a 16-million-byte bitmap (`rle_raw.bmp`). Depth: Build for your own GPU with `nvcc -arch=sm_86` and retarget the 1.6 ms course goal to your hardware. Part 3 decompression is extra credit; skip it here.
+3. [Run-length compression](https://github.com/accelerated-computing-class/lab7) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6, 7 and 9 and Lab 7) - Lab 7, Part 2 (`rle_compress.cu`, `launch_rle_compress`): run starts as an implicit predicate plus scan for positions over a 16-million-byte bitmap (`rle_raw.bmp`). Depth: Build for your own GPU with `nvcc -arch=native` and retarget the 1.6 ms course goal to your hardware. Part 3 decompression is extra credit; skip it here.
 
 **Focus**
 
@@ -2422,7 +2419,7 @@ Compaction is the first complete irregular primitive: data-dependent output posi
 
 **Practice**
 
-- [MIT Lab 7 Part 2: run-length compression](https://github.com/accelerated-computing-class/lab7) - Part 2 `launch_rle_compress` in `rle_compress.cu`: scan-built positions for run starts, reusing your Part 1 scan. Build with `nvcc -arch=sm_86` (or your GPU's architecture), run locally, and recompute the timing goal for your GPU; the course runner needs an MIT token.
+- [MIT Lab 7 Part 2: run-length compression](https://github.com/accelerated-computing-class/lab7) - Part 2 `launch_rle_compress` in `rle_compress.cu`: scan-built positions for run starts, reusing your Part 1 scan. Build with `nvcc -arch=native`, run in your own harness, and recompute the timing goal for your GPU; the course runner needs an MIT token.
 - [LeetGPU challenge 72: Stream Compaction](https://leetgpu.com/challenges/stream-compaction) - Challenge 72: `solve(A, N, out)` keeping strictly positive values in order, with the rest of `out` left at 0.0, checked exactly, with functional cases for length 1 present and absent plus non-powers of two, and a performance case of $`N = 50000000`$. Attempt only after challenges 3, 4, 5, 13 and 16 pass. Run it on LeetGPU or locally with the harness from the transpose unit.
 
 **Stop when:** Your compactor matches the Challenge 72 contract on edge sizes, and you derive every scatter address from the exclusive scan by hand on the 4-element example.
@@ -2533,7 +2530,7 @@ Copy-compute overlap is the cheapest speedup in GPU computing and the easiest to
 
 **Practice**
 
-- [AI Systems companion code: Chapter 11 stream overlap demos](https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch11) - `streams_overlap_demo.cu`, `event_timing_demo.py` and `stream_overlap_demo.py`: build and run the overlap demo, reproduce one overlap timeline with event timing, and compare the event timing variants. From the `code` directory, `nvcc -O3 -arch=sm_86 ch11/streams_overlap_demo.cu -o streams_overlap_demo` builds the CUDA demo, which reports its sequential and overlapped times; `event_timing_demo.py` runs with PyTorch alone; `stream_overlap_demo.py` imports the shared harness and needs the repository's `requirements.txt`. Ignore the B200 expectation files.
+- [AI Systems companion code: Chapter 11 stream overlap demos](https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch11) - `streams_overlap_demo.cu`, `event_timing_demo.py` and `stream_overlap_demo.py`: build and run the overlap demo, reproduce one overlap timeline with event timing, and compare the event timing variants. From the `code` directory, `nvcc -O3 -arch=native ch11/streams_overlap_demo.cu -o streams_overlap_demo` builds the CUDA demo, which reports its sequential and overlapped times; `event_timing_demo.py` runs with PyTorch alone; `stream_overlap_demo.py` imports the shared harness and needs the repository's `requirements.txt`. Ignore the B200 expectation files.
 
 **Stop when:** Your pipeline timeline shows copy and compute overlapping, event math confirms it, and switching back to pageable memory visibly collapses the overlap.
 
@@ -2576,7 +2573,7 @@ Graphs remove per-launch CPU overhead for repeated work, but a graph bakes in ad
 - Capture, instantiate and launch happen once, once and many times. Replay removes most per-launch CPU cost: on an RTX 3050 6 GB with CUDA 13.4, tiny kernels took 0.79 us each inside a graph against 2.67 us launched one by one, so graphs pay when launch overhead is a large share of step time.
 - Capture forbids allocation, synchronization, legacy-stream work and shape changes. Preallocate maximum shapes and validate before capturing.
 - `cudaGraphExecUpdate` updates an instantiated graph in place when the new capture has the same topology: kernel arguments, pointers and grid sizes may change. A different sequence of nodes fails the update; check the result and the reported node, then destroy and re-instantiate.
-- The first launch after instantiation also uploads the graph (`cudaGraphUpload` can do it ahead of time), so warm up before timing: the first replay of an 8-kernel chain took 34 us on the RTX 3050 above, against about 6 us warm.
+- The first launch after instantiation also uploads the graph (`cudaGraphUpload` can do it ahead of time), so warm up before timing: the first replay of an 8-kernel chain took 34 us on the RTX 3050 example above, against about 6 us warm; measure your own first-replay cost the same way.
 
 **Reproduce:** Capture an 8-kernel saxpy chain, replay it 100 times with outputs identical to eager, update a pointer and a length in place with `cudaGraphExecUpdate`, then change the number of kernels so the update fails and you re-instantiate. Report per-kernel launch time eager and in the graph, after warmup.
 
@@ -2662,33 +2659,32 @@ Primitives fail in ways that look like performance problems. This unit turns the
 
 ### Mini-project: CUDA maps, reductions, transpose and overlap with async proof
 
-**About 12 to 16 hours.** Fill kernellab with the CUDA core: vectorized and coarsened maps, shuffle and two-pass reductions, tiled transpose, scans, privatized histograms, stable softmax, overlapped copies and captured graphs, each checked against an independent reference and timed with events. Keep the local LeetGPU harness and five seeded async defects with tool evidence.
+**About 12 to 16 hours.** Fill kernellab with maps, reductions, transpose, scans, histograms, softmax, overlapped copies and captured graphs. Each kernel is checked against an independent reference with adversarial sizes kept. Overlap, graphs and defect regressions carry into later sections.
 
-1. Build the local LeetGPU harness in `tests/leetgpu/`: compile each `solve` with `nvcc -shared -Xcompiler -fPIC`, load it with `ctypes`, and check it against `reference_impl` plus the generators from the public `challenge.py` files, with a two-line `core/challenge_base.py` stub setting `device = \"cuda\"` where the helper is needed. Verify the path on challenge 4 before timing anything.
-2. Write scalar, `float4` vectorized and 4-way coarsened saxpy kernels with grid-stride loops in `kernels/cuda/map.cu`. Predict per-warp transaction counts first, then check all three on 1000003 random floats bit-exactly against a CPU reference computed with `fmaf`: `nvcc` contracts the multiply-add to one fused operation by default, so a multiply-then-add reference differs in the last bit at 282894 of the 1000003 elements on the reference card. Cover lengths 0 and 1000003 plus odd sizes, with the empty path avoiding an invalid launch.
-3. Write a shuffle warp reduction plus a two-pass grid reduction with 4-way coarsening and grid-stride loads. Cover lengths 0, 1, 31, 32, 33, 1023, 1000003 and one large size, pad tail lanes with the identity, return 0 for length 0 and the single value for length 1, and match a float64 reference within relative error 1e-6 on 1000003 values. Sweep the coarsening factor with interleaved event trials and retain one losing factor: with 256 threads the grid needs 977 blocks at factor 4 against 62 at factor 64, while `sm_86` holds 6 such blocks per SM for 108 resident on 18 SMs. Show the hand tree on `[6, 2, 7, 4, 5, 8, 3, 1]` giving 36 in 7 adds and 3 steps, and the float32 order case with `1e8` cancelling to 1 or 0 by grouping.
-4. Rebuild copy, naive and padded shared-memory tiled transpose for 4096 by 4096 fp32 random data and time each with events as median of 11 trials counting one read and one write per element. On the reference RTX 3050 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s with exact match including a 1000 by 1000 edge-guard check; expect the same ranking with tiled near copy on your card. Pass LeetGPU challenge 3 locally across 1 by 1 through 8192 by 8192 cases. Diagnose bank behavior with the enumerator from the previous section and keep the padding fix.
-5. Implement block scan plus block-sums scan plus add-back for arbitrary lengths: hand-run Kogge-Stone exclusive scan on `[4, 6, 7, 1, 2, 8, 5, 2]` to `[0, 4, 10, 17, 18, 20, 28, 33]`, match `torch.cumsum` on odd sizes, and build scan-plus-scatter for stream compaction that maps `[-1, 2, 0, 4]` through predicate `[0, 1, 0, 1]` and scan `[0, 0, 1, 1]` to `[2, 4, 0, 0]`. Implement global-atomic and privatized int32 histograms matching `torch.bincount`: on the reference card 50M updates over 256 bins took 17.8 ms global uniform and 27.4 ms into one bin against 1.3 ms privatized in both cases. State the int32 overflow limit 2147483647 with a merge policy, and pass LeetGPU challenges 13, 16 and 72 locally.
-6. Derive the online normalizer recurrence from the safe form, hand-run it on `[1, 2, 3, 1000]`, then implement materialized, two-pass and online softmax that agree within 1e-5 on 500000 uniform (-10, 10) logits including the challenge 5 `[1000, 1, 2, 3]` overflow case. Pass LeetGPU challenge 5 locally, then add an all-masked-row test with a documented policy stating the output for empty rows.
-7. Build a 4-chunk host-to-device plus kernel pipeline on separate streams with `cudaStreamWaitEvent` chaining, capture with `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none`, and show copy and compute overlapping with event math placing overlapped wall time below the sequential sum. Capture an 8-kernel saxpy chain with CUDA graphs, replay 100 times with outputs identical to eager, update a pointer and a length in place with `cudaGraphExecUpdate`, then change the kernel count so the update fails and re-instantiation is required. Report per-kernel launch time eager and in-graph after warmup: on the reference card tiny kernels took 2.67 us eager against 0.79 us replay with first replay near 34 us. Your medians will differ; replay must not exceed eager on this shape.
-8. Seed all five defects in section kernels (race, divergent barrier, partial warp, stale buffer, wrong mask), diagnose each with cited tool evidence without a global synchronization repair, and keep the regression tests green. This is the Milestone D failure handling for the CUDA core.
+1. Build the LeetGPU harness in `tests/leetgpu/`: compile each `solve`, check it against `reference_impl` with the public generators, and verify the path on one challenge before timing anything.
+2. Write scalar, vectorized and coarsened maps with grid-stride loops. Check every output against an independent CPU reference over odd and empty sizes, and keep the comparison.
+3. Write shuffle and multi-pass reductions with identity-padded tails and a zero-length path. Match a float64 reference on your own inputs, sweep the coarsening factor with a retained loser, and pass LeetGPU challenge 4.
+4. Write copy, naive and padded tiled transpose and time each with events. Diagnose bank behavior with an enumerator, keep the padding fix, and pass LeetGPU challenge 3.
+5. Implement block scans with add-back plus scan-plus-scatter compaction, privatized histograms and online softmax against `torch.cumsum`, `torch.bincount` and a max-trick reference, following MIT Lab 7. Cover masked rows with a documented policy, and pass LeetGPU challenges 5, 13, 16 and 72.
+6. Build a multi-chunk copy plus kernel pipeline on separate streams with event chaining, and show overlap on an `nsys` timeline. Capture a kernel chain with CUDA graphs, demonstrate update and re-instantiation, and replay identically to eager.
+7. Inject five defects, such as a missing barrier, an out-of-bounds tail and a stream race. Locate each with `compute-sanitizer` or a timeline, repair it without a global synchronization, and keep it as a regression.
 
 **Deliverables**
 
-- The local LeetGPU harness with `reference_impl` checks for challenges 3, 4, 5, 13, 16 and 72.
-- `kernels/cuda/` maps, reductions, transpose, scans, histograms, compaction and softmax with independent references, odd-size and mask tests and the coarsening sweep with a retained loser.
-- The 4-chunk overlap timeline with event math, the 8-kernel graph capture with update and re-instantiation evidence, and five seeded-defect regressions with tool logs.
+- The LeetGPU harness with `reference_impl` checks for challenges 3, 4, 5, 13, 16 and 72.
+- Maps, reductions, transpose, scans, histograms, compaction and softmax with independent references and mask tests.
+- The overlap timeline with event math, graph capture with update evidence, and defect regressions with tool logs.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [LeetGPU primitive challenges run locally against the reference implementation](https://leetgpu.com/challenges/). Run challenges 3, 4, 5, 13, 16 and 72 locally with `nvcc -shared -Xcompiler -fPIC` and `ctypes`; keep raw timings outside the leaderboard.
+- external-tests: [LeetGPU primitive challenges against the reference implementation](https://leetgpu.com/challenges/). Build challenges 3, 4, 5, 13, 16 and 72 with `nvcc -shared -Xcompiler -fPIC`, load them with `ctypes`, and keep raw timings outside the leaderboard.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Oracle agreement | Each kernel matches its independent reference (fmaf CPU map, float64 reduction, CPU transpose, `torch.cumsum`, `torch.bincount`, max-trick softmax) on random and adversarial inputs including 0 and 1000003, and seeded omissions fail. | The map keeps the multiply-then-add variant as a comparison showing the 282894-element last-bit gap. |
-| Performance with a loser | Transpose, histogram and coarsening comparisons use interleaved event trials with raw samples, and one losing factor or shape is retained with an explanation. | Block counts and residency (977 against 62, 108 resident) are derived before the sweep. |
-| Async proof | The `nsys` timeline shows overlap with event math below the sequential sum, graphs replay identically with update and re-instantiation both demonstrated, and each defect names the tool line that locates it. | Buffer lifetimes are drawn with stream dependencies, and no repair hides behind a global barrier. |
+| Oracle agreement | Each kernel matches its independent reference on random and adversarial inputs including empty sizes, and injected omissions fail. | The map keeps a fused against unfused comparison showing the last-bit gap. |
+| Performance with loser | Comparisons use interleaved event trials with raw samples, and one losing factor or shape is retained with an explanation. | Block counts and residency are derived before the sweep. |
+| Async proof | The `nsys` timeline shows overlap with event math below the sequential sum, graphs replay identically with update shown, and each defect names the locating tool line. | Buffer lifetimes are drawn with stream dependencies, and no repair hides behind a global barrier. |
 
 Feeds into: Capstone kernel suite: maps, reductions, transpose, scans, histograms, softmax and the overlap and graph evidence. GEMM, attention and Triton sections reuse the harness and the defect method.
 
@@ -2981,7 +2977,7 @@ Tensor cores compute a collective matrix operation, not independent thread FMAs.
 
 1. [Tensor-core model and one-instruction exercise](https://accelerated-computing.academy/fall25/labs/lab6) (MIT 6.S894 Accelerated Computing (Fall 2025) - Lectures 6 and 8 and Labs 4 to 6) - Fall 2025 Lab 6 Part 0: Tensor Cores and `exercise_mma.cu`. Depth: Stop before full-matrix optimization. The handout passes raw FP32 bits through integer registers for every operand and relies on implicit truncation. That passes the lab tests on Ampere, but the PTX ISA leaves the TF32 layout implementation-defined and types multiplicands as `.b32` and accumulators as `.f32`, so convert explicitly and use float registers for the accumulators.
 2. [WMMA's collective and memory contract](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions) (CUDA 13.0 matrix programming and PTX references) - CUDA 13.0.0 Programming Guide 10.24.1 Description, 10.24.2 Alternate Floating Point and 10.24.7 Example. Depth: Read the FP16-input, FP32-accumulator example and TF32 conversion requirement. Do not infer lane ownership from the fragment array.
-3. [Explicit TF32 lane map and conversion](https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-1688) (CUDA 13.0 matrix programming and PTX references) - PTX ISA 9.0: Matrix Fragments for `mma.m16n8k8`, Multiply-and-Accumulate Instruction `mma` and Data Movement and Conversion Instructions `cvt`. Depth: Use the TF32 diagrams and Ampere-compatible `cvt.rna.tf32.f32`, which rounds nearest with ties away from zero. The nearest-even `cvt.rn.tf32.f32` variant requires `sm_90`. Skip FP64 and sparse variants.
+3. [Explicit TF32 lane map and conversion](https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-1688) (CUDA 13.0 matrix programming and PTX references) - PTX ISA 9.0: Matrix Fragments for `mma.m16n8k8`, Multiply-and-Accumulate Instruction `mma` and Data Movement and Conversion Instructions `cvt`. Depth: Use the TF32 diagrams and Ampere-compatible `cvt.rna.tf32.f32`, which rounds nearest with ties away from zero. The nearest-even `cvt.rn.tf32.f32` variant requires `sm_90` (Hopper, compute capability 9.0); on GPUs older than Hopper (compute capability below 9.0) use the Ampere-compatible conversion. Skip FP64 and sparse variants.
 4. [Instruction traits become an MMA atom](https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0t_mma_atom.html) (CuTe GEMM Tutorial) - CuTe MMA Atoms: Operation structs and Traits; TiledMMAs, documentation dated September 21, 2026. Depth: Follow how instruction shape and thread/value layouts define the atom. Compare with your PTX map rather than implementing another complete GEMM.
 
 **Focus**
@@ -2991,7 +2987,7 @@ Tensor cores compute a collective matrix operation, not independent thread FMAs.
 - For `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`, each lane supplies four TF32 bit-pattern values for the first operand, two for the second, and four FP32 accumulator values. Use inline-assembly `r` constraints for multiplicands and `f` constraints for accumulators.
 - MMA shape, input representation, accumulator type and output storage are separate parts of the numerical contract. One collective instruction performs 2048 useful FLOPs for this shape.
 
-**Reproduce:** Implement the one-warp 16 by 8 by 8 TF32 product in Lab 6 `exercise_mma.cu`. Explicitly convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, then issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`. Run its permutations, basis products, decimal inputs and zero/nonzero accumulator cases against the bundled absolute-error threshold 0.005. Inspect the generated PTX and SASS: on an RTX 3050 with CUDA 13.4, each conversion appears as an `FSETP` finite check plus an integer add of `0x1000` rather than a named convert instruction, and the product as one `HMMA.1688.F32.TF32`; explain each lane's loaded and stored coordinates.
+**Reproduce:** Implement the one-warp 16 by 8 by 8 TF32 product in Lab 6 `exercise_mma.cu`. Explicitly convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, then issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`. Run its permutations, basis products, decimal inputs and zero/nonzero accumulator cases against the bundled absolute-error threshold 0.005. Inspect the generated PTX and SASS: on an RTX 3050 with CUDA 13.4, each conversion appears as an `FSETP` finite check plus an integer add of `0x1000` rather than a named convert instruction, and the product as one `HMMA.1688.F32.TF32` on that example GPU; your SASS may differ, so report what your own build emits and explain each lane's loaded and stored coordinates.
 
 **Traps**
 
@@ -3001,7 +2997,7 @@ Tensor cores compute a collective matrix operation, not independent thread FMAs.
 
 **Practice**
 
-- [MIT 6.S894 Lab 6 Part 0 - `exercise_mma`](https://accelerated-computing.academy/fall25/labs/lab6) - Implement `exercise_mma.cu` for `sm_80` or newer; retain the supplied fragment and numerical tests. Clone the public `accelerated-computing-class/lab6` repository and build locally with `nvcc -O3 -arch=sm_86 exercise_mma.cu -o exercise_mma` instead of the course runner; a correct kernel prints `mma_16x8x8 tests passed`.
+- [MIT 6.S894 Lab 6 Part 0 - `exercise_mma`](https://accelerated-computing.academy/fall25/labs/lab6) - Implement `exercise_mma.cu` for `sm_80` or newer; retain the supplied fragment and numerical tests. Clone the public `accelerated-computing-class/lab6` repository and build in your own harness with `nvcc -O3 -arch=native exercise_mma.cu -o exercise_mma` instead of the course runner; a correct kernel prints `mma_16x8x8 tests passed`.
 
 **Stop when:** The one-warp exercise passes every supplied case, and you can distinguish PTX ownership from opaque WMMA fragments and identify the emitted tensor instruction.
 
@@ -3029,7 +3025,7 @@ Overlapping future loads with current arithmetic can hide latency only if a stag
 
 - Implement an Ampere two-stage global-to-shared copy pipeline with a correct prologue and drain.
 - Explain completion, visibility and buffer-reuse dependencies independently.
-- Describe Hopper producer-consumer warp specialization without applying its hardware-specific instructions to Ampere.
+- Describe Hopper producer-consumer warp specialization, running its hardware-specific instructions only on Hopper or newer GPUs.
 
 **Study**
 
@@ -3284,34 +3280,33 @@ A custom kernel needs a strong, equivalent baseline and evidence for where it wi
 
 ### Mini-project: Tiled GEMM to async pipelines with a low-precision error contract
 
-**About 14 to 20 hours.** Grow kernellab through the GEMM ladder on the RTX 3050: naive counts, shared-memory tiles, register blocking, layout swizzles, one warp-level tensor path, a two-stage async pipeline, format boundaries, quantization error and a fused epilogue, all gated against a vendor baseline with held-out fallback. TMA, clusters and FP8 on Hopper are reading and static audit only.
+**About 14 to 20 hours.** Grow kernellab through the GEMM ladder from naive counts to tiled, tensor and pipelined kernels with quantization error and fused epilogues. Every level is gated against a vendor baseline with a held-out fallback. Paths your GPU cannot run, such as Hopper TMA or Blackwell `tcgen05`, are audited statically.
 
-1. Write a naive overwrite-only fp32 GEMM with a shape-to-FLOP calculator and two byte models: compulsory bytes and requested loads for the uncached scalar model. Derive closed-book for $`M = 64`$, $`N = 96`$, $`K = 32`$: 393216 useful FLOPs, 45056 compulsory bytes and 1597440 requested bytes, times batch count for independent batches with no shared operands. Check small integer products exactly against CPU double precision.
-2. Write a 16 by 16 shared-memory overwrite GEMM without copying the source. Compare finite integer-valued fp32 inputs cycling -2 to 2 against a CPU double-precision product at shapes (1, 1, 1), (17, 19, 23) and (32, 16, 17) with every output checked, covering edge and empty dimensions. Run Compute Sanitizer memory, race and synchronization checks and keep tile-race regressions.
-3. Derive then implement a 64 by 64 output tile with reduction width 8 and a 4 by 4 per-thread accumulator tile: 256 threads, 16 accumulator values per thread and 4096 shared-memory bytes for one fp32 stage excluding padding. Check odd shapes with scalar copies first, then add aligned vector-copy dispatch with scalar tails. Compare both variants with interleaved event trials and save `cuobjdump -res-usage` for each, with register and spill notes. Pass LeetGPU challenges 2 and 22 locally with this kernel; challenge 2 names the reduction dimension `N`.
-4. Draw the tile-ownership diagram, then enumerate the 32 scalar column-read addresses of a row-major 32 by 32 fp32 shared tile (one bank at 32 distinct words) and the stride-33 padded case (all 32 banks). Verify the integer-offset permutation of `Swizzle<3, 3, 3>` on offsets 0 through 511 as a bijection that is its own inverse, kept separate from any bank-conflict claim for a particular instruction, and keep one verified shared-layout permutation in the kernel.
-5. Implement the one-warp 16 by 8 by 8 TF32 product in MIT 6.S894 Lab 6 `exercise_mma.cu`, built locally with `nvcc -O3 -arch=sm_86`: convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`, and run permutations, basis products, decimal inputs and zero and nonzero accumulator cases against absolute error threshold 0.005. Inspect generated PTX and SASS for conversion and tensor instructions and explain each lane loaded and stored coordinates. Record Hopper `wgmma`, `tcgen05` and microscaling paths as a static audit only.
-6. Draw and implement a two-buffer schedule for zero, one, two and five reduction tiles: prefetch tile zero when present, complete the current stage, issue the next tile into the free stage, compute, synchronize before reuse and drain outstanding copies. Use 4-byte Ampere `cp.async.ca` copies with zero source size for masked fp32 inputs, keep a stage-lifetime diagram, and test shapes (17, 19, 0), (17, 19, 1), (17, 19, 16), (17, 19, 17) and (17, 19, 65) with reduction tile 16 against CPU double products of integers cycling -2 to 2, with short-loop and tail regressions. Compare synchronous against async with interleaved event trials and run memory, race and synchronization checks.
-7. Decode all 256 OCP fp8 bit patterns from sign, exponent and fraction fields and verify both format boundary tables. With nearest-even conversion show 1.0625 as an E4M3 midpoint rounding to 1 while 1.1875 rounds to 1.25. For the dot product of `[1.0001, -1]` with `[1, 1]`, convert inputs to fp16 before evaluating in double: the original product near 0.0001 becomes zero, recorded as input-conversion error rather than accumulation error. Then quantize rows `[0.01, 0.02, 0.03, 0.04]` and `[10, 20, 30, 40]` to symmetric int8 with maximum-magnitude scale over 127: a shared scale zeroes the first row while separate row scales keep both nonzero. Reconstruct with maximum absolute error and clipping count, repeat with unseen value 80 on the fixed scale to show saturation, allocate three scales for reduction length 65 with block size 32 with an explicit one-element tail test, and file a predeclared error acceptance table against an integer-accumulator reference.
-8. Add column bias and ReLU to the fp32 GEMM at shapes (17, 19, 23) and (32, 16, 17), testing positive and negative bias, nonzero old output and zero reduction against an independent CPU double implementation with the same epilogue order. Derive 49152 requested bytes removed by fusion for a 64 by 96 fp32 intermediate. Time GEMM plus separate epilogue against fused GEMM with all device work inside each interval, with the optional two-group persistent tile scheduler carrying unique-ownership tests. Compare naive, shared, register-tiled, async and vendor GEMM on (64, 96, 32), (256, 256, 256), (16, 512, 64) and (257, 129, 65) with small integers then declared random-input tolerances, hold out (31, 67, 33) from tuning for fallback correctness, save useful FLOPs, compulsory bytes, event distributions, compiled resources and complete-operation latency per candidate, derive the row-major cuBLAS mapping via transposed output with swapped operands, and report best and losing regimes with residuals.
+1. Write a naive overwrite-only GEMM with a shape-to-FLOP calculator and compulsory and requested byte models. Check small products against CPU double precision.
+2. Write shared-memory and register-tiled GEMMs with edge and empty-dimension tests against CPU double products. Add aligned-copy dispatch with scalar tails, compare variants with interleaved trials, keep `cuobjdump -res-usage` reports, and pass LeetGPU challenges 2 and 22.
+3. Draw the tile-ownership diagram and verify one shared-layout permutation with a bank enumerator. Keep the verified permutation in the kernel.
+4. Implement the tensor-core path from MIT 6.S894 Lab 6 `exercise_mma.cu`, pass its numerical tests and inspect the generated MMA instructions. Read Hopper `wgmma` and Blackwell `tcgen05` code, and run it only if your GPU has them.
+5. Implement a two-stage `cp.async` pipeline (compute capability 8.0 or newer) with a stage-lifetime diagram and short-loop and tail regressions. Compare it with the synchronous version using interleaved trials and sanitizer checks.
+6. Decode the low-precision format boundaries and midpoint conversions, separating input-conversion from accumulation error. Compare per-tensor, per-channel and block quantization against an integer-accumulator reference with a predeclared acceptance table.
+7. Add bias and ReLU fusion with a complete-operation timing pair, then compare your ladder against a vendor baseline across a shape matrix. Hold one shape out from tuning for fallback, and report best with losing regimes and residuals.
 
 **Deliverables**
 
-- `kernels/cuda/` GEMM ladder with FLOP and byte models, edge tests, sanitizer regressions and resource reports.
-- The tensor path with conversion and MMA evidence, the two-stage pipeline with lifetime diagram and the sync against async comparison.
-- The format decoder, quantization comparison with acceptance table, the fused epilogue timing pair and the vendor-baseline sweep with held-out fallback and residual report.
+- The GEMM ladder with FLOP and byte models, edge tests, sanitizer regressions and resource reports.
+- The tensor path with instruction evidence, two-stage pipeline with lifetime diagram, and sync against async comparison.
+- The format decoder with acceptance table, fused epilogue timing pair, and vendor sweep with held-out fallback.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [LeetGPU GEMM challenges run locally against the reference implementation](https://leetgpu.com/challenges/). Run 2 Matrix Multiplication and 22 GEMM locally with matched tolerances; keep shape matrices and losing regimes.
-- external-tests: [MIT 6.S894 Lab 6 tensor-core exercise](https://accelerated-computing.academy/fall25/labs/lab6). Build `exercise_mma.cu` locally with `nvcc -O3 -arch=sm_86` and keep the supplied fragment and numerical tests.
+- external-tests: [LeetGPU GEMM challenges against the reference implementation](https://leetgpu.com/challenges/). Run 2 Matrix Multiplication and 22 GEMM in your own harness with matched tolerances; keep shape matrices and losing regimes.
+- external-tests: [MIT 6.S894 Lab 6 tensor-core exercise](https://accelerated-computing.academy/fall25/labs/lab6). Build `exercise_mma.cu` with `-arch=native` and keep the supplied fragment and numerical tests.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Tiling correctness | Each GEMM level matches the CPU double reference on edge and odd shapes, sanitizer checks pass, and the held-out shape passes on the fallback path. | Short-loop and tail cases are kept as regressions that fail on the unguarded kernel. |
-| Resource and pipeline evidence | The 256-thread mapping, 4096-byte stage and `cuobjdump -res-usage` reports are kept, the lifetime diagram predicts the synchronization points, and sync against async uses interleaved trials. | Hopper-only paths are marked as static audit with no performance claim. |
-| Numerical contract | Format boundaries, midpoint cases and the input against arithmetic split are tested, quantization states scales, tail handling and acceptance limits, and the vendor comparison reports best and losing regimes. | Unseen-value saturation is demonstrated, and the 49152-byte fusion saving is derived before the timing pair rather than asserted from it. |
+| Tiling correctness | Each GEMM level matches the CPU double reference on edge and odd shapes, and the held-out shape passes on fallback. | Short-loop and tail cases are kept as regressions that fail on the unguarded kernel. |
+| Resource and pipeline | Thread mapping, stage bytes and resource reports are kept, the lifetime diagram predicts synchronization, and sync against async uses interleaved trials. | Paths your GPU cannot run are marked as static audit with no performance claim. |
+| Numerical contract | Format boundaries and the input against arithmetic split are tested, quantization states scales and acceptance limits, and the vendor comparison keeps losing regimes. | Unseen-value saturation is shown, and the fusion saving is derived before the timing pair. |
 
 Feeds into: Capstone kernel suite: the GEMM ladder, pipeline and error contract feed attention, Triton and integration. The vendor baseline and dispatch table carry into the final defense.
 
@@ -3658,7 +3653,7 @@ Serving batches contain different lengths and noncontiguous cache pages. Attenti
 
 1. [FlashInfer ragged and paged layouts](https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/docs/tutorials/kv_layout.rst) (FlashInfer) - Commit f2794d5: Layout: NHD/HND, Ragged Tensor and Page Table Layout, plus the FAQ on cache ownership. Depth: Skip MLA and cascade layouts. Read the data contracts rather than copying older API examples. Empty requests need your own policy; the documented last-page rule assumes at least one page.
 2. [Attention states and recursive attention](https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/docs/tutorials/recursive_attention.rst) (FlashInfer) - Commit f2794d5: attention-state definition and binary/n-ary merge equations; Applications, KV Sequence Parallelism. Depth: Apply the merge equations only to disjoint token subsets. Skip shared-prefix performance claims. Use maximum subtraction in the merge, as the text notes but its displayed expression omits.
-3. [Paged decode planning and execution contract](https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/decode.py) (FlashInfer) - Commit f2794d5: `BatchDecodeWithPagedKVCacheWrapper` class example, constructor and `plan`/`run` docstrings. Depth: Trace one supported backend's shape, page-table and workspace arguments. Do not implement every backend or assume Hopper/Blackwell paths work on Ampere.
+3. [Paged decode planning and execution contract](https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/decode.py) (FlashInfer) - Commit f2794d5: `BatchDecodeWithPagedKVCacheWrapper` class example, constructor and `plan`/`run` docstrings. Depth: Trace one supported backend's shape, page-table and workspace arguments. Do not implement every backend, and run Hopper or Blackwell paths only on a GPU that has them; otherwise audit them statically.
 
 **Focus**
 
@@ -3866,7 +3861,7 @@ Beating materialized attention does not establish a useful optimization. A chang
 
 **Study**
 
-1. [CS336 compiled and custom attention benchmarks](https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf) (CS336 Assignment 2 - Section 4 FlashAttention-2 in Triton) - Problems `pytorch_attention` (p. 16), `torch_compile` (pp. 16 to 17), and `flash_benchmarking` (p. 28). Depth: Replace the B200 sweep with batch size 1, widths 32 and 64, and sequence lengths 128, 256, 512 and 1024 on a 6 GB GPU. On a 24 GB GPU, grow the sequence range only after budgeting reference intermediates and backward workspace. Keep allocation failures in the report rather than forcing them.
+1. [CS336 compiled and custom attention benchmarks](https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf) (CS336 Assignment 2 - Section 4 FlashAttention-2 in Triton) - Problems `pytorch_attention` (p. 16), `torch_compile` (pp. 16 to 17), and `flash_benchmarking` (p. 28). Depth: Replace the B200 sweep with a sweep that fits your GPU's memory. On a 6 GB GPU, use batch size 1, widths 32 and 64, and sequence lengths 128, 256, 512 and 1024. On a 24 GB GPU, grow the sequence range only after budgeting reference intermediates and backward workspace. Keep allocation failures in the report rather than forcing them.
 2. [PyTorch SDPA dispatch and full-module comparison](https://docs.pytorch.org/tutorials/intermediate/scaled_dot_product_attention_tutorial.html) (PyTorch SDPA contracts and integration tutorial) - Documentation read 2026-10-13: Explicit Dispatcher Control, Hardware dependence, Causal Self Attention and Using SDPA with `torch.compile`. Depth: Shrink the tutorial's large tensors before running. Correct `CausalSelfAttention.forward`: evaluation disables dropout, not causality. Preserve `self.is_causal` in evaluation for full-sequence causal attention. Use PyTorch 2.14's API contract rather than treating the tutorial's backend list as exhaustive. Skip NestedTensor.
 3. [Request latency boundaries and load patterns](https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/#understanding-the-latency-metrics) (vLLM serving latency and goodput definitions) - vLLM v0.31.0: Understanding the Latency Metrics and Load Pattern Configuration. Depth: Read the metric and workload definitions only. Do not run the large-model serving examples in this unit.
 4. [Goodput service-level objectives](https://docs.vllm.ai/en/v0.31.0/cli/bench/serve/) (vLLM serving latency and goodput definitions) - vLLM v0.31.0: Arguments, the descriptions of goodput service-level objectives, request rate and maximum concurrency. Depth: Use the definitions, not a required CLI run. Full production-engine integration belongs to the next section.
@@ -3908,34 +3903,32 @@ Beating materialized attention does not establish a useful optimization. A chang
 
 ### Mini-project: IO-aware attention with paged decode and fused transformer paths
 
-**About 14 to 20 hours.** Implement bounded attention inside kernellab on the RTX 3050: traffic counts, tiled online softmax, causal and grouped masks, an IO ledger with a tile budget, an optional backward, a ragged and paged decode path with KV append and gather, fused norm and MLP epilogues and a baseline sweep that keeps a losing regime. All sizes fit 6 GB; FlashAttention-3 and Blackwell paths are reading only.
+**About 14 to 20 hours.** Build IO-aware attention with paged decoding and fused transformer paths, each gated on a dense reference and the public suites before any timing. The attention kernels, paged decode and fused paths feed the endpoint and the final report.
 
-1. Count noncausal MHA closed-book for $`B = 1`$, eight query heads, $`L = S = 1024`$, width 64 and two-byte score, probability and key/value storage: 32 MiB for the two intermediates, 64 MiB write-read traffic and 2147483648 FLOPs for the two products, with every excluded byte category named; for decode with $`L = 1`$ one ideal key and value read is 2 MiB. Implement LeetGPU challenge 6 in the local harness against `reference_impl` with the public generators.
-2. Merge two tiles with logits `[0., 1., 2., 3.]` and values `[1., 2., 3., 4.]` split after the second entry for weighted output near 3.492652734585769 in float64. Implement query and key tiling for seed 0 standard-normal inputs of shapes 2 by 17 by 7 and 2 by 19 by 7 at scale $`1/\sqrt{7}`$, with 4 by 5 and 8 by 8 tiles each matching the double-precision dense reference within stated tolerance. Gate the CS336 `flash_forward` PyTorch and noncausal Triton cases on these tests before timing.
-3. Build a CPU reference for four query heads, two KV heads, two suffix queries and five cached keys of width 8 with seed 0 standard-normal float64 inputs at query positions 3 and 4, head map `[0, 0, 1, 1]`, keys masked after each query position, compared with SDPA using `attn_mask` and `enable_gqa=True` at `rtol=1e-12, atol=1e-12`. Change one future value and show the earlier query output is unchanged. Pass TensorTonic `causal_gqa`, LeetGPU challenge 53 and the CS336 causal `flash_forward` cases locally.
-4. Write the attention IO ledger with schedule diagrams for key-outer and FlashAttention-2 query-outer forms, marking every slow-memory read and write and the owner of each output row, plus a tile resource budget from `cuobjdump -res-usage` and the occupancy API. For square query tiles of 64 rows at sequence 1024, batch 1 and eight heads derive 128 forward thread blocks and state why the grid count is not an occupancy measurement. Check the prediction against interleaved timings and compiled resource reports.
-5. Implement no-dropout gradients from a blank file for seed 0 standard-normal float64 inputs with batch 2, 17 queries, 19 keys and width 7 and a random output cotangent, matching dense autograd at `rtol=1e-12, atol=1e-12` for all three gradients, then add causal masking with absolute positions and confirm masked probabilities and score gradients are zero. Pass the CS336 `flash_backward` PyTorch and Triton cases. Mark this step optional if only forward timings are reported, and say so.
-6. Pass TensorTonic `kv_cache_decode_step` on contiguous caches, then build a ragged and paged decode path with a contiguous gather oracle: translate a seven-token request with page size 4 and physical pages `[3, 1]` (last-page occupancy 3, token 6 on page 1 slot 2), permute the physical allocation while preserving the page table for unchanged dense output, and check request isolation and split-state behavior with odd lengths and partial pages in a bounded CUDA or Triton kernel. Add KV append and gather with separate key and value caches on the same pages, `-99.0` in unused storage, increasing integer rows verified exactly with untouched slots checked, `NHD` to `HND` conversion repeated, stream-order checks kept, and optional symmetric dequantized loads as `xhat = s*round(x/s)` with positive scale checked against an independent reference.
-7. Write CPU double-precision references for RMSNorm, centered LayerNorm and half-split RoPE: with input `[3., 3., 3., 3.]`, unit weights, zero bias and `eps=1e-5` LayerNorm returns zero while RMSNorm does not; with input `[1., 2., 3., 4.]` rotated by 0.3 and 0.7 radians squared norm is preserved within `rtol=1e-12, atol=1e-12`. Implement the forward GPU kernels, compare fused head-norm then RoPE against separate execution, and pass LeetGPU challenge 61 locally. Implement challenge 84 with its two-row basis-vector example giving a diagonal output with `sigmoid(1)` on the diagonal and zeros elsewhere, draw separate against pointwise-fused against projection-epilogue dataflows counting each removed intermediate write and read at its dtype, and pass its ten functional cases locally.
-8. Gate every variant on the public attention tests plus edge tests before timing, then run a bounded prefill and decode sweep with eager SDPA and a compiled baseline using interleaved event trials. Derive the serial bound $`S = 1/(1-f+f/r)`$ for share $`f`$ and local speedup $`r`$: 20 percent share at twofold local speedup gives near 1.111 rather than twofold. Substitute measured full-block shares, compare the prediction with the runner, label runner TTFT and TPOT separately from endpoint metrics, and retain one small, decode-heavy or irregular losing regime.
+1. Write the attention IO and FLOP ledger for one prefill and one decode shape you choose, naming byte categories you leave out, with a schedule sketch. Check the budget against event timings and `cuobjdump -res-usage`, and pass LeetGPU challenge 6 in your own harness.
+2. Implement online-softmax tiling in PyTorch, then Triton, checked against a float64 dense reference on odd shapes and tile sizes you choose. Pass the CS336 `flash_forward` tests before timing anything.
+3. Add causal masking and grouped KV heads. Show that changing a future token leaves earlier outputs unchanged, and pass TensorTonic `causal_gqa` and LeetGPU 53.
+4. Optional: implement the backward pass and match autograd in float64 for all three gradients, with causal masking included.
+5. Build a paged decode kernel with a contiguous gather as the reference. Test page permutation, partial pages and request isolation, with KV append, layout conversion, sentinel and stream-order checks, plus optional dequantized loads.
+6. Fuse norm, RoPE and the MLP epilogue, and count the intermediate traffic the fusion removes. Benchmark against eager and compiled SDPA with event timings, adding `sudo ncu` counters where you have access, and keep one regime where your kernel loses.
 
 **Deliverables**
 
-- `kernels/cuda/` and `kernels/triton/` attention with traffic counts, tiled softmax, masks, IO ledger and tile budget, and the optional backward with gradient checks.
-- The ragged and paged decode path with gather oracle, permutation and isolation tests, plus KV append, layout conversion and stream-order checks.
-- Fused norm, RoPE and MLP paths with double-precision references and the baseline sweep with the serial bound and a retained losing regime.
+- Tiled attention with masks, the IO ledger, tile budget and optional backward, checked against dense references.
+- Paged decode path with gather oracle, KV append, layout conversion and isolation tests.
+- Fused norm, RoPE and MLP paths with traffic counts and the baseline sweep with a losing regime.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [LeetGPU attention challenges run locally against the reference implementation](https://leetgpu.com/challenges/). Run 6 Softmax Attention, 53 Causal Attention, 61 RoPE and 84 SwiGLU MLP Block locally; keep tests beyond the hosted score.
-- external-tests: [CS336 Assignment 2 attention tests](https://github.com/stanford-cs336/assignment2-systems). Run the `tests/test_attention.py` `flash_forward` and `flash_backward` cases plus `flash_benchmarking` on sizes that fit 6 GB.
+- external-tests: [LeetGPU attention challenges against the reference implementation](https://leetgpu.com/challenges/). Pass 6 Softmax Attention, 53 Causal Attention, 61 RoPE and 84 SwiGLU MLP Block in your own harness; keep tests beyond the hosted score.
+- external-tests: [CS336 Assignment 2 attention tests](https://github.com/stanford-cs336/assignment2-systems). Run `flash_forward`, `flash_backward` and `flash_benchmarking` in `tests/test_attention.py` on shapes that fit your GPU's memory.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Tiled correctness | Tiled softmax, causal and grouped masks and paged gather each match dense double or SDPA references at stated tolerance, future-value and permutation tests pass, and empty and partial tiles follow the written policy. | The 3.492652734585769 merge and the 128-block derivation are reproduced closed-book. |
-| Fusion honesty | Fused norm, RoPE and MLP paths match separate execution within tolerance, removed traffic is counted at its dtype, and norm preservation is checked. | Dataflow diagrams name every buffer that fusion removes and one it cannot. |
-| Regime evidence | Variants are gated before timing, the serial bound is applied with measured shares, runner metrics are kept apart from endpoint metrics, and a losing regime is retained with an explanation. | The report states when the library or compiler path is preferred. |
+| Tiled correctness | Tiled softmax, causal and grouped masks and paged gather each match dense or framework references from your own tests, with future-token and permutation checks passing. | Closed-book notes rederive the tile merge and the grid size. |
+| Fusion honesty | Fused norm, RoPE and MLP paths match separate execution in your own tests, with removed traffic counted at its dtype. | Diagrams name every buffer fusion removes and one it cannot, with the dtype of each. |
+| Regime evidence | Variants are gated on the public suites before timing, runner metrics stay separate from endpoint metrics, and one losing regime is kept with an explanation. | The report states when the library or compiler path wins and why. |
 
 Feeds into: Capstone kernel suite and integration: attention, paged decode, KV kernels and fused paths feed the endpoint. The IO ledger and losing regimes feed the final workload-weighted report.
 
@@ -4085,7 +4078,7 @@ Softmax and matmul carry the two numerical contracts of this section: exact tail
 - Matmul accumulates in fp32 and casts once. The cast position, not just the input dtype, sets the error.
 - The matmul tutorial compares fp16 outputs at `atol=1e-2`, set by fp16 inputs and the final cast. The softmax tutorial uses the `torch.allclose` defaults; `tl.exp` is fast but approximate, so state your softmax tolerance separately.
 
-**Reproduce:** On a 64 by 64 fp32 product of standard normal matrices with seed 0, a `tl.dot` loop with `input_precision='tf32'` gives a maximum absolute error of 0.0237 against fp64, while `'ieee'` gives 7.6e-06. Measured on an RTX 3050 6 GB with CUDA 13.4 and Triton 3.8.0. Reproduce the gap direction and explain why tf32 input truncation, not accumulation order, dominates it.
+**Reproduce:** On a 64 by 64 fp32 product of standard normal matrices with seed 0, a `tl.dot` loop with `input_precision='tf32'` gives a maximum absolute error of 0.0237 against fp64, while `'ieee'` gives 7.6e-06. Measured on an RTX 3050 6 GB with CUDA 13.4 and Triton 3.8.0; yours will differ in detail. Reproduce the gap direction on your GPU and explain why tf32 input truncation, not accumulation order, dominates it.
 
 **Traps**
 
@@ -4141,7 +4134,7 @@ Autotuning buys speed once and charges compile time on every new shape. Without 
 - First-call cost mixes compilation, autotuning and execution. Only warm calls measure the kernel.
 - Tune on a representative workload, not on the final benchmark shapes.
 
-**Reproduce:** Time `torch.compile(lambda x, y: torch.relu(x + y) * 2)` on 1024 by 1024 fp32 tensors, host-timed with synchronization: with PyTorch 2.14.1 and an empty Inductor cache on an RTX 3050 6 GB with CUDA 13.4, the first call took about 1.2 to 1.9 s and warm calls about 0.1 ms. State which interval pays for compilation and what a warm Inductor cache changes, then run the matmul tutorial autotuned kernel twice on one shape and show the second launch skips benchmarking.
+**Reproduce:** Time `torch.compile(lambda x, y: torch.relu(x + y) * 2)` on 1024 by 1024 fp32 tensors, host-timed with synchronization: with PyTorch 2.14.1 and an empty Inductor cache on an RTX 3050 6 GB with CUDA 13.4, the first call took about 1.2 to 1.9 s and warm calls about 0.1 ms; yours will differ, so compare cold against warm on your GPU. State which interval pays for compilation and what a warm Inductor cache changes, then run the matmul tutorial autotuned kernel twice on one shape and show the second launch skips benchmarking.
 
 **Traps**
 
@@ -4197,7 +4190,7 @@ A slow or wrong Triton kernel is a compiler artifact until you read it. Resource
 - The interpreter runs programs sequentially on CPU with NumPy semantics. It exposes indexing bugs but not races or occupancy effects.
 - `compute-sanitizer` checks races and out-of-bounds on hardware, where the interpreter cannot help.
 
-**Reproduce:** Launch the vector-add kernel with $`\text{BLOCK} = 1024`$ on Triton 3.8.0 and read the handle: `n_regs` 26, shared 0, target `sm_86`, `asm` keys `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`, and a PTX header with `.version 8.8`, `.target sm_86` and `.reqntid 128`. Measured on an RTX 3050 6 GB with CUDA 13.4.
+**Reproduce:** Launch the vector-add kernel with $`\text{BLOCK} = 1024`$ on Triton 3.8.0 and read the handle: `n_regs` 26, shared 0, target `sm_86`, `asm` keys `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`, and a PTX header with `.version 8.8`, `.target sm_86` and `.reqntid 128`. Measured on an RTX 3050 6 GB with CUDA 13.4; on your GPU, compare the structure, not the exact counts.
 
 **Traps**
 
@@ -4252,7 +4245,7 @@ Two kernels that pass the same tests can still differ in precision, resources an
 - A fat binary can carry several architectures. List embedded binaries before claiming which SASS runs.
 - Triton `tl.dot` defaults to tf32 on fp32 inputs while a naive CUDA kernel stays in fp32. Parity tests must pin precision on both sides.
 
-**Reproduce:** Compile a vector-add `.cu` with `nvcc -arch=sm_86 -cubin` and run `cuobjdump -sass` plus `cuobjdump -res-usage`. Show the guarded prologue (`S2R`, `IMAD`, `ISETP`, guarded `EXIT`, `LDG.E` loads) and the resource line `REG:12` with `SHARED:0`. Measured with CUDA 13.4 for compute capability 8.6.
+**Reproduce:** Compile a vector-add `.cu` with `nvcc -arch=native -cubin` and run `cuobjdump -sass` plus `cuobjdump -res-usage`. Show the guarded prologue (`S2R`, `IMAD`, `ISETP`, guarded `EXIT`, `LDG.E` loads) and the resource line, which read `REG:12` with `SHARED:0` under CUDA 13.4 for compute capability 8.6; on your GPU, compare the structure, not the exact counts.
 
 **Traps**
 
@@ -4557,34 +4550,32 @@ A kernel that wins on one stack and breaks on the next is a demo. Dispatch plus 
 
 ### Mini-project: Matched CUDA and Triton paths with lowering and dispatch gates
 
-**About 12 to 16 hours.** Implement the same mechanisms in CUDA and Triton inside kernellab: blocked programs, reductions and dot precision, autotuning with correctness gates, codegen inspection, lowering evidence, graph boundaries, a custom op, one CuTe GEMM reconstruction and versioned dispatch with fallback.
+**About 12 to 16 hours.** Implement the same mechanisms in CUDA and Triton: blocked programs, reductions, autotuning, codegen inspection, a custom op, one CuTe GEMM reconstruction and versioned dispatch with fallback. Paths your toolchain or GPU lacks are read, not run.
 
-1. Write Triton `add_kernel` with its grid function for $`N = 1000`$ and `BLOCK = 1024`: grid `(1,)` from `triton.cdiv` and maximum absolute difference 0.0 against `x + y` at $`N = 1000`$, 1024 and 98432 on the RTX 3050 with CUDA 13.4 and Triton 3.8.0. Add a masked tanh-approximate GELU for contiguous CUDA tensors with partial final blocks, rerun on non-multiple shapes and two dtypes against `torch.nn.functional.gelu` with the matching approximation.
-2. Implement tiled Triton row sums for strided CUDA tensors with fixed-width tiles and float32 sums, and stable row-wise softmax for padded rows and partial tiles in fp32, fp16 and bf16, rerunning both on a 781-wide row and comparing fp16 and bf16 against fp32 at stated tolerance. On a 64 by 64 fp32 product of seed 0 standard-normal matrices show a `tl.dot` loop with `input_precision=tf32` near 0.0237 maximum absolute error against fp64 while `ieee` gives near 7.6e-06, and explain why tf32 input truncation rather than accumulation order dominates.
-3. Implement the CSE 291A PA2 Part 1 fused matmul-add-ReLU with fp16 inputs and output and an fp32 accumulator and its configuration search, tested with `student_local_test.py` on the RTX 3050 and timed with your own interleaved harness against the PyTorch reference. Time `torch.compile(lambda x, y: torch.relu(x + y) * 2)` on 1024 by 1024 fp32 tensors with synchronization: first call near 1.2 to 1.9 s with an empty Inductor cache and warm calls near 0.1 ms on PyTorch 2.14.1. Show the second autotuned launch skipping benchmarking, and record that `triton.Config` rejects `num_consumer_groups` on 3.8.0.
-4. Launch the Triton vector-add kernel with `BLOCK = 1024` on 3.8.0 and read the handle: `n_regs` 26, shared 0, target `sm_86`, `asm` keys `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`, and a PTX header with `.version 8.8`, `.target sm_86` and `.reqntid 128`. Dump `ttgir` and `ptx` for one kernel, run the GPU MODE Lecture 29 `vector_add.py` inspection far enough to print `compiled_kernel.asm.keys()`, and document interpreter, assertion and sanitizer limits with one minimal reproducer each.
-5. Write matched CUDA and Triton twins for LeetGPU challenges 1 and 2 in kernellab and pass the example plus scalar-tail and non-power-of-two functional tests locally against `reference_impl`, pinning `input_precision` on the Triton side and accumulation on the CUDA side before any timing and keeping losing shapes. Compile one vector-add `.cu` with `nvcc -arch=sm_86 -cubin` and show the guarded prologue with `S2R`, `IMAD`, `ISETP`, guarded `EXIT` and `LDG.E` loads plus resource line `REG:12` with `SHARED:0` from `cuobjdump -sass` and `cuobjdump -res-usage`. Run `torch._dynamo.explain` on a Python `if` over `y.sum() > 0` (Graph Count 2, Break Count 1) and on its `torch.where` rewrite (Graph Count 1, Break Count 0) on PyTorch 2.14.
-6. Trace one framework operation from graph capture through generated GPU code: run the ch14 inspection and recompilation scripts on small shapes, reporting graph counts, break reasons and which guard each recompile names, with `dynamic=True` plus reduce-overhead behavior (one graph per size, warning limit 8) recorded from your own run. Register a Triton LayerNorm with forward, `dx`, `dw` and `db` agreement at `test_layer_norm(1151, 8192, torch.float16)`, keep the lock protocol and both reduction stages, derive the vector-Jacobian product with row means, and record the higher-order limitation in tests.
-7. Reconstruct one GEMM configuration down to layouts, copy atoms and MMA atoms: give the element address of `A(i, j)` for layout `(M, K):(1, ldA)`, compute `cosize` 1031 for the padded shared layout with shape `(128, 8)` and stride `(1, 129)` from maximum offset 1030, and compare the blocked Triton program with the equivalent CuTe mapping stage by stage. Write the tutorial mainloop order (`copy`, `cp_async_fence`, `cp_async_wait`, `__syncthreads`, `gemm`, `__syncthreads`) with what each barrier waits for, and map a fused tiled matmul plus ReLU (non-multiple `M`, `N`, `K`) to copy stage, fp32 MMA accumulation and fused epilogue.
-8. Wrap a Triton softmax (LeetGPU challenge 5) in device, dtype, shape and contiguity dispatch with a `torch.softmax` fallback: fast path for contiguous fp32 rows under 8192 columns, library fallback otherwise. Add a version-pinned regression test over held-out non-multiple shapes that fails when `cuobjdump -res-usage` registers change across a compiler update. Record CUDA Tile IR as reading only on this toolchain.
+1. Write a Triton vector-add kernel with its grid function, checked against `x + y` on shapes you choose, including non-multiples of the block size. Add a masked approximate GELU checked against `torch.nn.functional.gelu` in two dtypes, each with a matched CUDA twin under identical tests.
+2. Implement tiled row sums and stable row-wise softmax for strided inputs with padding and partial tiles, checked against fp32 references. Show where `tl.dot` precision flags change the error against float64, and name which rounding dominates.
+3. Run the CSE 291A PA2 Part 1 fused kernel under `student_local_test.py`, with an autotuning search gated on correctness. Separate cold compile cost from warm launch cost with interleaved timings against the PyTorch reference.
+4. Inspect one compiled kernel from Triton IR down to PTX, quoting register and shared-memory usage from your own build. Compile one CUDA source file with `-arch=native` and compare `cuobjdump -sass` and `cuobjdump -res-usage` output with the Triton report.
+5. Use `torch._dynamo.explain` to contrast a data-dependent branch with its branch-free rewrite, quoting graph and break counts from your own run. Register a Triton LayerNorm as a custom op with gradient checks against the framework, and record its higher-order limitation.
+6. Reconstruct one GEMM configuration down to layouts, copy atoms and MMA atoms, and compare it stage by stage with the equivalent Triton blocked program. Wrap the Triton softmax from LeetGPU challenge 5 in versioned dispatch with a tested fallback and a register-change regression.
 
 **Deliverables**
 
-- Matched CUDA and Triton kernels with shared tests, precision pins and losing shapes.
-- Autotune evidence with `student_local_test.py` results, cold against warm compile timings, codegen dumps with `n_regs` 26 and `.reqntid 128`, and the dynamo break reports.
-- The CuTe GEMM reconstruction beside the Triton blocked program, the custom LayerNorm op, and versioned dispatch with fallback and the register-change regression.
+- Matched CUDA and Triton kernels with shared tests, pinned precision and kept losing shapes.
+- Autotune and compile evidence: cold against warm costs, codegen dumps and dynamo break reports.
+- The CuTe GEMM reconstruction, the custom LayerNorm op and versioned dispatch with fallback.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [LeetGPU CUDA and Triton parity set run locally](https://leetgpu.com/challenges/). Re-solve one primitive, one GEMM and one transformer challenge in Triton with matched CUDA twins locally against `reference_impl`.
-- external-tests: [CSE 291A PA2 Part 1 local tests](https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2). Run `student_local_test.py` locally; replace the remote speedup score with interleaved timing against PyTorch.
+- external-tests: [LeetGPU CUDA and Triton parity set](https://leetgpu.com/challenges/). Re-solve one primitive, one GEMM and one transformer challenge in Triton with matched CUDA twins against `reference_impl`.
+- external-tests: [CSE 291A PA2 Part 1 student tests](https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2). Run `student_local_test.py`; compare with interleaved timing against PyTorch, not the hosted score.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Parity with pins | CUDA and Triton twins pass identical tests including tails and non-powers of two, precision is pinned before timing, and losing shapes are kept. | The `REG:12` and `SHARED:0` lines are quoted from your own build. |
-| Autotune and lowering honesty | The second autotuned launch skips benchmarking, cold against warm compile costs are separated, dynamo break counts are quoted from your own run, and generated PTX and SASS assumptions are checked. | Guards that trigger recompiles are named per case. |
-| Reconstruction and dispatch | The CuTe reconstruction reaches layouts, copy atoms and MMA atoms with `cosize` 1031 derived, and the dispatch test covers native, forced fallback and register-change branches with fallback correctness. | The LayerNorm VJP is derived with row means stated and the higher-order limit is tested. |
+| Parity with pins | CUDA and Triton twins pass identical tests from your own harness including tails and non-powers of two, with precision pinned before timing and losing shapes kept. | Register and shared-memory lines are quoted from your own build, with the flags that produced them. |
+| Autotune and lowering honesty | The second autotuned launch skips benchmarking, cold and warm costs are separated, and break counts come from your own run. | Each recompile names the guard that triggered it. |
+| Reconstruction and dispatch | The CuTe reconstruction reaches layouts, copy atoms and MMA atoms, and dispatch tests cover native, forced fallback and register-change branches. | The LayerNorm gradient derivation states its row-mean terms and its higher-order limit is tested. |
 
 Feeds into: Capstone suite and integration: matched paths, autotune gates, lowering evidence and dispatch with fallback feed the endpoint and the final portability defense.
 
@@ -4687,7 +4678,7 @@ A faster kernel changes nothing when the framework dispatches a different path. 
 
 **Practice**
 
-- [Companion code ch13: whole-graph versus regional compile trace](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch13/optimized_regional_compile.py) - Run `python -m cli.aisp bench run --targets ch13:regional_compile --profile minimal` (plain `python -m ch13.compare` runs every pair in the chapter), then capture profiler and `nsys` traces for both variants and attribute one dispatch or fusion difference. Keep runs short on a 6 GB GPU. No public autograder checks the trace; retain both traces and your boundary notes.
+- [Companion code ch13: whole-graph versus regional compile trace](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch13/optimized_regional_compile.py) - Run `python -m cli.aisp bench run --targets ch13:regional_compile --profile minimal` (plain `python -m ch13.compare` runs every pair in the chapter), then capture profiler and `nsys` traces for both variants and attribute one dispatch or fusion difference. Keep runs short enough to fit your GPU's memory. No public autograder checks the trace; retain both traces and your boundary notes.
 
 **Stop when:** Your trace connects one operator to source, API call and kernel, attributes one host gap, and names the fusion boundary with its removed launches.
 
@@ -4731,7 +4722,7 @@ Small decode steps are often launch-bound, not kernel-bound. Graphs remove the h
 - Capture on a side stream with static input buffers. Tensors allocated during capture come from the graph's private pool and keep fixed addresses, so copy new inputs into the captured buffers; any shape change after capture needs a new graph or bucket.
 - Bucket one graph per stable shape and keep an eager fallback. A replay on an unseen shape silently computes the wrong geometry or fails to launch.
 
-**Reproduce:** Time 200 eager launches of a 1024-element vector add against 200 `graph.replay()` calls with CUDA events, interleaved in pairs with a recorded seed, and report both medians. On an RTX 3050 6 GB with PyTorch 2.14.1 and driver 595.99, six runs of 41 interleaved pairs gave eager medians from 2.4 to 13.5 us per launch and replay medians from 1.8 to 7.2 us as host load changed; replay was 1.4 to 1.9 times faster in every run. Record host load with your medians; replay must not exceed eager on this shape, and any shape change needs recapture.
+**Reproduce:** Time 200 eager launches of a 1024-element vector add against 200 `graph.replay()` calls with CUDA events, interleaved in pairs with a recorded seed, and report both medians. On an RTX 3050 6 GB with PyTorch 2.14.1 and driver 595.99, six runs of 41 interleaved pairs gave eager medians from 2.4 to 13.5 us per launch and replay medians from 1.8 to 7.2 us as host load changed; replay was 1.4 to 1.9 times faster in every run; yours will differ, so compare the ratio on your GPU. Record host load with your medians; replay must not exceed eager on this shape, and any shape change needs recapture.
 
 **Traps**
 
@@ -5146,7 +5137,7 @@ Endpoints are judged by TTFT, TPOT, memory and goodput on a real mix. Attributio
 - Fix the workload first: shape and arrival distribution, TTFT and TPOT SLOs, memory budget and goodput definition. Goodput counts only requests meeting the SLOs.
 - Attribute with shares: a kernel speedup $`s`$ on fraction $`f`$ of step time gives at most $`1 / ((1 - f) + f / s)`$ end-to-end. Baselines are the production engine and the vendor library, not eager alone.
 
-**Reproduce:** Closed-book, derive capacity for an 8-billion-parameter FP16 model on an 80 GB A100: weights occupy about 16 GB, leaving roughly 64 GB of the 80 GB budget for KV and workspace. At 131072 bytes per token (32 layers, 8 KV heads, 128 head dim, FP16), that budget holds roughly 490000 tokens (524288 per 64 GiB) before any workspace; subtract your workspace reservation first and state your GB/GiB convention. Then show how a 10 percent kernel win on a 30 percent step share gives at most about 3 percent end-to-end.
+**Reproduce:** Closed-book, derive capacity for an 8-billion-parameter FP16 model on an 80 GB A100 as the worked example: weights occupy about 16 GB, leaving roughly 64 GB of the 80 GB budget for KV and workspace. At 131072 bytes per token (32 layers, 8 KV heads, 128 head dim, FP16), that budget holds roughly 490000 tokens (524288 per 64 GiB) before any workspace; subtract your workspace reservation first and state your GB/GiB convention. Then redo the derivation for your GPU and show how a 10 percent kernel win on a 30 percent step share gives at most about 3 percent end-to-end.
 
 **Traps**
 
@@ -5226,32 +5217,31 @@ An integrated kernel needs a gate that catches regressions and a rollback that r
 
 ### Mini-project: One custom path running in a real inference endpoint
 
-**About 12 to 16 hours.** Integrate one validated CUDA or Triton path into a real operator or small endpoint inside kernellab: trace dispatch to the kernel, prove launch and graph behavior, measure paged KV and chunked prefill, cover quantized, speculative and structured paths, check multimodal co-execution, and gate releases with fallback and rollback. All endpoint sizes fit 6 GB.
+**About 12 to 16 hours.** Integrate one validated CUDA or Triton path into a real operator or small endpoint: trace dispatch to the kernel, measure paged KV and chunked prefill, cover quantized and speculative paths, and gate releases with fallback and rollback.
 
-1. Profile a 1024 by 1024 `torch.float32` CUDA matmul wrapped in `torch.profiler.record_function(\"mm\")` and `torch.cuda.nvtx.range(\"mm\")`, capture a short `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none` trace, follow one `aten::mm` entry to its kernel, and reconcile profiler CUDA time with the union of kernel intervals and completed wall time. Run the ch13 whole-graph against regional compile pair with `python -m cli.aisp bench run --targets ch13:regional_compile --profile minimal` and attribute which boundary each variant moves.
-2. Time 200 eager launches of a 1024-element vector add against 200 `graph.replay()` calls with CUDA events interleaved in pairs under a recorded seed and report both medians. On an RTX 3050 with PyTorch 2.14.1, six runs of 41 interleaved pairs gave eager medians from 2.4 to 13.5 us and replay medians from 1.8 to 7.2 us as host load changed, replay 1.4 to 1.9 times faster each run; record host load with yours, and replay must not exceed eager on this shape, with recapture required after any shape change. Capture one stable 32-step sequence, keep capture logs, and test eager fallback on an unsupported path.
-3. Work a four-request mix with decode lengths 10, 10, 10 and 100: static batching holds all slots until length 100 while continuous batching frees three slots at length 10; state which kernel dimensions shrink when live batch drops from 4 to 1. Derive per-token KV bytes as $`2 \times L \times H_{kv} \times D \times B`$: for 32 layers, 8 KV heads, 128 head dim and fp16 the result is 131072 bytes (128 KiB) per token. Place a 40-token sequence in block size 16 for 3 blocks with 8 wasted slots, and keep block tables and hit rates from the KV management and radix reuse runs.
-4. Chunk a 20000-token prompt into 5000-token chunks beside 8 live decodes with a stated token budget: 4 chunks with named sharing per iteration, total attention work unchanged and worst per-iteration latency lower. Verify the LeetGPU challenge 87 worked example closed-book (draft `[1, 2, 0]` with given probabilities and samples `[0.50, 0.70, 0.30, 0.90]`: accept position 0 near 0.83, reject position 1 near 0.40, resample from `[0.667, 0, 0, 0.333]` to emit `[1, 3, 0, 0]`), pass challenges 87 and 96 locally with adversarial scales and tails, and run the disaggregated prefill and decode comparison with TTFT, TPOT and transfer notes.
-5. Sketch one image-plus-text request through prefill and two decode steps: mark where the image encoder runs, which token range its embeddings replace, and which blocks are hashable for reuse when a second request shares text but not the image. Time encoder-batch against decoder-only execution in the integrated endpoint and add a multimodal prefix-hash identity check that reuses only matching prefixes.
-6. Register the fused residual-add plus RMSNorm (LeetGPU challenge 83) as a custom op with a fake shape rule, allocate the FlashInfer decode workspace, plan a batch of 7 requests in `NHD` layout with `page_size = 16` and run one layer, stating which buffers must stay stable for graph capture and which eager fallback runs on an unsupported dtype. Derive endpoint capacity for an 8-billion-parameter fp16 model on an 80 GB A100: weights near 16 GB leave near 64 GB for KV and workspace, near 490000 tokens at 131072 bytes per token (524288 per 64 GiB) before workspace, then subtract the workspace reservation under a stated GB and GiB convention. Show a 10 percent kernel win on a 30 percent step share giving at most near 3 percent end to end, and compare one custom path against production engine and vendor-library baselines with a load test over a stated arrival mix.
-7. Prove greedy equivalence on a 50000-token vocabulary with a fixed seed (`argmax` of logits equals `argmax` of their softmax, so skipping materialization is exact unless logits round to equal probabilities), then fix windows, stride and dtype and gate quality with perplexity $`\text{PPL} = \exp(\text{mean NLL})`$ on a fixed token file before and after the change. Write the versioned gate contract (versioned inputs, correctness plus quality checks, TTFT and TPOT budgets with sample counts, fallback trigger and rollback command), seed one wrong-mask defect to show the gate failing before timing is read, then drill rollback with raw samples retained.
+1. Trace one `aten::mm` entry to its kernel on an `nsys` timeline, reconciling profiler time with kernel intervals and wall time. Run the regional-compile pair and attribute which boundary each variant moves.
+2. Time eager launches of a tiny kernel against graph replay with interleaved trials, recording host load; at that size replay should win, so explain any loss. Recapture after shape changes, keep capture logs, and test eager fallback on an unsupported path.
+3. Work a mixed batch of short and long decodes under static and continuous batching, stating which kernel dimensions shrink as slots free. Derive per-token KV bytes for your config, place one sequence into blocks, and keep block tables with hit rates.
+4. Chunk one long prompt beside decodes under a token budget you set, showing per-iteration latency falls while attention work holds. Pass LeetGPU challenges 87 and 96 in your own harness, and compare disaggregated prefill and decode with TTFT, TPOT and transfer notes.
+5. Time encoder-batch against decoder-only execution for one image-plus-text request, with a prefix-hash check reusing only matching prefixes. Integrate one validated kernel as a custom op, compare it against production baselines under a load test, with workspace planning, and derive capacity for your GPU.
+6. Show that greedy decoding on logits equals greedy on their softmax, exact up to rounding ties, and gate quality with perplexity on a fixed token file. Write a versioned gate with fallback and rollback, seed one defect it catches, and drill rollback.
 
 **Deliverables**
 
-- Dispatch and launch evidence: the `aten::mm` to kernel trace, the 200-launch eager against replay medians with capture logs, and the batching and KV derivations with block tables.
-- The integrated custom op with workspace plan, capacity math, baseline load test and the multimodal timing with prefix-hash check.
-- The quality gate with fixed token file and perplexity reports, plus the versioned regression gate with a seeded failing defect, fallback routing and rollback drill.
+- Dispatch and launch evidence: the operator-to-kernel trace, eager against replay trials, and batching and KV derivations.
+- The integrated custom op with workspace plan, capacity math, baselines and the multimodal timing check.
+- The quality gate on a fixed token file and the versioned regression gate with rollback drill.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [LeetGPU inference kernels run locally](https://leetgpu.com/challenges/). Pass 83 Fused Residual Add RMS Norm, 87 Speculative Decoding Verification and 96 INT8 KV Cache Attention locally; integrate one result with fallback.
+- external-tests: [LeetGPU inference kernels](https://leetgpu.com/challenges/). Pass 83 Fused Residual Add RMS Norm, 87 Speculative Decoding Verification and 96 INT8 KV Cache Attention in your harness; integrate one result with fallback.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Dispatch proof | The trace follows one operator entry to its kernel with reconciled times, eager against replay medians come from interleaved trials with recapture rules, and batching and KV derivations match the runs. | Block tables show which reuse actually happened. |
-| Integration with quality | The custom op runs in the endpoint with stable buffers named, capacity math states conventions and workspace, baselines are production-grade, and greedy and perplexity gates pass on a fixed token file. | The 10 percent on 30 percent bound is applied with measured shares. |
-| Gates and rollback | The versioned gate fails on the seeded wrong-mask defect before timing, fallback routes correctly, and rollback is drilled with raw samples retained. | The multimodal check reuses only matching prefixes and never the image blocks. |
+| Dispatch proof | The trace follows one operator entry to its kernel with reconciled times, and eager against replay medians come from interleaved trials with recapture rules. | Each profiler interval maps to a named kernel, and the timeline explains the gap between profiler and wall time. |
+| Integration with quality | The custom op runs in the endpoint with stable buffers named, capacity math states its conventions, production baselines are compared under load, and quality gates pass on a fixed token file. | The report bounds the end-to-end win from the measured step share. |
+| Gates and rollback | Your own tests fail the gate on the seeded defect before timing, fallback routes correctly, and rollback is drilled with raw samples kept. | The gate rebuilds from a clean checkout, and rollback restores the previous release's measured result. |
 
 Feeds into: Capstone integration: the endpoint, workspace plan, quality gate and regression gate with rollback become the system-level evidence. Communication and portability sections build on its shapes.
 
@@ -5530,7 +5520,7 @@ NCCL usually picks well, but small-message stalls and cross-socket surprises com
 
 **Practice**
 
-- [nccl-tests `all_reduce_perf` algorithm and protocol sweep](https://github.com/NVIDIA/nccl-tests/tree/afd59abab774a6a4b492eb344bd0c845a0b7bb4d) - Run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` on the two-GPU workstation under Tree, Ring and default `NCCL_ALGO` with LL128 and Simple protocols. Record the NCCL version and `NCCL_TOPO_DUMP_FILE` with every number, and predict the winners before running. On two RTX A5000s joined across sockets by PCIe (no NVLink), with NCCL 2.27.5 and CUDA 12.6, an 8-byte all-reduce took about 8 us with LL, 16 to 17 us with LL128 and 23 us with Simple under either algorithm, so with two ranks the protocol mattered and ring against tree did not. At 256 MB, Ring with Simple took 19.9 ms (13.5 GB/s bus bandwidth), the same as the default, against 21.9 ms for Tree with Simple and 30 to 81 ms for the LL protocols. Explain any difference on your hardware.
+- [nccl-tests `all_reduce_perf` algorithm and protocol sweep](https://github.com/NVIDIA/nccl-tests/tree/afd59abab774a6a4b492eb344bd0c845a0b7bb4d) - Run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` with two GPUs under Tree, Ring and default `NCCL_ALGO` with LL128 and Simple protocols. Record the NCCL version and `NCCL_TOPO_DUMP_FILE` with every number, and predict the winners before running. On two RTX A5000s joined across sockets by PCIe (no NVLink), with NCCL 2.27.5 and CUDA 12.6, an 8-byte all-reduce took about 8 us with LL, 16 to 17 us with LL128 and 23 us with Simple under either algorithm, so with two ranks the protocol mattered and ring against tree did not. At 256 MB, Ring with Simple took 19.9 ms (13.5 GB/s bus bandwidth), the same as the default, against 21.9 ms for Tree with Simple and 30 to 81 ms for the LL protocols. Explain any difference on your hardware. With one GPU, build the analytical latency-bandwidth model checked against published nccl-tests results and label it simulation.
 
 **Stop when:** Your predicted winner matches the bounded sweep at both ends of the size range, and every override you keep is version-pinned with a measured reason.
 
@@ -5584,7 +5574,7 @@ Overlap is where data-parallel scaling comes from: buckets reduce while later la
 
 **Practice**
 
-- [AI Systems companion code ch04: overlapped versus non-overlapped DDP](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/ddp_overlap.py) - Run `ddp_overlap.py` against `ddp_no_overlap.py` with `torchrun` on the two-GPU workstation and attribute the difference with a rank timeline. Targets that fail fast with SKIPPED: on unsupported hosts are blockers, not results; record the topology dump with the run.
+- [AI Systems companion code ch04: overlapped versus non-overlapped DDP](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/ddp_overlap.py) - Run `ddp_overlap.py` against `ddp_no_overlap.py` with `torchrun` with two GPUs and attribute the difference with a rank timeline. Targets that fail fast with SKIPPED: on unsupported hosts are blockers, not results; record the topology dump with the run. With one GPU, model the exposed tail analytically checked against published nccl-tests results, or use a recorded public trace, and label it simulation.
 
 **Stop when:** Your timeline shows concurrent communication and compute with matching outputs, and you can name the bucket or dependency behind every exposed millisecond.
 
@@ -5620,7 +5610,7 @@ Multi-rank runs fail as one unit: the slowest rank sets collective time and one 
 1. [NCCL failure modes and debugging](https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/) (AI Systems Performance Engineering - Chapters 4, 15, 17 and 18) - Chapter 4, Multinode Communication Pitfalls; NCCL Communicator Lifecycle and Environment Gotchas; Profiling and Debugging NCCL.
 2. [Logging and subsystem filters](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/troubleshooting/logging.html) (NCCL) - Logging levels with NCCL_DEBUG and filtering by subsystem (GRAPH, COLL, NET, TUNING): separate init hangs from network faults from performance issues.
 3. [Performance and affinity triage](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/troubleshooting/performance_and_tuning.html) (NCCL) - Intra-node versus inter-node issues with CPU and memory affinity: pin NIC handling to the NUMA node beside the NIC and GPU before blaming the fabric.
-4. [Straggler injection demo](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/barrier_straggler_multigpu.py) (AI Systems Performance Engineering companion code - Chapters 4, 15 and 17) - `barrier_straggler_multigpu.py`: one slow rank stretches the collective; inspect how barrier timings isolate it. Depth: Inspect on the two-GPU workstation as an illustration. Full straggler statistics need more ranks; the section mini-project runs them.
+4. [Straggler injection demo](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/barrier_straggler_multigpu.py) (AI Systems Performance Engineering companion code - Chapters 4, 15 and 17) - `barrier_straggler_multigpu.py`: one slow rank stretches the collective; inspect how barrier timings isolate it. Depth: Inspect with two GPUs as an illustration. With one GPU, use the analytical straggler model checked against published nccl-tests results, or a recorded public trace, and label it simulation. Full straggler statistics need more ranks; the section mini-project runs them.
 
 **Focus**
 
@@ -5674,7 +5664,7 @@ Expert parallelism replaces one big all-reduce with two all-to-alls per layer wh
 
 1. [Expert parallelism and routing](https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/) (AI Systems Performance Engineering - Chapters 4, 15, 17 and 18) - Chapter 15, Expert Parallelism; Dynamic Routing Strategies for MoE Inference with Expert Communication Optimization and Load Balancing, Capacity Factor, and Expert Replication.
 2. [AlltoAll semantics for dispatch](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2323/user-guide/docs/usage/collectives.html#alltoall) (NCCL) - AlltoAll: each rank sends a distinct block to every rank with no reduction; dispatch and combine each move the full routed activation set.
-3. [Dispatch and combine paths](https://github.com/deepseek-ai/DeepEP/tree/93eb6eb238127e96c6d7a4a625a6dad158348509) (DeepEP) - README Interfaces and examples with `dispatch` and `combine` through one `EPBuffer`; `do_cpu_sync` `True` for exact training and prefill sizes, `False` for GPU-side decode counts; NVLink inside a node with RDMA and IB between nodes. Depth: Reading and derivation only. DeepEP needs Hopper GPUs with multi-GPU RDMA; do not run it on Ampere hardware.
+3. [Dispatch and combine paths](https://github.com/deepseek-ai/DeepEP/tree/93eb6eb238127e96c6d7a4a625a6dad158348509) (DeepEP) - README Interfaces and examples with `dispatch` and `combine` through one `EPBuffer`; `do_cpu_sync` `True` for exact training and prefill sizes, `False` for GPU-side decode counts; NVLink inside a node with RDMA and IB between nodes. Depth: Reading and derivation only, unless you have Hopper GPUs with multi-GPU RDMA, which DeepEP needs.
 4. [MoE dispatch and routing benchmarks](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_moe_dispatch.py) (AI Systems Performance Engineering companion code - Chapters 4, 15 and 17) - `baseline_moe_dispatch.py` with `optimized_moe_dispatch.py`; `baseline_moe_routing_topology_aware.py` with its optimized pair.
 
 **Focus**
@@ -5690,7 +5680,7 @@ Expert parallelism replaces one big all-reduce with two all-to-alls per layer wh
 
 - Sizing the fabric for average load. The step follows the hottest expert, so average-based provisioning underbuys the link and the buffer the hot rank needs.
 - Treating dispatch as an all-reduce. Summing routed activations corrupts every expert input; dispatch permutes blocks and combine returns them, with the routing metadata as part of the contract.
-- Running DeepEP paths on the workstation's Ampere GPUs. The kernels assume Hopper with NVLink and RDMA; on other hardware the failure is a wrong-hardware error, not a tuning problem.
+- Running DeepEP paths on GPUs older than Hopper. The kernels assume Hopper with NVLink and RDMA; on other hardware the failure is a wrong-hardware error, not a tuning problem.
 
 **Practice**
 
@@ -5730,7 +5720,7 @@ Prefill is compute-bound and decode is memory-bound, so colocation forces one ph
 
 1. [Disaggregation, interference and goodput](https://arxiv.org/html/2401.09670v3) (DistServe) - Sections 2.3 (prefill-decoding interference and why chunked prefill cannot remove it), 3.1 to 3.3 (phase analysis with the 512-token OPT-66B transfer sizing), and 4.1 to 4.2 (high and low node-affinity placement); read arXiv:2401.09670v3.
 2. [Disaggregated pools, KV sizing and hardware split](https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/) (AI Systems Performance Engineering - Chapters 4, 15, 17 and 18) - Chapter 17, Why Prefill-Decode Disaggregation? with Disaggregated Prefill and Decode Cluster Pools; Chapter 18, Fast KV Cache Transfer Between Prefill and Decode with Connector and Data Path Design and Compute-Optimized Versus Memory-Optimized Hardware.
-3. [Transfer API and backends](https://github.com/ai-dynamo/nixl/tree/ee4bddbbccfc80afe5bcea8e86727055fc908667) (NVIDIA Inference Xfer Library) - `docs/nixl.md` Design and Example procedure: `create_agent`, `register_memory`, metadata exchange, then `create_xfer_req`, `post_transfer_request` and `get_xfer_status`; `docs/BackendGuide.md` for the backend side (`registerMem`, `prepXfer`, `postXfer`, `checkXfer`) and how the agent picks a backend by memory type. Depth: Inspect the API and run only supported single-host transports. Multi-node RDMA paths need hardware you do not have here.
+3. [Transfer API and backends](https://github.com/ai-dynamo/nixl/tree/ee4bddbbccfc80afe5bcea8e86727055fc908667) (NVIDIA Inference Xfer Library) - `docs/nixl.md` Design and Example procedure: `create_agent`, `register_memory`, metadata exchange, then `create_xfer_req`, `post_transfer_request` and `get_xfer_status`; `docs/BackendGuide.md` for the backend side (`registerMem`, `prepXfer`, `postXfer`, `checkXfer`) and how the agent picks a backend by memory type. Depth: Inspect the API and run only supported single-host transports. Multi-node RDMA paths need multi-node RDMA hardware; with one GPU, use single-host transports and label the analytical projection simulation.
 4. [Phase-specific machines](https://www.microsoft.com/en-us/research/publication/splitwise-efficient-generative-llm-inference-using-phase-splitting/) (Splitwise: Efficient Generative LLM Inference Using Phase Splitting) - arXiv:2311.18677v2 (ISCA 2024): phase characterization with homogeneous and heterogeneous cluster designs: up to 1.4x higher throughput at 20 percent lower cost, or 2.35x more throughput under the same power and cost.
 5. [KVCache-centric disaggregation](https://www.usenix.org/conference/fast25/presentation/qin) (Mooncake: Trading More Storage for Less Computation) - KVCache-centric architecture with the global cache, transfer engine, prefill scheduling and early rejection: 59 to 498 percent higher effective capacity on the paper's traces.
 
@@ -5751,7 +5741,7 @@ Prefill is compute-bound and decode is memory-bound, so colocation forces one ph
 
 **Practice**
 
-- [AI Systems companion code ch15: single-GPU KV handoff and cache math](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_single_gpu_kv_handoff.py) - Run `baseline_single_gpu_kv_handoff.py` against `optimized_single_gpu_kv_handoff.py` with `kv_cache_management_math.py`; compute the transfer crossover for your sequence lengths. Single-host paths only. Multi-GPU disaggregated pairs need two GPUs, so record them as blockers with the topology dump.
+- [AI Systems companion code ch15: single-GPU KV handoff and cache math](https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/baseline_single_gpu_kv_handoff.py) - Run `baseline_single_gpu_kv_handoff.py` against `optimized_single_gpu_kv_handoff.py` with `kv_cache_management_math.py`; compute the transfer crossover for your sequence lengths. Single-host paths only. Multi-GPU disaggregated pairs need two GPUs, so record them as blockers with the topology dump. With one GPU, compute the transfer crossover with the analytical model checked against published nccl-tests results and label it simulation.
 
 **Stop when:** Your hand KV sizing matches the math script, your crossover calls the measured handoff correctly, and you can defend the DistServe, Splitwise and Mooncake choice for one stated SLO.
 
@@ -5804,11 +5794,11 @@ One timed all-reduce proves nothing: clocks drift, fabrics are shared and algori
 
 - Quoting bus bandwidth as achieved link rate. The correction factor runs the other way: back out wire bytes first, then compare against the directional peak with contention noted.
 - Benchmarking once at a cold clock and keeping the best run. Interleave repeated trials across configurations and report medians with spread; drift between first and last trial is a finding, not noise to delete.
-- Publishing cluster-scale numbers from one workstation. Numbers for hardware without ranks are derivations with stated assumptions or cited vendor peaks for named hardware, never measurements.
+- Publishing cluster-scale numbers from a single host. Numbers for hardware without ranks are derivations with stated assumptions or cited vendor peaks for named hardware, never measurements.
 
 **Practice**
 
-- [nccl-tests `all_reduce_perf` bounded sweep with latency-bandwidth fit](https://github.com/NVIDIA/nccl-tests/tree/afd59abab774a6a4b492eb344bd0c845a0b7bb4d) - Run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` on the two-GPU workstation; record the topology dump, NCCL version and clocks; fit the latency-bandwidth model and predict one held-out size. Single-GPU hosts run the ch04 single-host bandwidth baseline with the analytical projection instead and label it simulation.
+- [nccl-tests `all_reduce_perf` bounded sweep with latency-bandwidth fit](https://github.com/NVIDIA/nccl-tests/tree/afd59abab774a6a4b492eb344bd0c845a0b7bb4d) - Run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` with two GPUs; record the topology dump, NCCL version and clocks; fit the latency-bandwidth model and predict one held-out size. With one GPU, run the ch04 single-host bandwidth baseline with the analytical projection checked against published nccl-tests results instead and label it simulation.
 
 **Stop when:** Your sweep predicts the held-out size within your stated error with the full contract attached, and every simulated number is labelled with what ranks would change.
 
@@ -5826,34 +5816,34 @@ One timed all-reduce proves nothing: clocks drift, fabrics are shared and algori
 
 </details>
 
-### Mini-project: Two-GPU collectives, overlap and disaggregation on the workstation
+### Mini-project: Collectives, overlap and disaggregation across GPUs
 
-**About 10 to 14 hours.** Move kernellab onto the workstation with two RTX A5000 24 GB GPUs over PCIe without NVLink: model collectives, sweep message sizes, prove overlap, align rank timelines under injected faults, measure expert skew and test the disaggregation crossover. Single-GPU analytical runs are labeled simulation, never link rates.
+**About 10 to 14 hours.** Model collectives, sweep message sizes and prove overlap with two GPUs. With one GPU, fit an analytical model checked against published results instead, and label every such number as derived.
 
-1. Capture `nvidia-smi topo -m` on the workstation and label each GPU pair with its path. Sketch the four-GPU hierarchy example (GPUs 0 and 1 on one NVLink pair, 2 and 3 on another, PCIe between pairs) and state which exchange crosses the slow link and why it carries only a fraction of the data. Run the ch04 PCIe staging pair plus `nccl_benchmark.py` on compatible single-host paths, recording topology dumps; mark NVLink-only and multi-GPU-only paths as explicit blockers with the dump attached rather than reporting fallback timings as link rates.
-2. Derive ring all-reduce time as reduce-scatter plus all-gather: $`T = 2(N-1)\alpha + 2S(N-1)/(NB)`$, with the crossover size where latency and bandwidth terms are equal for stated $`\alpha`$ and $`B`$. Derive per-rank bytes and step counts for ring all-gather, reduce-scatter, all-reduce and the alternate algorithm for general $`N`$ and $`S`$, evaluating each at $`N = 4`$ and $`S = 1`$ GB with the winner and margin named. Build `myAllreduce` and `myAlltoall` from point-to-point calls and the naive model-parallel forward and backward communication in `mpi_wrapper/comm.py`, checked by `mpirun -n 8 python mpi-test.py --test_case` cases plus the pytest files on CPU with Open MPI and `mpi4py`, with the timing comparison against library versions kept. Solve the TensorTonic collective, bandwidth, gradient-average and column-parallel MLP problems after the matching units.
-3. Build nccl-tests against the NCCL that PyTorch ships (`make CUDA_HOME=... NCCL_HOME=...`) and run `build/all_reduce_perf -b 8 -e 256M -f 2 -g 2` on the two A5000 GPUs under Ring, Tree and the default with `NCCL_PROTO` set to LL, LL128 and Simple, recording the NCCL version and topology dump with every number. Predict first, then compare: on two A5000s joined across sockets by PCIe with NCCL 2.27.5, an 8-byte all-reduce took about 8 us with LL, 16 to 17 us with LL128 and 23 us with Simple under either algorithm, and at 256 MB Ring with Simple took 19.9 ms (13.5 GB/s bus bandwidth), the same as the default. State the two rules that overrides precede communicator creation and rank order fixes output layout and root identity.
-4. Derive exposed time for $`B = 4`$ equal buckets with per-bucket communication $`c`$ and covering compute $`t`$ where $`t`$ covers $`c`$: total exposed time near $`c`$ for the last bucket rather than $`4c`$, stating the dependency the proof assumes. Run `ddp_overlap.py` against `ddp_no_overlap.py` with `torchrun` on the two A5000 GPUs and attribute the difference with rank-aligned timelines.
-5. Collect rank-aligned timelines for one collective, name the straggler rank from per-rank durations and compute the waiting time imposed on the fastest rank. Confirm the attribution with a barrier experiment, then inject a straggler and a partial failure, record the abort procedure that invalidates the affected run, and separate congestion against affinity with a placement swap. Use the two A5000 GPUs for every fault run.
-6. Derive per-layer dispatch and combine bytes for stated $`T`$, $`k`$, $`h`$, dtype and expert count plus per-expert capacity at a stated factor. Evaluate at $`T = 4096`$, $`k = 2`$, $`h = 4096`$, fp16 and $`E = 8`$, then show how one expert taking twice its share changes the maximum. Measure hot-expert behavior on the two A5000 GPUs, apply the capacity-factor policy, and record the rebalancing decision with its predicted effect.
-7. Compute per-token and per-request KV bytes for a stated layer count, KV heads, head dim, dtype and sequence length, convert to transfer time at two stated link rates, and call whether disaggregation wins given stated TTFT and TPOT slack. Run the single-GPU KV handoff pair with cache math on compatible paths, recording multi-GPU disaggregated pairs as blockers with topology dumps where hardware blocks execution. Fit $`\alpha`$ and $`\beta`$ by hand from three `all_reduce_perf` sweep points, predict a fourth held-out size, and state the hardware, toolkit and clock setup the fit depends on.
+1. Capture `nvidia-smi topo -m` and label each GPU pair with its path. With two GPUs run the staging pair and `nccl_benchmark.py`; with one GPU fit an analytical model checked against published nccl-tests results, recording blockers with dumps in both cases.
+2. Derive bytes and step counts for ring all-gather, reduce-scatter and all-reduce, with the latency-bandwidth crossover, then build `myAllreduce` and `myAlltoall` from point-to-point calls. Check them with the CPU MPI cases plus pytest, and solve the TensorTonic collective, bandwidth, gradient-average and column-parallel MLP problems.
+3. Build nccl-tests against your PyTorch NCCL and run `all_reduce_perf` with two GPUs across algorithms and protocols, predicting each point first. Record the NCCL version and a topology dump per number, and set any `NCCL_ALGO` or `NCCL_PROTO` override before the communicator is created.
+4. Derive the exposed time for bucketed overlap under the dependency you state. With two GPUs run `ddp_overlap.py` against `ddp_no_overlap.py` under `torchrun`, attributing the gap from rank-aligned timelines.
+5. Collect rank-aligned timelines for one collective, name the straggler and its waiting cost, and confirm with a barrier experiment. Inject a straggler and a partial failure with two GPUs, record the abort procedure, and separate congestion from affinity with a placement swap.
+6. Derive per-layer dispatch and combine bytes with per-expert capacity under a stated factor, and show how one hot expert changes the maximum. Measure hot-expert behavior, apply the capacity policy, and record the rebalancing decision.
+7. Derive KV transfer time against TTFT and TPOT slack to call the disaggregation crossover. Fit latency and bandwidth terms from sweep points, predict one held-out size, and state the setup the fit depends on.
 
 **Deliverables**
 
-- Topology dumps with labeled paths, the collective derivations with the crossover, and the CPU MPI checks with library timing comparisons.
-- The NCCL sweep with version and dump per number, the overlap attribution with rank-aligned timelines, and the straggler and partial-failure runs with abort records.
-- The MoE volume and hot-expert decision, the disaggregation crossover with transfer math, and the latency-bandwidth fit with a held-out prediction.
+- Topology dumps with labeled paths, collective derivations with the crossover, and CPU MPI checks.
+- The NCCL sweep with version and dump per number, overlap attribution and straggler runs with abort records.
+- The MoE volume and rebalancing decision, the disaggregation crossover and the held-out fit prediction.
 
 **Checks**
 
 - rubric: Self-grade with the rubric below.
-- external-tests: [CSE 291A PA2 Part 2 local MPI tests](https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2). Run the `mpi-test.py` cases and pytest files on CPU with Open MPI and `mpi4py`; keep the `discussion2-1.txt` timing comparison.
+- external-tests: [CSE 291A PA2 Part 2 MPI tests](https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2). Run the `mpi-test.py` cases and pytest files on CPU with Open MPI and `mpi4py`; keep the `discussion2-1.txt` timing comparison.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Model before link claims | Ring derivations give bytes and steps with the crossover stated, the NCCL sweep names version and topology per number, and single-host analytical runs are labeled simulation. | The four-GPU sketch names which exchange crosses the slow link and why. |
-| Overlap and straggler proof | The four-bucket exposed-time derivation states its dependency, DDP overlap is attributed from aligned timelines, and the straggler rank with waiting time is confirmed by a barrier experiment. | The partial-failure run names the abort procedure that invalidates it. |
-| Skew and crossover decisions | MoE dispatch and combine volumes with the capacity policy and hot-expert measurement support the rebalancing decision, and the KV crossover calls disaggregation against stated slack with transfer math. | The held-out size prediction is checked against measurement with the setup stated. |
+| Model before link claims | Ring derivations give bytes and steps with the crossover stated, the NCCL sweep names version and topology per number, and single-GPU runs are labeled simulation. | The hierarchy sketch names which exchange crosses the slow link and why it carries less data. |
+| Overlap and straggler proof | The exposed-time derivation states its dependency, overlap is attributed from aligned timelines, and the straggler with its waiting cost is confirmed by a barrier experiment. | The partial-failure run records how the failure was detected and how the job aborted. |
+| Skew and crossover decisions | MoE dispatch and combine volumes with the capacity policy support the rebalancing decision, and the crossover calls disaggregation against stated slack with transfer math. | The held-out prediction is checked against measurement with the setup stated. |
 
 Feeds into: Capstone communication: the NCCL sweep, overlap proof, straggler analysis, MoE decision and disaggregation crossover. The final report reuses the topology dumps and the fitted model.
 
@@ -5952,12 +5942,12 @@ A peak number is a ceiling, not a result. Reading the right document tells you w
 - Table throughputs are per multiprocessor and max theoretical, achievable only with specific instruction sequences. Multiply by SM count and clock, and count one multiply-add result as two operations.
 - Relative to Ampere, Hopper adds TMA, thread-block clusters, FP8 Tensor-Core input (also on Ada, 8.9) and fourth-generation NVLink; Blackwell adds fifth-generation NVLink and Blackwell-only matrix instructions. New columns add features; old guarantees stay.
 
-**Reproduce:** Closed-book, derive the FP32 peak and the memory bandwidth bound for an 18-SM `sm_86` card. Table 5 gives $`18 \times 128 \times 2 \times f`$ FLOP/s at SM clock $`f`$: $`6.8 \times 10^{12}`$ at the 1470 MHz reference boost and $`9.7 \times 10^{12}`$ at the 2100 MHz maximum that `nvidia-smi -q -d CLOCK` reports for the RTX 3050 6 GB. The 96-bit bus at 14e9 transfers/s gives $`12 \times 14 \times 10^{9} = 168 \times 10^{9}`$ bytes/s. Place the ridge point (about 40 FLOP/byte at the reference boost, 58 at the maximum) and name the clock your bound assumes: under load GPU Boost ran this card near 1.94 GHz, above its reference boost.
+**Reproduce:** Closed-book, derive the FP32 peak and the memory bandwidth bound, first for the example card, an 18-SM `sm_86` RTX 3050 6 GB. Table 5 gives $`18 \times 128 \times 2 \times f`$ FLOP/s at SM clock $`f`$: $`6.8 \times 10^{12}`$ at the 1470 MHz reference boost and $`9.7 \times 10^{12}`$ at the 2100 MHz maximum that `nvidia-smi -q -d CLOCK` reports. The 96-bit bus at 14e9 transfers/s gives $`12 \times 14 \times 10^{9} = 168 \times 10^{9}`$ bytes/s. Place the ridge point (about 40 FLOP/byte at the reference boost, 58 at the maximum) and name the clock your bound assumes: under load GPU Boost ran the card near 1.94 GHz, above its reference boost. Then redo all three numbers with your GPU's SM count, clocks and bus.
 
 **Traps**
 
 - Quoting a Table 29 Yes as performance. Availability is not speed; a Yes in the 8.x and 9.0 columns can hide an order of magnitude.
-- Mixing GB with GiB when checking a bandwidth bound. The 168 GB/s datasheet figure is decimal gigabytes; divide measured bytes by time in the same unit.
+- Mixing GB with GiB when checking a bandwidth bound. Datasheet figures such as the RTX 3050's 168 GB/s are decimal gigabytes; divide measured bytes by time in the same unit.
 - Reading a B200 or H100 number as your result. A peak from another GPU bounds nothing on yours; re-derive with your SM count from `prop.multiProcessorCount` and your clock.
 
 **Practice**
@@ -5971,12 +5961,12 @@ A peak number is a ceiling, not a result. Reading the right document tells you w
 
 1. Your GPU reports compute capability 8.6. Does it have an FP8 Tensor-Core input path?
    - No. The 8.6 column of the Tensor-Core dtype table shows no FP8 input; FP8 appears in later columns. An FP8 claim for this card needs a fallback path, not a peak quote.
-2. Derive the FP32 peak of an 18-SM `sm_86` card from Table 5, and say which clock the bound should use.
-   - Table 5 gives 128 multiply-add results per clock per multiprocessor for 8.6 and 8.9, and each counts as two operations: $`18 \times 128 \times 2 \times 1470 \times 10^{6} \approx 6.8 \times 10^{12}`$ FLOP/s at the 1470 MHz reference boost. That clock is typical, not a ceiling, so a bound uses the highest clock the card runs (2100 MHz on the RTX 3050 6 GB, $`9.7 \times 10^{12}`$) and names it.
-3. Show the datasheet bandwidth arithmetic for the 6 GB card and state the unit.
-   - A 96-bit bus carries 12 bytes per transfer at 14e9 transfers/s, so $`12 \times 14 \times 10^{9} = 168 \times 10^{9}`$ bytes/s, decimal GB/s. Compare against measured bytes per second in the same unit.
+2. Derive the FP32 peak of your GPU from Table 5, and say which clock the bound should use.
+   - Table 5 gives 128 multiply-add results per clock per multiprocessor for 8.6 and 8.9, and each counts as two operations. For the 18-SM example card, $`18 \times 128 \times 2 \times 1470 \times 10^{6} \approx 6.8 \times 10^{12}`$ FLOP/s at the 1470 MHz reference boost. That clock is typical, not a ceiling, so a bound uses the highest clock the card runs (2100 MHz on the RTX 3050 6 GB, $`9.7 \times 10^{12}`$) and names it. For your GPU, use `prop.multiProcessorCount`, its own clocks and its per-SM rate from Table 5.
+3. Show the datasheet bandwidth arithmetic for your GPU and state the unit.
+   - For the example card, a 96-bit bus carries 12 bytes per transfer at 14e9 transfers/s, so $`12 \times 14 \times 10^{9} = 168 \times 10^{9}`$ bytes/s, decimal GB/s; use your own bus width and transfer rate the same way. Compare against measured bytes per second in the same unit.
 4. A post reports 3 TB/s on a newer GPU and claims your kernel should reach half of it. What is wrong?
-   - A peak from another GPU is not your bound. Your card is bounded by 168 GB/s, so half of 3 TB/s is unachievable there; the comparison needs your hardware, your workload and your measured counters.
+   - A peak from another GPU is not your bound. The example card is bounded by 168 GB/s, so half of 3 TB/s is unachievable there; the comparison needs your hardware, your workload and your measured counters.
 
 </details>
 
@@ -6061,7 +6051,7 @@ A kernel without a capability contract fails at someone else's machine, not at y
 - PTX in the fatbin is the forward-compatibility path. A cubin runs on later minor versions of its major version; without PTX it fails on a newer major version instead of JIT-compiling at load.
 - An unsupported path must error loudly at the owning API boundary with the capability and feature named, never silently run a wrong kernel.
 
-**Reproduce:** From a blank file, write the capability query plus dispatch for a kernel with a newer-architecture-only path and a portable fallback: correct results on `sm_86` hardware, the fallback selected when the feature query is forced off, an explicit error when forced below the portable minimum, and tests covering all three branches.
+**Reproduce:** From a blank file, write the capability query plus dispatch for a kernel with a newer-architecture-only path and a portable fallback: correct results on your GPU through whichever path it supports, the fallback selected when the feature query is forced off, an explicit error when forced below the portable minimum, and tests covering all three branches.
 
 **Traps**
 
@@ -6078,8 +6068,8 @@ A kernel without a capability contract fails at someone else's machine, not at y
 <details>
 <summary>Self-test</summary>
 
-1. What does `cudaDevAttrComputeCapabilityMajor` return on the RTX 3050 6 GB, and which call reads it?
-   - 8, read with `cudaDeviceGetAttribute` for the device. The minor attribute returns 6; branch on the pair, not on the card name.
+1. What does `cudaDevAttrComputeCapabilityMajor` return on your GPU, and which call reads it?
+   - On an RTX 3050 6 GB it returns 8, read with `cudaDeviceGetAttribute` for the device, and the minor attribute returns 6. Read both on your GPU and branch on the pair, not on the card name.
 2. Your kernel needs thread-block clusters. Which table gives the minimum capability, and what must the fallback do?
    - The feature-support table in Section 5.1.3. The fallback runs a non-cluster path or returns an explicit unsupported error, selected by the runtime query, with both branches tested.
 3. A fatbin holds only an `sm_90` cubin and no PTX. What happens on `sm_86` and on `sm_100` hardware?
@@ -6239,7 +6229,7 @@ AI-generated kernels optimize the evaluator, not the hardware. The contract deci
 
 **Practice**
 
-- [KernelBench Level 1: one problem with `run_and_check.py`](https://github.com/ScalingIntelligence/KernelBench) - `scripts/run_and_check.py` usage 2 (commit 423217d): `ref_origin=kernelbench level=1 problem_id=<id> kernel_src_path=<your kernel file> eval_mode=local` on one Level 1 problem, with `gpu_arch` set to `["Ampere"]`. The script takes an architecture family name (`Ampere` for compute capability 8.6), not `sm_86`. Start from the example kernels in `src/kernelbench/prompts`, run one problem only, then add one negated-input trial in the style of the hidden D4 distribution and report what changes. Do not chase the aggregate score.
+- [KernelBench Level 1: one problem with `run_and_check.py`](https://github.com/ScalingIntelligence/KernelBench) - `scripts/run_and_check.py` usage 2 (commit 423217d): `ref_origin=kernelbench level=1 problem_id=<id> kernel_src_path=<your kernel file> eval_mode=local` on one Level 1 problem, with `gpu_arch` set to `["Ampere"]`. The script takes an architecture family name (`Ampere` for compute capability 8.6), not `sm_86`; pass your GPU's family, from its capability in `nvidia-smi --query-gpu=compute_cap --format=csv`. Start from the example kernels in `src/kernelbench/prompts`, run one problem only, then add one negated-input trial in the style of the hidden D4 distribution and report what changes. Do not chase the aggregate score.
 
 **Stop when:** You can state the contract, the hardening and three hack mechanisms from memory, and your one-problem run reports correctness plus speedup with the extra negated trial.
 
@@ -6328,7 +6318,7 @@ Research starts where the library ends: one real path, fully traced, with one ch
 
 **Study**
 
-1. [Kernel benchmarking appendix as the trace template](https://mlc.ai/modern-gpu-programming-for-mlsys/appendix/benchmarking_gpu_kernels.html) (Modern GPU Programming for MLSys) - Timing boundary, GPU-time versus end-to-end, benchmark-condition consistency, and the worked BF16 GEMM baseline with the Proton to Nsight Systems to Nsight Compute chain. Depth: On `sm_86` hardware, Hopper-and-later constructs (thread-block clusters, TMA) and Blackwell-only ones (`tcgen05`, TMEM) are reading: produce the static mechanism audit and leave performance claims open.
+1. [Kernel benchmarking appendix as the trace template](https://mlc.ai/modern-gpu-programming-for-mlsys/appendix/benchmarking_gpu_kernels.html) (Modern GPU Programming for MLSys) - Timing boundary, GPU-time versus end-to-end, benchmark-condition consistency, and the worked BF16 GEMM baseline with the Proton to Nsight Systems to Nsight Compute chain. Depth: Hopper-and-later constructs (thread-block clusters, TMA) and Blackwell-only ones (`tcgen05`, TMEM) are reading unless your GPU has them: produce the static mechanism audit and leave performance claims open.
 2. [Adaptive kernel selection as the claim source](https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/) (AI Systems Performance Engineering - Chapters 2, 19 and 20 and the Appendix checklist) - Chapter 19: Kernel Autotuning for Transformer Self-Attention and MLP Paths; Dynamic Shared-Memory Allocation and Occupancy-Aware Kernel Selection; Runtime Kernel Performance Improvements and Hot-Swappable Implementations.
 3. [Milestone C implementation contract](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md) (GPU Microbenchmark and Kernel Suite - Final Evaluation) - Milestone C: complete the kernels or document a hardware or toolchain blocker while completing the real available path; Milestone E: report shapes where added resources or overhead regress performance.
 
@@ -6336,7 +6326,7 @@ Research starts where the library ends: one real path, fully traced, with one ch
 
 - Trace first, change second: graph, IR, schedule, generated kernel, dispatch, profile. An untraced change is a guess with a diff attached.
 - One change, one hypothesis, stated beforehand: tile size, pipeline depth or layout, with predicted bytes, launches and resources.
-- Blackwell-only constructs do not run on `sm_86`. The audit names them and the fallback, and measures only what the hardware runs.
+- Blackwell-only constructs do not run on older GPUs. The audit names them and the fallback, and measures only what the hardware runs.
 - Correctness coverage spans shapes, dtypes, boundaries and numerics before any timing. Timing an uncovered kernel measures a bug.
 
 **Reproduce:** Draw the full graph-to-hardware path of your chosen kernel with bytes, launches and resources at each link, then write the one-change hypothesis with the profiler signal that would falsify it.
@@ -6479,21 +6469,21 @@ A kernel speedup is not a result until the workload feels it. Impact, losses and
 
 ### Mini-project: Portability audit with a clean reproduction and a losing regime
 
-**About 10 to 14 hours.** Close kernellab as defensible engineering on the RTX 3050: a per-kernel peak table with named clocks, an AMD dispatch defense, a three-branch fallback gate, scenario discipline, a repaired misleading benchmark, a read-only KernelBench and SOL check, one reconstructed production path with a bounded change, a clean rebuild and a workload-weighted report that keeps a loss.
+**About 10 to 14 hours.** Close the track as defensible engineering: a peak table with named clocks, an AMD dispatch defense, a tested fallback gate and a repaired misleading benchmark. Reconstruct one production path, rebuild clean, and file a workload-weighted report that keeps a loss.
 
-1. Build a per-kernel peak-bound table that names its clock: fp32 $`18 \times 128 \times 2 \times f`$ gives $`6.8 \times 10^{12}`$ at the 1470 MHz reference boost and $`9.7 \times 10^{12}`$ at the 2100 MHz maximum reported by `nvidia-smi -q -d CLOCK` on the RTX 3050 6 GB, with 168 GB/s from $`12 \times 14 \times 10^9`$ on the 96-bit bus for ridge points near 40 and 58 FLOP/byte. Place each kernel behind its Milestone E regime prediction with the falsifier that would reject it.
-2. Write the dispatch and fallback defense so each dispatched path names its AMD CDNA and HIP counterpart with one-line roles, then implement the capability query plus dispatch with three tested branches on `sm_86`: native path when the feature query passes, portable fallback when forced off with correct results, and an explicit error when forced below the portable minimum.
-3. Fix the stack for the full shape matrix, report timing boundaries, baseline precision and flags, input distributions, held-out status and workload frequency per shape. Audit a deliberately misleading benchmark with the five-line check (timing boundary, baseline parity, distributions, held-out status, cherry-picking) and correct every flaw, including TF32 parity: the audit must show matched precision before any speedup is kept. Sketch the Endpoints curve axes with point-count and duration rules and the fluidity deadline $`D_{i} = D_{p} + i \times D_{d}`$ with its reset rule.
-4. Run one KernelBench Level 1 problem with `scripts/run_and_check.py` usage 2 at commit 423217d with `gpu_arch` set to `Ampere` for capability 8.6, starting from the example kernels in `src/kernelbench/prompts`, then add one negated test that a reward-hacked kernel fails. Write the KernelBench contract from memory (levels, trials, `fast_p`, the four hidden distributions with scales, the ReLU-hack mechanism with its catching test). Derive the SOL-ExecBench RMSNorm speed-of-light bound by hand for one workload row with operations and bytes over peaks, compute its SOL-score from a measured time, list the four held-out axes with what each would break, and state which SOLAR assumptions cannot be reproduced without a B200 as read-only.
-5. Trace one Milestone C kernel through graph, IR, kernel, dispatch and profile with bytes, launches and resources at each link. Write one bounded change with a predeclared mechanism hypothesis and the profiler signal that would falsify it, then test it on unseen shapes with correctness gates held.
-6. Regenerate the full shape matrix from a clean checkout with a locked environment, raw samples and claim-to-artifact links for every table entry. Exercise all five protections, each with an injected-defect test that the protection catches (for example an unsupported dtype reaching the fast path, a tuned shape leaking into the held-out set, or a changed register allocation slipping past the version pin).
-7. Compute the end-to-end bound for two share and speedup pairs, build the workload-weighted table with one losing row kept, and write the three-question defense: a stronger baseline that could overturn the claim, an alternate explanation for the gain, and the maintenance cost of keeping the path. State the dispatch and fallback choice per kernel family from the clean reproduction.
+1. Build a per-kernel peak table that names its clock source, place each kernel against its ridge point, and file the regime prediction with the falsifier that would reject it.
+2. Write the dispatch defense so each path names its AMD CDNA and HIP counterpart. Test all three fallback branches on your GPU: native, forced portable fallback, and the explicit error below the portable minimum. Audit Hopper or Blackwell paths your GPU lacks statically.
+3. Pin the software stack for the full shape matrix, reporting boundaries, precision, distributions, held-out status and frequency per shape. Audit one deliberately misleading benchmark against timing boundary, baseline parity, distributions, held-out status and cherry-picking, and correct every flaw with matched precision shown.
+4. Run one KernelBench Level 1 problem in your harness, add one negated test that a reward-hacked kernel fails, and derive the SOL-ExecBench bound by hand for one row. List what each held-out axis would break; treat paths your GPU cannot run as reading only.
+5. Trace one production kernel through graph, IR, dispatch and profile with bytes, launches and resources at each link. Write one bounded change with a predeclared mechanism and the profiler signal that would falsify it, tested on unseen shapes.
+6. Regenerate the full shape matrix from a clean checkout with raw samples and claim-to-artifact links for every table entry. Exercise every protection with an injected-defect test it catches, for example an unsupported dtype reaching the fast path.
+7. Build the workload-weighted table with one losing row kept, and write the three-question defense: a stronger baseline, an alternate explanation, and the maintenance cost. State the dispatch choice per kernel family from the clean reproduction.
 
 **Deliverables**
 
-- The peak-bound table with named clocks and ridge points beside Milestone E predictions, and the AMD dispatch defense with the three-branch fallback tests.
-- The scenario-fixed shape matrix with boundaries and frequency, the five-line audit with the repaired misleading benchmark, and the KernelBench plus SOL hand-bound notes.
-- The reconstructed production path with its bounded change, the clean-build regeneration with claim links and five protection tests, and the workload-weighted report with a losing row and the three-question defense.
+- The peak-bound table with named clocks and ridge points, and the AMD dispatch defense with fallback tests.
+- The scenario-fixed shape matrix, the repaired misleading benchmark, and the KernelBench plus SOL notes.
+- The reconstructed path with its bounded change, the clean-build regeneration, and the weighted report with a loss.
 
 **Checks**
 
@@ -6501,9 +6491,9 @@ A kernel speedup is not a result until the workload feels it. Impact, losses and
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Bounds and fallback | Peaks name clocks with the ridge derived, each dispatched path names its AMD counterpart, and all three fallback branches are tested with correct results or the explicit error. | The table states which Hopper and Blackwell features remain static audit. |
-| Audit honesty | The shape matrix fixes the stack with boundaries and frequency stated, the misleading benchmark is repaired on all five lines with TF32 parity shown, and KernelBench and SOL limits are stated as read-only where hardware blocks execution. | Held-out shapes and values are named with what each would break. |
-| Reproduction and judgment | The clean checkout regenerates tables with raw samples and claim links, each protection has an injected-defect test, and the weighted report keeps a losing row with the three-question defense. | The per-family dispatch choice names its maintenance cost. |
+| Bounds and fallback | Peaks name clocks with ridges derived, each path names its AMD counterpart in your own tests, and all three fallback branches pass. | The table states which features your GPU cannot run and why they remain static audit. |
+| Audit honesty | The shape matrix fixes the stack with boundaries and frequency stated, the misleading benchmark is repaired on all five audit points with matched precision, and paths your GPU cannot run are marked reading only. | Held-out shapes and values are named with what each would break. |
+| Reproduction and judgment | The clean checkout regenerates tables with raw samples and claim links, each protection has an injected-defect test, and the weighted report keeps a losing row with its defense. | The per-family dispatch choice names its maintenance cost. |
 
 Feeds into: Capstone defense: the peak table, audit, reconstruction, clean reproduction and weighted report with the losing regime are the final evidence package.
 
@@ -6551,8 +6541,8 @@ Carry one transformer operation and one realistic inference workload through a s
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Correctness-first laboratory | The harness carries hardware and software manifests, independent framework or CPU references, synchronized cold and warm benchmarks, raw interleaved trials, operation and byte models, roofline analysis, Nsight timelines and counters, sanitizer regressions and one repaired misleading benchmark, with one command rebuilding the evidence from a clean checkout. | Each claim links to raw samples and states clocks, boundaries and what was left untested. |
-| CUDA and Triton kernel suite | Data movement, reduction or scan, stable softmax, tiled GEMM and one attention or fused transformer path run in CUDA and Triton with LeetGPU evidence, adversarial shape, stride, dtype, mask, numerical and async tests, strong library and compiler baselines, autotuning with correctness gates, dispatch with correct fallback and retained losing regimes. | Every custom path has a tested fallback and a version-pinned regression. |
-| Kernel-to-system integration | One reconstructed and modified production kernel, compiler or collective path carries TTFT, TPOT, memory, goodput and quality evidence with workload-weighted gain, held-out and portability tests and an honest negative result with its regime explained quantitatively. | The report defends dispatch and maintenance choice per family against a stronger baseline. |
-| Reproducibility and judgment | A clean checkout regenerates every table from locked code with raw samples and claim-to-artifact links, every protection has an injected-defect test, and multi-GPU numbers carry topology dumps with the NCCL version. | The workload-weighted report keeps losing rows and states which Hopper and Blackwell paths remain static audit. |
+| Correctness-first laboratory | The harness carries manifests, independent references, interleaved trials, operation and byte models, roofline analysis, timelines, counters and sanitizer regressions, with one command rebuilding the evidence. | Each claim links to raw samples and states clocks, boundaries and what was left untested. |
+| CUDA and Triton kernel suite | Data movement, reduction, softmax, tiled GEMM and one attention or fused path run in CUDA and Triton with public-suite evidence, adversarial tests, strong baselines, gated autotuning, tested fallback and retained losing regimes. | Every custom path has a tested fallback and a version-pinned regression. |
+| Kernel-to-system integration | One reconstructed production path carries TTFT, TPOT, memory, goodput and quality evidence with workload-weighted gain, held-out and portability tests and an honest negative result with its regime explained. | The report defends dispatch and maintenance choice per family against a stronger baseline. |
+| Reproducibility and judgment | A clean checkout regenerates every table with raw samples and claim-to-artifact links, every protection has an injected-defect test, and multi-GPU numbers carry topology dumps with the NCCL version. | The workload-weighted report keeps losing rows and states which paths your GPU could not run and remained static audit. |
 

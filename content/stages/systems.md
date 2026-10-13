@@ -619,25 +619,23 @@ This is optional repair, not a second systems curriculum. Assume Programming's i
 
 </details>
 
-### Mini-project: Mechanisms laboratory: a kernel, a process tree, a file and a container, each with a check
+### Mini-project: Mechanisms laboratory: kernel, process, memory, file and container
 
-**About 12 to 16 hours.** Start the one repository the whole stage builds on with its mechanisms laboratory: small C and Python experiments that each print a correctness check and keep their raw output beside the environment that produced it. Cover a vectorized kernel, a locality sweep, a supervised pipe worker, staged memory accounting, an atomic file publication and a retained container OOM. The publication helper and the supervisor carry into the service slice.
+**About 12 to 16 hours.** Build the repository-wide mechanisms laboratory that later sections reuse: small kernel, locality, process, memory, file and container experiments with correctness checks and retained raw output. Each experiment pairs a measurement with its environment so later claims stay reproducible.
 
-1. Create the repository with `lab/`, `kv/` and `dossier/` directories. Every lab experiment is one make target that writes its raw output and an environment file: `lscpu`, `lscpu -e`, `uname -r`, compiler and glibc versions (`ldd --version`), `python3 -VV` and the CPUs it was pinned to. Read the core map before pinning and choose one logical CPU per physical performance core, since SMT siblings share a core (on an i9-12900K, CPUs 0 and 1 are one core). Timed targets run one warm-up and at least five timed repeats and keep every raw time.
-2. Keep the `bump` and `chain` kernels with their `531996` checks and add a branch variant that sums only the odd elements, over random and over sorted input. Build each with `-O3 -march=x86-64-v3` and again with `-fno-vectorize -fno-slp-vectorize`, save `objdump -d` for every build, and check in the saved assembly whether the compiler kept the branch or turned it into a `select` or a vector blend before attributing any time difference to branch prediction. Time all variants pinned, with flags, warm-up and repeats in the table.
-3. Extend the row-first versus column-first traversal (`2139095040` per traversal) into two sweeps. The working-set sweep runs from 16 KiB to 256 MiB, doubling, with a dependent pointer chase over a random cyclic permutation and a sequential stream over the same buffer; the stride sweep walks one 64 MiB buffer at strides from 4 bytes to 4 KiB. Read cache sizes and the line size from `/sys/devices/system/cpu/cpuN/cache` before predicting where the chase slows, and make both loops print checksums that a Python oracle reproduces. Keep five pinned repeats per point and a topology note: one NUMA node in `lscpu` means no remote-NUMA claim.
-4. Write `lab/supervise.py`. Keep the launcher trace from the processes unit (`fork`, `execve` and `wait4` in `strace -f`, exit 7 and launch failure 127), then run a worker that talks to the parent over two pipes, and draw the descriptor ownership diagram before coding. Seed a leaked writer: a forked Python worker that runs without exec keeps every inherited descriptor, so if it keeps its copy of the request write end it never sees `EOF` and the parent times out waiting for the response. The regression test fails on the seeded worker and passes once the worker closes that end. Terminate a ready worker with `SIGTERM`, observe state `Z` with `waitid` and `WNOWAIT`, reap it and decode `WTERMSIG`, and make every exit path, including an exception in the parent, close its descriptors and reap.
-5. Keep the virtual-memory evidence: 4096 minor faults on the first write pass over a 16 MiB mapping of 4 KiB pages and 0 on the second, and a forked child's private write that leaves the parent's byte at 1. Extend the allocation probe to five allocate, free-even, reuse and free-all cycles, printing live requested payload beside `VmSize` and `smaps_rollup` `Rss`, `Pss` and private fields at every stage. Add one sparse mapping: 1 GiB anonymous with `MADV_NOHUGEPAGE` (with transparent huge pages set to `always`, each touch could fault a whole 2 MiB page), one byte touched per 2 MiB; `Rss` grows by about 2 MiB while `VmSize` grows by 1 GiB. Write the diagnosis: which retained memory is reusable allocator capacity, which is shared, and what pattern would show unbounded ownership growth instead.
-6. Turn the publication experiment into `lab/publish.py`: `publish_atomic(path, data)` writes a temporary file in the target directory, fsyncs it, renames it over the target and fsyncs the directory, raising if any step fails. Keep its strace on a disk-backed filesystem (check with `findmnt -T`) showing the payload write, file fsync, rename and directory fsync in that order, and test that a failure injected at each step leaves the old file intact and that a reader holding the old file still reads the old bytes. Keep the warm-cache `pread`, `mmap` and buffered comparison (`522240` for every variant) with five raw trials and the filesystem named, labeled as page-cache reads, not device latency.
-7. Run the OOM probe in `python:3.14-slim` pinned by digest with `--memory=64m` `--memory-swap=64m` `--cpus=0.5` `--cpuset-cpus=2` and no `--rm`. Retain `exit=137` and `OOMKilled=true` from `docker inspect`, the `memory.events` counts and the logs before `docker rm`. Compare configured limits from `docker inspect` with the effective ones the probe printed (`memory.max` `67108864`, `memory.swap.max` `0`, `cpu.max` `50000 100000` on a cgroup v2 host). Draw the namespace and credential diagram from `readlink /proc/1/ns/*` and `uid_map` and the mount diagram (image layers, the read-only bind mount, `tmpfs`). Write which PID 1 duties your Programming stage's shutdown evidence already shows and which it does not, and an orchestrator checklist separating exit-driven restart, readiness, liveness, eviction and volume lifecycle.
-8. Add the logic-machine oracle (the NAND-derived gates and the `Mult.asm` interpreter with `R2 = 0, 42, 0` and `32761`) to the lab, and give the whole lab one `make check` that rebuilds every experiment from a clean clone and asserts its correctness check before any timing is read.
+1. Create the repository with `lab/`, `kv/` and `dossier/` directories, where each experiment is one `make check` target that writes raw output beside its environment record of CPUs, kernel, compiler and interpreter versions and pinning.
+2. Build scalar, vectorized, dependency and branch variants of one reduction kernel, verify each sum against a Python oracle, and compare enabled and disabled vectorization in saved `objdump` output with pinned repeated timings.
+3. Extend the row-first and column-first traversals into working-set and stride sweeps, read the cache sizes from sysfs and predict where the knees fall, then check each sweep against a Python oracle and keep pinned repeated timings with a topology note.
+4. Write `lab/supervise.py` to run a pipe worker from a descriptor ownership diagram, keep a leaked-writer regression that fails before the fix, and show `SIGTERM` termination with zombie observation and reaping and closure on every exit path under `strace`.
+5. Trace first-touch faults and copy-on-write isolation, stage allocate, free, reuse and free-all cycles with snapshots of requested payload beside resident and virtual sizes, add one sparse mapping, and diagnose retained capacity apart from growth.
+6. Turn atomic publication into `lab/publish.py` with ordered write, file sync, rename and directory sync checked in `strace`, failure tests that leave the old file intact, and a cached read comparison labeled as page-cache reads.
+7. Retain one inspected Docker container OOM with namespace, credential and mount diagrams, configured limits compared with effective limits, PID 1 duties and an orchestrator checklist, and add the Nand2Tetris gate and assembler suites as the logic oracle.
 
 **Deliverables**
 
-- The `lab/` directory: one make target per experiment, raw outputs, environment files and a `make check` that asserts every correctness check (kernel sums, locality checksums, pipe round trip, payload totals, publication digest, logic oracle).
-- The kernel, locality and I/O tables with pinned raw repeats, flags, saved assembly, cache sizes, the filesystem and the topology note.
-- `lab/supervise.py` with its descriptor diagram, the leaked-writer regression and the zombie and reaping tests.
-- The memory diagnosis and the container report: retained OOM evidence, configured versus effective limits, namespace, credential and mount diagrams, PID 1 duties and the orchestrator checklist.
+- The `lab/` directory with one checked experiment per target, raw outputs, environment records and a passing `make check`.
+- Kernel, locality and I/O tables with pinned repeats, saved assembly, cache sizes and filesystem notes.
+- `lab/supervise.py` and `lab/publish.py` with diagrams, regression tests and the memory and container reports.
 
 **Checks**
 
@@ -645,13 +643,11 @@ This is optional repair, not a second systems curriculum. Assume Programming's i
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Correctness before timing | Every experiment prints a check that make check asserts, and make check passes from a clean clone. | Each timing table names the oracle it was checked against and a defect that oracle would catch. |
-| Measurement discipline | Every number carries the CPU, kernel, compiler or Python version, flags, pinning, warm-up and repeats, and raw times are kept. | Kernel and locality differences are explained from saved assembly and inspected cache sizes, and the write-up lists the effects it did not test, such as frequency scaling, TLB reach and prefetching. |
-| Processes and descriptors | The leaked-writer regression fails on the seeded worker and passes after the fix, the signal test observes Z and decodes WTERMSIG, and every path reaps. | The descriptor diagram predicts the close calls seen in strace, and an injected parent exception still leaves no zombie and no open pipe. |
-| Memory and files | The staged probe reports every live-payload total with current snapshots, the sparse mapping shows VmSize and Rss apart, and the publication strace shows write, fsync, rename and directory fsync in order. | The diagnosis separates allocator retention from growth using the five-cycle data, and the injected publication failures each leave the old file intact. |
-| Container boundary | `exit=137` and `OOMKilled=true` are retained with `memory.events` before cleanup, and configured and effective limits match or the difference is explained. | The orchestrator checklist names, for each action, the signal that triggers it and the evidence that would show it happened. |
+| Correctness before timing | Every experiment prints a check asserted by `make check`, and each table was verified against its Python oracle. | Each timing names its oracle and pinning, and the write-up explains assembly and cache evidence plus untested effects. |
+| Processes and descriptors | The leaked-writer test fails before the fix and passes after, and signal handling reaps on every path shown in `strace`. | The diagram predicts the observed closes, and an injected parent failure still leaves no zombie and no open pipe. |
+| Memory, files and containers | Staged snapshots separate retention from growth, publication failures keep the old file, and limits match effective values. | The diagnosis names the reusable capacity, the sparse case separates virtual from resident size, and the checklist ties each action to its trigger. |
 
-Feeds into: Capstone mechanisms laboratory: every experiment here is part of it. Service slice: `publish_atomic` publishes the store manifest, and the supervisor starts, signals and reaps the service in fault tests.
+Feeds into: Capstone mechanisms laboratory: every experiment here recurs there. The supervisor starts the service in fault tests, and `publish_atomic` publishes the store manifest.
 
 ### Resource route
 
@@ -1220,23 +1216,21 @@ Not every concurrent system needs a thread per connection. This unit closes the 
 
 ### Mini-project: Bounded admission and clean shutdown for the service slice, with forced schedules
 
-**About 10 to 14 hours.** Port the closable bounded queue and the `OPEN`, `CLOSING`, `CLOSED` drain into the Python worker pool that will run the service slice. Force one safety failure and one liveness failure with deterministic schedule shims, repair both, then drive the pool through saturation and show that held work stays bounded, expired work never starts and the pool recovers.
+**About 10 to 14 hours.** Port a closable bounded queue and drain states into the Python worker pool that will serve later requests. Force schedule-driven safety and liveness failures, repair them, then prove admission stays bounded and shutdown stays clean under overload.
 
-1. Keep the C programs from the units in `lab/concurrency`: the racy and ThreadSanitizer-clean counters, the lost-wakeup demo, the deadlock and its ordered repair, the closable bounded queue (2 producers of 5000 items and 2 consumers drain exactly 10000, `put` after close and `take` after drain return `-1`) and the drain demo (`done=3` `pending=0` `state=2`, `admit-after-close=0`). `make check` rebuilds them with and without `-fsanitize=thread` and asserts their outputs.
-2. In `kv/pool.py` write the Python equivalent on `threading.Condition`: a `ClosableQueue(capacity)` whose `put` never blocks and returns `False` when full or closed, whose `take` waits in a while loop and returns `None` once closed and drained, and a `WorkerPool` with states `OPEN`, `CLOSING` and `CLOSED`. `close()` stops admission, lets workers finish admitted jobs within a drain deadline, then cancels what is left and reports the counts. Port the C queue's cases as tests: capacity 4, 2 x 5000 puts retried until accepted, every item taken exactly once, puts after close rejected.
-3. Give every job a request ID and an absolute deadline on `time.monotonic()`. A worker checks the deadline when it takes a job and drops an expired job without starting its effect, counting it as cancelled; a running job checks a cancellation flag between steps. Test that a job whose deadline passes while it is queued never runs.
-4. Force a safety failure with a shim. The handler deduplicates by request ID with check-then-act (`if rid not in done:` apply, then `done.add(rid)`). Put a `threading.Barrier(2)` between the check and the effect and submit the same request twice: both threads pass the check and a +5 credit applies twice (10 on CPython 3.14.4). Repair it by claiming the ID under a lock before the effect (`IN_PROGRESS`, then `DONE`), keep the shim in the test, and assert the effect applies once.
-5. Force a liveness failure the same way: one path takes the index lock then the log lock, the other takes them in the opposite order, with a barrier after each first acquisition; both threads are still alive after a 2 s join timeout. Repair it with one global order (index before log) and give the barrier a timeout: after the fix the forced schedule is unreachable, so the barrier breaks instead of the test hanging, and both threads finish. Run each forced test 20 times, then add a seeded stress test with random sleeps and an exact oracle (final credits and the number of applied request IDs).
-6. Predict capacity as workers divided by service time, then drive the pool past it: for example 4 workers that sleep 10 ms per job (about 400 jobs per second) at offered rates of 200, 400 and 800 per second. Record offered, accepted, rejected, cancelled and completed counts, queue length sampled every 10 ms and latency percentiles from raw samples. Queue length never exceeds capacity, so held jobs stay bounded by capacity plus workers at every rate, and accepted plus rejected equals offered. After the flood stops, show the queue draining and latency returning to its idle value.
-7. Close the pool in the middle of a flood: admission stops at once, and admitted jobs finish within the drain deadline or are cancelled and counted, so admitted equals done plus cancelled. Wire `close()` to `SIGTERM` in a small server process started by `lab/supervise.py` and test the signal path end to end.
-8. Compare one contention choice in Python: a single lock around the dedup state against a per-key lock table, pinned to physical cores with `taskset`, one warm-up and five repeats, exact totals asserted on every run. Name the Python build: in the default build the GIL lets only one thread run Python bytecode at a time, so the comparison measures lock handoff and waiting, not parallel speedup.
+1. Keep the C programs from the units in `lab/concurrency`: racy and clean counters, lost wakeup, deadlock and repair, closable queue and drain demo, rebuilt and asserted by `make check` with and without ThreadSanitizer.
+2. Write `kv/pool.py` with `ClosableQueue` and a `WorkerPool` owning `OPEN`, `CLOSING` and `CLOSED`, where close stops admission, drains admitted jobs within a deadline, then cancels and reports the remainder, tested against the ported C queue cases.
+3. Give every job a request identity and an absolute deadline on `time.monotonic()`, drop expired jobs before their effect while counting them, and let running jobs observe cancellation between steps, with tests for both.
+4. Force a double-apply failure by interleaving duplicate requests through check-then-act with a schedule shim, then claim each identity under a lock before its effect and keep the shim as a regression test.
+5. Force a lock-order deadlock with a shim that stages opposite acquisitions, repair it with one global order, and add a randomized stress test that compares final state against an exact oracle.
+6. Predict capacity from workers over service time, drive the pool past it across rising offered rates, and show held work stays bounded, offered work is accounted for, and latency recovers after the flood.
+7. Close the pool mid-flood so admission stops and admitted jobs finish or cancel within the deadline, wire `close()` to `SIGTERM` through `lab/supervise.py`, and compare one lock-granularity choice with pinned repeats, naming what the interpreter lock permits the test to show.
 
 **Deliverables**
 
-- `kv/pool.py` and its tests: exactly-once `take`, rejection when full or closed, deadline cancellation and drain counts.
-- The two forced-schedule tests (double effect, lock-order deadlock), each failing on the seeded code and passing after the repair, plus the seeded stress test and its oracle.
-- The saturation table at three offered rates and after recovery, with the capacity prediction, and the SIGTERM drain report.
-- The C programs in `lab/concurrency`, rebuilt and asserted by `make check` with and without ThreadSanitizer.
+- `kv/pool.py` with bounded admission, deadline cancellation and drain accounting, plus tests ported from the C queue cases.
+- The two forced-schedule regressions with their repairs, plus a randomized stress test against an exact oracle.
+- Saturation, shutdown and contention reports with predictions, raw samples and recovery evidence, and the C programs under `make check`.
 
 **Checks**
 
@@ -1244,12 +1238,11 @@ Not every concurrent system needs a thread per connection. This unit closes the 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Forced failures | Each shim reproduces its failure in all 20 runs, and each repair passes 20 runs with the shim still in place. | The write-up says why the stress test alone might miss each failure, with its seed count and observed miss rate. |
-| Bounded work | Queue length never exceeds capacity, `put` never blocks the caller, and accepted plus rejected equals offered at every rate. | The capacity prediction is written before the sweep, and the measured knee is explained against it. |
-| Cancellation and shutdown | Expired jobs never start, `close()` stops admission at once, and admitted equals done plus cancelled after `SIGTERM`. | A job that raises halfway is counted, and its effect is shown to be either complete or absent, never half applied. |
-| Evidence | Every timing names the Python build, CPU, pinning, warm-up and repeats, and the C programs pass under ThreadSanitizer. | The contention comparison states what the GIL build can and cannot show and keeps raw times. |
+| Forced failures | Each shim reproduces its failure before the repair and passes after, with the shim kept as a regression test. | The write-up explains why randomized stress alone could miss each failure, and kept runs show the miss. |
+| Bounded work | Held work stays bounded at every offered rate, every offered job is accounted for, and expired jobs never start. | The capacity prediction precedes the sweep, and the measured knee is explained against it. |
+| Shutdown and evidence | Close stops admission at once with admitted work finished or counted, and the signal path works end to end. | The contention comparison states what the interpreter lock can show, and raw times with pinning are kept. |
 
-Feeds into: Capstone service slice: the pool is its bounded admission, cancellation and shutdown path. Mechanisms laboratory: the C programs and forced schedules are its controlled concurrency failure and bounded queue.
+Feeds into: Capstone service slice: the pool gives bounded admission, cancellation and shutdown. The C queue and forced schedules join the mechanisms laboratory.
 
 ### Resource route
 
@@ -1760,25 +1753,22 @@ Robustness claims are predictions until a fault schedule runs. This unit builds 
 
 </details>
 
-### Mini-project: A versioned framed key-value service with request identity, deadlines and a fault matrix
+### Mini-project: Versioned framed key-value service with deadlines and fault matrix
 
-**About 12 to 16 hours.** Put the service slice on the network: a TCP key-value service with a length-prefixed frame, a versioned payload, request IDs and trace context, deadline propagation and idempotent writes, running its work through the pool from the concurrency section. Then build a deterministic fault proxy and pass the full fault matrix with a verdict for every case.
+**About 12 to 16 hours.** Put the service slice on the network with a versioned framed protocol, request identity, deadlines and idempotent writes served through the bounded pool. Then prove the contract with a deterministic fault proxy and a full verdict matrix.
 
-1. Define the wire format in `kv/protocol.py`: a 4-byte big-endian length followed by a UTF-8 JSON payload of at most 64 KiB, with a 30 s deadline for receiving a whole frame. The payload carries `v` (protocol version), `id` (request ID), `op` (`put`, `get` or `delete`), `key`, `value`, `idem` (an idempotency key for writes), `deadline_ms` (the caller's remaining budget) and `traceparent`. Write the framer as a pure function over a byte buffer and test it with two frames split at every offset, `recv(5)` reads, an oversized length, a zero length and a frame cut off by close.
-2. Serve it with threads that only read frames and admit work: every decoded request goes into the `WorkerPool`, a full queue answers at once with an overloaded error, and each response echoes `id` and keeps the `trace-id` with a new `parent-id`. An unknown version gets a typed error naming the supported versions, and unknown payload fields are ignored so a newer client can still talk to an older server.
-3. Propagate deadlines without comparing clocks across processes: the client sends its remaining budget, the server turns it into an absolute deadline on its own monotonic clock at arrival, and anything it calls gets only what remains. Check the AlgoMaster case in a test (`[10,20,5]` with bounds `[80,100,10]` gives `[90,90,45]`), and show with the proxy below that a 200 ms delay against a 100 ms client deadline gives a client timeout although the server did the work.
-4. Make writes idempotent: an idempotency table keyed by `(client, idem)` holds `IN_PROGRESS` or `DONE`, the stored response and a hash of the request body. A duplicate of a `DONE` write replays the stored response, a duplicate during `IN_PROGRESS` never starts the effect again and gets an in-progress error the client may retry, and the same key with a different body is rejected. Client retries use capped exponential backoff with full jitter, only for errors the protocol marks retryable, and stop at the caller's deadline.
-5. Write `kv/client.py` with a connection pool sized by Little's Law from your target rate and measured hold time (600 requests per second at 50 ms is 30 connections busy on average, so 30 leaves no headroom), a per-request deadline and request IDs generated by the client. Test pool exhaustion: a caller waiting for a connection gives up at its deadline instead of queuing forever.
-6. Write a fault proxy between client and server driven by a schedule file: a seed plus, per connection and frame number, one action (pass, delay ms, drop request, drop response, duplicate, split into 1-byte writes, coalesce with the next frame, truncate and close, corrupt the length). It logs every action it takes, and the same schedule must produce a byte-identical action log on every run.
-7. Pass the fault matrix: partial (1-byte writes), coalesced, oversized, malformed, timeout, duplicate, disconnect and server restart. For each case write a verdict row with the fault parameters, the client observation (result, error or timeout), the server state (applied writes and idempotency entries) and whether the effect is known applied, known not applied, unknown or safely repeated. Duplicated and retried writes must leave exactly one applied effect. State lives in memory until the next section, so keep the restart row as the open durability gap and rerun it there.
-8. Capture one put with `tcpdump -i lo` (capturing needs root or `CAP_NET_RAW`), or run the server in a container and attach a netshoot container to its network namespace (`--network container:NAME --cap-add NET_ADMIN --cap-add NET_RAW`). Label the handshake, the length prefix, the payload bytes and the close, and keep the capture with the write-up.
+1. Define the length-prefixed versioned frame in `kv/protocol.py` as a pure function over a byte buffer, and test splits at every offset, small reads, oversized and truncated inputs and newer-client compatibility.
+2. Serve decoded requests through the `WorkerPool` with immediate overload answers when full, echo `id` and continue the trace with a new parent, and reject unknown versions while ignoring unknown fields.
+3. Propagate caller budgets as arrival-based deadlines on the monotonic clock, make writes idempotent by key with replay and rejection rules, and retry only retryable errors with jittered backoff inside the deadline.
+4. Write `kv/client.py` with client-generated request identity, a pool sized from target rate and hold time, per-request deadlines, and a test where a caller waiting for a connection gives up at its deadline.
+5. Write a schedule-driven fault proxy that logs every action and replays byte-identical logs, then pass the full fault matrix with a verdict row per case and exactly-once effects under duplication and retry, leaving the restart row for the durability section.
+6. Capture one put with `tcpdump` or a container-attached capture, label the handshake, length prefix, payload bytes and close, and keep the capture with the write-up.
 
 **Deliverables**
 
-- `kv/protocol.py`, `kv/server.py` and `kv/client.py` with framer, version, deadline, idempotency, retry and pool tests.
-- The fault proxy, its schedule format and action logs showing that a replayed schedule is byte-identical.
-- The fault matrix: eight cases with fault parameters, client observation, server state and verdict, and the restart row marked as the open durability gap.
-- One labeled packet capture of a put.
+- `kv/protocol.py`, `kv/server.py` and `kv/client.py` with framing, identity, deadline, idempotency, retry and pool tests.
+- The schedule-driven fault proxy with replayable logs and the full verdict matrix, with restart marked for durability.
+- One labeled packet capture of a put with the handshake, frame and close identified.
 
 **Checks**
 
@@ -1786,12 +1776,11 @@ Robustness claims are predictions until a fault schedule runs. This unit builds 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Framing | The framer returns the same messages for every split offset and rejects oversized, zero-length and truncated frames with typed errors. | A property test over random payloads and random splits backs the offset tests. |
-| Identity and deadlines | Responses echo `id` and trace context, budgets shrink hop by hop on monotonic clocks, and expired work never starts. | A test shows a request whose budget runs out in the queue is dropped by the pool, and the client sees a deadline error, not a late success. |
-| Idempotency and retries | Duplicates of `DONE` writes replay, duplicates during `IN_PROGRESS` never start a second effect, and a reused key with a different body is rejected. | Retries are jittered, stop at the deadline and back off on the overloaded error, and a seeded test counts the attempts. |
-| Fault matrix | All eight cases have verdict rows, replayed schedules give byte-identical action logs, and duplicated or retried writes apply once. | Every unknown outcome names the probe that would resolve it, such as a read by idempotency key. |
+| Framing and identity | Split, oversized and truncated frame tests pass, responses echo identity, and unknown versions and fields behave. | A randomized split and payload property test backs the offset cases. |
+| Deadlines and idempotency | Budgets shrink hop by hop on own clocks, expired work never starts, duplicates replay or wait, and mismatched bodies reject. | A forced queue-expiry test shows the client sees a deadline error rather than a late success. |
+| Fault evidence | Every matrix case has a verdict row, replays give identical logs, and duplicated work applies once. | Each unknown outcome names the probe that would resolve it. |
 
-Feeds into: Capstone service slice: the versioned framed RPC, request identity, deadlines, retries and the deterministic network faults. Dossier: the fault matrix is part of its failure evidence.
+Feeds into: Capstone service slice: framed RPC, identity, deadlines, retries and deterministic network faults. The matrix joins the dossier and restart passes once durable.
 
 ### Resource route
 
@@ -2341,25 +2330,23 @@ Assume Programming's schema-evolution-migrations unit. Stored encodings outlive 
 
 </details>
 
-### Mini-project: Durable state for the service slice and a PostgreSQL catalog with transaction evidence
+### Mini-project: Durable service state and PostgreSQL catalog with transaction evidence
 
-**About 14 to 20 hours.** Make the service slice durable: a checksummed append-only log with a rebuildable index, crash recovery at every publication boundary, compaction with versioned records and an acknowledged-prefix oracle. Beside it, keep the service's tenant and credential metadata in PostgreSQL 18 and produce the dossier's SQL evidence: constraints, a join rewrite, a point-in-time export, a query-plan change, a write-skew test and an MVCC visibility trace.
+**About 14 to 20 hours.** Make the service slice durable with a checksummed log, rebuildable index, crash recovery and versioned compaction, and keep tenant metadata in PostgreSQL 18. Produce the dossier SQL evidence for constraints, plans, transactions and visibility.
 
-1. Store every write in `kv/store.py` as a frame: `struct.pack(">II", length, crc)` plus the payload, with `crc = zlib.crc32` of the packed length and the payload, as in the WAL unit; the payload is a versioned record (`v`, `tenant`, `key`, `value` or `tombstone`, `idem`). Append with a short-write loop and `fsync` before the server acknowledges, and `fsync` the directory when a log file is created. If `fsync` fails, stop accepting writes and acknowledge nothing more: a later `fsync` can succeed without the lost pages having reached the disk. Recovery scans validated frames; an incomplete tail is truncated as never acknowledged, and a complete frame with a bad CRC or an oversized length is corruption that stops recovery with an error.
-2. Rebuild the index from the log at start: a `dict` from `key` to the offset of its newest record for point reads and a sorted key list (`bisect`) for range reads. Test point, missing-key, range-boundary and tombstone fixtures against a `dict` oracle replayed from the same records. In the `README`, derive with the unit's model what an ordered on-disk index over 1,000,000 keys would need (fanout 168: 5953 leaves, 36 parents and a root, three page visits per uncached lookup) and why the in-memory hash index needs no pages but must be rebuilt on every start.
-3. Test every boundary against an acknowledged-prefix oracle. Run numbered writes in a child process and crash it with `os._exit` at each injected point (mid-payload, after write before `fsync`, after `fsync` before the acknowledgement, after the acknowledgement), and truncate a log at every byte offset (for the unit's three 11-byte frames, offsets 0 to 33: 34 cases). After each recovery, the state must equal the oracle replay of a prefix of the attempted writes that contains every acknowledged one, and a flipped payload byte must raise a corruption error. Call these process-exit and truncation tests, not power-loss tests. Rerun the fault matrix's restart row: it now passes.
-4. Compact by writing a new generation that keeps the newest record per key, tombstones included, publish a manifest naming the live generation with `lab/publish.py`, and delete the old generation only after the manifest is durable. Crash before, during and after publication and show recovery always opens a complete old or new generation. Drop a tombstone only when no older generation or retained snapshot could still hold the key, and keep a test showing the deleted key coming back when it is dropped early. Count logical bytes separately for appends, flushes and compaction rewrites; the unit's toy runs give $`160/96=5/3`$.
-5. Version the record: v1 holds `key` and `value`, v2 adds an optional `expires_at` that defaults to `null`. Test all four writer and reader combinations; an old reader that rewrites a v2 record during compaction must keep the field it does not know. Treat a change to the type of `value` as a new field, not as v2.
-6. Model a buffer pool in front of the read path: four frames with pin counts, dirty bits and a clock or LRU victim choice. Test the two hard cases: with every frame pinned there is no victim and the request fails with a typed error, and a failed write-back of a dirty victim keeps its mapping and dirty bit and surfaces the error. Choose the layout for this store's reads (point gets by key, short range scans) and say why a row-oriented log fits and when a columnar copy would.
-7. In `postgres:18`, create the catalog: `tenant`, `credential (tenant, role, active, expires_at)`, `segment (generation, path, sha256, published_at)` and `usage (tenant, event_at, available_at, puts)`, with keys, `NOT NULL` and `CHECK` constraints doing the validation, and test each rejection. Rewrite one join with its filter moved into a subquery and test bag equivalence (`EXCEPT ALL` both ways is empty), plus `COUNT` of a join against `EXISTS`. Export the as-served usage rows at a cutoff (`event_at` and `available_at` at or before it, ties broken by a unique key), with tests for `NULL` `puts`, tied event times and rows exactly at the cutoff, inside a read-only `REPEATABLE READ` transaction, store the SQL, cutoff and SHA-256, backfill a late row and show the saved export still verifies.
-8. For one catalog query that joins, filters and aggregates, save `EXPLAIN (ANALYZE, BUFFERS)` before and after one index change, with data sizes, `ANALYZE` state, settings and versions, labeled as warm cache, and boundary tests (empty result, one row, ties) giving the same answers both ways. Reproduce write skew on the rule that every tenant keeps an active admin credential: two `SERIALIZABLE` transactions, held at a barrier until both have counted 2, each deactivate a different admin, and one fails with `40001` (on PostgreSQL 18.6 the second `COMMIT` failed). Show its update never became visible, restart it from `BEGIN`, recheck the rule and refuse. Show in `pg_stat_activity` that a blocked row update waits with `wait_event_type` `Lock` and `wait_event` `transactionid`, a transaction wait rather than a buffer latch (`LWLock`), and trace `xmin`, `xmax` and `ctid` of one row before and after an update commits.
+1. Store every write as a checksummed frame acknowledged only after `fsync`, refuse further writes after an `fsync` failure, and test every short-write and truncation boundary against an acknowledged-prefix oracle, rejecting corruption.
+2. Rebuild a key-to-offset index with range support and check it against a replayed oracle, derive the ordered-index page cost against the hash rebuild, and model a pinned buffer pool with its no-victim and failed-writeback cases, choosing the layout for point and scan reads.
+3. Compact by publishing a manifest with `lab/publish.py` that names the live generation, recover to one complete generation after a crash at each step, retain tombstones until safe, version records compatibly across all writer and reader combinations, and count logical bytes by kind.
+4. Model tenants, credentials, segments and usage in PostgreSQL with keys and constraints doing the validation, and rewrite one join with its filter moved, proving bag equivalence both ways, with each rejection tested.
+5. Export the as-served usage rows at a cutoff inside a read-only `REPEATABLE READ` transaction, cover nulls, ties and exact-cutoff rows with backfill stability, and store the query, cutoff and digest.
+6. Compare `EXPLAIN` output before and after one index change with sizes and settings recorded and boundary results equal, force write skew across two `SERIALIZABLE` transactions with restart and recheck, and trace tuple visibility while separating lock waits from latches.
 
 **Deliverables**
 
-- `kv/store.py`: checksummed log, index rebuild, compaction with manifest publication and versioned records, with the crash, truncation, corruption, tombstone and compatibility tests.
-- The acknowledged-prefix report: every injected boundary, the recovered prefix and the acknowledged writes it contains.
-- `dossier/sql/`: the catalog schema, constraint tests, join equivalence, the point-in-time export with its digest, the plan comparison and the write-skew and visibility transcripts.
-- The buffer pool model with its tests and the layout note.
+- `kv/store.py` with checksummed log, rebuilt index, manifest compaction and versioned records, plus crash and compatibility tests.
+- The acknowledged-prefix report across every injected boundary with recovered prefixes and retained corruption cases.
+- The catalog, export, plan and transaction evidence with digests, equivalence proofs and visibility traces.
+- The buffer pool model with its failure tests and the layout choice for the store reads.
 
 **Checks**
 
@@ -2367,13 +2354,11 @@ Assume Programming's schema-evolution-migrations unit. Stored encodings outlive 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Durability contract | No write is acknowledged before `fsync`, a failed `fsync` stops writes, and the oracle passes at every injected boundary and truncation offset. | The `README` states what the tests cover (process exit, truncation, bit flips) and what they cannot (power loss, lying caches, lost or misdirected writes). |
-| Recovery and compaction | Recovery opens a complete old or new generation after a crash at every publication step, and deleted keys stay deleted. | The early tombstone drop is kept as a regression test, and the byte counters separate append, flush and rewrite work. |
-| Index and compatibility | The rebuilt index agrees with the oracle on point, range and tombstone fixtures, and all four version combinations pass. | The page-capacity derivation and buffer pool tests explain what an on-disk ordered index would add. |
-| SQL evidence | Constraints reject bad rows, the join rewrite is bag-equivalent, the export verifies after a backfill, and the plan comparison records sizes, settings and versions. | The plan change is explained from actual rows, loops and buffers, not from timing alone. |
-| Transactions | The write-skew test produces `40001`, the retry refuses the second deactivation, and the visibility trace shows the old and new tuple versions. | The dossier draws the read-write dependency cycle and separates the lock wait from a latch with quoted `pg_stat_activity` output. |
+| Durability and recovery | No write is acknowledged before `fsync`, failures stop writes, and the oracle passes at every boundary with corruption rejected. | The report states which failures the tests cover and which real faults lie outside them. |
+| Index, versions and compaction | The rebuilt index matches the oracle, all version combinations pass, and recovery opens one complete generation with tombstones held. | An early tombstone drop is kept as a regression, and byte counters separate the kinds of work. |
+| SQL and transactions | Constraints reject bad rows, the rewrite proves equivalent, the export verifies after backfill, and the skew test restarts cleanly. | Plans are explained from rows and buffers, and visibility evidence separates waits from latches. |
 
-Feeds into: Capstone service slice: checksummed append-only state, crash recovery and the transaction invariant. Dossier: the SQL, query-plan and transaction evidence.
+Feeds into: Capstone service slice: durable state, recovery and the transaction invariant. The dossier keeps the SQL, plan and visibility evidence.
 
 ### Resource route
 
@@ -2865,23 +2850,20 @@ This optional unit connects local process and RPC mechanisms to a distributed ba
 
 ### Mini-project: Deterministic replication and stream-replay simulation over the service log
 
-**About 14 to 20 hours.** Simulate the service slice replicated and consumed, in one process with logical ticks: a leader and followers with configuration IDs, ownership transfer with fencing, and a consumer group that replays the log into derived state. Drive it through lag, duplicates, a stale read, an ownership change, replay and node loss, then defend the contract with one history it permits and one it rejects.
+**About 14 to 20 hours.** Simulate the service log replicated and consumed in one process on logical ticks, with ownership transfer, fencing and a replaying consumer group. Drive it through lag, loss and replay, then defend a one-page acknowledgement and consistency contract.
 
-1. Write `kv/sim/scheduler.py`: an event loop over integer ticks with a stable insertion-order tie-break and one seeded random source owned by the scheduler. A schedule delivers, delays, drops or duplicates messages, and crashes nodes, which lose volatile state, keep what they persisted and can restart. Every run writes the client history $`(\text{process}, \text{operation ID}, \text{object}, \text{input}, \text{invocation tick}, \text{response tick}, \text{result})`$ as JSON, and the same seed must give a byte-identical history three times.
-2. Model three replicas of the service log. The leader acknowledges according to a declared mode, after its own `fsync` or after a majority has persisted, and every operation records the configuration ID it used. Reproduce asynchronous-failover loss (the leader acknowledges, dies, and a follower without the write is promoted) and the unit's stale-membership read (write through A, B, C; read through C, D, E before state transfer returns 0). Then show that majority persistence with a membership change that blocks reads in the new configuration until state transfer completes keeps the acknowledged write in the same schedules.
-3. Write `kv/sim/check.py`: a brute-force linearizability checker for one register over small histories that enumerates orders respecting response-before-invocation and treats a timed-out write as possibly applied. It must reject the unit's H1 and the stale-follower read, and accept H2 and the leader-read repair. Add checks for read-your-writes and monotonic reads, and classify every history you produce as linearizable, session consistent only, or neither.
-4. Add a multi-writer mode with last-write-wins on $`(\text{timestamp}, \text{node})`$ and reproduce the lost update: two concurrent writes converge to one value in both arrival orders, and the other acknowledged write is gone. Write an application merge for a set with removals (tombstoned elements or an observed-remove set) and test the unit's cart case: removed items stay removed, where plain union brings them back.
-5. Partition keys over 12 fixed shards owned by nodes. Move shards 3, 7 and 11 to a new node (three keys move, where remapping $`k \% 3`$ to $`k \% 4`$ moves nine) and count requests per node under a hot key (90 requests for key 0 give `[93, 4, 4]` over three nodes). Transfer ownership with a fencing token persisted at the log resource with the mutation: a delayed write from the old owner with token 7 is rejected after the resource has seen token 8 and accepted before. Keep both schedules, and the overwrite when the check is removed.
-6. Treat each replica log as a retained partition and write a consumer group that applies records to derived state in SQLite, storing the next offset in the same transaction, one checkpoint per group and partition. Crash it at each boundary (offset before effect, effect before offset, inside and after the transaction) and show only the atomic version matches a sequential oracle; two groups keep independent checkpoints. Mark an external effect (an email stub) as outside the transaction and give it its own idempotency key.
-7. Add event time: records carry `event_at`, the watermark is the maximum seen minus a declared lateness, windows are width-10 tumbling, and late events go to a side output (with lateness 3, the unit's `[2, 12, 4]` gives late `[4]` and watermark 9). Retry a poison record a bounded number of times, then move it to a durable dead-letter table with its offset, reason and replay policy, and mark the window output incomplete. Report offset lag (end offset minus the group's next offset) apart from event-time lateness. Snapshot with the next offset, compact keeping tombstones, kill the consumer node and show snapshot plus suffix equals full replay; then show an expired tombstone bringing back a deleted key.
-8. Run one scenario through lag, a duplicate, a stale read, an ownership change, a replay and a node loss, and write the contract on one page: what an acknowledgement means, which consistency reads get in each mode, the consumer's delivery guarantee and what is excluded. Give one history it permits and one it rejects, each checked by `kv/sim/check.py`. Optionally trace a two-map word count over the log with one failed attempt kept private and a retry checked against a `Counter` oracle ($`a=2`$, $`b=2`$, $`c=1`$; $`a=4`$, $`b=3`$, $`c=1`$ if both attempts publish).
+1. Write `kv/sim/scheduler.py` as an event loop over integer ticks with stable tie-breaks and one owned random source, where every fault comes from the schedule and each run writes a client history that repeats exactly.
+2. Model leader and follower replicas with acknowledged modes and configuration IDs on every operation, reproduce failover loss and stale-membership reads, then show persisted majority with coordinated membership keeps acknowledged writes.
+3. Write `kv/sim/check.py` as a small-history linearizability checker that treats timeouts as possibly applied, classify each history produced, and reproduce last-write-wins loss beside an application merge that keeps removals removed.
+4. Shard keys over fixed partitions, move a few shards and count per-node load under a hot key, then transfer ownership with a persisted fencing token that rejects delayed writes from the old owner, keeping the overwrite that happens without the check as a regression.
+5. Replay each replica log through a consumer group that checkpoints progress atomically with its effects, crash it at each boundary against a sequential oracle, and add watermarks, bounded retries with dead letters, snapshots, tombstone expiry and external effects with their own keys.
+6. Run one scenario through lag, duplication, stale reads, ownership change, replay and node loss, defend the contract with one permitted and one rejected history checked by the checker, and optionally trace a batch word count with a failed attempt kept private.
 
 **Deliverables**
 
-- `kv/sim/`: scheduler, replicas, fencing, consumer and stream state, with tests that replay every seeded scenario byte for byte.
-- `kv/sim/check.py` with the linearizability and session checks and their fixtures (H1, H2, stale read, repair).
-- The scenario histories as JSON and the one-page contract with its permitted and rejected history.
-- The consumer crash-boundary table and the stream-state tests: late data, dead letters, snapshot plus suffix and tombstone expiry.
+- `kv/sim/` with scheduler, replicas, fencing, consumer and stream state, replaying every scenario exactly.
+- `kv/sim/check.py` with linearizability and session checks plus fixtures, and the crash-boundary and stream-state tables.
+- Scenario histories with the one-page contract and its permitted and rejected history.
 
 **Checks**
 
@@ -2889,13 +2871,11 @@ This optional unit connects local process and RPC mechanisms to a distributed ba
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Determinism | The same seed gives byte-identical histories, and every fault comes from the schedule, not from wall-clock timing. | A failing scenario found by a random seed is cut down by hand to a short schedule kept as a regression. |
-| Replication and membership | Asynchronous-failover loss and the stale-membership read are reproduced with configuration IDs on every operation, and the repaired mode keeps the acknowledged write. | The write-up separates quorum intersection, persisted acknowledgements and membership coordination as three distinct requirements. |
-| Checker | The checker rejects H1 and the stale read, accepts H2 and the repair, and treats timed-out writes as possibly applied. | Every produced history is classified, and one fixture is accepted only because a pending write may have taken effect. |
-| Ownership and replay | Fencing rejects the delayed write once the resource has seen the new token, and only the atomic consumer matches the oracle at every crash boundary. | The dead-letter path and the tombstone-expiry failure each state which completeness claim they change. |
-| Contract | The one-page contract names the acknowledgement meaning, read consistency, delivery guarantee and exclusions, with one permitted and one rejected history. | Every claim in the contract points to the scenario and test that support it. |
+| Determinism and checking | Repeated runs give identical histories from the schedule alone, and the checker accepts and rejects its fixtures. | A randomly found failure is cut down to a short schedule kept as a regression. |
+| Replication and ownership | Failover loss and stale reads are reproduced with configuration IDs, and the repaired mode keeps acknowledged writes while fencing rejects stale owners. | The write-up separates quorum intersection, persisted acknowledgement and membership coordination. |
+| Replay and contract | Only the atomic consumer matches the oracle at every boundary, and the contract pairs each claim with its permitted and rejected history. | Dead letters and tombstone expiry each state the completeness claim they change. |
 
-Feeds into: Capstone service slice: the offset invariant and the deterministic process faults. Dossier: the distributed history with its permitted and rejected cases.
+Feeds into: Capstone service slice: the offset invariant and deterministic faults. The dossier keeps the distributed history with its two checked cases.
 
 ### Resource route
 
@@ -3458,22 +3438,20 @@ Reliability without cost is a wish. This unit turns the saturation and capacity 
 
 ### Mini-project: Telemetry, a load sweep through the knee, overload control and one incident
 
-**About 12 to 16 hours.** Make the service slice measurable and keep it upright past its capacity: instrument the request path, predict the knee from measured service time, sweep through it with an open-loop generator, add overload controls, then inject one incident, recover from the runbook and write the postmortem. The SLO, capacity and 10x plan go into the dossier.
+**About 12 to 16 hours.** Make the service slice measurable and upright past capacity with telemetry, a predicted knee, a retained-record load sweep and overload controls. Then inject one incident, recover from the runbook and file the SLO, capacity and postmortem in the dossier.
 
-1. Instrument every request with request ID, trace context, queue wait, handler time, storage time (write plus fsync), status and bounded labels (operation, status class, protocol version). Write telemetry to JSON Lines files: one raw record per request kept for the whole run, plus counters and fixed-bucket latency histograms (for example 1, 3, 10, 30 ms and so on to 3 s). Enforce a cardinality budget in a test: the product of label value counts must stay under your declared limit, so adding a client ID label fails it; client IDs live on sampled trace records only.
-2. Predict before measuring. From the mean service time $`S`$ measured at one worker, capacity is at most $`\text{workers}/S`$, and lower if `fsync` calls serialize on the one log file; batching acknowledgements behind one `fsync` (group commit) raises it. Write the predicted knee and the queue length Little's Law gives at 50%, 80% and 95% of that capacity.
-3. Write an open-loop generator: a seeded Poisson schedule computed in advance, latency measured from the intended send time, every raw record kept. Sweep at least five offered rates from well below to past the predicted knee, drop a warm-up and repeat each rate three times. Report p50, p95 and p99 from raw samples with $`n`$, throughput, goodput, queue depth, utilization and errors, check $`L = \lambda W`$ against sampled queue depth, and measure recovery time after the overload stops. Run the closed-loop twin at one rate and explain why it hides the tail.
-4. Write the SLO: an availability SLI (good over valid requests) and a latency SLI (the fraction under a threshold), a 30-day target with its budget (99.9% allows 43.2 minutes), the alert you would page on and the failure domains the single node shares (disk, host, power). Derive capacity at a 0.7 utilization target now and at 10x load, and what you would shed, degrade or remove instead of only adding machines.
-5. Add overload controls and show each one under the same injected overload, with goodput and p99 with and without it: bounded admission with an overloaded error, client-side adaptive throttling from the client's own request and accept counts ($`K = 2`$ as in the SRE book), a per-client retry budget (the unit uses 5% of requests) with jittered backoff, a breaker on the store call whose fallback serves cached reads marked stale, and deadline propagation with cancellation.
-6. Add a version flag and a canary split: send a declared fraction of requests to the new version, compare its error rate and p99 with the stable version over the same window, and roll back automatically when either crosses its threshold. Test the rollback with a deliberately slow version.
-7. Inject one incident whose cause a script picks from a seeded list, so you do not know it in advance: a corrupted log record, slow `fsync` from a container started with `--device-write-bps`, or a bad canary. Work it from the telemetry and the runbook: a timeline with detection, diagnosis, mitigation and recovery times, a restore from the last verified backup with measured RTO and counted RPO loss (writes acknowledged after the backup), a blameless postmortem with owned actions and one merged regression guard.
+1. Instrument every request with identity, trace context, queue, handler and storage timings, status and bounded labels, export raw records with counters and fixed-bucket histograms, and enforce a cardinality budget that fails on an unbounded label.
+2. Predict the knee from measured service time and the queue depth that Little's Law gives at rising fractions of capacity, stating where serialization would lower the prediction.
+3. Sweep rising offered rates with an open-loop Poisson generator that measures from intended send time, keep every raw record across repeats, report percentiles with counts with throughput, queue depth, utilization, errors and recovery, check $`L = \lambda W`$, and contrast one closed-loop run.
+4. Add bounded admission, client-side throttling, a per-client retry budget with jittered backoff, a breaker with a stale-marked fallback and deadline propagation, showing each control under the same injected overload.
+5. Write the SLO with availability and latency indicators, budget, alert and shared failure domains, derive capacity now and at higher load with what would shed instead, and gate a versioned canary with automatic rollback, tested with a deliberately slow version.
+6. Inject one incident chosen from a hidden list, work it from telemetry and the runbook with detection to recovery times, restore from the last verified backup with measured recovery and counted loss, and file a blameless postmortem with owned actions and one regression guard.
 
 **Deliverables**
 
-- The instrumented service with telemetry files, the cardinality test and a script that renders percentiles and queue depth from the raw records.
-- The load sweep: prediction, raw records, the table at every rate, the Little's Law check and the closed-loop comparison.
-- The overload-control and canary experiments, each with numbers with and without the control.
-- The SLO and capacity page and the incident package: timeline, runbook, restore evidence with RTO and RPO, postmortem and regression guard.
+- The instrumented service with raw telemetry, the cardinality test and a script rendering percentiles and queue depth.
+- The prediction with the retained-record sweep, rate table, Little's Law check and closed-loop contrast.
+- Overload-control and canary comparisons under identical injected faults, and the SLO, capacity, incident and postmortem package.
 
 **Checks**
 
@@ -3481,13 +3459,11 @@ Reliability without cost is a wish. This unit turns the saturation and capacity 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Telemetry | Every request has a raw record with request ID, queue wait, handler and storage time and status, and the cardinality test fails on an unbounded label. | Percentiles come only from raw samples or merged histogram counts, never from averaged percentiles, and the report says which. |
-| Load and capacity | The knee was predicted before the sweep, and the sweep reports percentiles with $`n`$, goodput, queue depth and utilization at every rate with the Little's Law check. | The measured knee is explained against the prediction, including any fsync serialization the prediction missed. |
-| Overload | Each control is shown under the same injected overload, with goodput and p99 with and without it. | The retry budget and throttle are shown stopping a retry storm that the plain retrying client starts. |
-| Incident | The incident has a timeline, a runbook-driven recovery, measured RTO, counted RPO loss and a merged regression guard. | The postmortem is blameless with owned, dated actions, and the runbook was followed cold by someone else or by you a day later. |
-| SLO and planning | The SLO, error budget, alert and 10x plan are written with the arithmetic shown. | The plan names the failure domains the single node shares and what the SLO cannot promise because of them. |
+| Telemetry and load | Raw records carry identity and timings, the budget test fails on unbounded labels, and the sweep reports percentiles with counts at every rate. | Percentiles come from raw samples rather than averaged percentiles, and the knee is explained against the prediction. |
+| Overload and rollout | Each control is shown under the same overload, and the slow canary triggers automatic rollback. | Retry and throttle evidence shows a storm contained that a plain retrying client starts. |
+| Incident and planning | The timeline, runbook recovery, measured recovery, counted loss and merged guard are kept with the SLO arithmetic. | The postmortem is blameless with owned actions, and the plan names shared failure domains and SLO limits. |
 
-Feeds into: Capstone dossier: the SLO and capacity estimate against load and the telemetry-based incident. Service slice: bounded admission, deadlines and overload controls under test.
+Feeds into: Capstone dossier: the SLO and capacity estimate against load with the telemetry-based incident. Overload controls stay under test in the service slice.
 
 ### Resource route
 
@@ -3936,23 +3912,20 @@ Assumes the Programming units on schema migrations with Alembic and idempotency-
 
 ### Mini-project: Threat model, least-privilege tests, a privacy-bounded aggregate and a safe migration
 
-**About 12 to 16 hours.** Set the trust boundary of the service slice and test it: a threat model of the store and its migration path, scoped credentials with expiry, tenant isolation on every path, a hash-chained audit log, verified backups, one differentially private aggregate with its limits stated, and a canary migration with rollback and revocation under a failed dependency.
+**About 12 to 16 hours.** Set the trust boundary of the service slice with a threat model, scoped expiring credentials, tenant isolation on every path, a hash-chained audit log and verified backups. Add one bounded private aggregate and a canary migration with rollback and revocation.
 
-1. Draw the system model: client, proxy, server, store, catalog, backups and the migration job, with trust boundaries, data flows, data stores, processes and external entities. List the assets and two adversary profiles, one an insider with backup access. Write abuse cases for unauthorized mutation, cross-tenant reads, stale credentials, sensitive logs and restore or migration paths; each ends in a test or an explicit residual-risk sentence.
-2. Authenticate every request with a credential issued per client: a token carrying tenant, scopes (`read`, `write`, `admin`) and expiry, signed with HMAC-SHA256 under a server key. The issuer refuses scopes the client's policy does not allow, and the server checks the signature with `hmac.compare_digest`, the expiry on its own clock with a declared skew allowance, and the scope for the operation. Tests reject missing, forged, expired, out-of-scope and wrong-tenant credentials, and admin operations need a separate, logged credential.
-3. Make the tenant part of every key and query, taken from the authenticated credential and never from a request field: the store prefixes keys by tenant, idempotency keys are scoped by tenant and client, and catalog queries are parameterized and tenant-scoped. Test cross-tenant reads and writes on the normal path, the retry path (a retried write whose idempotency key matches another tenant's must not replay that tenant's response), the stale-read fallback and the restore path. Keep the injection fixture (`acme' OR '1'='1` returns both tenants when interpolated, one row when parameterized) and a test that the protocol never unpickles input.
-4. Write security events (authentication failures, scope denials, cross-tenant attempts, admin actions) to a hash-chained audit log in which each record holds the hash of the previous one and tokens are redacted before hashing. Test that every rejected attempt from the previous steps leaves exactly one audit record and that editing or deleting a record fails verification. When the authorization policy cannot load, deny, and write down what that costs in availability.
-5. Back up the store and catalog with a manifest of SHA-256 digests, restore into a fresh directory and database, and verify digests, the record count from the log, tenant predicates and the audit chain before serving. Test that a corrupted backup is refused.
-6. Release one differentially private aggregate from the usage data, such as total writes per day across tenants with each tenant's daily count clamped. With OpenDP 0.16.0, state the privacy unit and adjacency (one tenant-day added or removed), clamp bounds, sensitivity, noise scale, $`\epsilon`$, $`\delta`$ and the budget spent across releases, kept in a ledger that blocks a release over budget. OpenDP noise is not seeded, so measure utility over at least 1000 releases in several runs and report the spread. Write the residual-risk statement: values lost to clamping, releases beyond the budget, and data outside the privacy unit.
-7. Migrate the record format from v1 to v2 behind a canary: read both versions, write v2 only for the canary fraction, compare error rate and p99, and roll back with v1 readers still able to read every record written. Practise the rollback once on purpose. Then revoke a credential while the issuer is down: the server keeps enforcing its cached revocation list instead of failing open, and a test shows the revoked token rejected during the outage.
+1. Draw the system model with trust boundaries, data flows, stores, processes and external actors following the OWASP cheat sheet, list assets with an insider profile, and close each abuse case in a test or an explicit residual-risk sentence.
+2. Issue per-client credentials carrying tenant, scopes and expiry under a server key, check signature, expiry and scope on the server clock with a stated skew allowance, and reject missing, forged, expired, out-of-scope and wrong-tenant callers with a separate logged admin path.
+3. Scope every key and query by the authenticated tenant on the normal, retry, fallback and restore paths, keep the injection fixture that separates interpolated from parameterized queries, and never deserialize untrusted input.
+4. Record authentication, scope and cross-tenant denials in a hash-chained audit log with redacted secrets, verify that tampering breaks the chain, deny when the policy cannot load, and verify backups by digest, counts, predicates and chain before serving, refusing corruption.
+5. Release one clamped and noised aggregate with OpenDP from the usage data with stated unit, adjacency, sensitivity, $`\epsilon`$ and $`\delta`$ inputs and a ledgered budget, measure utility across repeated runs, and state what the guarantee leaves out.
+6. Migrate records behind a canary that reads both versions and rolls back with every record still readable, practise the rollback once, then revoke a credential while the issuer is down and show cached revocation still denies.
 
 **Deliverables**
 
-- `dossier/security/`: the threat model diagram, assets, adversaries, abuse cases and residual risks.
-- The credential, tenant-isolation, injection, deserialization and audit tests, passing, with the failing output each was written against.
-- The backup and restore verification script with a refused corrupted backup.
-- The private release: code, parameters, budget ledger, utility measurements and the residual-risk statement.
-- The migration drill: canary numbers, the rollback and the revocation test under a failed dependency.
+- The threat model with abuse cases and residual risks, plus credential, isolation, injection and audit tests with their failing cases.
+- The backup and restore verification script that refuses corruption before serving.
+- The private release with parameters, ledger, utility measurements and residual-risk statement, and the migration drill with rollback and revocation.
 
 **Checks**
 
@@ -3960,13 +3933,11 @@ Assumes the Programming units on schema migrations with Alembic and idempotency-
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Threat model | Every abuse case ends in a passing test or a residual-risk sentence, and the model covers backup, restore and migration paths. | The insider case names what the audit log can and cannot show about it. |
-| Least privilege | Missing, forged, expired, out-of-scope and wrong-tenant credentials are rejected by tests, and the admin path is separate and logged. | Tenant scope comes from the credential on every path, with tests for the retry, cache and restore paths as well as the normal one. |
-| Integrity | The audit chain detects an edited or deleted record, tokens are redacted, and a corrupted backup is refused before serving. | Restore verification checks tenant predicates and the audit chain, not only file digests. |
-| Privacy | The release states unit, adjacency, clamp, sensitivity, $`\epsilon`$, $`\delta`$ and spent budget, with measured utility. | The residual-risk statement names concrete cases outside the guarantee, and the ledger blocks an over-budget release. |
-| Safe evolution | The canary migration ran with a rollback that left every record readable, and revocation held while the issuer was down. | The drill has a timeline, and the rollback fired from metrics rather than by hand. |
+| Threat and privilege | Every abuse case ends in a test or a residual-risk sentence, and forged, expired, out-of-scope and cross-tenant callers are rejected by tests. | Tenant scope comes from the credential on every path, including retry, fallback and restore. |
+| Integrity and recovery | Tampering breaks the audit chain with secrets redacted, and a corrupted backup is refused before serving. | Restore checks predicates and the chain rather than digests alone. |
+| Privacy and evolution | The release states unit, adjacency, sensitivity, budget and measured utility, the canary rolls back cleanly, and revocation holds during the outage. | Residual risks name cases outside the guarantee, the ledger blocks over-budget release, and rollback fires from metrics. |
 
-Feeds into: Capstone dossier: the threat model, least-privilege tests, safe migration and rollback, and the bounded private aggregate with its limits.
+Feeds into: Capstone dossier: the threat model, least-privilege tests, migration with rollback and the bounded private aggregate with its limits.
 
 ### Resource route
 
@@ -4008,10 +3979,10 @@ Use one small Linux repository and one evolving local service. The three artifac
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Mechanisms laboratory | make check rebuilds every lab experiment from a clean clone and asserts its check; the process, page, file durability, bounded queue, concurrency failure and container limit cases each keep raw output and environment. | Each timing claim names its oracle, pinning and repeats, and says what it did not test. |
-| Fault-tested service slice | One command runs the service tests: framing and the fault matrix, deadlines, retries and idempotency, bounded admission and drain, and crash recovery against the acknowledged-prefix oracle, all with replayable schedules. | The restart row of the fault matrix passes on durable state, and a schedule found by a random seed is kept as a regression. |
-| Invariants under failure | The active-admin transaction rule and the atomic effect-plus-offset rule each hold under injected failures, with a seeded failing version kept beside each. | The README states the failure model each invariant was tested under and what lies outside it. |
-| Distributed contract | The dossier's distributed history has one permitted and one rejected case checked by the checker, with configuration IDs and fencing tokens recorded. | Every sentence of the contract points to the scenario that supports it. |
-| Operations | The SLO, the predicted and measured knee and the 10x plan agree or the difference is explained, and the incident has measured RTO, counted RPO, a postmortem and a regression guard. | The 10x plan says what would be shed or degraded and why, with the arithmetic. |
-| Trust and privacy | The threat model, least-privilege and tenant tests, the migration drill and the private release with its limits are in the dossier, and their tests pass. | The residual-risk statements are specific enough for a reviewer to write the missing test. |
+| Mechanisms laboratory | One command rebuilds every lab experiment and asserts its check, with raw output and environment kept for the process, page, durability, queue, concurrency and container cases. | Each timing claim names its oracle, pinning and repeats, and states what it did not test. |
+| Fault-tested service slice | One command runs the service tests for framing, the fault matrix, deadlines, retries with idempotency, bounded admission with drain and crash recovery against the acknowledged-prefix oracle. | The restart case passes on durable state, and one randomly found schedule is kept as a regression. |
+| Invariants under failure | The active-admin rule and the atomic effect-plus-offset rule each hold under injected failures, with a failing version kept beside each passing one. | The dossier states the failure model tested for each invariant and what lies outside it. |
+| Distributed contract | The dossier history holds one permitted and one rejected case checked by the checker, with configuration IDs and fencing tokens recorded. | Every contract sentence points to the scenario that supports it. |
+| Operations | The SLO, predicted and measured knees and capacity plan agree or explain their difference, and the incident keeps a timeline, recovery measures, postmortem and regression guard. | The capacity plan states what would shed or degrade under growth and why, with its arithmetic. |
+| Trust and privacy | The dossier holds the threat model, privilege and tenant tests, migration drill and bounded private release with its limits, with passing tests. | Each residual-risk statement is specific enough for a reviewer to write the missing test. |
 

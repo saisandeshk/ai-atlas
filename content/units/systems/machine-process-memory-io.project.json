@@ -1,8 +1,8 @@
 {
   "miniProject": {
-    "title": "Mechanisms laboratory: a kernel, a process tree, a file and a container, each with a check",
+    "title": "Mechanisms laboratory: kernel, process, memory, file and container",
     "hours": "12 to 16",
-    "brief": "Start the one repository the whole stage builds on with its mechanisms laboratory: small C and Python experiments that each print a correctness check and keep their raw output beside the environment that produced it. Cover a vectorized kernel, a locality sweep, a supervised pipe worker, staged memory accounting, an atomic file publication and a retained container OOM. The publication helper and the supervisor carry into the service slice.",
+    "brief": "Build the repository-wide mechanisms laboratory that later sections reuse: small kernel, locality, process, memory, file and container experiments with correctness checks and retained raw output. Each experiment pairs a measurement with its environment so later claims stay reproducible.",
     "units": [
       "pipelines-simd",
       "caches-bandwidth-numa",
@@ -16,20 +16,18 @@
       "nand2tetris-logic-machine"
     ],
     "steps": [
-      "Create the repository with `lab/`, `kv/` and `dossier/` directories. Every lab experiment is one make target that writes its raw output and an environment file: `lscpu`, `lscpu -e`, `uname -r`, compiler and glibc versions (`ldd --version`), `python3 -VV` and the CPUs it was pinned to. Read the core map before pinning and choose one logical CPU per physical performance core, since SMT siblings share a core (on an i9-12900K, CPUs 0 and 1 are one core). Timed targets run one warm-up and at least five timed repeats and keep every raw time.",
-      "Keep the `bump` and `chain` kernels with their `531996` checks and add a branch variant that sums only the odd elements, over random and over sorted input. Build each with `-O3 -march=x86-64-v3` and again with `-fno-vectorize -fno-slp-vectorize`, save `objdump -d` for every build, and check in the saved assembly whether the compiler kept the branch or turned it into a `select` or a vector blend before attributing any time difference to branch prediction. Time all variants pinned, with flags, warm-up and repeats in the table.",
-      "Extend the row-first versus column-first traversal (`2139095040` per traversal) into two sweeps. The working-set sweep runs from 16 KiB to 256 MiB, doubling, with a dependent pointer chase over a random cyclic permutation and a sequential stream over the same buffer; the stride sweep walks one 64 MiB buffer at strides from 4 bytes to 4 KiB. Read cache sizes and the line size from `/sys/devices/system/cpu/cpuN/cache` before predicting where the chase slows, and make both loops print checksums that a Python oracle reproduces. Keep five pinned repeats per point and a topology note: one NUMA node in `lscpu` means no remote-NUMA claim.",
-      "Write `lab/supervise.py`. Keep the launcher trace from the processes unit (`fork`, `execve` and `wait4` in `strace -f`, exit 7 and launch failure 127), then run a worker that talks to the parent over two pipes, and draw the descriptor ownership diagram before coding. Seed a leaked writer: a forked Python worker that runs without exec keeps every inherited descriptor, so if it keeps its copy of the request write end it never sees `EOF` and the parent times out waiting for the response. The regression test fails on the seeded worker and passes once the worker closes that end. Terminate a ready worker with `SIGTERM`, observe state `Z` with `waitid` and `WNOWAIT`, reap it and decode `WTERMSIG`, and make every exit path, including an exception in the parent, close its descriptors and reap.",
-      "Keep the virtual-memory evidence: 4096 minor faults on the first write pass over a 16 MiB mapping of 4 KiB pages and 0 on the second, and a forked child's private write that leaves the parent's byte at 1. Extend the allocation probe to five allocate, free-even, reuse and free-all cycles, printing live requested payload beside `VmSize` and `smaps_rollup` `Rss`, `Pss` and private fields at every stage. Add one sparse mapping: 1 GiB anonymous with `MADV_NOHUGEPAGE` (with transparent huge pages set to `always`, each touch could fault a whole 2 MiB page), one byte touched per 2 MiB; `Rss` grows by about 2 MiB while `VmSize` grows by 1 GiB. Write the diagnosis: which retained memory is reusable allocator capacity, which is shared, and what pattern would show unbounded ownership growth instead.",
-      "Turn the publication experiment into `lab/publish.py`: `publish_atomic(path, data)` writes a temporary file in the target directory, fsyncs it, renames it over the target and fsyncs the directory, raising if any step fails. Keep its strace on a disk-backed filesystem (check with `findmnt -T`) showing the payload write, file fsync, rename and directory fsync in that order, and test that a failure injected at each step leaves the old file intact and that a reader holding the old file still reads the old bytes. Keep the warm-cache `pread`, `mmap` and buffered comparison (`522240` for every variant) with five raw trials and the filesystem named, labeled as page-cache reads, not device latency.",
-      "Run the OOM probe in `python:3.14-slim` pinned by digest with `--memory=64m` `--memory-swap=64m` `--cpus=0.5` `--cpuset-cpus=2` and no `--rm`. Retain `exit=137` and `OOMKilled=true` from `docker inspect`, the `memory.events` counts and the logs before `docker rm`. Compare configured limits from `docker inspect` with the effective ones the probe printed (`memory.max` `67108864`, `memory.swap.max` `0`, `cpu.max` `50000 100000` on a cgroup v2 host). Draw the namespace and credential diagram from `readlink /proc/1/ns/*` and `uid_map` and the mount diagram (image layers, the read-only bind mount, `tmpfs`). Write which PID 1 duties your Programming stage's shutdown evidence already shows and which it does not, and an orchestrator checklist separating exit-driven restart, readiness, liveness, eviction and volume lifecycle.",
-      "Add the logic-machine oracle (the NAND-derived gates and the `Mult.asm` interpreter with `R2 = 0, 42, 0` and `32761`) to the lab, and give the whole lab one `make check` that rebuilds every experiment from a clean clone and asserts its correctness check before any timing is read."
+      "Create the repository with `lab/`, `kv/` and `dossier/` directories, where each experiment is one `make check` target that writes raw output beside its environment record of CPUs, kernel, compiler and interpreter versions and pinning.",
+      "Build scalar, vectorized, dependency and branch variants of one reduction kernel, verify each sum against a Python oracle, and compare enabled and disabled vectorization in saved `objdump` output with pinned repeated timings.",
+      "Extend the row-first and column-first traversals into working-set and stride sweeps, read the cache sizes from sysfs and predict where the knees fall, then check each sweep against a Python oracle and keep pinned repeated timings with a topology note.",
+      "Write `lab/supervise.py` to run a pipe worker from a descriptor ownership diagram, keep a leaked-writer regression that fails before the fix, and show `SIGTERM` termination with zombie observation and reaping and closure on every exit path under `strace`.",
+      "Trace first-touch faults and copy-on-write isolation, stage allocate, free, reuse and free-all cycles with snapshots of requested payload beside resident and virtual sizes, add one sparse mapping, and diagnose retained capacity apart from growth.",
+      "Turn atomic publication into `lab/publish.py` with ordered write, file sync, rename and directory sync checked in `strace`, failure tests that leave the old file intact, and a cached read comparison labeled as page-cache reads.",
+      "Retain one inspected Docker container OOM with namespace, credential and mount diagrams, configured limits compared with effective limits, PID 1 duties and an orchestrator checklist, and add the Nand2Tetris gate and assembler suites as the logic oracle."
     ],
     "deliverables": [
-      "The `lab/` directory: one make target per experiment, raw outputs, environment files and a `make check` that asserts every correctness check (kernel sums, locality checksums, pipe round trip, payload totals, publication digest, logic oracle).",
-      "The kernel, locality and I/O tables with pinned raw repeats, flags, saved assembly, cache sizes, the filesystem and the topology note.",
-      "`lab/supervise.py` with its descriptor diagram, the leaked-writer regression and the zombie and reaping tests.",
-      "The memory diagnosis and the container report: retained OOM evidence, configured versus effective limits, namespace, credential and mount diagrams, PID 1 duties and the orchestrator checklist."
+      "The `lab/` directory with one checked experiment per target, raw outputs, environment records and a passing `make check`.",
+      "Kernel, locality and I/O tables with pinned repeats, saved assembly, cache sizes and filesystem notes.",
+      "`lab/supervise.py` and `lab/publish.py` with diagrams, regression tests and the memory and container reports."
     ],
     "checks": [
       {
@@ -40,30 +38,20 @@
     "rubric": [
       {
         "criterion": "Correctness before timing",
-        "pass": "Every experiment prints a check that make check asserts, and make check passes from a clean clone.",
-        "strong": "Each timing table names the oracle it was checked against and a defect that oracle would catch."
-      },
-      {
-        "criterion": "Measurement discipline",
-        "pass": "Every number carries the CPU, kernel, compiler or Python version, flags, pinning, warm-up and repeats, and raw times are kept.",
-        "strong": "Kernel and locality differences are explained from saved assembly and inspected cache sizes, and the write-up lists the effects it did not test, such as frequency scaling, TLB reach and prefetching."
+        "pass": "Every experiment prints a check asserted by `make check`, and each table was verified against its Python oracle.",
+        "strong": "Each timing names its oracle and pinning, and the write-up explains assembly and cache evidence plus untested effects."
       },
       {
         "criterion": "Processes and descriptors",
-        "pass": "The leaked-writer regression fails on the seeded worker and passes after the fix, the signal test observes Z and decodes WTERMSIG, and every path reaps.",
-        "strong": "The descriptor diagram predicts the close calls seen in strace, and an injected parent exception still leaves no zombie and no open pipe."
+        "pass": "The leaked-writer test fails before the fix and passes after, and signal handling reaps on every path shown in `strace`.",
+        "strong": "The diagram predicts the observed closes, and an injected parent failure still leaves no zombie and no open pipe."
       },
       {
-        "criterion": "Memory and files",
-        "pass": "The staged probe reports every live-payload total with current snapshots, the sparse mapping shows VmSize and Rss apart, and the publication strace shows write, fsync, rename and directory fsync in order.",
-        "strong": "The diagnosis separates allocator retention from growth using the five-cycle data, and the injected publication failures each leave the old file intact."
-      },
-      {
-        "criterion": "Container boundary",
-        "pass": "`exit=137` and `OOMKilled=true` are retained with `memory.events` before cleanup, and configured and effective limits match or the difference is explained.",
-        "strong": "The orchestrator checklist names, for each action, the signal that triggers it and the evidence that would show it happened."
+        "criterion": "Memory, files and containers",
+        "pass": "Staged snapshots separate retention from growth, publication failures keep the old file, and limits match effective values.",
+        "strong": "The diagnosis names the reusable capacity, the sparse case separates virtual from resident size, and the checklist ties each action to its trigger."
       }
     ],
-    "feedsInto": "Capstone mechanisms laboratory: every experiment here is part of it. Service slice: `publish_atomic` publishes the store manifest, and the supervisor starts, signals and reaps the service in fault tests."
+    "feedsInto": "Capstone mechanisms laboratory: every experiment here recurs there. The supervisor starts the service in fault tests, and `publish_atomic` publishes the store manifest."
   }
 }
