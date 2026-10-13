@@ -5,7 +5,7 @@
     {
       "id": "attention-shapes-traffic",
       "title": "Attention shapes, prefill and decode reuse, and materialized traffic",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive"
       ],
@@ -15,47 +15,70 @@
         "materialized-attention-io"
       ],
       "outcomes": [
-        "TODO"
+        "Derive attention shapes and leading matrix-multiply FLOPs for prefill and single-token decode.",
+        "Count score and probability storage separately from reads and writes.",
+        "Explain why decode has less query-side reuse without declaring it bandwidth-bound from shape alone."
       ],
-      "why": "TODO",
+      "why": "The score matrix is often larger than the inputs. Its shape explains what tiling removes and why a prefill schedule need not work well for decode.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/online-softmax-attention-tiling",
+          "note": "Remove the materialized matrices while preserving the attention equation."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashattention-gpu6",
+          "title": "FlashAttention, arXiv:2205.14135v2",
+          "url": "https://arxiv.org/abs/2205.14135v2",
+          "locator": "Section 2.2, Standard Attention Implementation, and Algorithm 0 (p. 4)"
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer decode shape and layout contract",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/decode.py",
+          "locator": "Commit f2794d5, `single_decode_with_kv_cache` docstring: `q`, `k`, `v`, `kv_layout` and `use_tensor_cores` parameters",
+          "depth": "Read the parameter contracts only. Do not implement the production dispatch yet."
         }
       ],
       "focus": [
-        "TODO"
+        "For batch size \\(B\\), query heads \\(H_q\\), query length \\(L\\), key length \\(S\\) and equal key/value head width \\(d\\), scores have shape \\(B \\times H_q \\times L \\times S\\). Attention is \\(O = \\operatorname{softmax}(QK^\\top/\\sqrt{d})V\\), with softmax over keys.",
+        "Count the two dense matrix products as \\(4BH_qLSd\\) FLOPs, counting each multiply-add as two. Scaling, masking and softmax are additional work. Prefill has many query rows; ordinary decode has one per request.",
+        "Algorithm 0 writes and reads both scores and probabilities. At \\(b\\) bytes per intermediate element this is \\(4bBH_qLS\\) requested bytes, not the complete kernel traffic or a hardware-counter measurement.",
+        "Decode can reuse each KV head across grouped query heads, but cannot reuse it across a long query tile. Layout, cache residency and schedule determine whether that reuse is realized."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, count noncausal MHA with \\(B = 1\\), \\(H_q = 8\\), \\(L = S = 1024\\), \\(d = 64\\), and two-byte score/probability storage. The two intermediates occupy 32 MiB and their write-read traffic is 64 MiB; the two matrix products require \\(2{,}147{,}483{,}648\\) FLOPs. For decode with \\(L = 1\\) and the same cache, one ideal read of keys and values is 2 MiB. Explain every excluded byte category.",
       "traps": [
-        "TODO"
+        "Calling storage size traffic. A tensor may be read several times, and actual memory transactions can exceed requested bytes.",
+        "Using the paper's unscaled equation as a different model. Its exposition omits the scale; your reference must include the model's scale.",
+        "Assuming the paper's HBM hardware. The same dataflow applies to GPUs with GDDR memory, but bandwidth and on-chip capacity differ."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does avoiding the score matrix remove quadratic prefill arithmetic?",
+          "a": "No. Dense attention still computes every allowed query-key interaction. Tiling changes storage and data movement, not the leading dense matrix-product count."
+        },
+        {
+          "q": "Why are 32 MiB of intermediates responsible for 64 MiB of requested traffic in this model?",
+          "a": "Each of the two tensors is written once and read once. This excludes input/output movement, repeated tile loads, masks and workspace."
+        },
+        {
+          "q": "Does a long KV cache prove decode is memory-bound?",
+          "a": "No. It predicts substantial KV movement. Launches, insufficient parallelism, reductions and address translation may dominate; timing and profiling must distinguish them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU 6: Softmax Attention",
+          "url": "https://github.com/AlphaGPU/leetgpu-challenges/blob/9c9dbe55e8d6124f42f0de9b6696290cbcd9670e/challenges/medium/6_softmax_attention/challenge.py",
+          "locator": "`reference_impl`, `generate_example_test` and all four cases in `generate_functional_test`",
+          "note": "Implement the unchanged `solve` signature in CUDA or Triton. Use the public generators and reference in your own local harness; the repository lacks `core.challenge_base`, and `scripts/run_challenge.py` submits to a service with an API key rather than running locally. Recreate the generated tensors and compare outputs using the challenge's tolerances. The cases include rectangular attention and odd head widths. The section mini-project covers the traffic ledger."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your traffic ledger reproduces the counts, and your attention implementation matches every functional case of challenge 6 without claiming a speedup.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The primary paper supplies the traffic derivation, FlashInfer supplies decode shapes, and challenge 6 supplies bounded checked practice."
       }
     },
     {
