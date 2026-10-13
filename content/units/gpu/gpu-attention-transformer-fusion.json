@@ -1,6 +1,17 @@
 {
   "section": "gpu-attention-transformer-fusion",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-sdpa-contract-gpu6",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "PyTorch SDPA contracts and integration tutorial",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "PyTorch 2.14 SDPA API: mask polarity, rectangular causal alignment, GQA and backend limitations. Tutorial read 2026-10-13: Explicit Dispatcher Control, Causal Self Attention, Using SDPA with torch.compile and Using SDPA with attn_bias subclasses. Correct the tutorial's evaluation-time causal flag before integration.",
+      "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html"
+    }
+  ],
   "units": [
     {
       "id": "attention-shapes-traffic",
@@ -165,7 +176,7 @@
     {
       "id": "attention-masks-head-grouping",
       "title": "Causal and padding masks and MHA, GQA and MQA grouping",
-      "hours": 3,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -174,47 +185,77 @@
         "mha-gqa-mqa"
       ],
       "outcomes": [
-        "TODO"
+        "Implement causal, padding and explicit allowed-entry masks using logical token positions.",
+        "Map query heads to shared KV heads without materializing repeated keys and values.",
+        "Diagnose diagonal-tile, mask-polarity and rectangular decode errors."
       ],
-      "why": "TODO",
+      "why": "A fast attention kernel with the wrong mask or head map computes a different model. These bugs often survive square, unpadded tests.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/flashattention-io-partitioning",
+          "note": "Optimize the schedule only after its allowed entries are correct."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashattention2-gpu6",
+          "title": "FlashAttention-2 mask and head-grouping discussion",
+          "url": "https://arxiv.org/abs/2307.08691v1",
+          "locator": "Section 3.1.1, Causal masking (p. 6), and Section 3.1.2, Multi-query attention and grouped-query attention (p. 7)",
+          "depth": "Correct the reversed inequality in Causal masking item 2: a fully allowed tile has every key position no greater than every query position. The rendered v1 page says the opposite."
+        },
+        {
+          "resource": "pytorch-sdpa-contract-gpu6",
+          "title": "PyTorch 2.14 SDPA mask and GQA contract",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html",
+          "locator": "Equivalent implementation, boolean mask note, GQA constraints, and parameters `attn_mask`, `is_causal` and `enable_gqa`"
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer packed arbitrary masks",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/docs/tutorials/kv_layout.rst",
+          "locator": "Commit f2794d5: Mask Layout (2D Ragged Tensor), through the bit-packing description",
+          "depth": "Use the layout description, not its stale `begin_forward` API example. The pinned implementation uses `plan` and `run`."
         }
       ],
       "focus": [
-        "TODO"
+        "Build one allowed-entry predicate from query validity, key validity, request identity, causal positions and any custom mask. Apply it before the maximum and exponential reductions.",
+        "For aligned square self-attention, allowed keys satisfy \\(j \\le i\\). For a suffix query block with past length \\(p\\), the rule is \\(j \\le p+i\\). Do not infer absolute positions from a tile-local index.",
+        "For divisible head counts, group size is \\(g = H_q/H_{kv}\\) and KV head is \\(\\lfloor h_q/g\\rfloor\\). MHA has \\(g = 1\\); MQA has one KV head. Cache storage falls with KV heads, but query-head arithmetic remains.",
+        "In SDPA, a boolean `True` means allowed. Its rectangular `is_causal=True` uses upper-left alignment, not automatically the suffix alignment needed by cached decode. Use an explicit mask with `is_causal=False` for the latter."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, implement a CPU reference for four query heads, two KV heads, two suffix queries and five cached keys, all with width 8. Use seed 0 standard-normal `torch.float64` inputs and query positions 3 and 4. Map heads as `[0, 0, 1, 1]`, mask keys after each query position, and compare with PyTorch 2.14.1 SDPA using `attn_mask` and `enable_gqa=True` at `rtol=1e-12, atol=1e-12`. Change one future value and show that the earlier query's output is unchanged.",
       "traps": [
-        "TODO"
+        "Treating zero-padded keys as masked. Zero logits still receive probability mass, and padded queries also need an output policy.",
+        "Skipping diagonal masking or using strict inequality. A token is allowed to attend to itself in ordinary causal self-attention.",
+        "Using the handout's finite sentinel `-1e6` as a universal mask. It is adequate for its random tests, not arbitrary logits; use negative infinity and explicit all-masked handling."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When can a causal tile be skipped completely?",
+          "a": "When its smallest valid key position is greater than its largest valid query position. A fully allowed tile has its largest key position no greater than its smallest query position. Other tiles need elementwise masks."
+        },
+        {
+          "q": "Does four query heads sharing two KV heads halve all attention FLOPs?",
+          "a": "No. Each query head still has its own scores and weighted output. KV-cache capacity is halved relative to four KV heads; traffic savings depend on reuse."
+        },
+        {
+          "q": "Why is `is_causal=True` dangerous for a one-row cached-decode query in SDPA?",
+          "a": "Upper-left alignment permits only the first key for that row. If the query is the newest token and all cached keys are valid past tokens, it should attend to the entire cache instead."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU 53: Causal Self-Attention",
+          "url": "https://github.com/AlphaGPU/leetgpu-challenges/blob/9c9dbe55e8d6124f42f0de9b6696290cbcd9670e/challenges/hard/53_casual_attention/challenge.py",
+          "locator": "`reference_impl`, example and four functional cases; preserve the challenge's `solve` signature",
+          "note": "Run equivalent generated cases and reference comparisons in your own local harness, as in challenge 6; the remote helper is not a local grader. Then complete CS336 `flash_forward` (c) and pass both causal settings of `test_flash_forward_pass_triton`. The section mini-project covers GQA, padding, arbitrary masks, suffix positions and all-masked rows; the public challenge does not."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Challenge 53 and both CS336 Triton forward settings pass, and your own GQA, suffix-mask, padding and all-masked tests demonstrate the declared semantics.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage and currency failed for the framework's mask polarity and rectangular alignment. The opened PyTorch 2.14 API fills that gap; the papers, FlashInfer mask layout and named causal practice remain."
       }
     },
     {
