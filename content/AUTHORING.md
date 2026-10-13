@@ -90,6 +90,8 @@ Every unit file is reviewed before it merges: locators are spot-checked against 
 - Each section with units ends with a mini-project of an evening to a weekend. It exercises the section's units in the learner's own repository, and its pieces feed the route capstone.
 - `checks` lists how the work is checked: an existing autograded suite such as a course's public tests, or the rubric alone. Atlas labs are deferred, so where no public suite exists a step asks for the learner's own tests.
 - Every mini-project and capstone has a rubric: each criterion states what passing looks like and what strong work looks like. A rubric asks for the learner's own tests against an independent oracle where that applies.
+- Steps stay open. Write four to seven steps of one or two sentences, about 30 words each. Each step names what to build, the independent reference it is checked against and the evidence to keep. The learner chooses inputs, shapes, seeds, sizes and tolerances, because choosing them is the skill the project trains. Steps carry no expected values, flag lists or measured results. Named public suites (a course's tests, LeetGPU or TensorTonic problems) anchor the work without solving it. `content/units/deep-learning/pytorch-foundations.project.json` is the model.
+- Write for the learner's hardware, not a reference machine: "your GPU", `-arch=native`, a stated capability requirement for any feature that needs one, and a fallback for multi-GPU or newer-architecture work. Measured numbers in units are labeled examples that name the hardware and versions, never targets.
 
 ## Publishing a content change
 
