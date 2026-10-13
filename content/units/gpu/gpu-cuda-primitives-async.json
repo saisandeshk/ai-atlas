@@ -46,7 +46,7 @@
           "resource": "pmpp-primitives-gpu4",
           "title": "Thread coarsening",
           "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
-          "locator": "Chapter 6, Section 6.3 (printed p. 138): assigning several elements to each thread; Chapter 10, Section 10.8 (printed p. 229): coarsening against parallelization overhead"
+          "locator": "Chapter 6, Section 6.3 (printed p. 138): assigning several elements to each thread; Chapter 10, Section 10.8 (printed p. 228): coarsening against parallelization overhead"
         },
         {
           "resource": "mit-6s894-primitives-gpu4",
@@ -75,10 +75,10 @@
         "Coarsening trades fewer blocks and amortized index math for more registers per thread and less parallel slack. PMPP frames it as paying less for parallelism.",
         "Coalescing is about the warp, not the thread: consecutive threads should touch consecutive words so one 128-byte request fills four 32-byte transactions."
       ],
-      "reproduce": "From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop. On 1000003 random floats all three match a CPU reference bit-exactly (max error 0), and you predict each variant's per-warp transaction count before running.",
+      "reproduce": "From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop, and predict each variant's per-warp transaction count before running. On 1000003 random floats all three match a CPU reference computed with `fmaf` bit-exactly. `nvcc` contracts `a * x[i] + y[i]` into one fused multiply-add by default, so a CPU reference that multiplies and then adds differs in the last bit: on an RTX 3050 6 GB with CUDA 13.4 it disagreed at 282,894 of the 1,000,003 elements.",
       "traps": [
         "Trusting base-pointer alignment after arithmetic. `cudaMalloc` returns aligned bases, but `p + offset` may not be 16-byte aligned, so check the accessed address at runtime.",
-        "Testing only round sizes. A vectorized loop without a scalar tail silently drops the last `n mod 4` elements, so test 1000003, not just 1048576.",
+        "Testing only round sizes. A vectorized loop without a scalar tail silently drops the last \\(n \\bmod 4\\) elements, so test 1000003, not just 1048576.",
         "Assuming more coarsening is faster. Past the point where blocks still fill the SMs, extra work per thread only adds register pressure and loses latency hiding."
       ],
       "selfTest": [
@@ -101,7 +101,7 @@
       ],
       "practice": [],
       "practiceNote": "The section mini-project covers this: scalar, vectorized and coarsened map variants with grid-stride coverage, an independent CPU reference and odd-size tests.",
-      "stopWhen": "All three saxpy variants match the reference exactly on an odd size, and you predict each variant's per-warp transaction count before profiling.",
+      "stopWhen": "All three saxpy variants match an `fmaf` reference exactly on an odd size, and you predict each variant's per-warp transaction count before profiling.",
       "fit": {
         "verdict": "kept",
         "note": "PMPP, MIT Lecture 7 and the guide cover maps, coarsening and transaction depth at implement level, with the mini-project supplying the named practice."
@@ -163,9 +163,9 @@
         "The copy kernel is the ceiling: it moves the same twice-the-matrix traffic with ideal access. A transpose near copy bandwidth is done.",
         "Fewer threads than tile elements (a \\(32 \\times 8\\) block for a \\(32 \\times 32\\) tile) amortizes index math, with 4 elements per thread."
       ],
-      "reproduce": "Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data. Median of 11 event-timed trials on an RTX 3050 Laptop GPU with CUDA 13.4 gives copy 153.5 GB/s, naive 47.7 GB/s and tiled 151.2 GB/s, and the tiled output matches a CPU transpose exactly, including a 1000x1000 odd-shape check.",
+      "reproduce": "Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data and time each with events, median of 11 trials. On an RTX 3050 6 GB with CUDA 13.4 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s, counting one read and one write per element, and the tiled output matched a CPU transpose exactly, including a 1000x1000 check of the edge guards. Expect the same ranking on your GPU, with tiled near copy.",
       "traps": [
-        "Trusting a bandwidth number above the vendor DRAM peak. Mine read 606 GB/s until I found the grid covered only a quarter of the matrix. Check coverage first, then compare against a `cudaMemcpy` ceiling.",
+        "Trusting a bandwidth number above the DRAM peak. It usually means the grid covers only part of the matrix or the byte count is wrong, so check coverage first, then compare against the copy kernel.",
         "Reading the blog's M2050 and K20c GB/s values as targets. Reproduce the ranking of copy, tiled and naive, not decade-old values.",
         "Swapping block indices without swapping tile offsets writes each tile to the wrong place while staying in bounds. Zeros cannot catch this; an index-pattern input where element equals row times width plus column can."
       ],
@@ -176,7 +176,7 @@
         },
         {
           "q": "A warp reads one column of a `tile[32][32]` float array. Which banks, and what changes with `tile[32][33]`?",
-          "a": "All 32 requests hit one bank: a 32-way conflict. With the +1 padding, row r of column c maps to bank (r + c) mod 32, so the 32 requests hit 32 distinct banks."
+          "a": "All 32 requests hit one bank: a 32-way conflict. With the +1 padding, element \\(r\\) of column \\(c\\) sits in bank \\((r + c) \\bmod 32\\), so the 32 requests hit 32 distinct banks."
         },
         {
           "q": "The tiled kernel matches copy bandwidth on square shapes but fails on width 1000. What is the likely cause?",
@@ -191,8 +191,8 @@
         {
           "name": "LeetGPU challenge 3: Matrix Transpose",
           "url": "https://leetgpu.com/challenges/matrix-transpose",
-          "locator": "Challenge 3: `solve(input, rows, cols)` over fp32, with functional cases from 1x1 and 1x4 through 8192x8192 and a perf shape of rows 7000 by cols 6000",
-          "note": "Solve on the hosted runner and keep local source. Mirror the 2x3 example plus a nonmultiple shape against a CPU reference outside the leaderboard."
+          "locator": "Challenge 3: `solve(input, output, rows, cols)` over fp32, with functional cases from 1x1 and 1x4 through 8192x8192 and a performance case of 7000 rows by 6000 columns",
+          "note": "Run it on LeetGPU or locally: build your `solve` with `nvcc -shared -Xcompiler -fPIC`, load it with `ctypes`, and check it against `reference_impl` on the cases from `generate_functional_test` and `generate_performance_test` in the challenge's `challenge.py` (public in AlphaGPU/leetgpu-challenges). That file imports `core.challenge_base`, which the repository does not ship; a two-line stub class with `device = \"cuda\"` is enough. Keep your own source, and add a nonmultiple shape beyond the public cases."
         }
       ],
       "stopWhen": "Your tiled transpose matches the reference on square, tall, wide and odd shapes and reaches at least 0.9 times your measured copy bandwidth on 4096x4096.",
@@ -233,7 +233,7 @@
           "resource": "pmpp-primitives-gpu4",
           "title": "Reduction trees and a simple kernel",
           "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
-          "locator": "Chapter 10, Sections 10.1 to 10.3 (printed pp. 211 to 217): reduction trees, operation count and the first shared-memory kernel"
+          "locator": "Chapter 10, Sections 10.1 to 10.3 (printed pp. 211 to 218): reduction trees, operation count and the first shared-memory kernel"
         },
         {
           "resource": "nvidia-reduction-gpu4",
@@ -256,11 +256,11 @@
         "Challenge 4's reference accumulates in float64, so an fp32 tree passes at 1e-5 on friendly magnitudes. That proves nothing about ill-conditioned inputs.",
         "The deck uses `int` throughout, where every tree order is exact. Its sequence needs an FP re-derivation before you copy it into a float kernel."
       ],
-      "reproduce": "By hand, reduce [6, 2, 7, 4, 5, 8, 3, 1] with a sequential-addressing tree to get 36 with 7 adds in 3 steps. Then show in float32 that (1e8 plus -1e8) plus 1.0 gives 1.0, while 1e8 plus ((-1e8) plus 1.0) gives 0.0.",
+      "reproduce": "By hand, reduce [6, 2, 7, 4, 5, 8, 3, 1] with a sequential-addressing tree to get 36 with 7 adds in 3 steps. Then show in float32 that \\((10^8 + (-10^8)) + 1 = 1\\) while \\(10^8 + ((-10^8) + 1) = 0\\).",
       "traps": [
         "Treating a Challenge 4 pass as an order certificate. The float64 reference plus 1e-5 tolerance absorbs tree-order error on friendly magnitudes, so test cancellation inputs separately.",
-        "Unrolling the last warp without `volatile` shared-memory qualifications lets the compiler keep values in registers and compute stale results.",
-        "Reading idle threads as inefficiency. Halving active threads each step is still work-efficient at \\(N - 1\\) adds; fixed-fanout alternatives do \\(N \\log N\\)."
+        "Copying the deck's unrolled last warp. It relies on `volatile` shared memory and warps running in lockstep; from Volta on, threads of a warp are scheduled independently, so finish with `__shfl_down_sync` or put `__syncwarp()` between the steps.",
+        "Reading idle threads as inefficiency. Halving active threads each step is still work-efficient at \\(N - 1\\) adds; a scheme that keeps every thread busy each step, as Kogge-Stone does for scan, does about \\(N \\log_2 N\\)."
       ],
       "selfTest": [
         {
@@ -276,16 +276,16 @@
           "a": "Summation order error. Any fp32 tree order lands within 1e-5 on the test magnitudes, so order bugs on ill-conditioned inputs escape."
         },
         {
-          "q": "Why do (1e8 plus -1e8) plus 1.0 and 1e8 plus ((-1e8) plus 1.0) differ in float32?",
-          "a": "-1e8 plus 1.0 rounds back to -1e8 because 1.0 is below its ulp, so the second order returns 0.0 while the first returns 1.0."
+          "q": "Why do \\((10^8 + (-10^8)) + 1\\) and \\(10^8 + ((-10^8) + 1)\\) differ in float32?",
+          "a": "Near \\(10^8\\), float32 values are 8 apart, so \\(-10^8 + 1\\) rounds back to \\(-10^8\\) and the second order returns 0, while the first cancels exactly and then adds 1."
         }
       ],
       "practice": [
         {
           "name": "LeetGPU challenge 4: Reduction",
           "url": "https://leetgpu.com/challenges/reduction",
-          "locator": "Challenge 4: `solve(input, N)` fp32 sum against a float64 reference at 1e-5, with functional cases for N=1, N=5 non-power-of-two and a 15M large input, and a perf shape of N=4194304",
-          "note": "Pass all functional tests, then add your own cancellation test in the 1e8 style against a float64 reference. The public tests do not check order."
+          "locator": "Challenge 4: `solve(input, output, N)` fp32 sum checked against `torch.sum(input.double()).float()` at absolute and relative tolerance 1e-5, with functional cases for \\(N = 1\\), \\(N = 5\\) and a 15M-element input, and a performance case of \\(N = 4194304\\)",
+          "note": "Run it on LeetGPU or locally: build your `solve` with `nvcc -shared -Xcompiler -fPIC`, load it with `ctypes`, and check it against `reference_impl` on the cases from `generate_functional_test` and `generate_performance_test` in the challenge's `challenge.py` (public in AlphaGPU/leetgpu-challenges). That file imports `core.challenge_base`, which the repository does not ship; a two-line stub class with `device = \"cuda\"` is enough. Pass all functional tests, then add your own cancellation test in the \\(10^8\\) style against a float64 reference. The public tests do not check order."
         }
       ],
       "stopWhen": "You hand-trace the 8-element tree, explain what each deck stage removes, and your kernel passes Challenge 4 plus your own cancellation test.",
@@ -340,7 +340,8 @@
           "resource": "nvidia-reduction-gpu4",
           "title": "Warp completion and cascading",
           "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
-          "locator": "Slides 21 to 23 (unrolling the last warp with `warpReduce`) and slides 31 to 33 (multiple adds per thread with a grid-stride loop)"
+          "locator": "Slides 21 and 22 (unrolling the last warp with `warpReduce`) and slides 31 to 33 (multiple adds per thread with a grid-stride loop)",
+          "depth": "The deck predates Volta. Its `warpReduce` assumes lockstep warps, so rewrite it with `__shfl_down_sync` before you reuse it."
         },
         {
           "resource": "gpu-mode-primitives-gpu4",
@@ -350,13 +351,13 @@
         }
       ],
       "focus": [
-        "`__shfl_down_sync(0xffffffff, v, offset)` exchanges only among active lanes. Partial warps need guarded lanes or a participation-derived mask.",
+        "`__shfl_down_sync(0xffffffff, v, offset)` requires every lane named in the mask to make the same call, and a lane reading from an inactive lane gets an undefined value. Keep all 32 lanes in the reduction and give out-of-range lanes the identity (0 for a sum).",
         "Blocks cannot synchronize globally, so write one partial per block and finish with a second kernel launch. The second pass needs its own tail handling for odd partial counts.",
-        "First-add-during-load halves the launched blocks and the load traffic. Cascading extends the idea until occupancy or registers stop the gain."
+        "First-add-during-load halves the launched blocks: each thread adds two elements as it loads them, so the first tree level runs during the load. Global reads stay at \\(N\\). Cascading extends the idea until occupancy or registers stop the gain."
       ],
-      "reproduce": "Write a shuffle warp reduction plus a two-pass grid reduction with 4-way coarsening and grid-stride loads. On 1000003 values it matches a float64 reference with relative error below 1e-6 (measured 7.65e-09 on an RTX 3050 Laptop GPU) and it returns 0 for length 0 and the single value for length 1.",
+      "reproduce": "Write a shuffle warp reduction plus a two-pass grid reduction with 4-way coarsening and grid-stride loads. On 1000003 values it matches a float64 reference with relative error below 1e-6, returns 0 for length 0 and returns the single value for length 1.",
       "traps": [
-        "Calling `__syncthreads()` inside a divergent branch. Threads that skip the barrier deadlock the block, so keep barriers on uniform control flow.",
+        "Calling `__syncthreads()` inside a divergent branch. The guide calls it invalid or undefined behavior: the block may hang, or on current GPUs run on with a silent race. Keep barriers on uniform control flow.",
         "Finishing with one global atomic per element instead of one per block. Atomics belong at block granularity; per-element atomics turn completion into contention.",
         "Testing only multiples of 1024. Tail bugs hide there, so test 1, 31, 32, 33, 1023 and 1000003."
       ],
@@ -366,16 +367,16 @@
           "a": "No grid-wide barrier exists for independently scheduled blocks. One partial per block plus a second launch is the portable completion; single-pass schemes risk deadlock."
         },
         {
-          "q": "A warp has 20 active lanes and reduces with a full 0xffffffff mask. What breaks?",
-          "a": "Shuffles read undefined values from inactive lanes. Derive the mask from participation or pad the tail with identity elements."
+          "q": "A tail warp has 20 lanes with data and reduces with a full `0xffffffff` mask. When does this go wrong, and what is the fix?",
+          "a": "If the other 12 lanes skip the shuffle inside a branch, the call is invalid and may hang. If they have exited, the call is allowed but shuffles that read from them return undefined values. Keep all 32 lanes in the reduction with identity values for the missing elements."
         },
         {
-          "q": "Why can 8-way coarsening run slower than 4-way on a short vector?",
-          "a": "Fewer blocks remain to fill the SMs while each thread holds more live state, so latency hiding is lost after the traffic saving is exhausted."
+          "q": "A 1,000,003-element reduction uses 256-thread blocks. How many blocks does it launch at coarsening 4 and at coarsening 64, and why can the second be slower on an 18-SM GPU?",
+          "a": "977 blocks at 4 and 62 at 64. Compute capability 8.6 holds up to six 256-thread blocks per SM, 108 on 18 SMs, so 62 blocks leave SMs partly idle and too few warps to hide memory latency."
         },
         {
           "q": "What exactly does first-add-during-load halve?",
-          "a": "The launched blocks: each thread sums two elements on load, so half as many blocks produce half as many partials with half the load traffic."
+          "a": "The launched blocks and the threads that sit in the shared-memory tree: each thread sums two elements on load. Every element is still read once from global memory."
         }
       ],
       "practice": [],
@@ -420,7 +421,7 @@
           "resource": "pmpp-primitives-gpu4",
           "title": "Kogge-Stone, work efficiency and Brent-Kung",
           "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
-          "locator": "Chapter 11, Sections 11.2 to 11.4 (printed pp. 239 to 246): Kogge-Stone, the N log N versus N-1 work argument, and the Brent-Kung up-sweep and down-sweep"
+          "locator": "Chapter 11, Sections 11.2 to 11.4 (printed pp. 238 to 250): Kogge-Stone, the \\(N \\log_2 N - (N - 1)\\) versus \\(N - 1\\) work argument, and the Brent-Kung up-sweep and down-sweep with its \\(2N - 2 - \\log_2 N\\) count"
         },
         {
           "resource": "pmpp-primitives-gpu4",
@@ -446,25 +447,25 @@
           "resource": "mit-6s894-primitives-gpu4",
           "title": "Associative scan implementation",
           "url": "https://github.com/accelerated-computing-class/lab7",
-          "locator": "Lab 7, Part 1 (`scan.cu`, `launch_scan`): scan templated over an associative operator, no CUB, evaluated at length 2^26 with throughput defined as twice the bytes over time",
+          "locator": "Lab 7, Part 1 (`scan.cu`, `launch_scan`): an inclusive scan templated over an associative operator, tested with `SumOp` and `DebugRangeConcatOp`, no external libraries such as CUB, benchmarked at length \\(2^{26}\\) with throughput defined as twice the bytes over time",
           "depth": "Build for your own GPU with `nvcc -arch=sm_86`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth."
         }
       ],
       "focus": [
-        "Kogge-Stone does \\(N \\log_2 N - (N-1)\\) adds (20481 for \\(N = 2048\\)) in \\(\\log_2 N\\) steps, while Brent-Kung does \\(2N - 2\\) (4094) in about twice the steps. That is step efficiency versus work efficiency.",
+        "Kogge-Stone does \\(N \\log_2 N - (N - 1)\\) adds (20481 for \\(N = 2048\\)) in \\(\\log_2 N\\) steps, while Brent-Kung does \\(2N - 2 - \\log_2 N\\) (4083) in about twice the steps. That is step efficiency versus work efficiency.",
         "Exclusive scan seeds with the identity (0 for addition) and each output covers a strict prefix. Inclusive versus exclusive confusion shifts every scatter address by one.",
         "Segmented scan restarts at head flags. Decoupled look-back tracks three states per tile: X invalid, A aggregate ready, P prefix ready."
       ],
       "reproduce": "Hand-run Kogge-Stone exclusive scan on [4, 6, 7, 1, 2, 8, 5, 2] to get [0, 4, 10, 17, 18, 20, 28, 33], then implement block scan plus block-sums scan plus add-back for arbitrary lengths and match `torch.cumsum` on odd sizes.",
       "traps": [
         "Reusing an inclusive scan where an exclusive one is needed shifts every scatter address by one, corrupting output without crashing.",
-        "Testing only powers of two hides the block-sums tail. Test lengths of the form 2^k plus or minus 1, plus 1 and 0.",
+        "Testing only powers of two hides the block-sums tail. Test lengths \\(2^k \\pm 1\\), plus 1 and 0.",
         "Validating a float kernel against a double scan proves nothing about the kernel's rounding. Test the kernel's own dtype and operator."
       ],
       "selfTest": [
         {
           "q": "For length 2048, how many adds do Kogge-Stone and Brent-Kung take, against what sequential baseline?",
-          "a": "20481 and 4094 against a 2047-add sequential scan. Kogge-Stone is step-efficient, Brent-Kung is work-efficient."
+          "a": "20481 and 4083 against a 2047-add sequential scan. Kogge-Stone is step-efficient, Brent-Kung is work-efficient."
         },
         {
           "q": "When does Kogge-Stone win despite doing more work?",
@@ -483,18 +484,19 @@
         {
           "name": "MIT Lab 7 Part 1: associative scan",
           "url": "https://github.com/accelerated-computing-class/lab7",
-          "locator": "Part 1 `launch_scan` in `scan.cu`: associative template over at least two operators, no CUB, at length 2^26 against the retargeted bandwidth goal",
-          "note": "Build with nvcc for your own GPU. Recompute every SM count, clock and bandwidth the questions assume."
+          "locator": "Part 1 `launch_scan` in `scan.cu`: pass the `SumOp` and `DebugRangeConcatOp` tests without CUB, then benchmark at length \\(2^{26}\\) against the retargeted bandwidth goal",
+          "note": "Build with `nvcc -arch=sm_86` (or your GPU's architecture) and run locally; the course runner needs an MIT token. Recompute every SM count, clock and bandwidth the questions assume."
         },
         {
           "name": "LeetGPU challenge 16: Prefix Sum",
           "url": "https://leetgpu.com/challenges/prefix-sum",
-          "locator": "Challenge 16: `solve(input, N)` inclusive float scan, with functional cases for a single element, an 8-element power of two and a 2025 random input, and a perf shape of N=250000"
+          "locator": "Challenge 16: `solve(input, output, N)` inclusive float scan at tolerance 0.01, with functional cases for a single element, an 8-element power of two and a 2025-element random input, and a performance case of \\(N = 250000\\)",
+          "note": "Run it on LeetGPU or locally with the harness from the transpose unit."
         },
         {
           "name": "LeetGPU challenge 70: Segmented Exclusive Prefix Sum",
           "url": "https://leetgpu.com/challenges/segmented-exclusive-prefix-sum",
-          "locator": "Challenge 70: `solve(values, flags, N)` with flags[0] set, first output of every segment 0.0, and a perf shape of N=50000000",
+          "locator": "Challenge 70: `solve(values, flags, output, N)` with `flags[0]` set and the first output of every segment 0.0, and a performance case of \\(N = 50000000\\)",
           "note": "Attempt only after the required challenges 3, 4, 5, 13 and 16 pass."
         }
       ],
@@ -537,7 +539,7 @@
           "resource": "pmpp-primitives-gpu4",
           "title": "Atomics and privatization",
           "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
-          "locator": "Chapter 9, Sections 9.2 to 9.4 (printed pp. 194 to 200): the basic histogram kernel, atomic latency and throughput, and privatization into per-block copies"
+          "locator": "Chapter 9, Sections 9.2 to 9.4 (printed pp. 194 to 202): the basic histogram kernel, atomic latency and throughput, and privatization into per-block copies"
         },
         {
           "resource": "pmpp-primitives-gpu4",
@@ -553,14 +555,14 @@
         }
       ],
       "focus": [
-        "One global atomic per update serializes on hot bins. With uniform input over B bins each bin takes about N/B atomics; with skewed input one bin takes nearly N.",
+        "One global atomic per update serializes on hot bins. With uniform input over \\(B\\) bins each bin takes about \\(N/B\\) atomics; with skewed input one bin takes nearly N.",
         "Privatization replicates bins per block in shared memory, which is fast and block-scoped, then merges at a cost of blocks times bins adds. Coarsening into fewer blocks cuts the merge.",
         "Work PMPP Exercise 6 by hand before coding: it quantifies basic versus privatized versus coarsened update counts on the same input."
       ],
-      "reproduce": "Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins both match `torch.bincount`; on single-bin-skewed input the privatized version wins while both stay exact. State the int32 bin overflow limit (2147483647) and your merge policy above it.",
+      "reproduce": "Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins and on input that falls entirely in one bin, both match `torch.bincount` and the privatized version is faster. On an RTX 3050 6 GB, 50M updates took 17.8 ms with global atomics over 256 uniform bins and 27.4 ms into one bin, against 1.3 ms privatized in both cases. State the int32 bin overflow limit (2147483647) and your merge policy above it.",
       "traps": [
         "Merging privatized int32 bins into int32 global bins can overflow while per-block counts look fine. Accumulate the merge in 64-bit or document the length limit.",
-        "Benchmarking only uniform input hides contention. One hot bin serializes global atomics and flips the ranking, so always include a skewed case.",
+        "Benchmarking only uniform input hides contention. One hot bin serializes global atomics on one address (27.4 against 17.8 ms for 50M updates in the run above), so always include a skewed case.",
         "Skipping `__syncthreads()` between zeroing, updating and merging races within the block, since later phases read data other threads wrote."
       ],
       "selfTest": [
@@ -585,8 +587,8 @@
         {
           "name": "LeetGPU challenge 13: Histogramming",
           "url": "https://leetgpu.com/challenges/histogramming",
-          "locator": "Challenge 13: `solve(input, N, num_bins)` over int32, with functional cases from N=5 over 3 bins (expecting [2, 2, 1]) through 10000 over 128 bins, and a perf shape of N=50000000 with 256 bins",
-          "note": "Pass the public tests, then add an ungraded skewed-input timing that compares global against privatized atomics."
+          "locator": "Challenge 13: `solve(input, histogram, N, num_bins)` over int32, with functional cases from \\(N = 5\\) over 3 bins (expecting [2, 2, 1]) through 10000 over 128 bins, and a performance case of \\(N = 50000000\\) with 256 bins",
+          "note": "Run it on LeetGPU or locally with the harness from the transpose unit. Then add an ungraded skewed-input timing that compares global against privatized atomics."
         }
       ],
       "stopWhen": "Both variants match `torch.bincount` on uniform and skewed inputs, and you predict the faster one from the bin distribution before timing.",
@@ -638,7 +640,7 @@
           "resource": "mit-6s894-primitives-gpu4",
           "title": "Run-length compression",
           "url": "https://github.com/accelerated-computing-class/lab7",
-          "locator": "Lab 7, Part 2 (`rle_compress.cu`, `launch_rle_compress`): run starts as an implicit predicate plus scan for positions over a 16 MB bitmap",
+          "locator": "Lab 7, Part 2 (`rle_compress.cu`, `launch_rle_compress`): run starts as an implicit predicate plus scan for positions over a 16-million-byte bitmap (`rle_raw.bmp`)",
           "depth": "Build for your own GPU with `nvcc -arch=sm_86` and retarget the 1.6 ms course goal to your hardware. Part 3 decompression is extra credit; skip it here."
         }
       ],
@@ -649,18 +651,18 @@
       ],
       "reproduce": "On [-1, 2, 0, 4] produce predicate [0, 1, 0, 1], exclusive scan [0, 0, 1, 1] and output [2, 4, 0, 0] under the Challenge 72 contract. Then implement scan-plus-scatter that matches it on all-positive, all-negative and length-255 non-power-of-two inputs.",
       "traps": [
-        "Using an inclusive scan for addresses shifts every write by one slot, drops the first kept element and writes one past the kept total.",
+        "Using an inclusive scan for addresses shifts every write by one slot: slot 0 stays unwritten and the last kept element lands one past the kept total.",
         "Treating 0.0 as kept. The contract selects strictly positive inputs, so zeros stay out.",
         "Sizing the output to the kept count before computing it. Read back the total first, or overallocate to the input length and slice."
       ],
       "selfTest": [
         {
           "q": "Compact [-1, 2, 0, 4] under the Challenge 72 contract. What are the predicate, the exclusive scan, the output and K?",
-          "a": "Predicate [0, 1, 0, 1], scan [0, 0, 1, 1], output [2, 4, 0, 0], K=2. Zeros are rejected and survivors keep order."
+          "a": "Predicate [0, 1, 0, 1], scan [0, 0, 1, 1], output [2, 4, 0, 0], \\(K = 2\\). Zeros are rejected and survivors keep order."
         },
         {
           "q": "What do an all-negative input and an empty input produce?",
-          "a": "An all-zero output with K=0, and an empty output with K=0. The kernel must still launch and synchronize cleanly."
+          "a": "An all-zero output with \\(K = 0\\), and an empty output with \\(K = 0\\). The kernel must still launch and synchronize cleanly."
         },
         {
           "q": "Why not assign positions with one atomic counter?",
@@ -676,13 +678,13 @@
           "name": "MIT Lab 7 Part 2: run-length compression",
           "url": "https://github.com/accelerated-computing-class/lab7",
           "locator": "Part 2 `launch_rle_compress` in `rle_compress.cu`: scan-built positions for run starts, reusing your Part 1 scan",
-          "note": "Build with nvcc for your own GPU and recompute the timing goal. Telerun needs an MIT token, so run locally."
+          "note": "Build with `nvcc -arch=sm_86` (or your GPU's architecture), run locally, and recompute the timing goal for your GPU; the course runner needs an MIT token."
         },
         {
           "name": "LeetGPU challenge 72: Stream Compaction",
           "url": "https://leetgpu.com/challenges/stream-compaction",
-          "locator": "Challenge 72: `solve(A, N)` keeping strictly positive values in order with 0.0 fill, checked exactly, with functional cases for length 1 present and absent plus non-powers of two, and a perf shape of N=50000000",
-          "note": "Attempt only after the required challenges 3, 4, 5, 13 and 16 pass."
+          "locator": "Challenge 72: `solve(A, N, out)` keeping strictly positive values in order, with the rest of `out` left at 0.0, checked exactly, with functional cases for length 1 present and absent plus non-powers of two, and a performance case of \\(N = 50000000\\)",
+          "note": "Attempt only after challenges 3, 4, 5, 13 and 16 pass. Run it on LeetGPU or locally with the harness from the transpose unit."
         }
       ],
       "stopWhen": "Your compactor matches the Challenge 72 contract on edge sizes, and you derive every scatter address from the exclusive scan by hand on the 4-element example.",
@@ -723,14 +725,14 @@
         {
           "resource": "online-softmax-gpu4",
           "title": "Online normalizer recurrence",
-          "url": "https://arxiv.org/abs/1805.02867",
-          "locator": "Sections 2 and 3 with Algorithms 1 to 3 and Theorem 1 (arXiv:1805.02867v1): naive 3-access softmax, safe 4-access softmax, and the online recurrence with running maximum and rescaled normalizer",
+          "url": "https://arxiv.org/abs/1805.02867v2",
+          "locator": "Sections 2 and 3 with Algorithms 1 to 3 and Theorem 1 (arXiv:1805.02867v2): naive 3-access softmax, safe 4-access softmax, and the online recurrence with running maximum and rescaled normalizer",
           "depth": "Work the induction behind Theorem 1 by hand. Save Section 4 (top-k fusion) for the attention track."
         },
         {
           "resource": "online-softmax-gpu4",
           "title": "Parallel form and benchmarks",
-          "url": "https://arxiv.org/abs/1805.02867",
+          "url": "https://arxiv.org/abs/1805.02867v2",
           "locator": "Section 3.1 (associative pair operator for parallel reduction) and Sections 5 to 6 (1.15x to 1.3x on a V100, fused top-k down to one access per element)",
           "depth": "Read the benchmark setup for method. Treat the V100 ratios as historical."
         }
@@ -769,8 +771,8 @@
         {
           "name": "LeetGPU challenge 5: Softmax",
           "url": "https://leetgpu.com/challenges/softmax",
-          "locator": "Challenge 5: `solve(input, N)` with max subtraction, with functional cases including the [1000, 1, 2, 3] overflow trap and a single element, and a perf shape of N=500000",
-          "note": "Pass the public tests, then add your own all-masked-row test with a documented policy. The public tests assume at least one finite logit."
+          "locator": "Challenge 5: `solve(input, output, N)` with max subtraction, with functional cases including the [1000, 1, 2, 3] overflow trap and a single element, and a performance case of \\(N = 500000\\)",
+          "note": "Run it on LeetGPU or locally with the harness from the transpose unit. Pass the public tests, then add your own all-masked-row test with a documented policy. The public tests assume at least one finite logit."
         }
       ],
       "stopWhen": "All three implementations agree within 1e-5 on the perf shape, your hand recurrence matches the code, and the all-masked policy is tested.",
@@ -813,13 +815,13 @@
           "resource": "aisys-async-gpu4",
           "title": "Streams and copy-compute overlap",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 11, Sections `Overlapping Kernel Execution with CUDA Streams` and `Using Streams to Overlap Compute with Data Transfers` (pinned memory, `cudaMallocHost`, `cudaMemcpyAsync`, two DMA engines), plus `Stream-Ordered Memory Allocator`"
+          "locator": "Chapter 11, Overlapping Kernel Execution with CUDA Streams and Using Streams to Overlap Compute with Data Transfers (pinned memory, `cudaMallocHost`, `cudaMemcpyAsync`, two DMA engines), plus Stream-Ordered Memory Allocator"
         },
         {
           "resource": "aisys-async-gpu4",
           "title": "Default streams and event dependencies",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 11, Sections `Legacy Default Stream`, `Modern Per-Thread Default Stream`, `Fine-Grained Synchronization with Events and Callbacks` and `Using CUDA Events for Cross-Stream Synchronization`"
+          "locator": "Chapter 11, Legacy Default Stream, Modern Per-Thread Default Stream, Fine-Grained Synchronization with Events and Callbacks, and Using CUDA Events for Cross-Stream Synchronization"
         },
         {
           "resource": "cuda-programming-guide-gpu4",
@@ -837,7 +839,7 @@
       "focus": [
         "`cudaMemcpyAsync` on pageable host memory degrades to a synchronous staged copy, so overlap starts with `cudaMallocHost`.",
         "The legacy default stream synchronizes every blocking stream. Create non-blocking streams with `cudaStreamCreateWithFlags` and order cross-stream work with `cudaStreamWaitEvent`, not `cudaDeviceSynchronize`.",
-        "Overlap needs comparable copy and compute phases on different engines. Two kernels that each fill the GPU serialize (measured 1.04x), while a chunked copy and compute pipeline shows in `nsys`.",
+        "Overlap needs comparable copy and compute phases on different engines. Two kernels that each fill the GPU barely overlap, while a chunked copy and compute pipeline shows in `nsys`.",
         "Every buffer must outlive its stream work. Free or reuse device and host buffers only after the consuming stream synchronizes."
       ],
       "reproduce": "Build a 4-chunk host-to-device plus kernel pipeline on separate streams with `cudaStreamWaitEvent` chaining. Capture with `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none` and show copy and compute overlapping in the timeline, with event math placing overlapped wall time below the sequential sum.",
@@ -861,15 +863,15 @@
         },
         {
           "q": "Two 5 ms kernels that each fill the GPU run in different streams. How much overlap, and why?",
-          "a": "Almost none (measured 1.04x). Overlap needs independent resources, such as the copy engine versus the SMs, not two full-GPU kernels."
+          "a": "Almost none. Each kernel already occupies every SM, so the second waits for free resources; overlap needs independent engines, such as a copy engine beside the SMs."
         }
       ],
       "practice": [
         {
           "name": "AI Systems companion code: Chapter 11 stream overlap demos",
           "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch11",
-          "locator": "`stream_overlap_demo.py`, `streams_overlap_demo.cu` and `event_timing_demo.py`: run the hardware-compatible paths and reproduce one overlap timeline with event timing",
-          "note": "Skip the B200-only expectation files. Record any guard or unavailable feature instead of forcing the run."
+          "locator": "`streams_overlap_demo.cu`, `event_timing_demo.py` and `stream_overlap_demo.py`: build and run the overlap demo, reproduce one overlap timeline with event timing, and compare the event timing variants",
+          "note": "From the `code` directory, `nvcc -O3 -arch=sm_86 ch11/streams_overlap_demo.cu -o streams_overlap_demo` builds the CUDA demo, which reports its sequential and overlapped times; `event_timing_demo.py` runs with PyTorch alone; `stream_overlap_demo.py` imports the shared harness and needs the repository's `requirements.txt`. Ignore the B200 expectation files."
         }
       ],
       "stopWhen": "Your pipeline timeline shows copy and compute overlapping, event math confirms it, and switching back to pageable memory visibly collapses the overlap.",
@@ -891,7 +893,7 @@
       ],
       "outcomes": [
         "Capture a stable kernel sequence into a graph and replay it with identical results.",
-        "Update node parameters for same-shape changes and fall back to recapture otherwise.",
+        "Update an instantiated graph in place when only parameters change, and re-instantiate when the topology changes or the update is refused.",
         "Gate dispatch on shape, dtype and device validation with a correct eager fallback."
       ],
       "why": "Graphs remove per-launch CPU overhead for repeated work, but a graph bakes in addresses and shapes. The validation and fallback around it is the actual engineering.",
@@ -910,14 +912,14 @@
           "resource": "aisys-async-gpu4",
           "title": "CUDA graphs chapter",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 12, Sections `CUDA Graphs` (capture, memory pools, pointer stability), `Capturing a CUDA Graph with a CUDA Stream` (`cudaStreamBeginCapture` to `cudaStreamEndCapture`) and `Dynamic Graph Update` (same-shape swaps without recapture)",
-          "depth": "Skip device-initiated launch beyond the vocabulary. It needs newer hardware than this section assumes."
+          "locator": "Chapter 12, CUDA Graphs (memory pools and pointer stability), Capturing a CUDA Graph with a CUDA Stream (`cudaStreamBeginCapture` to `cudaStreamEndCapture`) and Dynamic Graph Update (parameter changes without recapture)",
+          "depth": "Skip device-initiated launch beyond the vocabulary; this section launches graphs from the host."
         },
         {
           "resource": "cuda-programming-guide-gpu4",
           "title": "Graphs reference",
           "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html",
-          "locator": "Sections 2.5.9.2 (capture, instantiate and launch stages) and 4.2.2 to 4.2.3 (stream capture with cross-stream join rules, prohibited operations, whole-graph update and per-node update with `cudaGraphExecKernelNodeSetParams`)",
+          "locator": "Sections 4.2.2 (stream capture with cross-stream rules, prohibited operations, instantiation and execution) and 4.2.3 (whole-graph update, per-node update with `cudaGraphExecKernelNodeSetParams`, and the update limitations); Section 2.5.9.2 on the asynchronous execution page is the short introduction",
           "depth": "Read the capture constraints and update rules. Skim conditional nodes; they are not used in this section."
         },
         {
@@ -928,12 +930,12 @@
         }
       ],
       "focus": [
-        "Capture, instantiate and launch happen once, once and many times. Replay costs about 1 us per launch (measured 0.98 against 1.70 eager on tiny kernels), so graphs pay only when launch overhead matters.",
+        "Capture, instantiate and launch happen once, once and many times. Replay removes most per-launch CPU cost: on an RTX 3050 6 GB with CUDA 13.4, tiny kernels took 0.79 us each inside a graph against 2.67 us launched one by one, so graphs pay when launch overhead is a large share of step time.",
         "Capture forbids allocation, synchronization, legacy-stream work and shape changes. Preallocate maximum shapes and validate before capturing.",
-        "Same topology plus same shapes updates in place with `cudaGraphExecUpdate`; anything else destroys and recaptures. Always check the reported failing node.",
-        "The first replay carries setup cost, so warm up before timing. Without warmup my graph measured slower than eager (4.31 against 3.48 ms)."
+        "`cudaGraphExecUpdate` updates an instantiated graph in place when the new capture has the same topology: kernel arguments, pointers and grid sizes may change. A different sequence of nodes fails the update; check the result and the reported node, then destroy and re-instantiate.",
+        "The first launch after instantiation also uploads the graph (`cudaGraphUpload` can do it ahead of time), so warm up before timing: the first replay of an 8-kernel chain took 34 us on the RTX 3050 above, against about 6 us warm."
       ],
-      "reproduce": "Capture an 8-kernel saxpy chain, replay 100 times with outputs identical to eager, then change a pointer through update and change a shape to force recapture. Report per-launch time both ways after warmup.",
+      "reproduce": "Capture an 8-kernel saxpy chain, replay it 100 times with outputs identical to eager, update a pointer and a length in place with `cudaGraphExecUpdate`, then change the number of kernels so the update fails and you re-instantiate. Report per-kernel launch time eager and in the graph, after warmup.",
       "traps": [
         "Capturing on the legacy default stream is invalid. Use an explicit stream, preferably non-blocking.",
         "Replaying after freeing and reallocating buffers reads stale addresses. Graphs bake in pointers, so tie buffer lifetime to the executable graph.",
@@ -942,19 +944,19 @@
       "selfTest": [
         {
           "q": "When do CUDA graphs help, in one measured rule?",
-          "a": "When per-launch CPU overhead is a large fraction of kernel time. Tiny kernels measured 1.70 us eager versus 0.98 us per graph launch; long kernels show nothing."
+          "a": "When per-launch CPU overhead is a large fraction of kernel time. Tiny kernels took 2.67 us each launched eagerly against 0.79 us inside a graph on an RTX 3050 6 GB; long kernels show no gain."
         },
         {
-          "q": "Why must captured shapes stay fixed?",
-          "a": "The executable graph bakes in addresses, grid sizes and parameters. Same-shape value changes update in place; shape changes need recapture."
+          "q": "What does an executable graph bake in, and which changes can it take in place?",
+          "a": "The nodes, their dependencies and every parameter: kernel arguments, pointers and launch dimensions. Parameters, grid sizes included, can be updated in place while the topology is unchanged; a different sequence of nodes needs a new instantiation."
         },
         {
           "q": "Whole-graph update fails on a new input. What is the correct recovery?",
           "a": "Destroy the executable graph and recapture plus re-instantiate from the new sequence. The update API names the failing node for the log."
         },
         {
-          "q": "Why must random-number generation stay outside the capture?",
-          "a": "Captured work replays identically, so generated values would freeze across replays. Generate outside and pass buffers in."
+          "q": "Why can random-number generation inside a capture repeat the same values on every replay?",
+          "a": "A replay reuses the captured arguments, so a generator whose seed or offset is a kernel argument produces the same numbers each time. PyTorch registers its generator with the graph and advances the offset per replay; otherwise generate outside the capture or read the offset from device memory."
         }
       ],
       "practice": [
@@ -962,10 +964,10 @@
           "name": "AI Systems companion code: Chapter 12 graph demos",
           "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch12",
           "locator": "`graph_capture_demo.py`, `graph_replay_benchmark.py` and `baseline_cuda_graphs.py`: capture and replay on your GPU with a state-reset test",
-          "note": "Run hardware-compatible paths only. Add a same-shape update plus a forced-recapture fallback test of your own."
+          "note": "`graph_capture_demo.py` and `graph_replay_benchmark.py` run with PyTorch alone; `baseline_cuda_graphs.py` imports the shared harness and needs the repository's `requirements.txt`. Add a parameter-update test and a forced re-instantiation fallback test of your own."
         }
       ],
-      "stopWhen": "Your graph replays bit-identical results, an update handles same-shape changes, and an invalid shape falls back to eager correctly.",
+      "stopWhen": "Your graph replays bit-identical results, an in-place update handles parameter changes, and a topology change falls back to re-instantiation correctly.",
       "fit": {
         "verdict": "added",
         "note": "The book chapters teach graph mechanics but no pool resource is an exact API reference, so the CUDA Programming Guide (new) supplies the verified capture and update calls."
@@ -1018,7 +1020,7 @@
         }
       ],
       "focus": [
-        "Each defect has a signature. Races vary run to run, divergent barriers hang, partial warps corrupt tails only, stale buffers corrupt after reuse, and wrong masks corrupt masked rows only.",
+        "Each defect has a signature. Races vary run to run, divergent barriers hang or race silently, partial warps corrupt tails only, stale buffers corrupt after reuse, and wrong masks corrupt masked rows only.",
         "Attribute first: serialize with `CUDA_LAUNCH_BLOCKING=1` to find the owning kernel, confirm with sanitizer evidence, and never ship a global synchronization as the fix.",
         "A defect that never fires in tests still ships. Write the adversarial size, skew, reuse and mask cases from the project list as regression tests."
       ],
