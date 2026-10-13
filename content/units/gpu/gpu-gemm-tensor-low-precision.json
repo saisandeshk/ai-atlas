@@ -674,7 +674,7 @@
     {
       "id": "epilogue-fusion-grouped-gemm",
       "title": "Epilogue fusion and persistent or grouped GEMM",
-      "hours": 3,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -683,47 +683,72 @@
         "epilogue-fusion"
       ],
       "outcomes": [
-        "TODO"
+        "Implement bias, scale and ReLU directly in a GEMM epilogue and verify operation order.",
+        "Distinguish batched, grouped and persistent execution schedules.",
+        "Implement an optional bounded persistent tile scheduler and compare the complete fused operation with an unfused baseline."
       ],
-      "why": "TODO",
+      "why": "Fusion can remove intermediate traffic, while persistence can amortize scheduling across tiles. Both can lose if resource pressure or scheduling overhead outweighs the saved work.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-gemm-tensor-low-precision/gemm-baselines-dispatch",
+          "note": "Compare the same complete operation across shape regimes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-gemm-gpu5",
+          "title": "Fusion and long-lived work scheduling",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 9: Kernel Fusion; Chapter 10: Persistent Kernels and Megakernels, Common Workloads for Persistent Kernels",
+          "depth": "Implement a bounded GEMM epilogue, not a megakernel or cooperative-grid runtime. Persistence and grouped GEMM are optional extensions after the fused operation passes."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "GEMM lifecycle and persistence",
+          "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture8.pdf",
+          "locator": "Fall 2025 Lecture 8 slides 25-31",
+          "depth": "Extract scheduling and prologue/epilogue arguments. Do not implement Hopper-only cluster or warpgroup instructions for this unit."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "A coordinate-aware epilogue",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0y_predication.html",
+          "locator": "Predication: GEMM epilogue example and coordinate predicates, documentation dated September 21, 2026",
+          "depth": "Reuse output predicates when adding column bias and activation. Ensure the bias index is the logical column, not a fragment-array index."
         }
       ],
       "focus": [
-        "TODO"
+        "Define the fused contract as \\(D_{ij}=\\max(0,\\alpha s_{A,i}s_{B,j}P_{ij}+\\beta C_{ij}+b_j)\\), where \\(P\\) is the accumulator product. Omit reconstruction factors for unquantized inputs. Apply output conversion only after this epilogue.",
+        "For a separate elementwise epilogue, fusion removes one intermediate write and one intermediate read, or \\(2sMN\\) requested bytes. Bias, old-output reads and final-output writes remain; caches can change actual DRAM savings.",
+        "Batched GEMM has a regular family of products; grouped GEMM can vary shapes and pointers. Persistence describes long-lived blocks taking multiple tiles, not a different mathematical operation.",
+        "A bounded persistent scheduler can assign flattened tile IDs with a grid-stride loop. Reset accumulators for every tile, map group boundaries explicitly, and retain a nonpersistent fallback."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Add column bias and ReLU to the existing FP32 GEMM for shapes (17,19,23) and (32,16,17). Test positive and negative bias, nonzero old output and zero reduction against an independent CPU double implementation with the same epilogue order. For a 64 by 96 FP32 intermediate, derive 49152 requested bytes removed by fusion. Time GEMM plus separate epilogue versus fused GEMM, including all device work in each interval. Optional: run a grid-stride persistent scheduler over two differently shaped products and verify every output tile is written exactly once.",
       "traps": [
-        "TODO"
+        "Applying activation before bias or reconstruction and thereby changing the operation.",
+        "Reading the old output when the overwrite contract has zero beta and may supply uninitialized storage.",
+        "Assuming persistence guarantees load balance or that grouped GEMM is identical to a uniform strided batch."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which traffic does an in-register epilogue remove?",
+          "a": "The intermediate product's write and subsequent epilogue read. It does not remove required bias, old-output or final-output traffic."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can a persistent block keep the previous tile's accumulator?",
+          "a": "Not for an independent output tile. Reset it or load the new tile's required initial state before computing."
+        },
+        {
+          "q": "Why can fusion reduce bytes but still lose?",
+          "a": "Added registers, instructions or shared-memory use can reduce throughput or residency; small intermediates may already stay in cache."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` bias/ReLU epilogue, complete-operation timing pair and optional two-group persistent tile scheduler with unique-ownership tests.",
+      "stopWhen": "The fused epilogue passes edge and operation-order tests, its traffic savings are derived, and the report compares complete fused and unfused operations; optional scheduling has its own ownership check.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book supplies fusion and persistence, MIT supplies the GEMM lifecycle, and CuTe supplies epilogue predicates. The mini-project makes the implementation bounded and leaves grouped persistence optional."
       }
     },
     {
