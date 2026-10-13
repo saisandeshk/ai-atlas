@@ -270,47 +270,65 @@
         "flashattention2-partitioning"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the FlashAttention IO bound under its stated two-level memory assumptions.",
+        "Explain query-block parallelism and split-query warp ownership in FlashAttention-2.",
+        "Predict tile resource limits and distinguish grid parallelism from resident occupancy."
       ],
-      "why": "TODO",
+      "why": "IO-aware attention is an algorithm plus a schedule. The second paper improves utilization without making dense attention a different mathematical operation.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/attention-backward-recompute",
+          "note": "Use recomputation to avoid saving quadratic state for training."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashattention-gpu6",
+          "title": "FlashAttention IO analysis, arXiv:2205.14135v2",
+          "url": "https://arxiv.org/abs/2205.14135v2",
+          "locator": "Section 3.1, Algorithm 1; Section 3.2, Theorem 2 and Proposition 3; Appendix C, Proof of Theorem 2 (pp. 23 to 24)",
+          "depth": "Skip block-sparse attention. Keep the scope of Proposition 3: it rules out an asymptotic improvement for every memory size in the stated range, not optimality at each fixed size."
+        },
+        {
+          "resource": "flashattention2-gpu6",
+          "title": "FlashAttention-2 schedule, arXiv:2307.08691v1",
+          "url": "https://arxiv.org/abs/2307.08691v1",
+          "locator": "Sections 3.1.1, 3.2 and 3.3; Algorithm 1 and Figures 2 and 3 (pp. 5 to 9)",
+          "depth": "Algorithm 1 line 10 on the rendered v1 page incorrectly inverts the exponential rescaling. Multiply the old numerator by \\(\\exp(m_{\\text{old}}-m_{\\text{new}})\\), without an inverse. Use CS336 Algorithm 1 for implementation. Stop before Section 4's hardware-specific results."
         }
       ],
       "focus": [
-        "TODO"
+        "In the original square-attention model, \\(M\\) is fast-memory capacity in elements and \\(d \\le M \\le Nd\\). Key/value tiles permit \\(\\Theta(Nd/M)\\) passes over query/output state, giving \\(\\Theta(N^2d^2/M)\\) slow-memory element accesses.",
+        "Standard materialization costs \\(\\Theta(Nd+N^2)\\) accesses in this model. Convert elements to bytes using each buffer's dtype; do not insert a shared-memory byte count directly for \\(M\\). At fixed \\(M\\) and \\(d\\), the FlashAttention IO expression is still quadratic in \\(N\\).",
+        "FlashAttention-2 assigns independent query blocks to thread blocks and keeps their state on chip. Within a block, split-query warps own different output rows, avoiding the split-key partial-output combination described in Figure 3.",
+        "A tile needs query, key, value, score and output storage, row statistics and compiler temporaries. Larger tiles can reduce reloads but increase registers, spills and shared memory. More blocks in the grid do not guarantee more resident warps."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the IO expression by counting key/value tiles and query/output passes. Draw original key-outer and FlashAttention-2 query-outer schedules, marking every slow-memory read/write and the owner of each output row. For square query tiles of 64 rows with sequence length 1024, batch size 1 and eight heads, derive 128 forward thread blocks. Explain why this grid count is not an occupancy measurement.",
       "traps": [
-        "TODO"
+        "Reading 'exact attention' as bitwise equality. The algorithm avoids sparse or low-rank approximation; floating-point order and precision still change outputs.",
+        "Treating the IO theorem as a latency prediction. It omits launch overhead, cache hierarchy, exponentials and hardware scheduling.",
+        "Confusing split-key warp partitioning with decode's split-KV across thread blocks. They split related dimensions but have different owners, workspaces and merge costs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does increasing fast-memory capacity lower the modeled IO?",
+          "a": "Larger key/value tiles fit, so fewer outer tiles require fewer passes over query/output state. This says nothing by itself about the best resident tile on real hardware."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What must split-key workers combine that split-query workers need not combine?",
+          "a": "Contributions to the same output rows. Split-query workers own different rows; split-key workers own different pieces of each row's reduction."
+        },
+        {
+          "q": "Why might extra query blocks fail to help one-row decode?",
+          "a": "There is only one query row per head, so query tiling creates no substantial new parallelism. Splitting the KV sequence can create work, but needs a stable state merge and extra workspace."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` attention IO ledger, schedule diagrams, tile resource budget and prediction checked against timings and compiled resource reports.",
+      "stopWhen": "You derive the IO bound with its assumptions, explain both ownership diagrams, and identify a resource constraint that prevents unlimited tile growth.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The two papers cover the IO proof and work partitioning at derive depth; the mini-project supplies the schedule and resource evidence. No new material is needed."
       }
     },
     {
