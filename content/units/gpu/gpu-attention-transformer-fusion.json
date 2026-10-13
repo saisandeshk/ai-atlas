@@ -661,7 +661,7 @@
     {
       "id": "mlp-epilogue-fusion",
       "title": "SwiGLU MLP and epilogue fusion boundaries",
-      "hours": 3,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -670,47 +670,70 @@
         "residual-epilogue-fusion"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a gated MLP path with the correct projection orientations and activation order.",
+        "Fuse a bounded activation or residual epilogue without changing required outputs or dtype boundaries.",
+        "Derive removed intermediate traffic and explain reduction and resource limits on larger fusion groups."
       ],
-      "why": "TODO",
+      "why": "Pointwise fusion can remove launches and intermediate traffic. Fusing a complete MLP or normalization into a GEMM is harder because consumers need completed reductions and different data reuse.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/attention-baselines-regimes",
+          "note": "Measure the fusion against a compiled full-block baseline."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "leetgpu-transformer-gpu6",
+          "title": "LeetGPU 84: SwiGLU MLP Block specification",
+          "url": "https://github.com/AlphaGPU/leetgpu-challenges/blob/9c9dbe55e8d6124f42f0de9b6696290cbcd9670e/challenges/medium/84_swiglu_mlp_block/challenge.py",
+          "locator": "Commit 9c9dbe5: `reference_impl`, `get_solve_signature` and `generate_example_test`; inspect `generate_functional_test` before implementing"
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer residual/RMSNorm mutation contract",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/norm/__init__.py",
+          "locator": "Commit f2794d5: `fused_add_rmsnorm` docstring, Step 1, Step 2 and parameter contract",
+          "depth": "Read the ordinary fused operation only. Do not enable architecture-specific launch mechanisms or quantized variants for this unit."
         }
       ],
       "focus": [
-        "TODO"
+        "The challenge computes \\(A = XW_g\\), \\(U = XW_u\\), \\(H = \\operatorname{SiLU}(A) \\odot U\\) and \\(Y = HW_d\\). Its weights use input-by-output orientation, unlike the stored weight of PyTorch's linear module.",
+        "A fused pointwise SiLU/multiply kernel can read the two projection outputs and write one hidden tensor. A projection epilogue can remove more traffic only if the needed gate and up results are available to the same owner after their reductions finish.",
+        "Residual addition, affine scaling and activation are pointwise after a completed GEMM result. RMSNorm and LayerNorm require a row reduction across all normalized features; one output tile is generally not the entire row.",
+        "FlashInfer's fused residual/RMSNorm updates the residual buffer to the sum and the input buffer to its normalized version. Preserve both outputs if the model needs them. Include saved residual writes and changed rounding points in a fusion comparison."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, implement challenge 84's two-row basis-vector example in double precision. The first two columns of both input-by-output projection weights are identity and the other two are zero; the down weight returns the first two hidden features. The output is diagonal with value \\(\\operatorname{sigmoid}(1)\\) and zero off-diagonal entries. Then draw separate, pointwise-fused and projection-epilogue dataflows, counting each removed intermediate write/read at its actual dtype and naming every required output that remains.",
       "traps": [
-        "TODO"
+        "Computing SiLU of the elementwise gate/up product instead of multiplying the activated gate by the up projection. These are different functions.",
+        "Eliminating a residual write even though the next layer needs the unnormalized residual stream. A removed output is not a legitimate bandwidth saving.",
+        "Assuming fewer launches guarantee a faster MLP. Fusion may duplicate GEMM work, spill registers or reduce occupancy, and the down projection still needs its full reduction."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can a pointwise residual epilogue be easier than a norm epilogue?",
+          "a": "Each completed output element needs only its corresponding residual. Norm needs statistics across the entire normalization row, which may span several output tiles."
+        },
+        {
+          "q": "Does SwiGLU with zero input return zero here?",
+          "a": "Yes. These projections have no bias, so both branches are zero and the hidden tensor and down projection remain zero. Biased projections would require a different answer."
+        },
+        {
+          "q": "Why can fused and unfused outputs differ even with the same mathematical order?",
+          "a": "The unfused path may round intermediate tensors to their storage dtype. A fused path can retain a higher-precision value until the final store; compare against an explicit numerical contract, not bitwise equality."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LeetGPU 84: SwiGLU MLP Block",
+          "url": "https://github.com/AlphaGPU/leetgpu-challenges/blob/9c9dbe55e8d6124f42f0de9b6696290cbcd9670e/challenges/medium/84_swiglu_mlp_block/challenge.py",
+          "locator": "Example and ten `generate_functional_test` cases, using the challenge's `solve` signature and tolerances",
+          "note": "Run equivalent public cases in your local harness; reuse your earlier validated GEMM kernels and add one fused SiLU/multiply kernel. Cases include zero input, single rows and non-power-of-two dimensions. Skip the large performance case initially; the functional cases fit a small GPU. Keep a library/compiled MLP as the baseline. The section mini-project covers a residual/scale epilogue and residual/norm mutation tests. This is the second selected transformer challenge; do not add the other candidates as extra required practice."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "All challenge 84 functional cases pass, one bounded fusion matches its independent reference, and your traffic diagram explains why a full-row norm cannot be treated as a pointwise epilogue.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Challenge 84 supplies a concrete gated-MLP contract and checked cases; FlashInfer supplies residual/norm fusion semantics. Existing GEMM skills and the mini-project supply the bounded epilogue implementation."
       }
     },
     {
