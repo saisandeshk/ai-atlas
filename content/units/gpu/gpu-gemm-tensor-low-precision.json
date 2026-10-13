@@ -174,47 +174,72 @@
         "resource-tile-tradeoffs"
       ],
       "outcomes": [
-        "TODO"
+        "Implement per-thread accumulator tiles and coalesced vectorized input copies with a scalar tail path.",
+        "Derive accumulator and shared-memory storage for a proposed tile hierarchy.",
+        "Compare tile choices using event timing, compiler resource reports and generated instructions."
       ],
-      "why": "TODO",
+      "why": "Shared-memory tiling still issues many shared loads. Register tiles reuse those operands, but the extra live state can reduce residency or spill.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-gemm-tensor-low-precision/hierarchical-tiling-swizzles",
+          "note": "Separate copy ownership from the compute hierarchy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-gemm-gpu5",
+          "title": "Microtiles and resource tradeoffs",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 9, Multilevel Microtiling and Software Prefetching, including Figure 9-2",
+          "depth": "Read the global, shared and register hierarchy. Skip unified-memory prefetching and Blackwell TMEM claims for this implementation. In a 32 by 32 product tile, each input element participates in 32 multiplies, not the section's stated 1024."
+        },
+        {
+          "resource": "boehm-sgemm-gpu5",
+          "title": "Register blocking and wide copies",
+          "url": "https://siboehm.com/articles/22/CUDA-MMM#kernel-4-1d-blocktiling-for-calculating-multiple-results-per-thread",
+          "locator": "Kernels 4, 5 and 6: 1D Blocktiling, 2D Blocktiling and Vectorizing SMEM and GMEM Accesses",
+          "depth": "Keep your own edge predicates. Read the SASS examples as evidence for that build, not guarantees about your compiler."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Registers, vectorization and occupancy",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab5",
+          "locator": "Lab 5 Part 0: Understanding Occupancy; Part 1 suggestions Hiding Memory Access Latency and Vectorized Loads",
+          "depth": "Recompute occupancy from your GPU and compiled kernel. Do not carry over the RTX 4000 Ada clock, bandwidth or timing targets."
         }
       ],
       "focus": [
-        "TODO"
+        "A per-thread \\(T_M\\times T_N\\) outer-product update loads \\(T_M+T_N\\) shared operands per reduction step for \\(T_MT_N\\) multiplies. Accumulator storage alone is \\(T_MT_N\\) values.",
+        "One shared stage uses \\(sB_K(B_M+B_N)\\) bytes before padding. Registers also hold addresses, operands and temporaries; source-level accumulator counts are only a lower bound.",
+        "A `float4` copy needs a 16-byte-aligned address and four valid elements. Row strides and subview offsets can break alignment even when the allocation base is aligned.",
+        "Inspect `ptxas -v` and SASS for registers, spills and wide loads. Query active blocks for the actual launch; lower occupancy can coexist with faster register reuse."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive a 64 by 64 output tile with reduction width 8 and a 4 by 4 per-thread accumulator tile. It uses 256 threads, 16 accumulator values per thread and 4096 shared-memory bytes for one FP32 stage, excluding padding. Implement that mapping in `kernellab`; check odd shapes with scalar copies before adding aligned vector copies. Compare both variants with interleaved event trials and save their compiler resource reports.",
       "traps": [
-        "TODO"
+        "Casting an unaligned row or a partial tail to `float4*`. Masking only the starting element does not validate the whole vector.",
+        "Counting just accumulators as the kernel's register demand, or treating a local array as guaranteed register storage.",
+        "Claiming register tiling always reduces DRAM bytes. At fixed block tiling it mainly changes shared-to-register reuse and instruction mix."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "For a 4 by 4 per-thread update, how many shared operand values feed how many multiplies?",
+          "a": "Eight values feed 16 multiplies per reduction step, if each operand is loaded once and reused across the outer product."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can a larger accumulator tile lose?",
+          "a": "It increases live registers and may cause spills or reduce active blocks. Fewer output blocks and more edge waste can also reduce useful parallelism."
+        },
+        {
+          "q": "Does a wide load prove coalescing?",
+          "a": "No. Width describes one thread's instruction. Coalescing depends on the addresses requested by all active lanes and their alignment."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` register-blocked GEMM, aligned-copy dispatch with scalar tails, tile sweep and register/spill evidence.",
+      "stopWhen": "Both copy paths pass edge tests, and your tile comparison explains the observed result using reuse and compiled resources rather than occupancy alone.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Boehm's kernels supply implement depth for register blocking and vectorization; MIT supplies resource analysis and the mini-project supplies the measured tile sweep."
       }
     },
     {
