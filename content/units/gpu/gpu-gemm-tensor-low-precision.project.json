@@ -1,0 +1,70 @@
+{
+  "miniProject": {
+    "title": "Tiled GEMM to async pipelines with a low-precision error contract",
+    "hours": "14 to 20",
+    "brief": "Grow kernellab through the GEMM ladder on the RTX 3050: naive counts, shared-memory tiles, register blocking, layout swizzles, one warp-level tensor path, a two-stage async pipeline, format boundaries, quantization error and a fused epilogue, all gated against a vendor baseline with held-out fallback. TMA, clusters and FP8 on Hopper are reading and static audit only.",
+    "units": [
+      "gemm-arithmetic-naive",
+      "smem-tiled-gemm",
+      "register-tiled-gemm",
+      "hierarchical-tiling-swizzles",
+      "tensor-core-mma",
+      "async-copy-pipelines",
+      "precision-formats",
+      "scaling-quantization-error",
+      "epilogue-fusion-grouped-gemm",
+      "gemm-baselines-dispatch"
+    ],
+    "steps": [
+      "Write a naive overwrite-only fp32 GEMM with a shape-to-FLOP calculator and two byte models: compulsory bytes and requested loads for the uncached scalar model. Derive closed-book for \\(M = 64\\), \\(N = 96\\), \\(K = 32\\): 393216 useful FLOPs, 45056 compulsory bytes and 1597440 requested bytes, times batch count for independent batches with no shared operands. Check small integer products exactly against CPU double precision.",
+      "Write a 16 by 16 shared-memory overwrite GEMM without copying the source. Compare finite integer-valued fp32 inputs cycling -2 to 2 against a CPU double-precision product at shapes (1, 1, 1), (17, 19, 23) and (32, 16, 17) with every output checked, covering edge and empty dimensions. Run Compute Sanitizer memory, race and synchronization checks and keep tile-race regressions.",
+      "Derive then implement a 64 by 64 output tile with reduction width 8 and a 4 by 4 per-thread accumulator tile: 256 threads, 16 accumulator values per thread and 4096 shared-memory bytes for one fp32 stage excluding padding. Check odd shapes with scalar copies first, then add aligned vector-copy dispatch with scalar tails. Compare both variants with interleaved event trials and save `cuobjdump -res-usage` for each, with register and spill notes. Pass LeetGPU challenges 2 and 22 locally with this kernel; challenge 2 names the reduction dimension `N`.",
+      "Draw the tile-ownership diagram, then enumerate the 32 scalar column-read addresses of a row-major 32 by 32 fp32 shared tile (one bank at 32 distinct words) and the stride-33 padded case (all 32 banks). Verify the integer-offset permutation of `Swizzle<3, 3, 3>` on offsets 0 through 511 as a bijection that is its own inverse, kept separate from any bank-conflict claim for a particular instruction, and keep one verified shared-layout permutation in the kernel.",
+      "Implement the one-warp 16 by 8 by 8 TF32 product in MIT 6.S894 Lab 6 `exercise_mma.cu`, built locally with `nvcc -O3 -arch=sm_86`: convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`, and run permutations, basis products, decimal inputs and zero and nonzero accumulator cases against absolute error threshold 0.005. Inspect generated PTX and SASS for conversion and tensor instructions and explain each lane loaded and stored coordinates. Record Hopper `wgmma`, `tcgen05` and microscaling paths as a static audit only.",
+      "Draw and implement a two-buffer schedule for zero, one, two and five reduction tiles: prefetch tile zero when present, complete the current stage, issue the next tile into the free stage, compute, synchronize before reuse and drain outstanding copies. Use 4-byte Ampere `cp.async.ca` copies with zero source size for masked fp32 inputs, keep a stage-lifetime diagram, and test shapes (17, 19, 0), (17, 19, 1), (17, 19, 16), (17, 19, 17) and (17, 19, 65) with reduction tile 16 against CPU double products of integers cycling -2 to 2, with short-loop and tail regressions. Compare synchronous against async with interleaved event trials and run memory, race and synchronization checks.",
+      "Decode all 256 OCP fp8 bit patterns from sign, exponent and fraction fields and verify both format boundary tables. With nearest-even conversion show 1.0625 as an E4M3 midpoint rounding to 1 while 1.1875 rounds to 1.25. For the dot product of `[1.0001, -1]` with `[1, 1]`, convert inputs to fp16 before evaluating in double: the original product near 0.0001 becomes zero, recorded as input-conversion error rather than accumulation error. Then quantize rows `[0.01, 0.02, 0.03, 0.04]` and `[10, 20, 30, 40]` to symmetric int8 with maximum-magnitude scale over 127: a shared scale zeroes the first row while separate row scales keep both nonzero. Reconstruct with maximum absolute error and clipping count, repeat with unseen value 80 on the fixed scale to show saturation, allocate three scales for reduction length 65 with block size 32 with an explicit one-element tail test, and file a predeclared error acceptance table against an integer-accumulator reference.",
+      "Add column bias and ReLU to the fp32 GEMM at shapes (17, 19, 23) and (32, 16, 17), testing positive and negative bias, nonzero old output and zero reduction against an independent CPU double implementation with the same epilogue order. Derive 49152 requested bytes removed by fusion for a 64 by 96 fp32 intermediate. Time GEMM plus separate epilogue against fused GEMM with all device work inside each interval, with the optional two-group persistent tile scheduler carrying unique-ownership tests. Compare naive, shared, register-tiled, async and vendor GEMM on (64, 96, 32), (256, 256, 256), (16, 512, 64) and (257, 129, 65) with small integers then declared random-input tolerances, hold out (31, 67, 33) from tuning for fallback correctness, save useful FLOPs, compulsory bytes, event distributions, compiled resources and complete-operation latency per candidate, derive the row-major cuBLAS mapping via transposed output with swapped operands, and report best and losing regimes with residuals."
+    ],
+    "deliverables": [
+      "`kernels/cuda/` GEMM ladder with FLOP and byte models, edge tests, sanitizer regressions and resource reports.",
+      "The tensor path with conversion and MMA evidence, the two-stage pipeline with lifetime diagram and the sync against async comparison.",
+      "The format decoder, quantization comparison with acceptance table, the fused epilogue timing pair and the vendor-baseline sweep with held-out fallback and residual report."
+    ],
+    "checks": [
+      {
+        "kind": "rubric",
+        "name": "Self-grade with the rubric below"
+      },
+      {
+        "kind": "external-tests",
+        "name": "LeetGPU GEMM challenges run locally against the reference implementation",
+        "url": "https://leetgpu.com/challenges/",
+        "note": "Run 2 Matrix Multiplication and 22 GEMM locally with matched tolerances; keep shape matrices and losing regimes."
+      },
+      {
+        "kind": "external-tests",
+        "name": "MIT 6.S894 Lab 6 tensor-core exercise",
+        "url": "https://accelerated-computing.academy/fall25/labs/lab6",
+        "note": "Build `exercise_mma.cu` locally with `nvcc -O3 -arch=sm_86` and keep the supplied fragment and numerical tests."
+      }
+    ],
+    "rubric": [
+      {
+        "criterion": "Tiling correctness",
+        "pass": "Each GEMM level matches the CPU double reference on edge and odd shapes, sanitizer checks pass, and the held-out shape passes on the fallback path.",
+        "strong": "Short-loop and tail cases are kept as regressions that fail on the unguarded kernel."
+      },
+      {
+        "criterion": "Resource and pipeline evidence",
+        "pass": "The 256-thread mapping, 4096-byte stage and `cuobjdump -res-usage` reports are kept, the lifetime diagram predicts the synchronization points, and sync against async uses interleaved trials.",
+        "strong": "Hopper-only paths are marked as static audit with no performance claim."
+      },
+      {
+        "criterion": "Numerical contract",
+        "pass": "Format boundaries, midpoint cases and the input against arithmetic split are tested, quantization states scales, tail handling and acceptance limits, and the vendor comparison reports best and losing regimes.",
+        "strong": "Unseen-value saturation is demonstrated, and the 49152-byte fusion saving is derived before the timing pair rather than asserted from it."
+      }
+    ],
+    "feedsInto": "Capstone kernel suite: the GEMM ladder, pipeline and error contract feed attention, Triton and integration. The vendor baseline and dispatch table carry into the final defense."
+  }
+}

@@ -1,0 +1,837 @@
+{
+  "section": "gpu-gemm-tensor-low-precision",
+  "addedResources": [
+    {
+      "id": "cuda-matrix-reference-gpu5",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "CUDA 13.0 matrix programming and PTX references",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Coverage and correctness gap: the pool lacks a precise WMMA contract, and Lab 6 relies on TF32 conversion and register behavior the PTX ISA leaves unspecified. Use Programming Guide 10.24 and PTX ISA 9.0 `mma.m16n8k8` fragments, `mma` and `cvt`, archived with CUDA 13.0.0; also consult `cp.async` completion semantics.",
+      "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions"
+    },
+    {
+      "id": "nvidia-quantization-gpu5",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "TensorRT quantization schemes and workflows",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Coverage gap: the existing pool does not derive scale granularity and reconstruction conventions precisely. Read INT8/FP8 equations, per-tensor/per-channel/block quantization and dynamic quantization in documentation dated October 5, 2026. Skip engine building and replace the block pseudocode's floor-divided scale count with ceiling division.",
+      "url": "https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/quantized-types-schemes.html"
+    }
+  ],
+  "units": [
+    {
+      "id": "gemm-arithmetic-naive",
+      "title": "GEMM operation counts and the naive kernel's traffic",
+      "hours": 3,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "gemm-shapes-operations",
+        "naive-gemm-mapping"
+      ],
+      "outcomes": [
+        "Derive useful GEMM operations and compulsory bytes for rectangular and batched shapes.",
+        "Trace a thread-per-output kernel and distinguish requested loads from DRAM traffic.",
+        "Predict how row-major thread mapping changes coalescing without changing the result."
+      ],
+      "why": "A GEMM speed claim needs an operation count and a traffic model before it needs a timer. The naive kernel makes the cost of missing reuse visible.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/smem-tiled-gemm",
+          "note": "Reuse inputs across an output tile."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-gemm-gpu5",
+          "title": "Arithmetic intensity before tiling",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 9, opening discussion of arithmetic intensity and Figure 9-1",
+          "depth": "Stop before Multilevel Microtiling and Software Prefetching. Treat the roofline as a ceiling, not proof that a kernel reaches either roof."
+        },
+        {
+          "resource": "boehm-sgemm-gpu5",
+          "title": "Naive mapping and coalescing",
+          "url": "https://siboehm.com/articles/22/CUDA-MMM#kernel-1-naive-implementation",
+          "locator": "Kernel 1: Naive Implementation, including Lower Bounding the Fastest Possible Runtime; Kernel 2: Global Memory Coalescing",
+          "depth": "Recalculate for your shape. The article's GEMM epilogue and RTX A6000 numbers are not the contract or measured speed of your kernel."
+        },
+        {
+          "resource": "aisys-code-gemm-gpu5",
+          "title": "A concrete naive CUDA kernel",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch09/baseline_micro_tiling_matmul.cu",
+          "locator": "`matmul_naive` and `main`, at commit `b57e4c6`",
+          "depth": "Read the square-only kernel and event interval. A checksum is not an independent elementwise correctness test."
+        }
+      ],
+      "focus": [
+        "Use conventional shapes \\(A\\in\\mathbb{R}^{M\\times K}\\), \\(B\\in\\mathbb{R}^{K\\times N}\\). Report \\(2M N K\\) useful FLOPs for the multiply using the two-FLOP-per-FMA convention; count epilogue work separately.",
+        "For an overwrite-only product with element size \\(s\\), compulsory bytes are \\(Q_{\\min}=s(MK+KN+MN)\\). A nonzero \\(\\beta\\) in \\(C\\leftarrow\\alpha AB+\\beta C\\) adds an old-output read.",
+        "The naive overwrite kernel requests \\(2M N K\\) scalar input loads and \\(MN\\) stores. Broadcasts, caches and transaction overfetch make that different from measured DRAM bytes."
+      ],
+      "reproduce": "Closed-book, derive the counts for an overwrite-only FP32 product with \\(M=64\\), \\(N=96\\), \\(K=32\\). Get 393216 useful FLOPs, 45056 compulsory bytes, and 1597440 requested bytes for the uncached scalar-load model. For independent batches with no shared operands, multiply each count by the batch count.",
+      "traps": [
+        "Reporting FLOPs as FLOP/s, or requested bytes as measured bandwidth traffic.",
+        "Assuming a low arithmetic intensity proves a bandwidth bottleneck. Launch overhead, uncoalesced accesses and dependency chains can prevent reaching the bandwidth roof.",
+        "Confusing dimension names across interfaces. LeetGPU Challenge 2 calls the reduction dimension `N`, unlike conventional GEMM notation."
+      ],
+      "selfTest": [
+        {
+          "q": "Does an FMA count as one or two FLOPs?",
+          "a": "Two in the usual GEMM throughput convention: a multiply and an add, despite being one instruction."
+        },
+        {
+          "q": "Why can the naive kernel read much less DRAM than its scalar-load count predicts?",
+          "a": "Several threads request the same values, and caches or warp broadcasts can service those requests without separate DRAM reads."
+        },
+        {
+          "q": "For an overwrite-only square FP32 product with side \\(n\\), what is the compulsory-byte intensity?",
+          "a": "\\(I_{\\min}=2n^3/(12n^2)=n/6\\) FLOPs/byte. This assumes each input is read once and the output written once, not that a real kernel achieves it."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the naive `kernellab` GEMM, its shape-to-FLOP calculator, and separate compulsory-byte and requested-load models.",
+      "stopWhen": "You derive the rectangular counts without notes and explain one warp's input and output addresses without calling requested bytes DRAM traffic.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book's roofline introduction, Boehm's two mappings and the pinned naive kernel cover both topics at derive depth; the mini-project supplies implementation checks."
+      }
+    },
+    {
+      "id": "smem-tiled-gemm",
+      "title": "Shared-memory tiling and boundary predication",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "shared-memory-tiling",
+        "edge-predication"
+      ],
+      "outcomes": [
+        "Implement a shared-memory GEMM with arbitrary rectangular dimensions and zero-filled reduction tails.",
+        "Prove tile ownership and the barriers needed before consumption and before overwrite.",
+        "Derive per-tile input reuse and distinguish useful work from padded work."
+      ],
+      "why": "Shared memory turns repeated global loads into block-local reuse. Boundary handling is part of the algorithm, not a cleanup after tuning.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/register-tiled-gemm",
+          "note": "Reuse shared-memory operands inside each thread."
+        }
+      ],
+      "study": [
+        {
+          "resource": "boehm-sgemm-gpu5",
+          "title": "Shared-memory cache blocking",
+          "url": "https://siboehm.com/articles/22/CUDA-MMM#kernel-3-shared-memory-cache-blocking",
+          "locator": "Kernel 3: Shared Memory Cache-Blocking, through its two-barrier tile loop",
+          "depth": "Stop before Occupancy Calculation for Kernel 3. The example omits arbitrary-size checks; add masks rather than copying that restriction into your kernel."
+        },
+        {
+          "resource": "aisys-code-gemm-gpu5",
+          "title": "Predicated tile loads",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch09/optimized_micro_tiling_matmul.cu",
+          "locator": "`matmul_tiled`, at commit `b57e4c6`",
+          "depth": "This is a shared-memory tiled kernel with one output per thread, despite the file's register-tiled description. Extend its square-only interface to rectangular shapes."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Coordinates for edge predicates",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0y_predication.html",
+          "locator": "Predication: What to do when tiling isn't perfect; identity-tensor procedure, GEMM epilogue example and input-load predicates, documentation dated September 21, 2026",
+          "depth": "The final input-copy example handles the output dimensions only. Add reduction-tail handling and initialize masked shared-memory slots before using this pattern for arbitrary GEMM."
+        }
+      ],
+      "focus": [
+        "For an interior output tile \\(B_M\\times B_N\\) and reduction tile \\(B_K\\), load \\(B_K(B_M+B_N)\\) input elements for \\(2B_MB_NB_K\\) useful FLOPs. Output traffic is separate.",
+        "Every participating thread reaches `__syncthreads()`, even if its output lies outside the matrix. Predicate loads and stores, not the block's synchronization.",
+        "A masked load must write zero into its shared-memory slot. Leaving a previous tile's value there adds a stale contribution to the reduction."
+      ],
+      "reproduce": "Without copying the source, write a 16 by 16 shared-memory overwrite GEMM. Compare finite integer-valued FP32 inputs against a CPU double-precision product for shapes \\((M,N,K)=(1,1,1),(17,19,23),(32,16,17)\\), using values cycling through -2 to 2. These small integer products are exactly representable. Check every output and run Compute Sanitizer memory, race and synchronization checks.",
+      "traps": [
+        "Returning an edge thread before a block barrier. It may still own an input needed by an interior output.",
+        "Using just an output mask. Input loads need separate bounds on their row, column and reduction coordinates.",
+        "Removing the second barrier because the output accumulator is private. The shared input buffers are not private."
+      ],
+      "selfTest": [
+        {
+          "q": "How often is one interior tile element of \\(A\\) reused?",
+          "a": "Across \\(B_N\\) output columns in that block. One tile element of \\(B\\) is reused across \\(B_M\\) output rows."
+        },
+        {
+          "q": "Why is a barrier needed after computation as well as after loading?",
+          "a": "It prevents fast threads from overwriting shared inputs for the next tile while slower threads still consume the current tile."
+        },
+        {
+          "q": "What should an overwrite-only product do when the reduction dimension is zero?",
+          "a": "Write zero to every valid output. Empty output dimensions require no launch. General GEMM must instead honor its epilogue contract."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` shared-memory GEMM, independent edge and empty-dimension tests, and sanitizer regressions for tile races.",
+      "stopWhen": "Your rectangular kernel passes interior, reduction-tail and output-tail tests, and you can explain both barriers from buffer ownership.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Boehm supplies the tile loop, the companion supplies zero-filled loads, and CuTe supplies coordinate predication; the mini-project tests the missing rectangular and empty cases."
+      }
+    },
+    {
+      "id": "register-tiled-gemm",
+      "title": "Register tiles, vectorized tile copies and resource limits",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "register-tiling",
+        "coalesced-gemm-copies",
+        "resource-tile-tradeoffs"
+      ],
+      "outcomes": [
+        "Implement per-thread accumulator tiles and coalesced vectorized input copies with a scalar tail path.",
+        "Derive accumulator and shared-memory storage for a proposed tile hierarchy.",
+        "Compare tile choices using event timing, compiler resource reports and generated instructions."
+      ],
+      "why": "Shared-memory tiling still issues many shared loads. Register tiles reuse those operands, but the extra live state can reduce residency or spill.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/hierarchical-tiling-swizzles",
+          "note": "Separate copy ownership from the compute hierarchy."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-gemm-gpu5",
+          "title": "Microtiles and resource tradeoffs",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 9, Multilevel Microtiling and Software Prefetching, including Figure 9-2",
+          "depth": "Read the global, shared and register hierarchy. Skip unified-memory prefetching and Blackwell TMEM claims for this implementation. In a 32 by 32 product tile, each input element participates in 32 multiplies, not the section's stated 1024."
+        },
+        {
+          "resource": "boehm-sgemm-gpu5",
+          "title": "Register blocking and wide copies",
+          "url": "https://siboehm.com/articles/22/CUDA-MMM#kernel-4-1d-blocktiling-for-calculating-multiple-results-per-thread",
+          "locator": "Kernels 4, 5 and 6: 1D Blocktiling, 2D Blocktiling and Vectorizing SMEM and GMEM Accesses",
+          "depth": "Keep your own edge predicates. Read the SASS examples as evidence for that build, not guarantees about your compiler."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Registers, vectorization and occupancy",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab5",
+          "locator": "Lab 5 Part 0: Understanding Occupancy; Part 1 suggestions Hiding Memory Access Latency and Vectorized Loads",
+          "depth": "Recompute occupancy from your GPU and compiled kernel. Do not carry over the RTX 4000 Ada clock, bandwidth or timing targets."
+        }
+      ],
+      "focus": [
+        "A per-thread \\(T_M\\times T_N\\) outer-product update loads \\(T_M+T_N\\) shared operands per reduction step for \\(T_MT_N\\) multiplies. Accumulator storage alone is \\(T_MT_N\\) values.",
+        "One shared stage uses \\(sB_K(B_M+B_N)\\) bytes before padding. Registers also hold addresses, operands and temporaries; source-level accumulator counts are only a lower bound.",
+        "A `float4` copy needs a 16-byte-aligned address and four valid elements. Row strides and subview offsets can break alignment even when the allocation base is aligned.",
+        "Inspect `ptxas -v` and SASS for registers, spills and wide loads. Query active blocks for the actual launch; lower occupancy can coexist with faster register reuse."
+      ],
+      "reproduce": "Derive a 64 by 64 output tile with reduction width 8 and a 4 by 4 per-thread accumulator tile. It uses 256 threads, 16 accumulator values per thread and 4096 shared-memory bytes for one FP32 stage, excluding padding. Implement that mapping in `kernellab`; check odd shapes with scalar copies before adding aligned vector copies. Compare both variants with interleaved event trials and save their compiler resource reports.",
+      "traps": [
+        "Casting an unaligned row or a partial tail to `float4*`. Masking only the starting element does not validate the whole vector.",
+        "Counting just accumulators as the kernel's register demand, or treating a local array as guaranteed register storage.",
+        "Claiming register tiling always reduces DRAM bytes. At fixed block tiling it mainly changes shared-to-register reuse and instruction mix."
+      ],
+      "selfTest": [
+        {
+          "q": "For a 4 by 4 per-thread update, how many shared operand values feed how many multiplies?",
+          "a": "Eight values feed 16 multiplies per reduction step, if each operand is loaded once and reused across the outer product."
+        },
+        {
+          "q": "Why can a larger accumulator tile lose?",
+          "a": "It increases live registers and may cause spills or reduce active blocks. Fewer output blocks and more edge waste can also reduce useful parallelism."
+        },
+        {
+          "q": "Does a wide load prove coalescing?",
+          "a": "No. Width describes one thread's instruction. Coalescing depends on the addresses requested by all active lanes and their alignment."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` register-blocked GEMM, aligned-copy dispatch with scalar tails, tile sweep and register/spill evidence.",
+      "stopWhen": "Both copy paths pass edge tests, and your tile comparison explains the observed result using reuse and compiled resources rather than occupancy alone.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Boehm's kernels supply implement depth for register blocking and vectorization; MIT supplies resource analysis and the mini-project supplies the measured tile sweep."
+      }
+    },
+    {
+      "id": "hierarchical-tiling-swizzles",
+      "title": "Block, warp and instruction tiling with swizzled shared-memory layouts",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "hierarchical-tiling",
+        "layout-swizzle-banks"
+      ],
+      "outcomes": [
+        "Derive block, warp and instruction tiles without conflating copy ownership with compute ownership.",
+        "Enumerate shared-memory addresses and banks for a specified access pattern.",
+        "Explain how padding or a bijective swizzle changes physical placement without changing the product."
+      ],
+      "why": "A tile shape does not specify which lane owns each value. Explicit ownership and address maps connect the algorithm to shared-memory transactions and MMA operands.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/tensor-core-mma",
+          "note": "Apply the hierarchy to a warp-wide instruction."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Independent copy and compute partitions",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0x_gemm_tutorial.html",
+          "locator": "`sgemm_1.cu`: CTA Partitioning through Math partitioning; `sgemm_2.cu`: TiledCopy, TiledMMA and Other changes, documentation dated September 21, 2026",
+          "depth": "Draw one thread's logical coordinates before expanding to the whole block. CuTe represents the second operand as \\(N\\times K\\), not conventional \\(K\\times N\\)."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "A concrete swizzled Ampere layout",
+          "url": "https://github.com/NVIDIA/cutlass/blob/v4.2.1/examples/cute/tutorial/sgemm_sm80.cu",
+          "locator": "`gemm_tn`: `sA`, `sB` and `Swizzle<3,3,3>`; `gemm_device`: `partition_S` and `partition_D` for the copies, `partition_C` and `partition_fragment_A`/`partition_fragment_B` for the MMA, CUTLASS v4.2.1",
+          "depth": "Read the half specialization's 128 by 128 by 64 block tile and three shared stages. Its default accumulator is half, not FP32; do not use its timing harness as a correctness oracle."
+        }
+      ],
+      "focus": [
+        "Derive which block tile contains an output, which warp computes it, and which instruction and lane own its fragment. Copy threads can use a different partition from compute threads.",
+        "For scalar 32-bit shared accesses on the usual 32-bank mapping, bank index is the word address modulo 32. Different addresses in the same bank can conflict; the same address can broadcast.",
+        "A swizzle permutes offsets; both stores and loads must use the same map. Analyze instruction-sized access groups rather than assuming a scalar bank proof also proves an `ldmatrix` access conflict-free."
+      ],
+      "reproduce": "Enumerate the 32 scalar column-read addresses of a row-major 32 by 32 FP32 shared tile. They hit one bank at 32 distinct words. Padding the stride to 33 words hits all 32 banks. Then enumerate the integer-offset permutation produced by `Swizzle<3,3,3>` on offsets 0 through 511: it maps each offset once and is its own inverse. Keep that bijection proof separate from a bank-conflict claim for a particular instruction.",
+      "traps": [
+        "Treating a warp tile as a per-thread tile. An MMA instruction distributes its operands and results across participating lanes.",
+        "Changing the shared layout at load time but not at store time.",
+        "Calling every same-bank access a conflict, including same-word broadcasts."
+      ],
+      "selfTest": [
+        {
+          "q": "Why may copy and compute ownership differ?",
+          "a": "Copies should follow global-memory and copy-instruction constraints; computation should follow MMA operand ownership. Shared memory connects the two partitions."
+        },
+        {
+          "q": "Does padding change the logical matrix?",
+          "a": "No. It changes physical stride and allocation size while preserving logical coordinates and values."
+        },
+        {
+          "q": "Does a bijective swizzle prove conflict freedom?",
+          "a": "No. It proves distinct logical slots do not alias. Conflict freedom also depends on the addresses issued together and the hardware instruction's access grouping."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` tile-ownership diagram, scalar bank enumerator and one verified shared-layout permutation.",
+      "stopWhen": "Your address enumerator verifies both bank examples and the swizzle bijection, and your diagram separates block, warp, instruction and copy ownership.",
+      "fit": {
+        "verdict": "kept",
+        "note": "CuTe's partition tutorial and versioned Ampere source cover the hierarchy and swizzled layout at derive depth; the mini-project supplies explicit address enumeration."
+      }
+    },
+    {
+      "id": "tensor-core-mma",
+      "title": "Tensor-core MMA: WMMA, `mma.sync` fragments and CuTe atoms",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "tensor-core-model",
+        "wmma-mma-cute",
+        "fragment-layout"
+      ],
+      "outcomes": [
+        "Implement one warp-wide TF32 MMA with explicitly converted inputs and FP32 accumulators.",
+        "Distinguish opaque WMMA fragments, documented PTX lane fragments and CuTe MMA atoms.",
+        "Verify fragment ownership with basis products and a nonzero initial accumulator."
+      ],
+      "why": "Tensor cores compute a collective matrix operation, not independent thread FMAs. Correct lane ownership, conversion and warp participation come before performance tuning.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/async-copy-pipelines",
+          "note": "Feed the collective instruction with a safe pipeline."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Tensor-core model and one-instruction exercise",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab6",
+          "locator": "Fall 2025 Lab 6 Part 0: Tensor Cores and `exercise_mma.cu`",
+          "depth": "Stop before full-matrix optimization. The handout passes raw FP32 bits through integer registers for every operand and relies on implicit truncation. That passes the lab tests on Ampere, but the PTX ISA leaves the TF32 layout implementation-defined and types multiplicands as `.b32` and accumulators as `.f32`, so convert explicitly and use float registers for the accumulators."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "WMMA's collective and memory contract",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions",
+          "locator": "CUDA 13.0.0 Programming Guide 10.24.1 Description, 10.24.2 Alternate Floating Point and 10.24.7 Example",
+          "depth": "Read the FP16-input, FP32-accumulator example and TF32 conversion requirement. Do not infer lane ownership from the fragment array."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "Explicit TF32 lane map and conversion",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-1688",
+          "locator": "PTX ISA 9.0: Matrix Fragments for `mma.m16n8k8`, Multiply-and-Accumulate Instruction `mma` and Data Movement and Conversion Instructions `cvt`",
+          "depth": "Use the TF32 diagrams and Ampere-compatible `cvt.rna.tf32.f32`, which rounds nearest with ties away from zero. The nearest-even `cvt.rn.tf32.f32` variant requires `sm_90`. Skip FP64 and sparse variants."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Instruction traits become an MMA atom",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0t_mma_atom.html",
+          "locator": "CuTe MMA Atoms: Operation structs and Traits; TiledMMAs, documentation dated September 21, 2026",
+          "depth": "Follow how instruction shape and thread/value layouts define the atom. Compare with your PTX map rather than implementing another complete GEMM."
+        }
+      ],
+      "focus": [
+        "WMMA requires uniform warp participation and matching arguments. Fragment element ownership is unspecified; use `store_matrix_sync` before coordinate-dependent epilogues.",
+        "WMMA load/store pointers require 32-byte alignment; leading dimensions require multiples of 8 half elements or 4 float elements, both 16 bytes. A valid allocation base does not validate every subview.",
+        "For `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`, each lane supplies four TF32 bit-pattern values for the first operand, two for the second, and four FP32 accumulator values. Use inline-assembly `r` constraints for multiplicands and `f` constraints for accumulators.",
+        "MMA shape, input representation, accumulator type and output storage are separate parts of the numerical contract. One collective instruction performs 2048 useful FLOPs for this shape."
+      ],
+      "reproduce": "Implement the one-warp 16 by 8 by 8 TF32 product in Lab 6 `exercise_mma.cu`. Explicitly convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, then issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`. Run its permutations, basis products, decimal inputs and zero/nonzero accumulator cases against the bundled absolute-error threshold 0.005. Inspect the generated PTX and SASS: on an RTX 3050 with CUDA 13.4, each conversion appears as an `FSETP` finite check plus an integer add of `0x1000` rather than a named convert instruction, and the product as one `HMMA.1688.F32.TF32`; explain each lane's loaded and stored coordinates.",
+      "traps": [
+        "Passing raw FP32 bit patterns as TF32 operands because the lab tests pass. The PTX ISA leaves the TF32 layout implementation-defined; convert with `cvt.rna.tf32.f32` so the rounding is the one you state.",
+        "Executing a collective MMA or WMMA call in only some lanes, including at an output boundary.",
+        "Using a WMMA fragment's array index as a portable row or column index."
+      ],
+      "selfTest": [
+        {
+          "q": "What does the final `f32` in the PTX opcode specify?",
+          "a": "The initial accumulator operand type. The first `f32` specifies the result type; the two `tf32` fields specify multiplicand types."
+        },
+        {
+          "q": "Why test a nonzero initial accumulator?",
+          "a": "A correct product-only result does not prove accumulator loading and mapping are correct. The instruction computes a product plus that initial matrix."
+        },
+        {
+          "q": "Does FP32 accumulation recover information lost in TF32 conversion?",
+          "a": "No. It reduces later accumulation error but cannot restore discarded input significand bits."
+        }
+      ],
+      "practice": [
+        {
+          "name": "MIT 6.S894 Lab 6 Part 0 - `exercise_mma`",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab6",
+          "locator": "Implement `exercise_mma.cu` for `sm_80` or newer; retain the supplied fragment and numerical tests.",
+          "note": "Clone the public `accelerated-computing-class/lab6` repository and build locally with `nvcc -O3 -arch=sm_86 exercise_mma.cu -o exercise_mma` instead of the course runner; a correct kernel prints `mma_16x8x8 tests passed`."
+        }
+      ],
+      "stopWhen": "The one-warp exercise passes every supplied case, and you can distinguish PTX ownership from opaque WMMA fragments and identify the emitted tensor instruction.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for the WMMA contract, and Lab 6 relies on register and conversion behavior the PTX ISA leaves unspecified. The archived official CUDA family fills that gap while retaining MIT practice and CuTe atoms."
+      }
+    },
+    {
+      "id": "async-copy-pipelines",
+      "title": "Asynchronous copies, multistage pipelines and warp specialization",
+      "hours": 6,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "asynchronous-copy-pipeline",
+        "warp-specialization"
+      ],
+      "outcomes": [
+        "Implement an Ampere two-stage global-to-shared copy pipeline with a correct prologue and drain.",
+        "Explain completion, visibility and buffer-reuse dependencies independently.",
+        "Describe Hopper producer-consumer warp specialization without applying its hardware-specific instructions to Ampere."
+      ],
+      "why": "Overlapping future loads with current arithmetic can hide latency only if a stage is complete before consumption and no producer overwrites live data.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/precision-formats",
+          "note": "Specify what the pipelined instruction actually computes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-gemm-gpu5",
+          "title": "Buffer lifetimes and producer-consumer roles",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 10: Intra-Kernel Pipelining Techniques; Cooperative Tiling and Double-Buffering with the CUDA Pipeline API; Warp Specialization and the Producer-Consumer Model",
+          "depth": "Read for the schedule and ownership. Skip cluster, cooperative-grid and Blackwell mechanisms."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Ampere multistage mainloop",
+          "url": "https://github.com/NVIDIA/cutlass/blob/v4.2.1/examples/cute/tutorial/sgemm_sm80.cu",
+          "locator": "`gemm_device`: async-copy prefetch, `smem_pipe_read`/`smem_pipe_write`, `cp_async_fence` and `cp_async_wait`, CUTLASS v4.2.1",
+          "depth": "Trace the three-stage source, then implement a simpler two-stage pipeline in your existing scalar GEMM. Add predicates and zero-fill tails; the tutorial assumes divisible dimensions."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "What an async-copy wait guarantees",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async",
+          "locator": "PTX ISA 9.0: `cp.async`, `cp.async.commit_group` and `cp.async.wait_group`/`cp.async.wait_all`",
+          "depth": "Read the `sm_80` requirement, 4/8/16-byte sizes, source-size zero fill and per-thread group completion."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Ampere schedule versus Hopper specialization",
+          "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture8.pdf",
+          "locator": "Fall 2025 Lecture 8 slides 7-9 and 11-21",
+          "depth": "Skip slide 10's arithmetic-intensity formula. Hopper TMA, WGMMA and register redistribution are explanation-only unless matching hardware is available."
+        }
+      ],
+      "focus": [
+        "Model each stage as free, filling, ready, consuming and free again. Completion must precede reads, and the last consumer must finish before reuse.",
+        "A `cp.async` wait completes the issuing thread's selected groups; a block barrier coordinates cross-thread consumption. A barrier alone is not an async-copy completion operation.",
+        "Two stages double the one-stage shared allocation before padding. Additional stages consume resources and do not guarantee faster execution.",
+        "Warp specialization assigns copy and compute roles to different warps. Separate role-specific readiness and release signals from a barrier requiring all block threads."
+      ],
+      "reproduce": "Draw and implement a two-buffer schedule for zero, one, two and five reduction tiles: prefetch tile zero when present, complete the current stage, issue the next tile into the free stage, compute, synchronize before reuse, and drain outstanding copies. Use 4-byte Ampere `cp.async.ca` copies (`.cg` takes only 16 bytes) with zero source size for masked FP32 inputs. Test shapes (17,19,0), (17,19,1), (17,19,16), (17,19,17) and (17,19,65) with reduction tile 16 against CPU double products of integers cycling -2 to 2. Run memory, race and synchronization sanitizers, then compare synchronous and pipelined event intervals without assuming a speedup.",
+      "traps": [
+        "Waiting on the wrong group count in the final iteration and consuming an unfinished stage.",
+        "Reusing a buffer after copy completion but before all computation using it has finished.",
+        "Putting a full-block barrier only in producer or consumer code."
+      ],
+      "selfTest": [
+        {
+          "q": "Why test fewer reduction tiles than pipeline stages?",
+          "a": "The prologue must not load nonexistent tiles, and the drain must wait for the groups actually issued rather than a steady-state assumption."
+        },
+        {
+          "q": "Does `cp.async` remove shared-memory synchronization?",
+          "a": "No. Completion and cross-thread visibility must still be established, and consumers must release storage before overwrite."
+        },
+        {
+          "q": "Why might three stages lose to two?",
+          "a": "Extra shared memory can reduce resident blocks, while copy latency may already be hidden and extra scheduling can add overhead."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` two-stage Ampere GEMM, short-loop and tail regressions, stage-lifetime diagram and synchronous-versus-async comparison.",
+      "stopWhen": "All stage-count and tail cases pass correctness and sanitizer checks, and every wait and reuse barrier has a stated ownership dependency.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book, pinned CuTe mainloop and MIT architecture slides cover implementation and specialization; the already-added CUDA reference resolves exact copy completion semantics."
+      }
+    },
+    {
+      "id": "precision-formats",
+      "title": "Input, product and accumulation precision across FP16, BF16, TF32 and FP8",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "accumulation-precision",
+        "fp16-bf16-tf32",
+        "fp8-formats"
+      ],
+      "outcomes": [
+        "Derive format range and spacing for FP16, BF16, TF32, E4M3 and E5M2.",
+        "Separate input conversion, product precision, accumulation and output conversion errors.",
+        "Construct boundary and cancellation tests without assuming FP8 tensor-core support."
+      ],
+      "why": "A low-precision GEMM is a sequence of conversions and arithmetic operations. Its storage dtype alone does not determine either the speed or the error.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/scaling-quantization-error",
+          "note": "Choose scales and evaluate the complete error contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-gemm-gpu5",
+          "title": "Mixed-precision arithmetic paths",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 9: Mixed Precision and Utilizing Tensor Cores; TF32 and Automatic Mixed Precision (PyTorch); BF16/FP16, FP8, and FP4 Reduced Precision",
+          "depth": "Skip FP4, TMEM and TMA. Treat framework defaults as version-dependent and identify conversion, accumulation and output types explicitly."
+        },
+        {
+          "resource": "cuda-matrix-reference-gpu5",
+          "title": "Alternate input formats and accumulation",
+          "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#alternate-floating-point",
+          "locator": "CUDA 13.0.0 Programming Guide 10.24.2 Alternate Floating Point; 10.24.1 template type combinations",
+          "depth": "Read BF16 and TF32. Do not mistake TF32 execution precision for a new ordinary memory-storage dtype."
+        },
+        {
+          "resource": "ocp-fp8-gpu5",
+          "title": "FP8 encodings and conversions",
+          "url": "https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-1-final-pdf",
+          "locator": "OFP8 revision 1.1: section 5.1, Tables 1 and 2, printed page 13; section 5.2 and 5.2.1, printed page 14",
+          "depth": "Distinguish the OCP formats from variants with different zero/NaN encodings. Test saturating and non-saturating conversion separately."
+        }
+      ],
+      "focus": [
+        "Near one, FP16 and TF32 have spacing \\(2^{-10}\\), BF16 \\(2^{-7}\\), E4M3 \\(2^{-3}\\), and E5M2 \\(2^{-2}\\). Range and significand precision are different axes.",
+        "OCP E4M3 has maximum finite 448, minimum normal \\(2^{-6}\\), minimum subnormal \\(2^{-9}\\), NaN and no infinity. E5M2 has maximum finite 57344, minimum normal \\(2^{-14}\\), minimum subnormal \\(2^{-16}\\), NaN and infinity.",
+        "Compare an original-input double reference with a double product of converted inputs, then compare that converted-input reference with the actual kernel. The differences isolate input quantization from later arithmetic and output rounding.",
+        "FP32 accumulation cannot prevent overflow during an earlier FP16 input conversion or undo input rounding. Exact product and accumulation behavior is instruction-specific, not implied solely by the output dtype."
+      ],
+      "reproduce": "Decode all 256 OCP FP8 bit patterns from sign, exponent and fraction fields, and verify both format boundary tables. With nearest-even conversion, show that 1.0625 is an E4M3 midpoint rounding to 1, whereas 1.1875 rounds to 1.25. For a dot product, convert the inputs [1.0001, -1] and [1, 1] to FP16 before evaluating in double: the original product is approximately 0.0001, but the converted-input product is zero. Record that as input-conversion error, not accumulation error.",
+      "traps": [
+        "Assuming E4M3's all-ones exponent always denotes infinity, as it would in many IEEE formats.",
+        "Calling BF16 more accurate than FP16 because it has a wider exponent range.",
+        "Assuming a software FP8 cast means the GPU supports native FP8 matrix multiplication."
+      ],
+      "selfTest": [
+        {
+          "q": "Which has finer spacing near one, FP16 or BF16?",
+          "a": "FP16. Its ten explicit fraction bits give finer spacing than BF16's seven; BF16 has a wider normal exponent range."
+        },
+        {
+          "q": "Can E4M3 represent positive infinity?",
+          "a": "Not in the OCP E4M3 format. Out-of-range conversion must follow the selected saturation policy; non-saturating overflow produces NaN."
+        },
+        {
+          "q": "Why use both original-input and converted-input references?",
+          "a": "The first measures total approximation error; the second isolates arithmetic and output error after input conversion."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` format-boundary decoder, midpoint conversion tests and split input-versus-arithmetic error report.",
+      "stopWhen": "The enumerated FP8 extrema and midpoint tests match revision 1.1, and your cancellation example distinguishes input loss from accumulation precision.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book supplies the mixed-precision route, OCP supplies exact FP8 encodings, and the already-added CUDA reference specifies BF16/TF32 behavior; no further source is needed."
+      }
+    },
+    {
+      "id": "scaling-quantization-error",
+      "title": "Scale granularity and quantization error against task tolerances",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "scale-selection",
+        "quant-error-contract"
+      ],
+      "outcomes": [
+        "Derive quantization and reconstruction with an explicit positive scale convention.",
+        "Compare per-tensor, per-channel and reduction-block scales including metadata and tail costs.",
+        "Measure clipping and output error against a predefined numerical tolerance rather than accepting speed alone."
+      ],
+      "why": "Low-precision range becomes useful only with a scaling policy. Its granularity changes both error and where scale factors can be applied in GEMM.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/epilogue-fusion-grouped-gemm",
+          "note": "Apply valid reconstruction scales in a fused epilogue."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nvidia-quantization-gpu5",
+          "title": "Scale convention and representable range",
+          "url": "https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/quantized-types-schemes.html",
+          "locator": "Quantization Schemes: INT8, FP8 and Table 14, documentation dated October 5, 2026",
+          "depth": "Read symmetric INT8 and E4M3 formulas. Separate these framework-supported schemes from a general affine zero-point exercise."
+        },
+        {
+          "resource": "nvidia-quantization-gpu5",
+          "title": "Granularity and dynamic scale selection",
+          "url": "https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/quantized-types-workflows.html",
+          "locator": "Quantization Granularities: numbered per-tensor and per-channel definitions and Block Quantization example; Dynamic Quantization, documentation dated October 5, 2026",
+          "depth": "Skip calibration implementation and FP4. In block pseudocode use ceiling division for the number of scales; `ceil(R//B)` loses a partial block."
+        }
+      ],
+      "focus": [
+        "Define a reconstruction scale \\(s>0\\): symmetric INT8 uses \\(q=\\operatorname{roundEven}(\\operatorname{clip}(x/s,-128,127))\\) and \\(\\hat{x}=sq\\). FP8 rounds to its nonuniform representable set, not to integers.",
+        "With one scale per row of the first operand and per column of the second, \\(\\hat{C}_{ij}=s_{A,i}s_{B,j}\\sum_k q_{A,ik}q_{B,kj}\\). Scales varying along the reduction require scaled partial sums inside the reduction, not one final factor.",
+        "Specify zero-block handling, scale dtype, nearest-even ties, clipping and nonfinite-input policy. Dynamic scales cost a reduction and metadata traffic; calibration scales can fail on unseen outliers.",
+        "Measure maximum absolute error, relative error only away from zero, normalized Frobenius error and clipping count against an original-input double reference. A converted-input reference tests implementation but does not establish task accuracy."
+      ],
+      "reproduce": "Quantize the two rows [0.01, 0.02, 0.03, 0.04] and [10, 20, 30, 40] to symmetric INT8 using a maximum-magnitude scale divided by 127. A shared scale makes the first row all zeros; separate row scales preserve nonzero values in both rows. Reconstruct, record maximum absolute error and clipping count, then repeat with an unseen value 80 using the previously fixed scale to expose saturation. For reduction length 65 and block size 32, allocate three scales and explicitly test the one-element tail. Choose a positive neutral scale for an all-zero block.",
+      "traps": [
+        "Multiplying by a forward quantization multiplier when the API expects the inverse reconstruction scale.",
+        "Pulling reduction-block scales outside the full dot product when those scales vary with the reduction block.",
+        "Using LeetGPU Challenge 32's FP32 matmul reference as an arbitrary-range exact integer oracle. Its large products can exceed exact FP32 integer range."
+      ],
+      "selfTest": [
+        {
+          "q": "What happens to an all-zero block under amax-based scaling?",
+          "a": "Naively it produces a zero scale and division by zero. Choose a defined positive scale and emit zero codes."
+        },
+        {
+          "q": "When can scales move to the epilogue?",
+          "a": "When each output's scale product is constant over its entire reduction. Reduction-dependent scales require scaled partial products."
+        },
+        {
+          "q": "Why is relative error alone a poor gate near cancellation?",
+          "a": "The reference can be almost zero, making a tiny absolute error produce a huge or undefined relative error. Use an absolute tolerance there."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` per-tensor/per-channel/block quantization comparison, integer-accumulator reference, scale-tail tests and predeclared error acceptance table.",
+      "stopWhen": "Your scale policies pass zero, outlier and partial-block tests, and a numerical acceptance table rejects at least one inaccurate policy regardless of its speed.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for precise scale granularity, reconstruction and dynamic-selection contracts. The official TensorRT scheme/workflow family fills that gap; the mini-project supplies task-tolerance measurement."
+      }
+    },
+    {
+      "id": "epilogue-fusion-grouped-gemm",
+      "title": "Epilogue fusion and persistent or grouped GEMM",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "persistent-grouped-gemm",
+        "epilogue-fusion"
+      ],
+      "outcomes": [
+        "Implement bias, scale and ReLU directly in a GEMM epilogue and verify operation order.",
+        "Distinguish batched, grouped and persistent execution schedules.",
+        "Implement an optional bounded persistent tile scheduler and compare the complete fused operation with an unfused baseline."
+      ],
+      "why": "Fusion can remove intermediate traffic, while persistence can amortize scheduling across tiles. Both can lose if resource pressure or scheduling overhead outweighs the saved work.",
+      "next": [
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/gemm-baselines-dispatch",
+          "note": "Compare the same complete operation across shape regimes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-gemm-gpu5",
+          "title": "Fusion and long-lived work scheduling",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 9: Kernel Fusion; Chapter 10: Persistent Kernels and Megakernels, Common Workloads for Persistent Kernels",
+          "depth": "Implement a bounded GEMM epilogue, not a megakernel or cooperative-grid runtime. Persistence and grouped GEMM are optional extensions after the fused operation passes."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "GEMM lifecycle and persistence",
+          "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture8.pdf",
+          "locator": "Fall 2025 Lecture 8 slides 25-31",
+          "depth": "Extract scheduling and prologue/epilogue arguments. Do not implement Hopper-only cluster or warpgroup instructions for this unit."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "A coordinate-aware epilogue",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0y_predication.html",
+          "locator": "Predication: GEMM epilogue example and coordinate predicates, documentation dated September 21, 2026",
+          "depth": "Reuse output predicates when adding column bias and activation. Ensure the bias index is the logical column, not a fragment-array index."
+        }
+      ],
+      "focus": [
+        "Define the fused contract as \\(D_{ij}=\\max(0,\\alpha s_{A,i}s_{B,j}P_{ij}+\\beta C_{ij}+b_j)\\), where \\(P\\) is the accumulator product. Omit reconstruction factors for unquantized inputs. Apply output conversion only after this epilogue.",
+        "For a separate elementwise epilogue, fusion removes one intermediate write and one intermediate read, or \\(2s M N\\) requested bytes. Bias, old-output reads and final-output writes remain; caches can change actual DRAM savings.",
+        "Batched GEMM has a regular family of products; grouped GEMM can vary shapes and pointers. Persistence describes long-lived blocks taking multiple tiles, not a different mathematical operation.",
+        "A bounded persistent scheduler can assign flattened tile IDs with a grid-stride loop. Reset accumulators for every tile, map group boundaries explicitly, and retain a nonpersistent fallback."
+      ],
+      "reproduce": "Add column bias and ReLU to the existing FP32 GEMM for shapes (17,19,23) and (32,16,17). Test positive and negative bias, nonzero old output and zero reduction against an independent CPU double implementation with the same epilogue order. For a 64 by 96 FP32 intermediate, derive 49152 requested bytes removed by fusion. Time GEMM plus separate epilogue versus fused GEMM, including all device work in each interval. Optional: run a grid-stride persistent scheduler over two differently shaped products and verify every output tile is written exactly once.",
+      "traps": [
+        "Applying activation before bias or reconstruction and thereby changing the operation.",
+        "Reading the old output when the overwrite contract has \\(\\beta=0\\) and may supply uninitialized storage.",
+        "Assuming persistence guarantees load balance or that grouped GEMM is identical to a uniform strided batch."
+      ],
+      "selfTest": [
+        {
+          "q": "Which traffic does an in-register epilogue remove?",
+          "a": "The intermediate product's write and subsequent epilogue read. It does not remove required bias, old-output or final-output traffic."
+        },
+        {
+          "q": "Can a persistent block keep the previous tile's accumulator?",
+          "a": "Not for an independent output tile. Reset it or load the new tile's required initial state before computing."
+        },
+        {
+          "q": "Why can fusion reduce bytes but still lose?",
+          "a": "Added registers, instructions or shared-memory use can reduce throughput or residency; small intermediates may already stay in cache."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` bias/ReLU epilogue, complete-operation timing pair and optional two-group persistent tile scheduler with unique-ownership tests.",
+      "stopWhen": "The fused epilogue passes edge and operation-order tests, its traffic savings are derived, and the report compares complete fused and unfused operations; optional scheduling has its own ownership check.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book supplies fusion and persistence, MIT supplies the GEMM lifecycle, and CuTe supplies epilogue predicates. The mini-project makes the implementation bounded and leaves grouped persistence optional."
+      }
+    },
+    {
+      "id": "gemm-baselines-dispatch",
+      "title": "Library baselines, shape-aware dispatch and residual analysis",
+      "hours": 6,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "cublas-library-baseline",
+        "shape-aware-autotuning",
+        "gemm-model-residuals"
+      ],
+      "outcomes": [
+        "Build a correctness-gated cuBLAS or cuBLASLt baseline with matching layout, precision and epilogue semantics.",
+        "Select kernels by shape and contract with a safe fallback for unseen inputs.",
+        "Explain measured time beyond the roofline lower bound using resource, instruction and complete-operation evidence."
+      ],
+      "why": "A custom kernel needs a strong, equivalent baseline and evidence for where it wins or loses. Dispatch converts isolated tuning results into a bounded usable implementation.",
+      "next": [
+        {
+          "unit": "gpu/gpu-attention-transformer-fusion/attention-shapes-traffic",
+          "note": "Carry shape, numerical and measurement contracts into attention."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-code-gemm-gpu5",
+          "title": "Library descriptors and candidate timing",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch09/optimized_cublaslt_gemm.cu",
+          "locator": "main: matrix layouts, CUBLAS_COMPUTE_32F descriptor, workspace preference, heuristic candidate loop and fallback, at commit b57e4c6",
+          "depth": "Extract a small rectangular wrapper. Skip PDL. The file's tensor-core label does not prove tensor execution, and `baseline_cublaslt_gemm.cu` is a naive custom kernel, not the vendor baseline."
+        },
+        {
+          "resource": "boehm-sgemm-gpu5",
+          "title": "Bounded tuning and instruction evidence",
+          "url": "https://siboehm.com/articles/22/CUDA-MMM#kernel-9-autotuningi-skipped-kernels-7-and-8-which-i-wrote-while-figuring-out-how-to-best-eliminate-shared-memory-bank-conflicts-they-eliminate-the-conflicts-but-were-overall-still-slower-so-i-wont-cover-them-here",
+          "locator": "Kernel 9: Autotuning; Kernel 10: Warptiling",
+          "depth": "Use a small candidate set, not the published A6000 timing table as a target. Add held-out shapes and edge-safe fallbacks."
+        },
+        {
+          "resource": "mit-6s894-matmul-gpu5",
+          "title": "Problem sizes and scheduling",
+          "url": "https://accelerated-computing.academy/fall25/labs/lab5",
+          "locator": "Fall 2025 Lab 5 Part 0: Understanding Occupancy; Part 1: Improving Performance; Part 2: Handling More Problem Sizes",
+          "depth": "Use the shape and occupancy questions; do not adopt the course GPU's expected times."
+        }
+      ],
+      "focus": [
+        "Match operand storage, transpose flags, strides, batch count, input and accumulator types, \\(\\alpha\\)/\\(\\beta\\), output dtype and epilogue. Include required conversions and separate epilogue kernels when comparing complete operations.",
+        "Use stream events after warmup, interleave candidates, retain distributions and recheck correctness after selection. Record GPU, compiler, driver, library versions, workspace and math mode; timing tuning is separate from steady-state dispatch.",
+        "Key dispatch by shape, layout/alignment, dtype and numerical contract. A tuned aligned kernel is invalid for an unaligned view even if its dimensions match.",
+        "Use \\(t_{\\mathrm{roof}}=\\max(F/P,Q/B)\\) as a lower-bound model under stated compute and traffic assumptions. Positive residual \\(t_{\\mathrm{measured}}-t_{\\mathrm{roof}}\\) is not itself a diagnosis; test launch, tails, issue rate, spills, occupancy and epilogue hypotheses."
+      ],
+      "reproduce": "Compare naive, shared, register-tiled, async and vendor GEMM on (64,96,32), (256,256,256), (16,512,64) and (257,129,65), first with small integer FP32 inputs and then with declared random-input tolerances. Hold out (31,67,33) from tuning and require fallback correctness. For each candidate save useful FLOPs, compulsory-byte model, event distribution, compiled resources and complete-operation latency. Derive the row-major cuBLAS mapping by computing the transposed output with swapped operands and dimensions; verify it on a nonsquare product before timing. Show one losing regime and a falsifiable residual hypothesis, without promising a custom-kernel win.",
+      "traps": [
+        "Comparing a strict FP32 kernel with an unconstrained TF32 library path while reporting only speed.",
+        "Timing allocation, tuning or host dispatch for one candidate but only device computation for another.",
+        "Naming a bottleneck from roofline position alone or inventing profiler counters when access is denied."
+      ],
+      "selfTest": [
+        {
+          "q": "Is the first cuBLASLt heuristic guaranteed fastest?",
+          "a": "No. It proposes eligible candidates; measure them under the same contract and workspace limit, after correctness checks."
+        },
+        {
+          "q": "What does a negative residual suggest?",
+          "a": "At least one model assumption or measurement is inconsistent: FLOP count, byte model, attainable rates, cache residency or timing scope. It does not prove the hardware exceeded a valid bound."
+        },
+        {
+          "q": "What should dispatch do on an unseen or unsupported layout?",
+          "a": "Select a validated general kernel or vendor fallback, rather than reusing a specialization whose preconditions are not satisfied."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` equivalent vendor baseline, bounded tile sweep, shape-contract dispatch table, held-out fallback tests and residual report with best and losing regimes.",
+      "stopWhen": "Every dispatched path and held-out fallback passes its numerical contract, and your reproducible comparison identifies a losing regime with evidence or an explicitly untested counter hypothesis.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The pinned vendor wrapper, Boehm tuning section and MIT problem-size analysis reach measure depth when paired with the mini-project's correctness gate, fallback matrix and residual report."
+      }
+    }
+  ]
+}

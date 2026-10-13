@@ -1,0 +1,945 @@
+{
+  "section": "gpu-triton-cute-compilers",
+  "addedResources": [
+    {
+      "id": "mit-6s894-l10",
+      "role": "lectures",
+      "priority": "support",
+      "name": "MIT 6.S894 Lecture 10 - Domain Languages and Accelerators",
+      "provider": "MIT",
+      "access": "Free",
+      "use": "Use the Higher-level kernel languages slides comparing Triton, Pallas, cuTile (Tile IR) and the CuTe DSL on mapping, effort and performance for the programming-model comparison. Do not use the TPU lab.",
+      "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture10.pdf"
+    }
+  ],
+  "units": [
+    {
+      "id": "triton-programming-model",
+      "title": "Triton programs, program IDs, pointers and masks",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "triton-block-program",
+        "program-ids-tiles",
+        "pointer-stride-arithmetic",
+        "masked-load-store"
+      ],
+      "outcomes": [
+        "Map a 1D tensor operation to Triton program IDs, block offsets, masks and memory transactions.",
+        "Implement a masked Triton map kernel that is correct for non-multiple shapes and matches a PyTorch reference where the arithmetic is exact.",
+        "Explain how one Triton program maps to one CUDA thread block and how the compiler splits block work across threads."
+      ],
+      "why": "Every later Triton kernel reuses this mapping. A wrong program ID or an unmasked tail corrupts memory silently, so the discipline starts here.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/triton-reductions-dot",
+          "note": "Reductions reuse the same program and mask structure with different tail values."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cuda-triton-lowering",
+          "note": "Compare the blocked program against its CUDA equivalent and generated code."
+        }
+      ],
+      "study": [
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Vector Addition: Compute Kernel",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html",
+          "locator": "Compute Kernel: `tl.program_id`, `tl.arange`, masked `tl.load` and `tl.store`; helper `add` with the grid function over `meta['BLOCK_SIZE']` and `BLOCK_SIZE=1024`; correctness check with `size = 98432`"
+        },
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Vector Addition: Benchmark",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html",
+          "locator": "Benchmark: `triton.testing.do_bench` with quantiles and the GB/s helper over `3 * numel * element_size` bytes",
+          "depth": "Read it as a timing pattern, not as a number to reproduce. Valid timing discipline comes from the measurement section."
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Triton Programming Model",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Writing Custom Kernels with OpenAI Triton through Triton Programming Model: `tl.constexpr` block sizes, the grid function, and one program per CUDA thread block",
+          "depth": "Stop before Accessing Shared Memory in Triton. Descriptors and pipelined copies belong to the atoms unit."
+        }
+      ],
+      "focus": [
+        "One Triton program handles one block. `tl.program_id(axis=0)` selects it and `tl.arange` builds its lane indices.",
+        "`BLOCK_SIZE` is a `tl.constexpr`, so each value compiles its own specialization. The grid function reads it from `meta` so the launch grid always matches the value in use, including one an autotuner picks.",
+        "The mask guards both loads and the store. Masked-out load lanes yield `other` and must never reach the output.",
+        "Pointer arithmetic stays in elements (`x_ptr + offsets`), never in bytes."
+      ],
+      "reproduce": "Closed-book, write `add_kernel` and its grid function for \\(N = 1000\\) with \\(\\text{BLOCK} = 1024\\). State the grid `(1,)` from `triton.cdiv`, and predict a maximum absolute difference of 0.0 against `x + y`, as measured on an RTX 3050 6 GB with CUDA 13.4 and Triton 3.8.0 for \\(N = 1000\\), \\(1024\\) and \\(98432\\).",
+      "traps": [
+        "Using a non-power-of-two `BLOCK_SIZE`. Each block must hold a power-of-two number of elements, so pad the row and mask the tail.",
+        "Closing over a Python `BLOCK_SIZE` in the grid instead of reading `meta['BLOCK_SIZE']`. The grid then disagrees with the kernel whenever the launch or an autotuner uses another block size, and blocks go missing or overlap.",
+        "Masking the loads but not the store. Dead lanes then write out of bounds on the final partial block."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the grid function take `meta` instead of a fixed block size?",
+          "a": "The same source specializes per `BLOCK_SIZE` value. Reading `meta['BLOCK_SIZE']` keeps the grid correct for every compiled variant."
+        },
+        {
+          "q": "For \\(N = 1000\\) and \\(\\text{BLOCK} = 1024\\), which lanes are masked and what do their loads return?",
+          "a": "Lanes 1000 to 1023 are masked. Their loads return `other` and their stores are skipped, so only the first 1000 outputs are written."
+        },
+        {
+          "q": "One program covers 1024 elements. How many threads run it?",
+          "a": "That is a compiler decision, controlled by `num_warps`, not by `BLOCK_SIZE`. The program maps to one CUDA thread block."
+        },
+        {
+          "q": "Why is `x_ptr + offsets` correct without multiplying by 4 for float32?",
+          "a": "Triton pointer arithmetic is in elements of the pointed-to type, so the element size is implicit."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Masked Triton GELU Kernel",
+          "url": "https://www.tensortonic.com/problems/cs336-l06-triton-masked-gelu",
+          "locator": "Implement masked tanh-approximate GELU for contiguous CUDA tensors with partial final blocks",
+          "note": "Rerun with your own non-multiple shapes and at least two dtypes, and compare against `torch.nn.functional.gelu` with the matching approximation."
+        }
+      ],
+      "stopWhen": "Your GELU kernel matches the reference on partial-block shapes, and you can state the grid, mask and `other` policy for any \\(N\\) without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The vector-add tutorial plus the book programming-model section cover all four topics at implement depth, and the TensorTonic problem gives checked practice."
+      }
+    },
+    {
+      "id": "triton-reductions-dot",
+      "title": "Triton reductions and dot-product precision",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "triton-reductions",
+        "triton-dot-precision"
+      ],
+      "outcomes": [
+        "Implement row reductions with `tl.max` and `tl.sum` over axis 0, with tail policies that keep each reduction exact.",
+        "Explain why `tl.dot` accumulates in fp32 and when its default tf32 input precision changes the result.",
+        "Predict fused versus unfused traffic for a rowwise softmax from element counts."
+      ],
+      "why": "Softmax and matmul carry the two numerical contracts of this section: exact tails for reductions and stated precision for products.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/triton-specialization-autotune",
+          "note": "Autotune the block size and warp count of these kernels."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/custom-ops-autograd",
+          "note": "Reuse the reduction pattern inside a LayerNorm backward pass."
+        }
+      ],
+      "study": [
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Fused Softmax: kernel and test",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html",
+          "locator": "Motivations: the 5MN plus 2M read and 3MN plus 2M write count; Compute Kernel: row loop with `tl.num_programs`, `BLOCK_SIZE` as the next power of two, `other=-float('inf')`, `tl.max` and `tl.sum` over axis 0; Unit Test with the 1823 by 781 matrix"
+        },
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Matrix Multiplication: accumulator and test",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html",
+          "locator": "Final Result: fp32 `accumulator`, `tl.dot` per K block, cast to fp16 at the epilogue; Unit Test: 512 by 512 fp16 comparison with `atol=1e-2`"
+        },
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "`tl.dot` input precision",
+          "url": "https://triton-lang.org/main/python-api/triton.language.html",
+          "locator": "`tl.dot`: `input_precision` default `tf32` for f32 inputs on tensor-core hardware, with `ieee` for full fp32 inputs (still rounded at every step, so not exact)"
+        }
+      ],
+      "focus": [
+        "Reductions run over axis 0 of a block. The max tail uses minus infinity while a sum tail uses 0, and swapping them corrupts the result.",
+        "The fused traffic claim is \\((8MN + 4M)/(2MN)\\), about 4 for wide rows. Check the element counts before quoting the speedup.",
+        "Matmul accumulates in fp32 and casts once. The cast position, not just the input dtype, sets the error.",
+        "The matmul tutorial compares fp16 outputs at `atol=1e-2`, set by fp16 inputs and the final cast. The softmax tutorial uses the `torch.allclose` defaults; `tl.exp` is fast but approximate, so state your softmax tolerance separately."
+      ],
+      "reproduce": "On a 64 by 64 fp32 product of standard normal matrices with seed 0, a `tl.dot` loop with `input_precision='tf32'` gives a maximum absolute error of 0.0237 against fp64, while `'ieee'` gives 7.6e-06. Measured on an RTX 3050 6 GB with CUDA 13.4 and Triton 3.8.0. Reproduce the gap direction and explain why tf32 input truncation, not accumulation order, dominates it.",
+      "traps": [
+        "Passing `other=0.0` to a row-max load. Masked lanes then cap the maximum at 0 and break all-negative rows.",
+        "Comparing fp16 matmul output with default tolerances. Use the tutorial `atol=1e-2` and justify it from input precision.",
+        "Assuming `tl.dot` on fp32 inputs matches fp32 math. The default tf32 path truncates inputs, so set `input_precision='ieee'` when the test needs full fp32 inputs, and still compare with a tolerance."
+      ],
+      "selfTest": [
+        {
+          "q": "A row holds `[-3.0, -1.0]` with a block of 4 and a max-load `other=0.0`. What breaks?",
+          "a": "The max becomes 0.0 instead of -1.0, so every output is wrong. Max tails need minus infinity."
+        },
+        {
+          "q": "Naive softmax moves \\(8MN + 4M\\) elements and fused moves \\(2MN\\). What is the claimed speedup for large \\(N\\)?",
+          "a": "About 4. The \\(4M\\) term vanishes next to \\(8MN\\) as \\(N\\) grows."
+        },
+        {
+          "q": "Why does the matmul tutorial accumulate in fp32 and cast at the end?",
+          "a": "Each K block adds its rounding once in fp32. Casting inputs or partial sums earlier compounds the error, while the final cast costs one rounding."
+        },
+        {
+          "q": "Your fp32 Triton matmul differs from fp64 by 0.02. Is that a bug?",
+          "a": "Not necessarily with default precision: tf32 input truncation alone explains errors of that size on a 64-wide reduction. Rerun with `'ieee'` before debugging indexing."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Tiled Triton Row Sum",
+          "url": "https://www.tensortonic.com/problems/cs336-l06-triton-tiled-row-sum",
+          "locator": "Tiled row reduction for strided CUDA tensors with fixed-width tiles and float32 sums"
+        },
+        {
+          "name": "TensorTonic: Triton Row-Wise Softmax",
+          "url": "https://www.tensortonic.com/problems/cs336-l06-triton-row-softmax",
+          "locator": "Stable rowwise softmax for padded rows and partial tiles in float32, float16 and bfloat16",
+          "note": "Rerun both with non-multiple widths including a 781-wide row, and compare fp16 and bfloat16 outputs against fp32 with a stated tolerance."
+        }
+      ],
+      "stopWhen": "Both problems pass, and you can state each reduction tail value and the dot precision behind every reported error.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The softmax and matmul tutorials cover reductions and dot precision at implement depth, and the two TensorTonic problems give checked practice."
+      }
+    },
+    {
+      "id": "triton-specialization-autotune",
+      "title": "Specialization, autotuning and compile-cost accounting",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "triton-meta-parameters",
+        "autotune-config-key",
+        "autotune-correctness-gate",
+        "compile-cold-warm"
+      ],
+      "outcomes": [
+        "Design an autotune space of block sizes, warp counts and stages with a key that separates every varying shape.",
+        "Gate every candidate on a correctness check before timing, and reject invalid configurations.",
+        "Separate cold compile and autotune time from warm steady-state time in every reported number."
+      ],
+      "why": "Autotuning buys speed once and charges compile time on every new shape. Without a key and a gate, it silently serves the wrong fast kernel.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/triton-codegen-debugging",
+          "note": "Inspect the registers and shared memory of the winning configuration."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/torch-compile-boundaries",
+          "note": "Compare Triton autotune caching with TorchInductor guards and recompilation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Matrix Multiplication: tuning and cache reuse",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html",
+          "locator": "L2 Cache Optimizations: grouped pid mapping with `GROUP_SIZE_M`; Final Result: `get_cuda_autotune_config` block sizes with `num_stages` and `num_warps`, and `@triton.autotune` with `key=['M', 'N', 'K']`"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Autotuning and compile cost",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Autotuning with TorchInductor and Autotuning Triton Kernels: per-kernel config cache, representative warmup inputs, and `max-autotune` compile cost"
+        },
+        {
+          "resource": "cse291a-pa2-triton-gpu7",
+          "title": "PA2 Part 1: grid search and local testing",
+          "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
+          "locator": "Part 1, sections 1.1 to 1.6: tile assignment through grid search over `BLOCK_M`, `BLOCK_N`, `BLOCK_K`, `num_warps` and `num_stages`; Part 1 Testing with `python student_local_test.py student_kernel.py`",
+          "depth": "The remote grader needs a course token. Replace its speedup score with your own interleaved timing against the PyTorch reference on your GPU."
+        }
+      ],
+      "focus": [
+        "The key must list every launch-varying value. A missing dimension reuses a fast config for the wrong shape.",
+        "Candidates are correctness-gated: a config that fails the reference never reaches timing.",
+        "First-call cost mixes compilation, autotuning and execution. Only warm calls measure the kernel.",
+        "Tune on a representative workload, not on the final benchmark shapes."
+      ],
+      "reproduce": "Time `torch.compile(lambda x, y: torch.relu(x + y) * 2)` on 1024 by 1024 fp32 tensors, host-timed with synchronization: with PyTorch 2.14.1 and an empty Inductor cache on an RTX 3050 6 GB with CUDA 13.4, the first call took about 1.2 to 1.9 s and warm calls about 0.1 ms. State which interval pays for compilation and what a warm Inductor cache changes, then run the matmul tutorial autotuned kernel twice on one shape and show the second launch skips benchmarking.",
+      "traps": [
+        "Benchmarking candidates without warmup. Compile time then votes for the smallest tile, not the fastest kernel.",
+        "One config for all shapes. A tall-skinny winner can lose on square shapes, and the key exists to stop that.",
+        "Treating the course grader number as portable. Retime the submitted `KERNEL_CONFIGS` on your own GPU before claiming anything."
+      ],
+      "selfTest": [
+        {
+          "q": "Two shapes share \\(M\\) and \\(N\\) but differ in \\(K\\), and the key is `['M', 'N']`. What goes wrong?",
+          "a": "The second shape reuses the first shape winner without benchmarking. \\(K\\) changes tile reuse, so it belongs in the key."
+        },
+        {
+          "q": "A candidate is twice as fast but fails the reference at `ATOL=0.15`. Keep it?",
+          "a": "No. Correctness gates timing, so a fast wrong kernel is rejected."
+        },
+        {
+          "q": "A cold call takes seconds and warm calls take under a millisecond. Which part is the kernel?",
+          "a": "The warm calls. The cold call pays compilation and autotuning once per key."
+        },
+        {
+          "q": "Why tune on production-like shapes instead of the evaluation set?",
+          "a": "Tuning on the evaluation set overfits the selection. Unseen shapes then pay for a config chosen for another distribution."
+        }
+      ],
+      "practice": [
+        {
+          "name": "UCSD CSE 291A PA2 Part 1: Triton matmul-add-ReLU",
+          "url": "https://github.com/hao-ai-lab/cse-dsc291-s26-pa/tree/main/pa2",
+          "locator": "Implement `matmul_add_relu_kernel_fp16` for the fused add-plus-ReLU epilogue with fp16 inputs and output and an fp32 accumulator, plus 1 to 5 `KERNEL_CONFIGS`; pass `student_local_test.py` with 512-wide correctness and 2048-wide timing",
+          "note": "The remote grader needs a course token, so replace its speedup score with your own interleaved timing against the PyTorch reference on your GPU."
+        }
+      ],
+      "stopWhen": "Your configs pass the local correctness and timing tests, and every reported number names its key, its warmup, and whether the cache was cold or warm.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The matmul tutorial, the book autotuning sections and the PA2 grid-search assignment cover space, key, gating and cost, with the local test script as checked practice."
+      }
+    },
+    {
+      "id": "triton-codegen-debugging",
+      "title": "Generated code, resources and debugging Triton kernels",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "triton-resource-inspection",
+        "triton-debugging"
+      ],
+      "outcomes": [
+        "Inspect a compiled Triton kernel for registers, shared memory and the full IR-to-cubin trajectory.",
+        "Debug a failing Triton kernel with the interpreter, device asserts and compute-sanitizer, and state what each tool cannot see.",
+        "Build a minimal reproducer that isolates a Triton defect from the surrounding program."
+      ],
+      "why": "A slow or wrong Triton kernel is a compiler artifact until you read it. Resource reports and IR dumps turn guessing into evidence.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cuda-triton-lowering",
+          "note": "Place the inspected Triton output beside the CUDA compilation trajectory."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/triton-specialization-autotune",
+          "note": "Feed register and shared-memory findings back into the autotune space."
+        }
+      ],
+      "study": [
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Debugging Triton",
+          "url": "https://triton-lang.org/main/programming-guide/chapter-3/debugging.html",
+          "locator": "Using Triton's Debugging Operations: `static_print`, `static_assert`, `device_print`, `device_assert`, with `device_assert` active only when `TRITON_DEBUG=1`; Using the Interpreter with `TRITON_INTERPRET=1`, including Limitations on bfloat16 and indirect access; Using Third-party Tools with `compute-sanitizer`"
+        },
+        {
+          "resource": "gpu-mode-languages-gpu7",
+          "title": "GPU MODE Lecture 29: Triton internals and artifacts",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
+          "locator": "`presentation.md`: NVCC toolchain (`nvcc` to PTX to `ptxas` to SASS), Triton Compilation through TTIR, TTGIR, LLIR, PTX and cubin, the JIT handle `asm` keys, and `MLIR_ENABLE_DUMP=1` for per-pass IR; `vector_add.py`: `compiled_kernel.asm` keys with `get_sass`"
+        },
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Fused Softmax: occupancy from a warmup compile",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html",
+          "locator": "Compute Kernel helper `softmax`: pre-compile with `warmup`, then read `n_regs` and `metadata.shared` to derive occupancy from register and shared-memory limits"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Debugging generated compiler code",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Performance Hints and Debugging Generated Code: `TORCH_LOGS`, `TORCH_COMPILE_DEBUG=1` and the dumped FX graph, Inductor IR and Triton code"
+        }
+      ],
+      "focus": [
+        "The `asm` dict holds `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`. Each stage answers a different question about the final machine code.",
+        "`n_regs` and `metadata.shared` set resource ceilings before any profiler runs. Compare them against the launch before blaming the algorithm.",
+        "The interpreter runs programs sequentially on CPU with NumPy semantics. It exposes indexing bugs but not races or occupancy effects.",
+        "`compute-sanitizer` checks races and out-of-bounds on hardware, where the interpreter cannot help."
+      ],
+      "reproduce": "Launch the vector-add kernel with \\(\\text{BLOCK} = 1024\\) on Triton 3.8.0 and read the handle: `n_regs` 26, shared 0, target `sm_86`, `asm` keys `source`, `ttir`, `ttgir`, `llir`, `ptx` and `cubin`, and a PTX header with `.version 8.8`, `.target sm_86` and `.reqntid 128`. Measured on an RTX 3050 6 GB with CUDA 13.4.",
+      "traps": [
+        "Adding `device_assert` and seeing nothing. It executes only when `TRITON_DEBUG=1` is set.",
+        "Trusting interpreter timing or race behavior. Sequential CPU simulation cannot show either; rerun on hardware with `compute-sanitizer` for those.",
+        "Reading `n_regs` from a `warmup` call with one grid and assuming it covers all configs. Any `tl.constexpr` change recompiles and can change resources."
+      ],
+      "selfTest": [
+        {
+          "q": "Which `asm` key holds the PTX, and which holds the final machine code?",
+          "a": "`ptx` holds the PTX and `cubin` holds the final machine code. `ttir`, `ttgir` and `llir` are the compiler stages above them."
+        },
+        {
+          "q": "A kernel reports high `n_regs` and zero shared memory. What limits occupancy first?",
+          "a": "Registers. Divide the SM register file by registers per thread times threads per block, and compare against the block limit before touching shared memory."
+        },
+        {
+          "q": "Your kernel fails only on hardware but passes with `TRITON_INTERPRET=1`. What class of bug is likely?",
+          "a": "A race, an out-of-bounds access masked by NumPy semantics, or a resource effect. Reproduce under `compute-sanitizer` with a minimal launch."
+        },
+        {
+          "q": "Why does the interpreter refuse bfloat16 tensors?",
+          "a": "It has no bfloat16 operation support. Cast with `tl.cast` to float32 for the interpreter run, then re-verify on hardware."
+        }
+      ],
+      "practice": [
+        {
+          "name": "GPU MODE Lecture 29 `vector_add.py` codegen inspection",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
+          "locator": "Run `vector_add.py` far enough to print `compiled_kernel.asm.keys()`, dump the `ttgir` and `ptx`, and rerun with `MLIR_ENABLE_DUMP=1`; then run the same launch under `compute-sanitizer`",
+          "note": "Do this on your own GPU with a short launch. Keep each sanitizer run small and never leave a process holding GPU memory."
+        }
+      ],
+      "stopWhen": "You can name the IR stage behind any PTX or SASS observation, and your minimal reproducer fails identically on hardware and under the sanitizer.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The debugging guide, Lecture 29 artifacts and the softmax warmup cover inspection and debugging at measure depth, with the Lecture 29 script as lab practice."
+      }
+    },
+    {
+      "id": "cuda-triton-lowering",
+      "title": "Matched CUDA and Triton kernels and the lowering path",
+      "hours": 5,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "cuda-triton-parity",
+        "compiler-ir-lowering"
+      ],
+      "outcomes": [
+        "Implement matched CUDA and Triton kernels for one operation and test them against the same reference and tolerances.",
+        "Trace both kernels from source through PTX to SASS and state which device code actually ships.",
+        "Explain where the Triton lowering diverges from handwritten CUDA: tiling, precision defaults and launch setup."
+      ],
+      "why": "Two kernels that pass the same tests can still differ in precision, resources and shipped machine code. Parity work makes the difference visible.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/torch-compile-boundaries",
+          "note": "See how a framework compiler chooses between paths like these."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cutlass-cute-layouts",
+          "note": "Compare the Triton blocked program with a CuTe tiled GEMM."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpu-mode-languages-gpu7",
+          "title": "GPU MODE Lecture 29: compilation trajectories",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_029",
+          "locator": "`presentation.md`: Device Code Processing with `cicc` to PTX and `ptxas` to SASS, then Triton Compilation from the DSL through TTIR, TTGIR, LLIR, PTX and cubin with the cache layout"
+        },
+        {
+          "resource": "ptx-compiler-gpu7",
+          "title": "CUDA Binary Utilities",
+          "url": "https://docs.nvidia.com/cuda/cuda-binary-utilities/",
+          "locator": "Sections 1.2 (cuobjdump against nvdisasm inputs), 2.1.1 (dumping SASS, ELF and PTX), 2.1.2 (listing embedded binaries) and 2.1.3 (resource usage with `-res-usage`)"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Triton lowering to PTX",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Triton Programming Model: Triton converts the program to PTX with each program using a single CUDA thread block, and vectorizes arithmetic and memory operations"
+        }
+      ],
+      "focus": [
+        "`cuobjdump` accepts cubins and host binaries while `nvdisasm` accepts only cubins with richer output. Pick the tool by input, not habit.",
+        "`-res-usage` reports registers and shared memory per function. Match those numbers against the Triton handle before comparing speed.",
+        "A fat binary can carry several architectures. List embedded binaries before claiming which SASS runs.",
+        "Triton `tl.dot` defaults to tf32 on fp32 inputs while a naive CUDA kernel stays in fp32. Parity tests must pin precision on both sides."
+      ],
+      "reproduce": "Compile a vector-add `.cu` with `nvcc -arch=sm_86 -cubin` and run `cuobjdump -sass` plus `cuobjdump -res-usage`. Show the guarded prologue (`S2R`, `IMAD`, `ISETP`, guarded `EXIT`, `LDG.E` loads) and the resource line `REG:12` with `SHARED:0`. Measured with CUDA 13.4 for compute capability 8.6.",
+      "traps": [
+        "Comparing PTX `.target` strings and calling it a performance result. PTX is virtual; only the SASS for your architecture executes.",
+        "Forgetting `cuobjdump -lelf` on a shipped binary. The running code may come from a different embedded arch than the one you inspected.",
+        "Attributing a Triton-versus-CUDA gap to tiling when one side used tf32 and the other used fp32. Fix `input_precision` first."
+      ],
+      "selfTest": [
+        {
+          "q": "When do you reach for `nvdisasm` instead of `cuobjdump`?",
+          "a": "When the input is already a cubin and you want control-flow graphs, register liveness or source correlation, which `cuobjdump` does not provide."
+        },
+        {
+          "q": "Your binary runs slower than the SASS you inspected suggests. What do you check?",
+          "a": "Which embedded binary actually loads, with `-lelf` and the driver architecture. The inspected SASS may belong to another arch."
+        },
+        {
+          "q": "The Triton kernel is faster than your CUDA kernel on fp32 matmul. What is the first suspect?",
+          "a": "Precision: Triton `tl.dot` defaults to tf32 inputs while the CUDA kernel accumulates true fp32. Re-run with `input_precision='ieee'` before crediting tiling."
+        },
+        {
+          "q": "What does `REG:12 SHARED:0` tell you about the vector-add kernel?",
+          "a": "It uses 12 registers per thread and no shared memory, so occupancy is set by registers and block limits, not by shared memory."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LeetGPU 1 Vector Addition in Triton with a CUDA twin",
+          "url": "https://leetgpu.com/challenges/vector-addition",
+          "locator": "Public `challenge.py` at `challenges/easy/1_vector_add/challenge.py`: `torch.add` reference with `atol=1e-05`, `rtol=1e-05`, free tier",
+          "note": "Write matched CUDA and Triton kernels in your own repository and pass the example plus the scalar-tail and non-power-of-two functional tests, on LeetGPU or locally against `reference_impl` from `challenge.py` as in the CUDA primitives section (a Triton `solve` takes the tensors directly). Then compare `cuobjdump -res-usage` reports for both."
+        },
+        {
+          "name": "LeetGPU 2 Matrix Multiplication in Triton with a CUDA twin",
+          "url": "https://leetgpu.com/challenges/matrix-multiplication",
+          "locator": "Public `challenge.py` at `challenges/easy/2_matrix_multiplication/challenge.py`: `torch.matmul` reference with `atol=0.0001`, `rtol=0.0001`, free tier",
+          "note": "Pin `input_precision` on the Triton side and the accumulation on the CUDA side before any timing, and keep the losing shapes in your report."
+        }
+      ],
+      "stopWhen": "Both twins pass the same tests, and you can point at the PTX and SASS lines plus the resource reports that explain their gap.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Lecture 29 trajectories, the binary-utilities reference and the book lowering note cover parity and IR at explain and implement depth, with two free LeetGPU challenges as checked practice."
+      }
+    },
+    {
+      "id": "torch-compile-boundaries",
+      "title": "`torch.compile` capture, fusion, graph breaks and recompilation",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "graph-capture-compilation",
+        "graph-break-recompile"
+      ],
+      "outcomes": [
+        "Trace one operation from `torch.compile` capture through FX graph and generated Triton code to the running kernel.",
+        "Diagnose graph breaks and recompilations with `explain` and `TORCH_LOGS`, and repair the common cases.",
+        "Predict how dynamic shapes change guards, recompilation and CUDA-graph recording."
+      ],
+      "why": "Framework compilation decides fusion boundaries for you until it silently gives up. Breaks and guards are where its speedups go missing.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/custom-ops-autograd",
+          "note": "Make custom kernels visible to the compiler instead of breaking its graph."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/kernel-dispatch-regressions",
+          "note": "Turn guard and version observations into regression tests."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Compiler pipeline: Dynamo, AOT Autograd, Inductor",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, PyTorch Compiler Deep Dive through TorchInductor Backend Code Generation: bytecode capture, joint forward-backward graph, PrimTorch IR with about 250 primitives, and Inductor code generation with autotuning and CUDA graphs"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Graph breaks, recompiles and dynamic shapes",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Explaining and Minimizing Graph Breaks (`torch._dynamo.explain`, `allow_in_graph`, `torch.where` masking, `torch.cond` limits), Minimize Graph Recompilations (`TORCH_LOGS=graph_breaks,recompiles,guards`, `mark_dynamic`, `eager_on_recompile`), and Dynamic Shapes and Variable Sequence Lengths (symbolic shapes and guards)",
+          "depth": "The book says `dynamic=True` disables CUDA graphs. In PyTorch 2.14.1 it does not: with `mode='reduce-overhead'` Inductor records one CUDA graph per distinct size and warns after 8 (`torch._inductor.config.triton.cudagraph_dynamic_shape_warn_limit`)."
+        },
+        {
+          "resource": "aisys-code-compiler-gpu7",
+          "title": "Compiler debugging scripts",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code",
+          "locator": "`code/ch14/inspect_compiled_code.py` for dumping the compiled SimpleLLMBlock kernels; `code/ch14/baseline_graph_break_control_flow.py` against `optimized_graph_break_control_flow.py` for the Python-branch break; `code/ch14/recompilation_demo.py` (in the repository since late August 2026) for guard-driven recompiles"
+        }
+      ],
+      "focus": [
+        "Dynamo captures straight-line tensor code and breaks on data-dependent Python control flow, falling back to eager for that region.",
+        "Every compiled graph carries guards on shapes, dtypes and devices. A failing guard recompiles, so changing values look like slow code.",
+        "`dynamic=True` compiles one graph for many shapes, but `reduce-overhead` mode still records a CUDA graph per distinct size, so graph memory and recording cost grow with the shape count. Prefer `mark_dynamic` on the dims that truly vary, and bucket sizes when graphs matter.",
+        "Inductor fuses and autotunes over the captured graph only. Code outside the graph keeps its launch overhead whatever the mode says."
+      ],
+      "reproduce": "Run `torch._dynamo.explain` on a function with a Python `if` over `y.sum() > 0` and on its `torch.where` rewrite, with PyTorch 2.14. The first reports Graph Count 2 with Break Count 1 (generic jump); the second reports Graph Count 1 with Break Count 0. Quote both reports from your own run.",
+      "traps": [
+        "Reading one slow iteration as a slow kernel. The first iterations pay capture and compile; compare warm steady state only.",
+        "Closing over a changing Python constant such as a seed or timestamp. Every new value fails a guard and recompiles.",
+        "Setting `dynamic=True` and expecting one CUDA graph. Each distinct size records its own graph under `reduce-overhead`; bucket the sizes or mark only the dim that varies."
+      ],
+      "selfTest": [
+        {
+          "q": "What does `explain` report for a data-dependent Python `if` on a tensor sum?",
+          "a": "Two graphs with one break: the region before the branch, a generic-jump break reason, and the region after it."
+        },
+        {
+          "q": "Iterations stay slow long after warmup. Which log separates breaks from recompiles?",
+          "a": "`TORCH_LOGS=graph_breaks,recompiles,guards`. Breaks cut graphs short; recompiles show which guard keeps failing."
+        },
+        {
+          "q": "With `dynamic=True` and `mode='reduce-overhead'`, what happens when 20 distinct batch sizes arrive?",
+          "a": "One compiled graph serves them all, but Inductor records a separate CUDA graph for each size and warns after 8 by default. Bucket the sizes so a few graphs cover the traffic."
+        },
+        {
+          "q": "When does `eager_on_recompile` beat fixing the guard?",
+          "a": "When shapes vary irreducibly and each recompile costs more than it saves. It caps recompiles by falling back to eager."
+        }
+      ],
+      "practice": [
+        {
+          "name": "AI Systems ch14: graph-break and recompile inspection",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code",
+          "locator": "Run `code/ch14/inspect_compiled_code.py` to dump the SimpleLLMBlock graphs and Triton code, then `code/ch14/recompilation_demo.py`; compare `explain` output for `baseline_graph_break_control_flow.py` against the optimized version",
+          "note": "Run the scripts on your own GPU with small shapes. Report graph counts, break reasons and which guard each recompile names."
+        }
+      ],
+      "stopWhen": "You can predict the graph count of a small function before running `explain`, and name the guard behind any recompile you trigger.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 14 plus the ch14 debugging and graph-break scripts cover capture, breaks, recompiles and dynamic shapes at measure depth with named runnable practice."
+      }
+    },
+    {
+      "id": "custom-ops-autograd",
+      "title": "Custom operators, stream semantics and autograd contracts",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "custom-op-autograd"
+      ],
+      "outcomes": [
+        "Register a Triton kernel as a PyTorch custom op that `torch.compile` can see through instead of breaking on.",
+        "Implement a fused forward plus backward with saved tensors, stream-safe launches and a correct fallback.",
+        "State the autograd contract your op keeps: what it saves, what it differentiates, and what higher-order use it refuses."
+      ],
+      "why": "An invisible custom op cuts every framework graph it touches. Registration plus a tested backward keeps the fast path composable.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cute-atoms-pipelines",
+          "note": "Compare the Triton fused epilogue with CuTe copy and MMA atoms."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/torch-compile-boundaries",
+          "note": "Check that the registered op keeps graphs whole under `explain`."
+        }
+      ],
+      "study": [
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Layer Normalization: backward pass and wrapper",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/05-layer-norm.html",
+          "locator": "Backward pass: the `dx` formula with `c1` and `c2` constants, two-stage `dw` and `db` reduction with `Lock`, `Count` and `tl.debug_barrier`; Benchmark: the `LayerNorm` `autograd.Function` with `save_for_backward`, `GROUP_SIZE_M` heuristics and `test_layer_norm(1151, 8192, torch.float16)`"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Custom Triton ops in PyTorch",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Registering Custom Kernels with PyTorch (`torch.library.triton_op` with autograd and fake-tensor support) and Debugging Compiler Phases (unknown custom ops force graph breaks)"
+        }
+      ],
+      "focus": [
+        "The backward needs saved `x`, `w`, `mean` and `rstd` plus the launch config. Missing state cannot be recomputed from `dy` alone.",
+        "`dw` and `db` reduce across rows through grouped buffers with locks. The grouping is an implementation choice, not math.",
+        "Registration declares mutation and schema so Dynamo and Inductor can reason about the op. An unregistered op is opaque and breaks the graph.",
+        "Kernel launches must stay on the current CUDA stream with no hidden synchronization, or composition with streams and graphs breaks."
+      ],
+      "reproduce": "Closed-book, derive the LayerNorm vector-Jacobian product: \\(dx = (\\text{wdy} - (\\text{xhat} \\cdot c1 + c2)) \\cdot \\text{rstd}\\) with \\(c1 = \\mathrm{mean}(\\text{xhat} \\cdot \\text{wdy})\\) and \\(c2 = \\mathrm{mean}(\\text{wdy})\\), where \\(\\text{wdy} = w \\cdot dy\\) and \\(\\text{xhat} = (x - \\mathrm{mean}) \\cdot \\text{rstd}\\). State which means run over the row.",
+      "traps": [
+        "Allocating locks wrong. The tutorial uses `torch.zeros(2 * GROUP_SIZE_M, dtype=torch.int32)` for locks plus counts; any other shape or dtype breaks the protocol.",
+        "Promising double backward. The tutorial backward supports first-order gradients only; state that limit instead of letting a caller discover it.",
+        "Synchronizing inside the op for timing or debugging and shipping it. The hidden sync serializes every stream composition around the op."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the backward save `mean` and `rstd` instead of recomputing them?",
+          "a": "Recomputation repeats two full passes over `x` and risks a different rounding. Saved statistics keep forward and backward consistent."
+        },
+        {
+          "q": "What do the `GROUP_SIZE_M` buffers change about the `dw` result?",
+          "a": "Nothing mathematically: they partition the row reduction across buffers that a second kernel sums. Only performance and memory change."
+        },
+        {
+          "q": "What happens to `torch.compile` when it meets an unregistered custom CUDA op?",
+          "a": "Dynamo cannot reason about it, so it emits a graph break and runs that region eagerly, keeping the Python overhead the compile was meant to remove."
+        },
+        {
+          "q": "Which stream must a custom op launch on, and why?",
+          "a": "The current stream from `torch.cuda.current_stream`. Any other choice breaks event dependencies that callers built around the op."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Triton LayerNorm tutorial: forward-backward acceptance",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/05-layer-norm.html",
+          "locator": "Run `test_layer_norm(1151, 8192, torch.float16)` for forward, `dx`, `dw` and `db` agreement, then `bench_layer_norm` with `mode='backward'`",
+          "note": "Implement in your own repository. Keep the lock protocol and both reduction stages, and record the higher-order limitation in your tests."
+        }
+      ],
+      "stopWhen": "Your op passes the tutorial acceptance test, stays on-stream under composition, and `explain` shows no new break where it runs.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The LayerNorm tutorial plus the book registration section cover autograd, streams and compiler visibility at implement depth, with the tutorial acceptance test as practice."
+      }
+    },
+    {
+      "id": "cutlass-cute-layouts",
+      "title": "The CUTLASS hierarchy and CuTe layout algebra",
+      "hours": 5,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "cutlass-collective-hierarchy",
+        "cute-layout-algebra"
+      ],
+      "outcomes": [
+        "Read a CUTLASS 3.x GEMM from device down to atoms through layouts, strides and tiles.",
+        "Evaluate CuTe layouts as functions: shape, stride, index mapping, size and cosize.",
+        "Partition global, shared and register tiles across CTAs and threads with `local_tile` and `local_partition`."
+      ],
+      "why": "CuTe layouts are the vocabulary that CUTLASS, Triton and Tile IR all translate into. Reading them turns template errors into indexing facts.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cute-atoms-pipelines",
+          "note": "Attach copy and MMA atoms to the partitioned tensors built here."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/cuda-triton-lowering",
+          "note": "Compare the CuTe CTA tiling with the Triton blocked program."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cutlass-cute-gpu7",
+          "title": "CUTLASS 3.0 design",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cutlass_3x_design.html",
+          "locator": "CUTLASS 3.0 design goals, A new Conceptual GEMM Hierarchy (layers detached from hardware generations), Adoption of CuTe Layout and Tensors, and Reducing the number of named types and iterator concepts"
+        },
+        {
+          "resource": "cutlass-cute-gpu7",
+          "title": "CuTe GEMM tutorial: tensors, tiles and partitions",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0x_gemm_tutorial.html",
+          "locator": "High-level interface (problem shape, CTA tiler, strides); The Full Tensors with `(M,K)`, `(N,K)`, `(M,N)` modes and the M-major, N-major, K-major table; CTA Partitioning with `local_tile` over `zipped_divide`; SMEM tensors with `cosize` allocation; Copy partitioning and Math partitioning with `local_partition`",
+          "depth": "Work through `sgemm_1.cu` only. Leave `sgemm_2.cu` atoms, the SM70/SM80 pipelines and GETT for the atoms unit."
+        },
+        {
+          "resource": "gpu-mode-languages-gpu7",
+          "title": "GPU MODE Lecture 103: CuTe layout algebra",
+          "url": "https://github.com/gpu-mode/lectures/tree/main/lecture_103",
+          "locator": "Slides on layout definitions, composition and the composition algorithm"
+        }
+      ],
+      "focus": [
+        "A layout is a function from logical coordinates to offsets. `size` measures the domain and `cosize` the codomain, and allocation uses `cosize`.",
+        "CuTe stores B as `(N,K)`, not `(K,N)`. Both inputs reduce over their second mode, so read every stride pair against that convention.",
+        "Majorness names the stride-1 mode: M-major, N-major or K-major. It replaces the BLAS transposed and non-transposed flags.",
+        "`local_tile` slices the rest mode to give each CTA its tile; `local_partition` slices the tile mode to give each thread its share."
+      ],
+      "reproduce": "Closed-book, give the byte-free element address of \\(A(i,j)\\) for layout \\((M,K):(1,\\text{ldA})\\), then compute the `cosize` of the padded shared-memory layout with shape \\((128,8)\\) and stride \\((1,129)\\): maximum offset \\(127 + 7 \\times 129 = 1030\\), so `cosize` 1031. State why allocation needs 1031 elements and not 1024.",
+      "traps": [
+        "Reading B strides as `(K,N)`. Under the `(N,K)` convention the reduction mode sits second in both inputs, and every partition assumes it.",
+        "Using `size` for the shared allocation. Padded layouts have `cosize` larger than `size`, and allocating `size` overflows the padding.",
+        "Treating NT and TN labels as layout facts. They describe BLAS calling convention; only the inspected layout tells you the stride-1 mode."
+      ],
+      "selfTest": [
+        {
+          "q": "For layout \\((M,K):(1,\\text{ldA})\\), which index runs over contiguous elements?",
+          "a": "The \\(M\\) index \\(i\\): address \\(i + j \\times \\text{ldA}\\) advances by 1 per row step, so the matrix is M-major."
+        },
+        {
+          "q": "What breaks if the shared allocation uses `size` for the padded \\((128,8)\\), \\((1,129)\\) layout?",
+          "a": "Seven elements of padding per column go unallocated. Writes to padded offsets land out of bounds even though every logical index is in range."
+        },
+        {
+          "q": "What do `local_tile` and `local_partition` each slice, and what mode does each leave behind?",
+          "a": "`local_tile` slices the rest mode with the CTA coordinate and leaves the tile modes plus the K rest index, giving `(BLK_M,BLK_K,k)` so the CTA can loop over its K tiles. `local_partition` slices the tile mode with the thread index and leaves the rest mode, giving each thread its elements repeated across the tile."
+        },
+        {
+          "q": "A kernel is labeled TN for both inputs. What are the two layouts?",
+          "a": "Both K-major: A is \\((M,K):(\\text{ldA},1)\\) and B is \\((N,K):(\\text{ldB},1)\\). Confirm by inspecting the layouts, not the label."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: reconstruct one GEMM configuration down to layouts, copy atoms and MMA atoms, and compare it with the equivalent Triton blocked program.",
+      "stopWhen": "You can hand-evaluate any static layout in the tutorial to addresses and partition coordinates, and defend each CTA and thread tile against the code.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The CUTLASS design doc, the CuTe GEMM tutorial and Lecture 103 cover hierarchy and layout algebra at derive depth, with reconstruction assigned to the section mini-project."
+      }
+    },
+    {
+      "id": "cute-atoms-pipelines",
+      "title": "CuTe copy and MMA atoms, tiled MMAs and pipelines",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "cute-copy-mma-atoms",
+        "async-pipeline-barriers"
+      ],
+      "outcomes": [
+        "Select copy and MMA atoms for a GEMM tile and explain what each atom fixes: instruction, types and partitioning.",
+        "Build tiled copies and tiled MMAs from atoms and connect each partition to its tensor fragment.",
+        "Reason about pipeline stages, barriers and producer-consumer ownership in an async mainloop."
+      ],
+      "why": "Atoms separate what moves data from what computes on it. Pipelines then overlap the two, and every overlap bug is an ownership bug.",
+      "next": [
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/kernel-dispatch-regressions",
+          "note": "Dispatch the pipelined kernel with fallback and regression tests."
+        },
+        {
+          "unit": "gpu/gpu-triton-cute-compilers/triton-specialization-autotune",
+          "note": "Autotune stages and tile sizes against occupancy, not in isolation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cutlass-cute-gpu7",
+          "title": "CuTe GEMM tutorial: atoms and pipelined mainloops",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0x_gemm_tutorial.html",
+          "locator": "Mainloop with `copy`, `cp_async_fence`, `cp_async_wait` and `__syncthreads`; TiledCopy with `Copy_Atom`, `partition_S`, `partition_D` and `make_fragment_like`; TiledMMA with `UniversalFMA`, `partition_A`, `partition_B`, `partition_C` and `make_fragment_C`; Other changes with padded shared layouts; `sgemm_sm80.cu` for the async Ampere pipeline"
+        },
+        {
+          "resource": "aisys-compiler-gpu7",
+          "title": "Warp specialization and software pipelining",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 14, Warp Specialization with Triton (`warp_specialize=True` on `tl.range`; the book's `num_consumer_groups` and `num_buffers_warp_spec` config keys are rejected by `triton.Config` in Triton 3.8.0) and Software Pipelining and Double Buffering with Triton (prefetch-next then compute-current with the commit-then-wait handshake, `num_stages` against occupancy)"
+        },
+        {
+          "resource": "triton-tutorials-gpu7",
+          "title": "Persistent matmul",
+          "url": "https://triton-lang.org/main/getting-started/tutorials/09-persistent-matmul.html",
+          "locator": "Persistent versus naive kernel structure with `@triton.autotune` configs and `proton.scope` benchmark regions",
+          "depth": "Study the persistent structure and the config tables. Skip the CLC variants, which need compute capability 10.0, and run only configurations that fit your GPU."
+        }
+      ],
+      "focus": [
+        "An atom binds one instruction to fixed types. `UniversalCopy` with `uint128_t` demands vectorizable fragments or the build fails statically.",
+        "`partition_S` and `partition_D` can differ across source and destination. The fragment names record which partitioning each tensor uses.",
+        "The first MMA mode holds one instruction worth of elements. Its size varies per atom and per tensor, so read it off the atom.",
+        "Overlap needs the current tile to stay live while the next tile prefetches. Overwriting it lets the compiler reorder copies past uses and silently serializes the loop."
+      ],
+      "reproduce": "Closed-book, write the tutorial mainloop order for one K tile: `copy` with the thread partitions, `cp_async_fence`, `cp_async_wait`, `__syncthreads`, `gemm` on the MMA partitions, `__syncthreads`. State what each barrier waits for.",
+      "traps": [
+        "The book handshake names `tl.commit` and `tl.wait`, which do not exist in Triton 3.8.0. The real overlap mechanism is the pipelined `tl.range` with `num_stages` over descriptor loads, so treat those two names as author pseudocode.",
+        "Adding stages for free. Each extra stage costs shared memory and can cut occupancy below the point where overlap pays.",
+        "Copying the 16 by 16 UniversalFMA tiling numbers onto a tensor-core MMA. Real MMAs have their own thread coverage and fragment shapes."
+      ],
+      "selfTest": [
+        {
+          "q": "The `TiledCopy` uses `UniversalCopy` over `uint128_t` for fp32 data. How many elements per thread must the partition deliver?",
+          "a": "Four: 128 bits hold four fp32 values. A partition that cannot vectorize to that width fails at compile time."
+        },
+        {
+          "q": "What does `thr_mma.make_fragment_C` allocate, and why not `make_tensor_like`?",
+          "a": "Accumulator fragments shaped by the MMA partitioning, which need not match the global tile layout element for element. The MMA view, not the tensor view, sets the shape."
+        },
+        {
+          "q": "The pipelined loop is no faster than the naive one, but profiles show copies and math serialized. What is the first suspect?",
+          "a": "The current tile reference dies before its consumer runs, so the compiler hoists the next copy past the current use. Keep the current tile live across the swap."
+        },
+        {
+          "q": "When does warp specialization beat simply adding stages?",
+          "a": "On long K loops where dedicated producer and consumer warps keep memory and math busy together. Short loops cannot amortize the partition."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Fused Tiled Matmul and ReLU",
+          "url": "https://www.tensortonic.com/problems/cs336-l06-triton-matmul-relu",
+          "locator": "Fused tiled matrix multiplication and ReLU for strided float16 or bfloat16 CUDA inputs and preallocated outputs",
+          "note": "Map your kernel to the atom picture first: which loads are the copy stage, where the MMA equivalent accumulates in fp32, and where the ReLU epilogue fuses. Rerun with non-multiple M, N and K."
+        }
+      ],
+      "stopWhen": "You can label every fragment in your fused kernel as a copy or MMA partition, and your pipeline keeps overlap under a stage count you justify from occupancy.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The CuTe atom sections, the book pipelining sections and the persistent-matmul tutorial cover atoms and pipelines at explain depth, with the fused matmul problem as practice."
+      }
+    },
+    {
+      "id": "kernel-dispatch-regressions",
+      "title": "Other programming models, dispatch with fallback and compiler regression tests",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "pallas-rocm-nki",
+        "architecture-aware-dispatch",
+        "compiler-regression-tests"
+      ],
+      "outcomes": [
+        "Compare Triton, Pallas, cuTile (Tile IR) and the CuTe DSL on mapping, scheduling and effort for one kernel.",
+        "Build device, dtype, shape and layout dispatch with a tested fallback for every unvalidated path.",
+        "Write compiler-version, generated-code and performance regression tests that fail on real drift."
+      ],
+      "why": "A kernel that wins on one stack and breaks on the next is a demo. Dispatch plus regression tests turn it into infrastructure.",
+      "next": [
+        {
+          "route": "inference",
+          "note": "Carry dispatch and fallback contracts into serving paths."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/benchmark-audit-parity",
+          "note": "Audit the dispatched kernels with the benchmark checklist."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mit-6s894-l10",
+          "title": "Higher-level kernel languages",
+          "url": "https://accelerated-computing.academy/fall25/lectures/slides/Lecture10.pdf",
+          "locator": "Lecture 10, Higher-level kernel languages slides: Triton blocked matmul with `tl.program_id` and pointer arithmetic, the Pallas block-reference form (`pl.BlockSpec`, `pallas_call`), and the Triton against CUDA against SASS effort-performance ordering with cuTile and the CuTe DSL"
+        },
+        {
+          "resource": "cuda-tile-gpu7",
+          "title": "Tile IR programming model",
+          "url": "https://docs.nvidia.com/cuda/tile-ir/latest/sections/prog_model.html",
+          "locator": "Section 3 through 3.1.2: tile kernels, tile-blocks as the unit of execution, and how tile programming differs from SIMT thread mapping",
+          "depth": "Read the model and inspect the official repository. Implement a parity kernel only if your toolchain supports it, and record the compiler-version constraint."
+        },
+        {
+          "resource": "ptx-compiler-gpu7",
+          "title": "Binary checks for dispatch and regressions",
+          "url": "https://docs.nvidia.com/cuda/cuda-binary-utilities/",
+          "locator": "Sections 2.1.2 (listing embedded binaries to confirm the shipped arch) and 2.1.3 (resource usage to pin down register and shared-memory drift across versions)"
+        }
+      ],
+      "focus": [
+        "Triton maps programs explicitly to blocks and schedules inside blocks automatically. Pallas names programs with its own IDs and indexes block references declared with `pl.BlockSpec` instead of raw pointers, and Tile IR abstracts the thread mapping into the compiler.",
+        "Dispatch keys on device, dtype, shape and layout together. Any untested combination must route to the validated fallback, never to the fast path.",
+        "Pin the compiler and library versions in every regression test. A Triton or CUDA update can change tiling, precision defaults and resource use.",
+        "Keep negative results: shapes where the custom kernel loses to the library decide the dispatch boundary."
+      ],
+      "reproduce": "Closed-book, write a dispatch sketch for a softmax kernel: fast Triton path for contiguous fp32 rows under 8192 columns, library fallback otherwise, plus a regression test that fails when `cuobjdump -res-usage` registers change across a compiler update. State the fallback condition first.",
+      "traps": [
+        "Dispatching on shape alone. A new dtype or a non-contiguous layout can take the fast path into unvalidated code.",
+        "Testing only the winning shapes. Regressions hide on the shapes you stopped running, so keep a held-out shape set.",
+        "Treating Pallas or Tile IR snippets as runnable practice here. Without their toolchains they are reading for the comparison, not implementations."
+      ],
+      "selfTest": [
+        {
+          "q": "What is the essential mapping difference between the Triton and Pallas matmul forms?",
+          "a": "Triton names programs with `tl.program_id` and builds raw pointers with strides. Pallas names programs with its own IDs and indexes block references declared with `pl.BlockSpec` instead of pointers."
+        },
+        {
+          "q": "A new GPU generation doubles shared memory. Does your dispatch change?",
+          "a": "Only after measurement: re-run the shape matrix, confirm the pipeline still wins within resources, and update the boundary. New hardware does not move it by itself."
+        },
+        {
+          "q": "What must a compiler regression test record besides pass or fail?",
+          "a": "Compiler and library versions, the shipped arch from the embedded binaries, resource usage, tolerances, and the raw timings with warmup stated."
+        },
+        {
+          "q": "When is the library path the right production choice over your faster kernel?",
+          "a": "When dispatch cannot cover the shape, dtype, layout or arch mix, when maintenance owns the risk, or when the measured end-to-end gain vanishes outside the benchmark."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LeetGPU 5 Softmax in Triton with dispatch and fallback",
+          "url": "https://leetgpu.com/challenges/softmax",
+          "locator": "Public `challenge.py` at `challenges/medium/5_softmax/challenge.py`: max-trick reference with `atol=1e-05`, `rtol=1e-05`, free tier",
+          "note": "Wrap your kernel in device, dtype, shape and contiguity dispatch with a `torch.softmax` fallback, and add a version-pinned regression test over held-out shapes including non-multiples. Run it on LeetGPU or locally against `reference_impl` from `challenge.py`."
+        }
+      ],
+      "stopWhen": "Your dispatch routes every held-out shape, dtype and layout to a tested path, and a compiler update fails loudly instead of silently.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for the Pallas, ROCm and NKI comparison topic; MIT 6.S894 Lecture 10 supplies the verified Triton, Pallas, Tile IR and CuTe DSL comparison beside the in-pool Tile IR and binary-utilities references."
+      }
+    }
+  ]
+}

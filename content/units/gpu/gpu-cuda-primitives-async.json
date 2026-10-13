@@ -1,0 +1,1065 @@
+{
+  "section": "gpu-cuda-primitives-async",
+  "addedResources": [
+    {
+      "id": "cuda-programming-guide-gpu4",
+      "role": "reference",
+      "priority": "reference",
+      "name": "CUDA C++ Programming Guide (v13.4.2)",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Use Section 2.3.4 for coalesced access, the transpose example and bank-conflict padding; Section 2.5 for streams, events, synchronization and the stream-capture intro; and Section 4.2 for graph creation, update and capture constraints. This is the API reference beside the book chapters.",
+      "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/"
+    }
+  ],
+  "units": [
+    {
+      "id": "maps-vectorized-coarsening",
+      "title": "Elementwise maps, vectorized access and thread coarsening",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "elementwise-map-grid-stride",
+        "vectorized-memory-access",
+        "thread-coarsening"
+      ],
+      "outcomes": [
+        "Write a grid-stride elementwise kernel that covers any length, including zero and nonmultiple sizes, with one bounds check.",
+        "Convert scalar loads to alignment-guarded vectorized loads and predict the per-warp transaction change.",
+        "Apply thread coarsening and state where its extra registers and lost parallelism stop paying off."
+      ],
+      "why": "Every later primitive reuses this loop. If the map is wrong on tails or wastes transactions, the reduction, scan and softmax built on it inherit both defects.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/transpose-tiling-banks",
+          "note": "Reuse coalesced-access analysis on two-dimensional layouts."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/reduction-trees-order",
+          "note": "Put a tree structure on top of correct per-thread work."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Thread coarsening",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 6, Section 6.3 (printed p. 138): assigning several elements to each thread; Chapter 10, Section 10.8 (printed p. 228): coarsening against parallelization overhead"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Map pattern and coarsening notes",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 7, Pattern #1: Map (slide 9); Pattern #3: Reduce (slides 18 to 31), including the thread-coarsening note"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Coalesced access and transaction width",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html",
+          "locator": "Section 2.3.4.1: 32-byte transactions, the 4-byte word example with four transactions at full utilization, and the 12.5 percent worst case",
+          "depth": "Read for the transaction model only. The section's transpose example belongs to the next unit."
+        },
+        {
+          "resource": "nvidia-reduction-gpu4",
+          "title": "Grid-stride loop pattern",
+          "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
+          "locator": "Reduction #7, slides 31 to 33: the grid-stride accumulation loop that adds as many elements as necessary",
+          "depth": "Use only for the loop pattern. The reduction sequence belongs to the reduction units."
+        }
+      ],
+      "focus": [
+        "A grid-stride loop decouples launch configuration from length: each thread visits `i`, `i + gridDim.x * blockDim.x`, and so on, so every index is covered exactly once for any length including 0.",
+        "One 16-byte vectorized load moves 4 floats per thread and needs 16-byte alignment. Guard with an alignment and divisibility test and keep a scalar tail.",
+        "Coarsening trades fewer blocks and amortized index math for more registers per thread and less parallel slack. PMPP frames it as paying less for parallelism.",
+        "Coalescing is about the warp, not the thread: consecutive threads should touch consecutive words so one 128-byte request fills four 32-byte transactions."
+      ],
+      "reproduce": "From a blank file, write scalar, vectorized (`float4`) and 4-way coarsened saxpy kernels with a grid-stride loop, and predict each variant's per-warp transaction count before running. On 1000003 random floats all three match a CPU reference computed with `fmaf` bit-exactly. `nvcc` contracts `a * x[i] + y[i]` into one fused multiply-add by default, so a CPU reference that multiplies and then adds differs in the last bit: on an RTX 3050 6 GB with CUDA 13.4 it disagreed at 282,894 of the 1,000,003 elements.",
+      "traps": [
+        "Trusting base-pointer alignment after arithmetic. `cudaMalloc` returns aligned bases, but `p + offset` may not be 16-byte aligned, so check the accessed address at runtime.",
+        "Testing only round sizes. A vectorized loop without a scalar tail silently drops the last \\(n \\bmod 4\\) elements, so test 1000003, not just 1048576.",
+        "Assuming more coarsening is faster. Past the point where blocks still fill the SMs, extra work per thread only adds register pressure and loses latency hiding."
+      ],
+      "selfTest": [
+        {
+          "q": "With 256 blocks of 256 threads and length 1000003, which indices does thread 0 visit?",
+          "a": "Stride 65536: 0, 65536, up to 983040, which is 16 visits. The next, 1048576, exceeds the length."
+        },
+        {
+          "q": "A float pointer sits at a byte address with remainder 8 modulo 16. Is a `float4` load through it safe?",
+          "a": "No. Vector loads need 16-byte alignment. Peel a scalar head, take a scalar path, or realign the allocation."
+        },
+        {
+          "q": "One warp loads one consecutive float per thread. How many 32-byte transactions, and at what utilization?",
+          "a": "128 bytes in four transactions at full utilization. Every fetched byte is used."
+        },
+        {
+          "q": "Why can 8-way coarsening run slower than 4-way on a short vector?",
+          "a": "Too few blocks remain to fill the SMs, and each thread holds more live state. Parallel slack is lost after the memory saving is exhausted."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: scalar, vectorized and coarsened map variants with grid-stride coverage, an independent CPU reference and odd-size tests.",
+      "stopWhen": "All three saxpy variants match an `fmaf` reference exactly on an odd size, and you predict each variant's per-warp transaction count before profiling.",
+      "fit": {
+        "verdict": "kept",
+        "note": "PMPP, MIT Lecture 7 and the guide cover maps, coarsening and transaction depth at implement level, with the mini-project supplying the named practice."
+      }
+    },
+    {
+      "id": "transpose-tiling-banks",
+      "title": "Transpose: coalescing, shared-memory tiles and bank conflicts",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "matrix-transpose-baseline",
+        "shared-transpose-tile",
+        "bank-conflict-padding"
+      ],
+      "outcomes": [
+        "Predict requested transactions for strided reads and writes of a transpose.",
+        "Implement copy, naive and padded shared-memory tiled transpose with correct odd-shape guards.",
+        "Diagnose a 32-way bank conflict and apply padding, showing measured bandwidth against the copy ceiling."
+      ],
+      "why": "Transpose is the smallest kernel where layout decides bandwidth. The tile, barrier and padding pattern repeats in GEMM and attention.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/parallel-scans",
+          "note": "Reuse tiled shared-memory thinking for block scans."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/warp-block-reductions",
+          "note": "Apply the same coalescing analysis to reduction loads."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nvidia-transpose-gpu4",
+          "title": "Copy, naive and coalesced transpose",
+          "url": "https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/",
+          "locator": "Simple Matrix Copy; Naive Matrix Transpose, with the 1024-element (4096-byte) write stride on the 1024x1024 test; Coalesced Transpose Via Shared Memory, with `TILE_DIM=32`, `BLOCK_ROWS=8` and 4 elements per thread",
+          "depth": "The M2050 and K20c GB/s numbers are 2013 hardware. Reproduce the ranking on your own GPU, not the values."
+        },
+        {
+          "resource": "nvidia-transpose-gpu4",
+          "title": "Bank conflicts and the padding fix",
+          "url": "https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/",
+          "locator": "Shared Memory Bank Conflicts through the padded `tile[TILE_DIM][TILE_DIM+1]` variant, including the `copySharedMem` control experiment"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Transpose worked example and padding",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html",
+          "locator": "Sections 2.3.4.1.1 (naive transpose with uncoalesced writes), 2.3.4.2.1 (shared-memory transpose) and 2.3.4.2.2 (32-way column conflict, fixed by declaring 32x33 shared memory)"
+        }
+      ],
+      "focus": [
+        "Naive transpose reads coalesced but writes with a stride of the matrix width. On the blog's 1024x1024 test that is 4096 bytes between consecutive threads.",
+        "A `tile[32][32]` of floats read down one column maps every element to the same bank: a 32-way conflict. With `tile[32][33]`, element row \\(r\\) of column \\(c\\) sits in bank \\((r + c) \\bmod 32\\), so a column access is conflict-free.",
+        "The copy kernel is the ceiling: it moves the same twice-the-matrix traffic with ideal access. A transpose near copy bandwidth is done.",
+        "Fewer threads than tile elements (a \\(32 \\times 8\\) block for a \\(32 \\times 32\\) tile) amortizes index math, with 4 elements per thread."
+      ],
+      "reproduce": "Rebuild copy, naive and padded-tiled transpose for 4096x4096 fp32 random data and time each with events, median of 11 trials. On an RTX 3050 6 GB with CUDA 13.4 the copy reached 152 GB/s, naive 48 GB/s and tiled 151 GB/s, counting one read and one write per element, and the tiled output matched a CPU transpose exactly, including a 1000x1000 check of the edge guards. Expect the same ranking on your GPU, with tiled near copy.",
+      "traps": [
+        "Trusting a bandwidth number above the DRAM peak. It usually means the grid covers only part of the matrix or the byte count is wrong, so check coverage first, then compare against the copy kernel.",
+        "Reading the blog's M2050 and K20c GB/s values as targets. Reproduce the ranking of copy, tiled and naive, not decade-old values.",
+        "Swapping block indices without swapping tile offsets writes each tile to the wrong place while staying in bounds. Zeros cannot catch this; an index-pattern input where element equals row times width plus column can."
+      ],
+      "selfTest": [
+        {
+          "q": "On a 1024x1024 fp32 matrix, what stride separates consecutive threads' writes in the naive transpose?",
+          "a": "1024 elements, or 4096 bytes. Each warp's 32 writes land in 32 different segments."
+        },
+        {
+          "q": "A warp reads one column of a `tile[32][32]` float array. Which banks, and what changes with `tile[32][33]`?",
+          "a": "All 32 requests hit one bank: a 32-way conflict. With the +1 padding, element \\(r\\) of column \\(c\\) sits in bank \\((r + c) \\bmod 32\\), so the 32 requests hit 32 distinct banks."
+        },
+        {
+          "q": "The tiled kernel matches copy bandwidth on square shapes but fails on width 1000. What is the likely cause?",
+          "a": "Missing bounds guards for nonmultiple dimensions. Guard both the load loop and the store loop, since a partial edge tile underfills both."
+        },
+        {
+          "q": "Why is the copy kernel a better ceiling than the vendor peak bandwidth?",
+          "a": "Copy moves the same read-plus-write traffic with ideal access on your GPU, clocks and power state. It measures what is achievable here, not a datasheet bound."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LeetGPU challenge 3: Matrix Transpose",
+          "url": "https://leetgpu.com/challenges/matrix-transpose",
+          "locator": "Challenge 3: `solve(input, output, rows, cols)` over fp32, with functional cases from 1x1 and 1x4 through 8192x8192 and a performance case of 7000 rows by 6000 columns",
+          "note": "Run it on LeetGPU or locally: build your `solve` with `nvcc -shared -Xcompiler -fPIC`, load it with `ctypes`, and check it against `reference_impl` on the cases from `generate_functional_test` and `generate_performance_test` in the challenge's `challenge.py` (public in AlphaGPU/leetgpu-challenges). That file imports `core.challenge_base`, which the repository does not ship; a two-line stub class with `device = \"cuda\"` is enough. Keep your own source, and add a nonmultiple shape beyond the public cases."
+        }
+      ],
+      "stopWhen": "Your tiled transpose matches the reference on square, tall, wide and odd shapes and reaches at least 0.9 times your measured copy bandwidth on 4096x4096.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The blog plus the guide's transpose sections cover all three topics at implement and measure depth, with a verified challenge as practice."
+      }
+    },
+    {
+      "id": "reduction-trees-order",
+      "title": "Reduction trees, work efficiency and floating-point order",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "reduction-tree-work",
+        "floating-reduction-order"
+      ],
+      "outcomes": [
+        "Derive the work \\(N - 1\\), depth \\(\\log_2 N\\) and idle-thread fraction of a tree reduction.",
+        "Predict how tree order changes a float32 sum and bound the change with a float64 reference.",
+        "Trace the interleaved-to-sequential addressing fixes and state what each one removes."
+      ],
+      "why": "Reduction is where parallelism meets floating-point reality. The fastest tree also sums in a different order, and that order is part of the result.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/warp-block-reductions",
+          "note": "Complete the tree across warps and blocks with tails."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/histograms-privatization",
+          "note": "Contrast tree completion with atomic completion."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Reduction trees and a simple kernel",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 10, Sections 10.1 to 10.3 (printed pp. 211 to 218): reduction trees, operation count and the first shared-memory kernel"
+        },
+        {
+          "resource": "nvidia-reduction-gpu4",
+          "title": "Seven-kernel optimization sequence",
+          "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
+          "locator": "Slide 2 (intent: 7 versions), slides 7 to 28 from interleaved addressing through complete unrolling, and the slide 34 performance table for 4M elements",
+          "depth": "The GB/s values are 2008-era hardware. Trace the code changes and treat the table as history, not targets."
+        },
+        {
+          "resource": "gpu-mode-primitives-gpu4",
+          "title": "Order-dependence scripts",
+          "url": "https://github.com/gpu-mode/lectures",
+          "locator": "Lecture 9 code in `lecture_009/`: `nondeterminism.py` (left-to-right 0.0 versus right-to-left 1e-19 on the same list) and `accuracy.py` (fp32 versus fp16 absorption at 1000.0 plus 1e-3)",
+          "depth": "Run the scripts to feel order effects. Save the lecture slides for later."
+        }
+      ],
+      "focus": [
+        "A tree does \\(N - 1\\) adds in \\(\\lceil \\log_2 N \\rceil\\) steps. Step \\(s\\) does \\(N/2^s\\) adds, so half the threads idle after the first step.",
+        "Interleaved addressing diverges warps and pays for modulo; the strided-index form removes divergence but bank-conflicts; sequential addressing is conflict-free.",
+        "Challenge 4's reference accumulates in float64, so an fp32 tree passes at 1e-5 on friendly magnitudes. That proves nothing about ill-conditioned inputs.",
+        "The deck uses `int` throughout, where every tree order is exact. Its sequence needs an FP re-derivation before you copy it into a float kernel."
+      ],
+      "reproduce": "By hand, reduce [6, 2, 7, 4, 5, 8, 3, 1] with a sequential-addressing tree to get 36 with 7 adds in 3 steps. Then show in float32 that \\((10^8 + (-10^8)) + 1 = 1\\) while \\(10^8 + ((-10^8) + 1) = 0\\).",
+      "traps": [
+        "Treating a Challenge 4 pass as an order certificate. The float64 reference plus 1e-5 tolerance absorbs tree-order error on friendly magnitudes, so test cancellation inputs separately.",
+        "Copying the deck's unrolled last warp. It relies on `volatile` shared memory and warps running in lockstep; from Volta on, threads of a warp are scheduled independently, so finish with `__shfl_down_sync` or put `__syncwarp()` between the steps.",
+        "Reading idle threads as inefficiency. Halving active threads each step is still work-efficient at \\(N - 1\\) adds; a scheme that keeps every thread busy each step, as Kogge-Stone does for scan, does about \\(N \\log_2 N\\)."
+      ],
+      "selfTest": [
+        {
+          "q": "For 1024 elements, how many adds and how many steps does a tree reduction take?",
+          "a": "1023 adds in 10 steps. Each step halves the partials until one remains."
+        },
+        {
+          "q": "Why is the deck's first kernel slow, in two causes?",
+          "a": "`tid % (2*s)` diverges warps and integer modulo is slow. Later kernels replace it with a strided index and a halving loop."
+        },
+        {
+          "q": "Challenge 4 compares against `torch.sum(input.double()).float()`. What does that reference hide?",
+          "a": "Summation order error. Any fp32 tree order lands within 1e-5 on the test magnitudes, so order bugs on ill-conditioned inputs escape."
+        },
+        {
+          "q": "Why do \\((10^8 + (-10^8)) + 1\\) and \\(10^8 + ((-10^8) + 1)\\) differ in float32?",
+          "a": "Near \\(10^8\\), float32 values are 8 apart, so \\(-10^8 + 1\\) rounds back to \\(-10^8\\) and the second order returns 0, while the first cancels exactly and then adds 1."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LeetGPU challenge 4: Reduction",
+          "url": "https://leetgpu.com/challenges/reduction",
+          "locator": "Challenge 4: `solve(input, output, N)` fp32 sum checked against `torch.sum(input.double()).float()` at absolute and relative tolerance 1e-5, with functional cases for \\(N = 1\\), \\(N = 5\\) and a 15M-element input, and a performance case of \\(N = 4194304\\)",
+          "note": "Run it on LeetGPU or locally: build your `solve` with `nvcc -shared -Xcompiler -fPIC`, load it with `ctypes`, and check it against `reference_impl` on the cases from `generate_functional_test` and `generate_performance_test` in the challenge's `challenge.py` (public in AlphaGPU/leetgpu-challenges). That file imports `core.challenge_base`, which the repository does not ship; a two-line stub class with `device = \"cuda\"` is enough. Pass all functional tests, then add your own cancellation test in the \\(10^8\\) style against a float64 reference. The public tests do not check order."
+        }
+      ],
+      "stopWhen": "You hand-trace the 8-element tree, explain what each deck stage removes, and your kernel passes Challenge 4 plus your own cancellation test.",
+      "fit": {
+        "verdict": "kept",
+        "note": "PMPP, the reduction deck and the Lecture 9 scripts cover tree work and FP order at derive depth, with a verified challenge as practice."
+      }
+    },
+    {
+      "id": "warp-block-reductions",
+      "title": "Warp shuffles, block reductions, multi-pass completion and tails",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "warp-shuffle-reduction",
+        "block-global-reduction",
+        "arbitrary-length-tails"
+      ],
+      "outcomes": [
+        "Write a warp shuffle reduction with a correct mask and tail handling.",
+        "Complete a grid reduction with block partials and a second pass, covering lengths 0, 1, odd and huge.",
+        "Measure coarsening-factor trade-offs and keep the factor where gains stop."
+      ],
+      "why": "No single block sees the whole vector. This unit turns a block-local tree into a correct whole-array reduction, the completion pattern behind every multi-pass primitive.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/parallel-scans",
+          "note": "Reuse the block-partials hierarchy for scans."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "The barrier and partial-warp defects seeded there come from here."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Divergence, memory and hierarchical reduction",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 10, Sections 10.4 to 10.7: minimizing control divergence, memory divergence and global accesses, plus hierarchical reduction for arbitrary input length"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Shuffle prelab",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Lab 7, Part 0 (`shuffle.cu`): `__shfl_up_sync(0xffffffff, threadIdx.x, 1)` semantics, no wrap-around, and the two 32-integer cumulative-sum kernels with and without shared memory",
+          "depth": "Build for your own GPU with `nvcc -arch=sm_86` and recompute any SM count the questions assume. Use only Part 0 here; the scan parts belong to later units."
+        },
+        {
+          "resource": "nvidia-reduction-gpu4",
+          "title": "Warp completion and cascading",
+          "url": "https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf",
+          "locator": "Slides 21 and 22 (unrolling the last warp with `warpReduce`) and slides 31 to 33 (multiple adds per thread with a grid-stride loop)",
+          "depth": "The deck predates Volta. Its `warpReduce` assumes lockstep warps, so rewrite it with `__shfl_down_sync` before you reuse it."
+        },
+        {
+          "resource": "gpu-mode-primitives-gpu4",
+          "title": "Coarsened reduction code",
+          "url": "https://github.com/gpu-mode/lectures",
+          "locator": "Lecture 9 code in `lecture_009/reduce_coarsening.cu`: per-thread accumulation with `COARSE_FACTOR` before the block tree"
+        }
+      ],
+      "focus": [
+        "`__shfl_down_sync(0xffffffff, v, offset)` requires every lane named in the mask to make the same call, and a lane reading from an inactive lane gets an undefined value. Keep all 32 lanes in the reduction and give out-of-range lanes the identity (0 for a sum).",
+        "Blocks cannot synchronize globally, so write one partial per block and finish with a second kernel launch. The second pass needs its own tail handling for odd partial counts.",
+        "First-add-during-load halves the launched blocks: each thread adds two elements as it loads them, so the first tree level runs during the load. Global reads stay at \\(N\\). Cascading extends the idea until occupancy or registers stop the gain."
+      ],
+      "reproduce": "Write a shuffle warp reduction plus a two-pass grid reduction with 4-way coarsening and grid-stride loads. On 1000003 values it matches a float64 reference with relative error below 1e-6, returns 0 for length 0 and returns the single value for length 1.",
+      "traps": [
+        "Calling `__syncthreads()` inside a divergent branch. The guide calls it invalid or undefined behavior: the block may hang, or on current GPUs run on with a silent race. Keep barriers on uniform control flow.",
+        "Finishing with one global atomic per element instead of one per block. Atomics belong at block granularity; per-element atomics turn completion into contention.",
+        "Testing only multiples of 1024. Tail bugs hide there, so test 1, 31, 32, 33, 1023 and 1000003."
+      ],
+      "selfTest": [
+        {
+          "q": "Why complete a grid reduction in two passes instead of one global barrier?",
+          "a": "No grid-wide barrier exists for independently scheduled blocks. One partial per block plus a second launch is the portable completion; single-pass schemes risk deadlock."
+        },
+        {
+          "q": "A tail warp has 20 lanes with data and reduces with a full `0xffffffff` mask. When does this go wrong, and what is the fix?",
+          "a": "If the other 12 lanes skip the shuffle inside a branch, the call is invalid and may hang. If they have exited, the call is allowed but shuffles that read from them return undefined values. Keep all 32 lanes in the reduction with identity values for the missing elements."
+        },
+        {
+          "q": "A 1,000,003-element reduction uses 256-thread blocks. How many blocks does it launch at coarsening 4 and at coarsening 64, and why can the second be slower on an 18-SM GPU?",
+          "a": "977 blocks at 4 and 62 at 64. Compute capability 8.6 holds up to six 256-thread blocks per SM, 108 on 18 SMs, so 62 blocks leave SMs partly idle and too few warps to hide memory latency."
+        },
+        {
+          "q": "What exactly does first-add-during-load halve?",
+          "a": "The launched blocks and the threads that sit in the shared-memory tree: each thread sums two elements on load. Every element is still read once from global memory."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: shuffle and multi-pass reductions over zero, odd, nonmultiple and large sizes, with coarsening-factor measurements and a retained losing factor.",
+      "stopWhen": "Your two-pass reduction matches float64 within 1e-6 relative error on adversarial sizes, and you can state the coarsening factor where your GPU stops gaining.",
+      "fit": {
+        "verdict": "kept",
+        "note": "PMPP, the Lab 7 prelab, the deck and Lecture 9 code cover shuffles, completion and tails at implement depth, with the mini-project supplying the named practice."
+      }
+    },
+    {
+      "id": "parallel-scans",
+      "title": "Kogge-Stone, Brent-Kung and segmented scans",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "kogge-stone-scan",
+        "brent-kung-scan",
+        "segmented-scan"
+      ],
+      "outcomes": [
+        "Derive Kogge-Stone versus Brent-Kung work and step counts from the algorithm structure.",
+        "Implement exclusive scan for arbitrary lengths with correct identity handling.",
+        "Explain segmented-scan head-flag semantics and the decoupled look-back tile states."
+      ],
+      "why": "Scan turns per-element predicates into global write positions. Compaction, sort and run-length coding all stand on it.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/stream-compaction",
+          "note": "Use scan output as scatter addresses."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/histograms-privatization",
+          "note": "Contrast scan-structured irregularity with atomic contention."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Kogge-Stone, work efficiency and Brent-Kung",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 11, Sections 11.2 to 11.4 (printed pp. 238 to 250): Kogge-Stone, the \\(N \\log_2 N - (N - 1)\\) versus \\(N - 1\\) work argument, and the Brent-Kung up-sweep and down-sweep with its \\(2N - 2 - \\log_2 N\\) count"
+        },
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Segmented and single-pass scans",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Section 11.6 (printed p. 253): three-kernel hierarchical scan for long inputs; Section 11.7 (printed p. 256): single-pass motivation with its atomic, fence and barrier deadlock risk",
+          "depth": "Read Section 11.7 for the argument only. Do not implement the domino scheme here."
+        },
+        {
+          "resource": "decoupled-lookback-gpu4",
+          "title": "Decoupled look-back protocol",
+          "url": "https://research.nvidia.com/sites/default/files/pubs/2016-03_Single-pass-Parallel-Prefix/nvr-2016-002.pdf",
+          "locator": "Sections 4.1 and 4.2: tile states X (invalid), A (aggregate ready) and P (prefix ready), with the look-back, fence and constant-bound properties",
+          "depth": "Read for the state machine after two-pass scans pass. Implement a bounded version only if hardware and time allow a fair comparison."
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Scan, segmented scan and global strategies",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 7, Pattern #5: Scan (slides 39 to 67), with scan-and-add versus reduce-then-scan versus decoupled look-back; Lecture 9, Pattern #5.5: Segmented Scan (slides 16 to 28), with head flags and the quicksort use case"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Associative scan implementation",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Lab 7, Part 1 (`scan.cu`, `launch_scan`): an inclusive scan templated over an associative operator, tested with `SumOp` and `DebugRangeConcatOp`, no external libraries such as CUB, benchmarked at length \\(2^{26}\\) with throughput defined as twice the bytes over time",
+          "depth": "Build for your own GPU with `nvcc -arch=sm_86`. Retarget the course goal of 144 GB/s (40 percent of the RTX 4000 Ada 360 GB/s peak) to 40 percent of your measured copy bandwidth."
+        }
+      ],
+      "focus": [
+        "Kogge-Stone does \\(N \\log_2 N - (N - 1)\\) adds (20481 for \\(N = 2048\\)) in \\(\\log_2 N\\) steps, while Brent-Kung does \\(2N - 2 - \\log_2 N\\) (4083) in about twice the steps. That is step efficiency versus work efficiency.",
+        "Exclusive scan seeds with the identity (0 for addition) and each output covers a strict prefix. Inclusive versus exclusive confusion shifts every scatter address by one.",
+        "Segmented scan restarts at head flags. Decoupled look-back tracks three states per tile: X invalid, A aggregate ready, P prefix ready."
+      ],
+      "reproduce": "Hand-run Kogge-Stone exclusive scan on [4, 6, 7, 1, 2, 8, 5, 2] to get [0, 4, 10, 17, 18, 20, 28, 33], then implement block scan plus block-sums scan plus add-back for arbitrary lengths and match `torch.cumsum` on odd sizes.",
+      "traps": [
+        "Reusing an inclusive scan where an exclusive one is needed shifts every scatter address by one, corrupting output without crashing.",
+        "Testing only powers of two hides the block-sums tail. Test lengths \\(2^k \\pm 1\\), plus 1 and 0.",
+        "Validating a float kernel against a double scan proves nothing about the kernel's rounding. Test the kernel's own dtype and operator."
+      ],
+      "selfTest": [
+        {
+          "q": "For length 2048, how many adds do Kogge-Stone and Brent-Kung take, against what sequential baseline?",
+          "a": "20481 and 4083 against a 2047-add sequential scan. Kogge-Stone is step-efficient, Brent-Kung is work-efficient."
+        },
+        {
+          "q": "When does Kogge-Stone win despite doing more work?",
+          "a": "At small lengths where everything fits on chip and step count dominates. At large lengths DRAM passes dominate and work efficiency wins."
+        },
+        {
+          "q": "In decoupled look-back, what does a block do when the predecessor state is A versus P?",
+          "a": "On A it adds the aggregate and keeps looking back; on P it adds the inclusive prefix and stops."
+        },
+        {
+          "q": "Segmented inclusive scan of [3, 1, 7, 0, 4, 1, 6, 3] with head flags [1, 0, 0, 1, 0, 0, 1, 0] gives what?",
+          "a": "[3, 4, 11, 0, 4, 5, 6, 9]. Segments starting at positions 0, 3 and 6 restart from their own heads."
+        }
+      ],
+      "practice": [
+        {
+          "name": "MIT Lab 7 Part 1: associative scan",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Part 1 `launch_scan` in `scan.cu`: pass the `SumOp` and `DebugRangeConcatOp` tests without CUB, then benchmark at length \\(2^{26}\\) against the retargeted bandwidth goal",
+          "note": "Build with `nvcc -arch=sm_86` (or your GPU's architecture) and run locally; the course runner needs an MIT token. Recompute every SM count, clock and bandwidth the questions assume."
+        },
+        {
+          "name": "LeetGPU challenge 16: Prefix Sum",
+          "url": "https://leetgpu.com/challenges/prefix-sum",
+          "locator": "Challenge 16: `solve(input, output, N)` inclusive float scan at tolerance 0.01, with functional cases for a single element, an 8-element power of two and a 2025-element random input, and a performance case of \\(N = 250000\\)",
+          "note": "Run it on LeetGPU or locally with the harness from the transpose unit."
+        },
+        {
+          "name": "LeetGPU challenge 70: Segmented Exclusive Prefix Sum",
+          "url": "https://leetgpu.com/challenges/segmented-exclusive-prefix-sum",
+          "locator": "Challenge 70: `solve(values, flags, output, N)` with `flags[0]` set and the first output of every segment 0.0, and a performance case of \\(N = 50000000\\)",
+          "note": "Attempt only after the required challenges 3, 4, 5, 13 and 16 pass."
+        }
+      ],
+      "stopWhen": "Your scan matches `torch.cumsum` on adversarial sizes, you derive both work counts from scratch, and Lab 7 Part 1 meets the retargeted bandwidth.",
+      "fit": {
+        "verdict": "kept",
+        "note": "PMPP, the look-back paper, MIT lectures and Lab 7 cover scan theory, segmented semantics and checked implementation without gaps."
+      }
+    },
+    {
+      "id": "histograms-privatization",
+      "title": "Histograms, atomic contention and privatization",
+      "hours": 4,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "histogram-atomics",
+        "privatization-aggregation"
+      ],
+      "outcomes": [
+        "Predict atomic contention from the bin-count distribution before timing.",
+        "Implement privatized histograms with a correct merge and overflow policy.",
+        "Measure private versus global atomics across uniform and skewed inputs and explain the crossover."
+      ],
+      "why": "Histograms are the first primitive where threads collide on the same addresses. Contention, not traffic, sets the ceiling, and privatization is the general escape.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/stream-compaction",
+          "note": "Compare irregular writes with atomics against atomics-free scatter."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "Atomic races and overflow are seeded there."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Atomics and privatization",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 9, Sections 9.2 to 9.4 (printed pp. 194 to 202): the basic histogram kernel, atomic latency and throughput, and privatization into per-block copies"
+        },
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Coarsening, aggregation and exercises",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Sections 9.5 and 9.6 (coarsening and aggregation under heavy contention) with Exercises 1 to 6 (printed p. 209), especially Exercise 6 on 524288 elements over 128 bins with 1024 threads"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Histogram pattern",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 9, Pattern #6: Histogram (slides 29 to 42): partition-and-increment sketch with atomics, privatization, coarsening and aggregation"
+        }
+      ],
+      "focus": [
+        "One global atomic per update serializes on hot bins. With uniform input over \\(B\\) bins each bin takes about \\(N/B\\) atomics; with skewed input one bin takes nearly N.",
+        "Privatization replicates bins per block in shared memory, which is fast and block-scoped, then merges at a cost of blocks times bins adds. Coarsening into fewer blocks cuts the merge.",
+        "Work PMPP Exercise 6 by hand before coding: it quantifies basic versus privatized versus coarsened update counts on the same input."
+      ],
+      "reproduce": "Implement global-atomic and privatized int32 histograms. On uniform 1M-element input over 256 bins and on input that falls entirely in one bin, both match `torch.bincount` and the privatized version is faster. On an RTX 3050 6 GB, 50M updates took 17.8 ms with global atomics over 256 uniform bins and 27.4 ms into one bin, against 1.3 ms privatized in both cases. State the int32 bin overflow limit (2147483647) and your merge policy above it.",
+      "traps": [
+        "Merging privatized int32 bins into int32 global bins can overflow while per-block counts look fine. Accumulate the merge in 64-bit or document the length limit.",
+        "Benchmarking only uniform input hides contention. One hot bin serializes global atomics on one address (27.4 against 17.8 ms for 50M updates in the run above), so always include a skewed case.",
+        "Skipping `__syncthreads()` between zeroing, updating and merging races within the block, since later phases read data other threads wrote."
+      ],
+      "selfTest": [
+        {
+          "q": "With 50M uniform values over 256 bins, how many atomics hit each bin?",
+          "a": "About 195312 each. Every bin is equally hot, so global atomics still serialize in groups."
+        },
+        {
+          "q": "All 50M values fall in one bin with global atomics. What happens, and what fixes it?",
+          "a": "Updates serialize fully on one address. Per-block private bins plus a merge remove the serialization at a merge cost of blocks times bins."
+        },
+        {
+          "q": "Why do the private copies live in shared memory?",
+          "a": "Lower latency, contention scoped to the block, and no global traffic until the merge. Global privatization would keep the contention domain wide."
+        },
+        {
+          "q": "With 128 blocks and 1024 bins, what does the merge cost, and how does coarsening change it?",
+          "a": "131072 adds. Coarsening into fewer blocks cuts the merge proportionally, at the usual occupancy cost."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LeetGPU challenge 13: Histogramming",
+          "url": "https://leetgpu.com/challenges/histogramming",
+          "locator": "Challenge 13: `solve(input, histogram, N, num_bins)` over int32, with functional cases from \\(N = 5\\) over 3 bins (expecting [2, 2, 1]) through 10000 over 128 bins, and a performance case of \\(N = 50000000\\) with 256 bins",
+          "note": "Run it on LeetGPU or locally with the harness from the transpose unit. Then add an ungraded skewed-input timing that compares global against privatized atomics."
+        }
+      ],
+      "stopWhen": "Both variants match `torch.bincount` on uniform and skewed inputs, and you predict the faster one from the bin distribution before timing.",
+      "fit": {
+        "verdict": "kept",
+        "note": "PMPP Chapter 9 and Lecture 9 cover atomics, privatization and aggregation at implement and measure depth, with a verified challenge as practice."
+      }
+    },
+    {
+      "id": "stream-compaction",
+      "title": "Stream compaction from predicate, scan and scatter",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "stream-compaction"
+      ],
+      "outcomes": [
+        "Build predicate, exclusive-scan and scatter stages into one compaction.",
+        "Handle all-false, all-true and empty inputs with exact outputs.",
+        "Explain why scan, not atomics, assigns the write positions."
+      ],
+      "why": "Compaction is the first complete irregular primitive: data-dependent output positions with no races and no oversized buffers.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/online-softmax-kernel",
+          "note": "Predicate thinking returns for masked softmax rows."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "Mask defects are seeded there."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Compaction from scan and scatter",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 7, Pattern #4: Stream Compaction (slides 32 to 38): predicate array, exclusive scan as scatter addresses, and the return to compaction after the scan pattern"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Split and load-balance search",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 9, Pattern #4.5: Split (slides 5 to 8) for stable partitioning by scan, and Load-balance Search (slides 9 to 15) for count, scan and scatter expansion"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Run-length compression",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Lab 7, Part 2 (`rle_compress.cu`, `launch_rle_compress`): run starts as an implicit predicate plus scan for positions over a 16-million-byte bitmap (`rle_raw.bmp`)",
+          "depth": "Build for your own GPU with `nvcc -arch=sm_86` and retarget the 1.6 ms course goal to your hardware. Part 3 decompression is extra credit; skip it here."
+        }
+      ],
+      "focus": [
+        "Compaction is three steps: predicate \\(p_i\\) in 0/1, exclusive scan giving write address \\(a_i\\) as the count of kept elements before \\(i\\), then order-preserving scatter. The kept total is \\(K\\).",
+        "Positions come from the scan, so no two threads claim one slot and no atomic counter serializes. That is the whole point of the construction.",
+        "LeetGPU 72 keeps rejected slots as 0.0 in a full-size output while RLE packs values plus lengths tightly. Both are correct compactions with different contracts, so read the expected layout first."
+      ],
+      "reproduce": "On [-1, 2, 0, 4] produce predicate [0, 1, 0, 1], exclusive scan [0, 0, 1, 1] and output [2, 4, 0, 0] under the Challenge 72 contract. Then implement scan-plus-scatter that matches it on all-positive, all-negative and length-255 non-power-of-two inputs.",
+      "traps": [
+        "Using an inclusive scan for addresses shifts every write by one slot: slot 0 stays unwritten and the last kept element lands one past the kept total.",
+        "Treating 0.0 as kept. The contract selects strictly positive inputs, so zeros stay out.",
+        "Sizing the output to the kept count before computing it. Read back the total first, or overallocate to the input length and slice."
+      ],
+      "selfTest": [
+        {
+          "q": "Compact [-1, 2, 0, 4] under the Challenge 72 contract. What are the predicate, the exclusive scan, the output and K?",
+          "a": "Predicate [0, 1, 0, 1], scan [0, 0, 1, 1], output [2, 4, 0, 0], \\(K = 2\\). Zeros are rejected and survivors keep order."
+        },
+        {
+          "q": "What do an all-negative input and an empty input produce?",
+          "a": "An all-zero output with \\(K = 0\\), and an empty output with \\(K = 0\\). The kernel must still launch and synchronize cleanly."
+        },
+        {
+          "q": "Why not assign positions with one atomic counter?",
+          "a": "Every kept element would serialize on one address. The scan assigns all positions in parallel with no contention."
+        },
+        {
+          "q": "How do the Challenge 72 and RLE output layouts differ?",
+          "a": "Challenge 72 pads rejected slots with 0.0 to the full input length; RLE packs kept values plus run lengths tightly. The checker decides which is correct."
+        }
+      ],
+      "practice": [
+        {
+          "name": "MIT Lab 7 Part 2: run-length compression",
+          "url": "https://github.com/accelerated-computing-class/lab7",
+          "locator": "Part 2 `launch_rle_compress` in `rle_compress.cu`: scan-built positions for run starts, reusing your Part 1 scan",
+          "note": "Build with `nvcc -arch=sm_86` (or your GPU's architecture), run locally, and recompute the timing goal for your GPU; the course runner needs an MIT token."
+        },
+        {
+          "name": "LeetGPU challenge 72: Stream Compaction",
+          "url": "https://leetgpu.com/challenges/stream-compaction",
+          "locator": "Challenge 72: `solve(A, N, out)` keeping strictly positive values in order, with the rest of `out` left at 0.0, checked exactly, with functional cases for length 1 present and absent plus non-powers of two, and a performance case of \\(N = 50000000\\)",
+          "note": "Attempt only after challenges 3, 4, 5, 13 and 16 pass. Run it on LeetGPU or locally with the harness from the transpose unit."
+        }
+      ],
+      "stopWhen": "Your compactor matches the Challenge 72 contract on edge sizes, and you derive every scatter address from the exclusive scan by hand on the 4-element example.",
+      "fit": {
+        "verdict": "kept",
+        "note": "MIT lectures plus Lab 7 Part 2 cover predicate, scan and scatter at implement depth, with a verified challenge as second practice."
+      }
+    },
+    {
+      "id": "online-softmax-kernel",
+      "title": "Online softmax and its extreme-value policy",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "online-softmax",
+        "all-masked-softmax-policy"
+      ],
+      "outcomes": [
+        "Derive the running-maximum and normalizer recurrence and its single-pass invariant.",
+        "Implement naive, safe two-pass and online softmax and compare their per-element traffic.",
+        "Define and test the extreme-value and all-masked-row policy."
+      ],
+      "why": "Softmax is the numerical heart of attention. The online form removes a pass over the logits while staying exact, and its running statistics become tiled-attention state later.",
+      "next": [
+        {
+          "unit": "gpu/gpu-attention-transformer-fusion/online-softmax-attention-tiling",
+          "note": "Carry the running statistics into tiled attention."
+        },
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "Mask and numerical defects are seeded there."
+        }
+      ],
+      "study": [
+        {
+          "resource": "online-softmax-gpu4",
+          "title": "Online normalizer recurrence",
+          "url": "https://arxiv.org/abs/1805.02867v2",
+          "locator": "Sections 2 and 3 with Algorithms 1 to 3 and Theorem 1 (arXiv:1805.02867v2): naive 3-access softmax, safe 4-access softmax, and the online recurrence with running maximum and rescaled normalizer",
+          "depth": "Work the induction behind Theorem 1 by hand. Save Section 4 (top-k fusion) for the attention track."
+        },
+        {
+          "resource": "online-softmax-gpu4",
+          "title": "Parallel form and benchmarks",
+          "url": "https://arxiv.org/abs/1805.02867v2",
+          "locator": "Section 3.1 (associative pair operator for parallel reduction) and Sections 5 to 6 (1.15x to 1.3x on a V100, fused top-k down to one access per element)",
+          "depth": "Read the benchmark setup for method. Treat the V100 ratios as historical."
+        }
+      ],
+      "focus": [
+        "Subtracting the maximum first is what makes softmax safe: exp of a nonpositive finite value cannot overflow, and the online form keeps that guarantee in one pass.",
+        "The invariant is that the normalizer always matches the current running maximum, rescaled by exp of the old-minus-new maximum at each step. Theorem 1 proves it by induction.",
+        "Traffic per element drops from 4 accesses (safe three-pass) to 3 (online). The win is memory, not FLOPs.",
+        "Row [1, 2, 3, 1000] gives running maximum 1000 with normalizer 1.0 and output [0, 0, 0, 1] up to rounding, while naive exp(1000) overflows to inf."
+      ],
+      "reproduce": "Derive the recurrence from the safe form, hand-run it on [1, 2, 3, 1000], then implement all three versions so they agree within 1e-5 on 500000 uniform (-10, 10) logits, the Challenge 5 perf shape.",
+      "traps": [
+        "Forgetting to rescale the normalizer when a new maximum arrives. The result looks plausible but is wrong; test with an increasing sequence where every element is a new maximum.",
+        "Assuming the paper covers fully masked rows. It assumes valid rows, so an all-negative-infinity row gives 0/0 (NaN) unless you declare a policy, for example all zeros, and test it.",
+        "Comparing against `torch.softmax` at 1e-7. Order and rounding differ across implementations, so use 1e-5 with the magnitude stated."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the safe softmax take 3 passes and 4 accesses per element?",
+          "a": "One read for the maximum, one read for the normalizer, one read plus one write for the output. The online form merges the first two passes into one."
+        },
+        {
+          "q": "What does the rescaling factor do when a new maximum arrives?",
+          "a": "Old partial sums were normalized by the old maximum, so multiplying by exp of old-minus-new maximum (at most 1) renormalizes them to the new maximum."
+        },
+        {
+          "q": "The paper bounds the running normalizer between which values?",
+          "a": "Between 1 and the element count. The running maximum also stays within the input range, so neither can overflow."
+        },
+        {
+          "q": "What does an all-negative-infinity row produce without an explicit policy, and what fixes it?",
+          "a": "Maximum negative infinity, normalizer 0 and 0/0, which is NaN. Declare the empty-row policy (for example a zero vector) and test that row directly."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LeetGPU challenge 5: Softmax",
+          "url": "https://leetgpu.com/challenges/softmax",
+          "locator": "Challenge 5: `solve(input, output, N)` with max subtraction, with functional cases including the [1000, 1, 2, 3] overflow trap and a single element, and a performance case of \\(N = 500000\\)",
+          "note": "Run it on LeetGPU or locally with the harness from the transpose unit. Pass the public tests, then add your own all-masked-row test with a documented policy. The public tests assume at least one finite logit."
+        }
+      ],
+      "stopWhen": "All three implementations agree within 1e-5 on the perf shape, your hand recurrence matches the code, and the all-masked policy is tested.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper covers the recurrence, parallel form and traffic analysis at derive and implement depth, with a verified challenge as practice."
+      }
+    },
+    {
+      "id": "pinned-streams-overlap",
+      "title": "Pinned memory, streams, events and copy-compute overlap",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "pinned-memory-transfers",
+        "streams-events-dependencies",
+        "copy-compute-overlap"
+      ],
+      "outcomes": [
+        "Set up pinned host buffers and asynchronous copies with correct stream arguments.",
+        "Build a multi-stream copy and compute pipeline with event dependencies and prove overlap from a timeline.",
+        "Diagnose serialized overlap from trace evidence: pageable memory, default-stream use or dependency errors."
+      ],
+      "why": "Copy-compute overlap is the cheapest speedup in GPU computing and the easiest to fake. Without pinned memory and explicit dependencies the timeline stays sequential.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/cuda-graphs-dispatch",
+          "note": "Capture the stable pipeline as a graph."
+        },
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/timelines-nvtx",
+          "note": "Attribute host gaps and transfers in full traces."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-async-gpu4",
+          "title": "Streams and copy-compute overlap",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 11, Overlapping Kernel Execution with CUDA Streams and Using Streams to Overlap Compute with Data Transfers (pinned memory, `cudaMallocHost`, `cudaMemcpyAsync`, two DMA engines), plus Stream-Ordered Memory Allocator"
+        },
+        {
+          "resource": "aisys-async-gpu4",
+          "title": "Default streams and event dependencies",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 11, Legacy Default Stream, Modern Per-Thread Default Stream, Fine-Grained Synchronization with Events and Callbacks, and Using CUDA Events for Cross-Stream Synchronization"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Asynchronous execution reference",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html",
+          "locator": "Section 2.5: 2.5.2.3 (async copies need pinned host memory), 2.5.6 (blocking streams versus non-blocking streams and the legacy default stream), 2.5.7 (`cudaStreamWaitEvent`) and 2.5.8 (implicit synchronization)"
+        },
+        {
+          "resource": "mit-6s894-primitives-gpu4",
+          "title": "Streams intuition",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 6, slides 1 to 9: dedicated DMA engines running parallel to kernels, the implicit barrier, command queues, and one buffer per stream"
+        }
+      ],
+      "focus": [
+        "`cudaMemcpyAsync` on pageable host memory degrades to a synchronous staged copy, so overlap starts with `cudaMallocHost`.",
+        "The legacy default stream synchronizes every blocking stream. Create non-blocking streams with `cudaStreamCreateWithFlags` and order cross-stream work with `cudaStreamWaitEvent`, not `cudaDeviceSynchronize`.",
+        "Overlap needs comparable copy and compute phases on different engines. Two kernels that each fill the GPU barely overlap, while a chunked copy and compute pipeline shows in `nsys`.",
+        "Every buffer must outlive its stream work. Free or reuse device and host buffers only after the consuming stream synchronizes."
+      ],
+      "reproduce": "Build a 4-chunk host-to-device plus kernel pipeline on separate streams with `cudaStreamWaitEvent` chaining. Capture with `nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none` and show copy and compute overlapping in the timeline, with event math placing overlapped wall time below the sequential sum.",
+      "traps": [
+        "Timing around launches with a host timer measures launch submission, not work. Bracket with events or synchronize the stream first.",
+        "Reusing a host buffer right after enqueueing its copy corrupts the transfer, because the copy is asynchronous.",
+        "One synchronous `cudaMemcpy` or default-stream kernel inside the pipeline reimposes global ordering and silently deletes the overlap."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does overlap require pinned host memory?",
+          "a": "The DMA engine cannot read pageable memory directly, so the driver inserts a synchronous staged copy through a pinned buffer and the transfer no longer overlaps."
+        },
+        {
+          "q": "A default-stream kernel launches between two blocking-stream kernels. What runs concurrently?",
+          "a": "Nothing. The legacy default stream synchronizes all blocking streams, so all three serialize."
+        },
+        {
+          "q": "What does `cudaStreamWaitEvent` order, exactly?",
+          "a": "Work enqueued into the waiting stream after the call waits for the event. Work already enqueued in that stream is unaffected."
+        },
+        {
+          "q": "Two 5 ms kernels that each fill the GPU run in different streams. How much overlap, and why?",
+          "a": "Almost none. Each kernel already occupies every SM, so the second waits for free resources; overlap needs independent engines, such as a copy engine beside the SMs."
+        }
+      ],
+      "practice": [
+        {
+          "name": "AI Systems companion code: Chapter 11 stream overlap demos",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch11",
+          "locator": "`streams_overlap_demo.cu`, `event_timing_demo.py` and `stream_overlap_demo.py`: build and run the overlap demo, reproduce one overlap timeline with event timing, and compare the event timing variants",
+          "note": "From the `code` directory, `nvcc -O3 -arch=sm_86 ch11/streams_overlap_demo.cu -o streams_overlap_demo` builds the CUDA demo, which reports its sequential and overlapped times; `event_timing_demo.py` runs with PyTorch alone; `stream_overlap_demo.py` imports the shared harness and needs the repository's `requirements.txt`. Ignore the B200 expectation files."
+        }
+      ],
+      "stopWhen": "Your pipeline timeline shows copy and compute overlapping, event math confirms it, and switching back to pageable memory visibly collapses the overlap.",
+      "fit": {
+        "verdict": "added",
+        "note": "The book chapters teach the mechanism but no pool resource is an exact API reference, so the CUDA Programming Guide (new) supplies the verified stream, event and pinned-memory calls."
+      }
+    },
+    {
+      "id": "cuda-graphs-dispatch",
+      "title": "CUDA graphs and validated dispatch with fallback",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "cuda-graphs",
+        "primitive-dispatch"
+      ],
+      "outcomes": [
+        "Capture a stable kernel sequence into a graph and replay it with identical results.",
+        "Update an instantiated graph in place when only parameters change, and re-instantiate when the topology changes or the update is refused.",
+        "Gate dispatch on shape, dtype and device validation with a correct eager fallback."
+      ],
+      "why": "Graphs remove per-launch CPU overhead for repeated work, but a graph bakes in addresses and shapes. The validation and fallback around it is the actual engineering.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "Stale replay state is seeded there."
+        },
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/launch-overhead-graph-misses",
+          "note": "Apply graphs to launch-bound inference paths."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-async-gpu4",
+          "title": "CUDA graphs chapter",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 12, CUDA Graphs (memory pools and pointer stability), Capturing a CUDA Graph with a CUDA Stream (`cudaStreamBeginCapture` to `cudaStreamEndCapture`) and Dynamic Graph Update (parameter changes without recapture)",
+          "depth": "Skip device-initiated launch beyond the vocabulary; this section launches graphs from the host."
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Graphs reference",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html",
+          "locator": "Sections 4.2.2 (stream capture with cross-stream rules, prohibited operations, instantiation and execution) and 4.2.3 (whole-graph update, per-node update with `cudaGraphExecKernelNodeSetParams`, and the update limitations); Section 2.5.9.2 on the asynchronous execution page is the short introduction",
+          "depth": "Read the capture constraints and update rules. Skim conditional nodes; they are not used in this section."
+        },
+        {
+          "resource": "gpu-kernel-project-gpu4",
+          "title": "Dispatch and fallback contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Architecture constraints (dispatch never selects an unvalidated path; every custom path has a correct fallback) and Milestone C (correctness-gated dispatch with unseen-shape fallback)"
+        }
+      ],
+      "focus": [
+        "Capture, instantiate and launch happen once, once and many times. Replay removes most per-launch CPU cost: on an RTX 3050 6 GB with CUDA 13.4, tiny kernels took 0.79 us each inside a graph against 2.67 us launched one by one, so graphs pay when launch overhead is a large share of step time.",
+        "Capture forbids allocation, synchronization, legacy-stream work and shape changes. Preallocate maximum shapes and validate before capturing.",
+        "`cudaGraphExecUpdate` updates an instantiated graph in place when the new capture has the same topology: kernel arguments, pointers and grid sizes may change. A different sequence of nodes fails the update; check the result and the reported node, then destroy and re-instantiate.",
+        "The first launch after instantiation also uploads the graph (`cudaGraphUpload` can do it ahead of time), so warm up before timing: the first replay of an 8-kernel chain took 34 us on the RTX 3050 above, against about 6 us warm."
+      ],
+      "reproduce": "Capture an 8-kernel saxpy chain, replay it 100 times with outputs identical to eager, update a pointer and a length in place with `cudaGraphExecUpdate`, then change the number of kernels so the update fails and you re-instantiate. Report per-kernel launch time eager and in the graph, after warmup.",
+      "traps": [
+        "Capturing on the legacy default stream is invalid. Use an explicit stream, preferably non-blocking.",
+        "Replaying after freeing and reallocating buffers reads stale addresses. Graphs bake in pointers, so tie buffer lifetime to the executable graph.",
+        "Ignoring the `cudaGraphExecUpdate` return code and launching the stale instance after an incompatible change."
+      ],
+      "selfTest": [
+        {
+          "q": "When do CUDA graphs help, in one measured rule?",
+          "a": "When per-launch CPU overhead is a large fraction of kernel time. Tiny kernels took 2.67 us each launched eagerly against 0.79 us inside a graph on an RTX 3050 6 GB; long kernels show no gain."
+        },
+        {
+          "q": "What does an executable graph bake in, and which changes can it take in place?",
+          "a": "The nodes, their dependencies and every parameter: kernel arguments, pointers and launch dimensions. Parameters, grid sizes included, can be updated in place while the topology is unchanged; a different sequence of nodes needs a new instantiation."
+        },
+        {
+          "q": "Whole-graph update fails on a new input. What is the correct recovery?",
+          "a": "Destroy the executable graph and recapture plus re-instantiate from the new sequence. The update API names the failing node for the log."
+        },
+        {
+          "q": "Why can random-number generation inside a capture repeat the same values on every replay?",
+          "a": "A replay reuses the captured arguments, so a generator whose seed or offset is a kernel argument produces the same numbers each time. PyTorch registers its generator with the graph and advances the offset per replay; otherwise generate outside the capture or read the offset from device memory."
+        }
+      ],
+      "practice": [
+        {
+          "name": "AI Systems companion code: Chapter 12 graph demos",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch12",
+          "locator": "`graph_capture_demo.py`, `graph_replay_benchmark.py` and `baseline_cuda_graphs.py`: capture and replay on your GPU with a state-reset test",
+          "note": "`graph_capture_demo.py` and `graph_replay_benchmark.py` run with PyTorch alone; `baseline_cuda_graphs.py` imports the shared harness and needs the repository's `requirements.txt`. Add a parameter-update test and a forced re-instantiation fallback test of your own."
+        }
+      ],
+      "stopWhen": "Your graph replays bit-identical results, an in-place update handles parameter changes, and a topology change falls back to re-instantiation correctly.",
+      "fit": {
+        "verdict": "added",
+        "note": "The book chapters teach graph mechanics but no pool resource is an exact API reference, so the CUDA Programming Guide (new) supplies the verified capture and update calls."
+      }
+    },
+    {
+      "id": "primitive-defect-diagnosis",
+      "title": "Seeded defects: races, divergent barriers, partial warps, stale buffers and masks",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "primitives-failure-injection"
+      ],
+      "outcomes": [
+        "Inject race, divergent-barrier, partial-warp, stale-buffer and mask defects and describe each signature.",
+        "Attribute asynchronous errors with sanitizer, event and timeline evidence instead of blanket synchronization.",
+        "Write regression tests that fail on each defect and pass on the fix."
+      ],
+      "why": "Primitives fail in ways that look like performance problems. This unit turns the section's bugs into a diagnostic checklist before the mini-project.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/compute-sanitizer-diagnosis",
+          "note": "Extend attribution into the systematic sanitizer workflow."
+        },
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/timing-boundaries-async",
+          "note": "Keep async timing discipline while diagnosing."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpu-kernel-project-gpu4",
+          "title": "Failure-injection requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone D and the failure-injection requirements: out-of-bounds, partial-warp, missing synchronization, bank conflict, uncoalesced stride, divergent barrier, stale stream buffer, wrong mask, overflow and tile-edge defects with tooling diagnosis and regressions"
+        },
+        {
+          "resource": "pmpp-primitives-gpu4",
+          "title": "Divergence, completion and single-pass hazards",
+          "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+          "locator": "Chapter 10, Sections 10.4 (control-divergence hazards) and 10.7 (hierarchical completion); Chapter 11, Section 11.7 (printed p. 256): single-pass atomic, fence and barrier deadlock risk"
+        },
+        {
+          "resource": "cuda-programming-guide-gpu4",
+          "title": "Asynchronous error attribution",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/asynchronous-execution.html",
+          "locator": "Section 2.5.4.2: `cudaGetLastError` versus `cudaPeekAtLastError`, printable error names, and the `CUDA_LAUNCH_BLOCKING=1` trick to serialize launches while debugging"
+        }
+      ],
+      "focus": [
+        "Each defect has a signature. Races vary run to run, divergent barriers hang or race silently, partial warps corrupt tails only, stale buffers corrupt after reuse, and wrong masks corrupt masked rows only.",
+        "Attribute first: serialize with `CUDA_LAUNCH_BLOCKING=1` to find the owning kernel, confirm with sanitizer evidence, and never ship a global synchronization as the fix.",
+        "A defect that never fires in tests still ships. Write the adversarial size, skew, reuse and mask cases from the project list as regression tests."
+      ],
+      "reproduce": "Seed all five defects (race, divergent barrier, partial warp, stale buffer, wrong mask) in your section kernels, diagnose each with cited tool evidence, fix each without a global synchronization, and keep the regression tests green.",
+      "traps": [
+        "Declaring victory after 100 clean trials. A race needs size, block-count and stream-interleaving variation before the claim means anything.",
+        "Sprinkling `cudaDeviceSynchronize` after every call. It hides lifetime bugs and deletes the overlap built in the streams unit, so scope every fix to the owning stream or event.",
+        "Testing only friendly values. Pair each defect test with an adversarial-value twin, since order and mask bugs hide at friendly magnitudes."
+      ],
+      "selfTest": [
+        {
+          "q": "A scan hangs only at large lengths. What are the first suspects?",
+          "a": "A divergent barrier or a global-sync-across-blocks assumption that deadlocks past one wave. Check barrier uniformity and any assumed block execution order."
+        },
+        {
+          "q": "Results are correct on powers of two but wrong at length 1000. What are the suspects?",
+          "a": "Tail guards in loads, shuffle masks over partial warps, the block-sums tail, or the scan fix-up range. All share the shape of untested remainders."
+        },
+        {
+          "q": "Corruption appears only when two streams run together. What are the suspects?",
+          "a": "A missing event dependency, buffer reuse before the consumer finishes, or accidental default-stream ordering. All are lifetime and ordering bugs, not kernel bugs."
+        },
+        {
+          "q": "How do you attribute an asynchronous error to its kernel?",
+          "a": "Synchronize per stream and read the last-error APIs at each boundary, then set `CUDA_LAUNCH_BLOCKING=1` to serialize launches. Fix at the owning boundary."
+        }
+      ],
+      "practice": [
+        {
+          "name": "GPU Microbenchmark and Kernel Suite, Milestone D failure handling",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone D: inject the access, synchronization, mask, stream and numerical defects; diagnose each with tooling; add regressions; surface asynchronous errors at the owning API boundary"
+        }
+      ],
+      "stopWhen": "All five seeded defects are diagnosed with cited tool evidence, fixed without global synchronization, and covered by regression tests.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The project spec names every defect class with checkable handling, while PMPP and the guide supply the mechanism and attribution. No search needed."
+      }
+    }
+  ]
+}

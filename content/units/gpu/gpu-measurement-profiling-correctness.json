@@ -1,0 +1,980 @@
+{
+  "section": "gpu-measurement-profiling-correctness",
+  "addedResources": [
+    {
+      "id": "pytorch-numerical-testing-gpu3",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "PyTorch 2.14 numerical accuracy and tensor testing",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read the numerical-accuracy introduction, Extremal values, non-finite inputs and Ampere precision sections, plus the `assert_close` contract and `make_tensor` parameters. These supply current comparison semantics missing from the pool's project checklist.",
+      "url": "https://docs.pytorch.org/docs/2.14/notes/numerical_accuracy.html"
+    },
+    {
+      "id": "cuda-floating-point-gpu3",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "CUDA 13.4 Floating Point and IEEE 754",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Read sections 2.2, 3.1 to 3.2 and 4.4 for reduction order and single-precision flush-to-zero flags. Do not use the historical CPU-has-no-FMA statements as current hardware facts.",
+      "url": "https://docs.nvidia.com/cuda/floating-point/index.html"
+    }
+  ],
+  "units": [
+    {
+      "id": "timing-boundaries-async",
+      "title": "Timed boundaries, asynchronous launch and event timing",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "benchmark-question-boundary",
+        "asynchronous-timing",
+        "cuda-events-sync"
+      ],
+      "outcomes": [
+        "Define a timed boundary that separates kernel execution, host dispatch, transfers and setup.",
+        "Measure completed work with stream-ordered events and a synchronized host timer.",
+        "Repair a launch-only timing claim and explain any remaining timer disagreement."
+      ],
+      "why": "A host call can return before its GPU work finishes. A speedup is meaningful only when both variants time the same completed work.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/warmup-cache-state",
+          "note": "Separate first-use costs from steady-state execution."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a2-profiling-gpu3",
+          "title": "CS336 Assignment 2: end-to-end benchmarking",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3, End-to-End Benchmarking, and Problem (`benchmarking_script`), parts (a) and (b), pp. 3 to 4"
+        },
+        {
+          "resource": "aisys-code-profiling-gpu3",
+          "title": "Companion code: event-timed coalesced copy",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch07/optimized_copy_uncoalesced_coalesced.cu",
+          "locator": "Commit b57e4c6: `coalesced_stream`, then `main` from allocation through event destruction",
+          "depth": "Read the timing sequence. Do not treat its average over 40 launches as a distribution of individual-call latency."
+        }
+      ],
+      "focus": [
+        "Write the benchmark question first: isolated kernel time, completed operator latency, or end-to-end step time. Name every included and excluded cost.",
+        "Record start and stop events on the work's stream, then wait for the stop event before reading elapsed time. Other streams need explicit dependencies.",
+        "For host wall time, complete prior work before starting and included work before stopping. Validation and input generation stay outside a kernel-only interval.",
+        "An event interval can include GPU idle gaps while the host supplies launches. Dividing a batch interval by its launch count measures amortized service time, not a latency percentile."
+      ],
+      "reproduce": "Allocate two seeded 512 by 512 `torch.float32` CUDA matrices. Warm up 10 matrix multiplies, synchronize, then time 20 multiplies with events and with a host timer spanning the same batch and final synchronization. Validate the last output against a CPU double-precision reference. Explain the two boundaries without assuming equal times or a fixed speedup.",
+      "traps": [
+        "Timing only the return from `torch.matmul` and calling that kernel duration.",
+        "Recording events on the default stream while the measured work runs on another stream.",
+        "Calling `.item()` inside the loop and accidentally including a device-to-host synchronization."
+      ],
+      "selfTest": [
+        {
+          "q": "Why synchronize before starting a host timer as well as after the work?",
+          "a": "The first wait excludes queued earlier work. The final wait includes completion of the work being measured."
+        },
+        {
+          "q": "Does waiting for a stop event prove all device work has completed?",
+          "a": "Only work ordered before that event, including explicit dependencies. Unrelated streams can still be running."
+        },
+        {
+          "q": "Why can a batch event interval exceed the sum of kernel durations in a trace?",
+          "a": "The interval includes time between its event timestamps, including launch-supply gaps and interference. Kernel durations alone exclude those gaps."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `benchmarking_script` (a) and (b)",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Problem (`benchmarking_script`), pp. 3 to 4",
+          "note": "Part (b) times the Table 1 sizes at context 512. On a 6 GB GPU use the small model at batch 4 and context 256: one full AdamW step peaked at 2.93 GiB on an RTX 3050 6 GB with PyTorch 2.14, while context 512 needs 4.83 GiB and did not fit beside a desktop session. A 24 GB GPU runs small and medium at context 512. Record every change from the handout, and time forward-only and full training steps separately. These are written deliverables with no public timing tests; add your own correctness checks."
+        }
+      ],
+      "stopWhen": "Your harness reports both completed host latency and event time with explicit boundaries, validates the output, and rejects an unsynchronized launch-only result as a kernel-time claim.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The assignment explains asynchronous timing; the pinned copy example supplies the event sequence, and the named benchmarking problem provides practice."
+      }
+    },
+    {
+      "id": "warmup-cache-state",
+      "title": "Warmup, compilation, allocator and cache state",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "warmup-jit-autotune",
+        "allocator-cache-state"
+      ],
+      "outcomes": [
+        "Separate compilation, autotuning and allocator initialization from warm execution.",
+        "Choose and record an application-relevant cache and buffer-reuse policy.",
+        "Use a bounded warmup rule and retain evidence when steady state does not settle."
+      ],
+      "why": "First-use overhead and repeated-buffer reuse answer different questions from steady-state work on changing inputs. Neither should silently enter the other result.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/machine-state-interference",
+          "note": "Check whether apparent warmup is actually clock or thermal drift."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cutlass-measurement-gpu3",
+          "title": "CUTLASS: warmup and buffer rotation",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/gemm_performance_measurement_methodology_guidelines.html#warm-ups-and-profiling-iterations",
+          "locator": "Documentation updated September 21, 2026: Benchmark Requirements; Warm-ups and Profiling Iterations; Buffer Rotation",
+          "depth": "Do not copy the Blackwell iteration counts. The claim that rotation guarantees DRAM-resident inputs is too strong: replacement, access coverage and persistence affect residency. Treat rotation as an eviction strategy to check, not proof of a cold cache."
+        },
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "Allocator pools versus data caches",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 6, CUDA Programming Refresher: Asynchronous Memory Allocation and Memory Pools"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Harness cold and warm contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#architecture-constraints",
+          "locator": "Architecture constraints; Milestone B - Instrumentation, compilation/autotuning and cold/warm items"
+        }
+      ],
+      "focus": [
+        "A warmed allocator, compiled code cache, tuned configuration, L2 cache and application KV cache are different state. Record them separately.",
+        "Warm every evaluated shape, dtype and specialization. A new shape can trigger compilation or tuning after another shape has settled.",
+        "Inspect warmup batches and clock state with a declared stability rule and a time cap. A fixed count is not evidence of convergence.",
+        "Reuse buffers when reuse represents the application. Rotate preallocated buffers when studying streaming traffic; exclude rotation setup and label unverified residency."
+      ],
+      "reproduce": "From a fresh process, record the first call and subsequent batches for the timing unit's matrix multiply. Repeat with preallocated rotating inputs and with the same inputs reused. Keep the warmup samples and declare which state each run preserves. Do not require a difference: a small workload or unchanged execution path may show none.",
+      "traps": [
+        "Calling `torch.cuda.empty_cache()` between trials and claiming to have flushed L2. It releases unused allocator cache, not a hardware data cache.",
+        "Putting compilation or input allocation in only one variant's timed boundary.",
+        "Running warmup forever to obtain a preferred timing while hiding thermal drift."
+      ],
+      "selfTest": [
+        {
+          "q": "Does a warm model imply every specialization is compiled?",
+          "a": "No. New shapes, dtypes or guards can create new specializations or trigger tuning."
+        },
+        {
+          "q": "Is repeated-buffer caching always a benchmark defect?",
+          "a": "No. It is legitimate when the target workload reuses those buffers. It is misleading when presented as streaming DRAM performance."
+        },
+        {
+          "q": "Why keep a first-call result even when reporting warm performance?",
+          "a": "It exposes startup, compilation and tuning costs that warm timing deliberately excludes. Deployment may pay them."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `benchmarking_script` (c)",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Problem (`benchmarking_script`), part (c), p. 4",
+          "note": "Reuse the model setting from the timing unit. Compare zero, one, two and five warmup steps, then test your bounded stability rule. Keep identical timed boundaries and record allocator and specialization state. The section mini-project adds the rotating-buffer cache experiment."
+        }
+      ],
+      "stopWhen": "You can regenerate separate first-use and warm reports with retained warmup samples, a bounded stability rule, and an explicit allocator and buffer-reuse policy.",
+      "fit": {
+        "verdict": "kept",
+        "note": "CUTLASS, the allocator section and the project contract cover the state distinctions; assignment part (c) gives named warmup practice."
+      }
+    },
+    {
+      "id": "machine-state-interference",
+      "title": "Clocks, power, interference and environment capture",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "clock-power-thermal",
+        "interference-isolation",
+        "environment-revision-capture"
+      ],
+      "outcomes": [
+        "Capture hardware, software, build and workload identity alongside raw samples.",
+        "Identify power, thermal, clock and background-work changes that weaken a comparison.",
+        "Measure under a documented isolation policy without assuming an idle process list proves isolation."
+      ],
+      "why": "Boost clocks and other work on the same GPU can change during a benchmark. The environment is part of the result, not an optional appendix.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/trial-design-statistics",
+          "note": "Make comparisons robust to remaining time-dependent noise."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cutlass-measurement-gpu3",
+          "title": "CUTLASS: environment and data-dependent power",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/gemm_performance_measurement_methodology_guidelines.html#testing-methodology-overview",
+          "locator": "Documentation updated September 21, 2026: Testing Methodology Overview and Matrix Fill Methodology",
+          "depth": "Read fixed-frequency tests as a controlled methodology, not an instruction to change shared-machine clocks. Zero-filled inputs are not a representative default, even with a frequency setting."
+        },
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Machine and build identity",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#measurement-requirements",
+          "locator": "Core requirements, harness item; Failure-injection requirements, thermal/interference run; Measurement requirements; Rubric, Reproducibility"
+        }
+      ],
+      "focus": [
+        "Record GPU identity and compute capability, driver, toolkit, framework and compiler versions, flags, code revision, workload seed and precision settings. Driver-supported CUDA and the installed toolkit are not the same version.",
+        "Save sampled clocks, power and temperature with trial timestamps. Missing or unsupported telemetry must be marked unavailable, not zero.",
+        "On a GPU that also drives a desktop or serves other users, run one experiment at a time, keep each short and release allocations on exit. The compositor and other clients still run beside yours, so record what else held the GPU.",
+        "Compare identical input distributions. Fill patterns can change switching activity and power; a fixed power limit does not imply fixed clocks."
+      ],
+      "reproduce": "Attach a machine/build manifest and timestamped clock, power and temperature observations to one short timing run. Record background processes and whether clocks can be controlled without privileges. Repeat the same run later with interleaved variants; explain any state differences without attributing every fluctuation to a single cause.",
+      "traps": [
+        "Using `nvidia-smi`'s displayed CUDA support level as the compiler version.",
+        "Assuming an idle process list, or an agreement to take turns, rules out the desktop compositor and other GPU clients.",
+        "Deleting slow samples after seeing a thermal or interference event instead of preserving and labeling the affected run."
+      ],
+      "selfTest": [
+        {
+          "q": "Does a fixed power limit make two runs use the same clock?",
+          "a": "No. Dynamic voltage and frequency control responds to temperature, workload and power demand. Measure clocks during the run."
+        },
+        {
+          "q": "Why is recording only the GPU model insufficient?",
+          "a": "Driver, compiler, libraries, flags, power state and workload can all change the generated work or its runtime."
+        },
+        {
+          "q": "What can you claim when power telemetry is unavailable?",
+          "a": "Timing and the state you actually observed. You cannot infer an energy result or rule out power effects from missing readings."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` environment manifest, timestamped machine-state log and interference/isolation audit.",
+      "stopWhen": "A retained raw run can be matched to its workload, revision, toolchain, machine-state observations and stated isolation limits without relying on memory.",
+      "fit": {
+        "verdict": "kept",
+        "note": "CUTLASS supplies clock, power and fill guidance; the project defines environment capture and the mini-project provides the manifest audit."
+      }
+    },
+    {
+      "id": "trial-design-statistics",
+      "title": "Interleaved trials, raw samples and uncertainty",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "interleaved-randomized-trials",
+        "percentiles-uncertainty"
+      ],
+      "outcomes": [
+        "Collect paired, interleaved trials with reproducible randomized order and raw samples.",
+        "Report medians, supported tails and uncertainty without treating launches within a batch as independent trials.",
+        "Separate statistical evidence from a practically worthwhile improvement."
+      ],
+      "why": "A best timing hides drift and noise. Paired trials make a comparison less dependent on which variant happened to run first.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/end-to-end-regressions",
+          "note": "Carry uncertainty into workload-level comparisons."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Harness noise and repeated-trial requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#core-requirements",
+          "locator": "Core requirements, harness item; Milestone B - Instrumentation, noise and observer overhead; Milestone E - Measurement / optimization, interleaved raw trials; Measurement requirements"
+        },
+        {
+          "resource": "cs336-a2-profiling-gpu3",
+          "title": "CS336: repeated timing summary",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3, Problem (`benchmarking_script`), part (b), p. 4",
+          "depth": "Use its mean and standard deviation as an initial summary. Ten steps do not establish a reliable p99 or confidence interval under time-correlated drift."
+        }
+      ],
+      "focus": [
+        "Make a trial pair use identical inputs and timing boundaries. Randomize the order within each pair with a recorded seed and preserve timestamps.",
+        "Report the estimand: ratio of medians and median paired ratio are different statistics. Keep raw times, not just speedups.",
+        "Resample whole pairs for paired uncertainty. If adjacent pairs drift together, use blocks or repeated sessions rather than an independent-sample bootstrap.",
+        "State sample count, percentile convention and a minimum useful gain before inspecting results. Tail estimates need many independent observations, not many launches inside one interval."
+      ],
+      "reproduce": "Using synthetic paired latencies in milliseconds, baseline `[10, 20, 30]` and candidate `[5, 10, 15]`, compute both medians and each paired speedup. Both summaries give a speedup of 2. Explain why resampling these perfectly proportional pairs can produce zero spread without proving a noise-free hardware result. Then compute the same summaries on retained interleaved GPU samples.",
+      "traps": [
+        "Running all baseline trials before all candidate trials and confounding the variant with clock drift.",
+        "Treating 1,000 launches in one event interval as 1,000 independent latency samples.",
+        "Reporting a confidence interval without its resampling unit or treating a tiny statistically resolved gain as automatically useful."
+      ],
+      "selfTest": [
+        {
+          "q": "Why randomize within a pair rather than always run baseline first?",
+          "a": "It reduces systematic order effects. Pairing limits slow drift, but randomization does not eliminate carryover or all interference."
+        },
+        {
+          "q": "What is lost when only medians are retained?",
+          "a": "Tails, outliers, order effects and information needed to recompute uncertainty or change the summary."
+        },
+        {
+          "q": "Does a p99 computed from ten trials give strong tail evidence?",
+          "a": "No. It is effectively an estimate near the sample maximum, with very poor information about rare slow events."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `kernellab` paired randomized trials, raw samples, drift plots and a documented uncertainty calculation.",
+      "stopWhen": "Your report can be regenerated from raw paired trials and states the summary statistic, uncertainty method, dependence limits and minimum practically useful gain.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The project explicitly requires interleaving, uncertainty and noise characterization; CS336 supplies the starting repeated-trial task, extended in the mini-project."
+      }
+    },
+    {
+      "id": "references-differential-tests",
+      "title": "Independent references and differential and property tests",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "independent-reference",
+        "differential-property-tests"
+      ],
+      "outcomes": [
+        "Build a reference that does not reuse the target's indexing or reduction logic.",
+        "Test supported shapes, strides, dtypes and masks, including boundaries and invalid inputs.",
+        "Gate every performance result on differential and property checks."
+      ],
+      "why": "A faster kernel that computes the wrong operation is not an optimization. Independent references and adversarial properties catch errors that two similar implementations share.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/tolerances-extreme-values",
+          "note": "Turn numerical agreement into an explicit acceptance contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Independent oracle and adversarial matrix",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#architecture-constraints",
+          "locator": "Architecture constraints; Milestone A - Correct baseline; Correctness requirements; Failure-injection requirements"
+        },
+        {
+          "resource": "pytorch-numerical-testing-gpu3",
+          "title": "PyTorch 2.14: test inputs and structural comparison",
+          "url": "https://docs.pytorch.org/docs/2.14/testing.html#torch.testing.assert_close",
+          "locator": "`torch.testing.assert_close`: shape, device, dtype, layout and stride checks; `torch.testing.make_tensor`: shape, range and noncontiguous parameters"
+        }
+      ],
+      "focus": [
+        "Generate reference results from the specification using a CPU scalar or library path, not the target's address calculations. Use the same represented inputs.",
+        "Include empty, singleton, odd, warp-edge and block-edge sizes; noncontiguous views; supported dtypes; and partial or all-masked rows. Unsupported combinations must reject or fall back explicitly.",
+        "Properties complement an oracle: copies preserve each element, transposing twice restores the input, and finite nonempty softmax rows sum approximately to one. These properties alone do not identify every wrong output.",
+        "Preserve seeds and failing inputs. Check output shape, dtype and required layout as well as values, with tolerances chosen before tuning."
+      ],
+      "reproduce": "Write a copy acceptance test for lengths 0, 1, 31, 32, 33, 255, 256 and 257. Use a stride-two view of a known sequence, then compare every output element with an independently indexed CPU reference at zero tolerance. For nonempty cases, initialize the output to NaN before deliberately omitting its last element and confirm the check fails. Ensure the empty-input path avoids an invalid zero-block launch.",
+      "traps": [
+        "Sharing a stride calculation between the oracle and candidate, so both make the same indexing mistake.",
+        "Comparing only sums or checksums. Permutations and compensating errors can preserve them.",
+        "Silently making noncontiguous inputs contiguous before testing a path advertised as stride-aware."
+      ],
+      "selfTest": [
+        {
+          "q": "Can the transpose-twice property prove a transpose implementation is correct?",
+          "a": "No. Even an identity operation passes it. Compare against an independent transpose reference as well."
+        },
+        {
+          "q": "Why test just above a block boundary?",
+          "a": "It forces a partial final block and exposes tail guards, skipped elements and out-of-bounds accesses."
+        },
+        {
+          "q": "Should a contiguous-only kernel pass a strided input by ignoring its strides?",
+          "a": "No. It must reject, use a correct fallback, or perform a declared layout conversion whose cost is included at the operator boundary."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `kernellab` independent copy/reduction references, adversarial input matrix and seeded tail/stride regressions.",
+      "stopWhen": "Your supported-input matrix passes independent full-output checks, and seeded tail and stride defects fail before the harness publishes timing results.",
+      "fit": {
+        "verdict": "added",
+        "note": "The project supplies the reference and property-test requirements, but lacks current tensor comparison APIs. PyTorch 2.14 testing documentation closes that implementation gap."
+      }
+    },
+    {
+      "id": "tolerances-extreme-values",
+      "title": "Tolerances and an extreme-value policy",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "numerical-tolerances",
+        "nan-inf-extreme-policy"
+      ],
+      "outcomes": [
+        "Derive an absolute-plus-relative acceptance rule and justify its scale from precision, reduction order and output use.",
+        "Separate input rounding from accumulation error using a higher-precision reference.",
+        "Declare and test policies for non-finite inputs, masked rows, overflow, underflow and subnormals."
+      ],
+      "why": "Floating-point order changes can be legitimate, but a loose tolerance can conceal a defect. Extreme values need semantic decisions, not a larger error threshold.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/reduction-trees-order",
+          "note": "Use the contract when reduction order changes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a2-profiling-gpu3",
+          "title": "CS336: accumulation precision experiment",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.5, Problem (`mixed_precision_accumulation`), pp. 7 to 8"
+        },
+        {
+          "resource": "pytorch-numerical-testing-gpu3",
+          "title": "PyTorch 2.14: numerical limits",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/numerical_accuracy.html",
+          "locator": "Introduction; Extremal values; Linear algebra - Non-finite values and Extremal values in linalg; TensorFloat-32 on Nvidia Ampere; Reduced Precision Reduction for FP16 and BF16 GEMMs",
+          "depth": "The page's slice example compares `A.sum(-1)[0]`, a row sum, with `A[:,0].sum()`, a column sum; the intended pair is `A.sum(-1)[0]` and `A[0].sum()`. Skip the AMD-specific sections."
+        },
+        {
+          "resource": "pytorch-numerical-testing-gpu3",
+          "title": "Finite and non-finite comparison rules",
+          "url": "https://docs.pytorch.org/docs/2.14/testing.html#torch.testing.assert_close",
+          "locator": "`torch.testing.assert_close`: closeness inequality, non-finite comparison and `rtol`, `atol`, `equal_nan` parameters"
+        },
+        {
+          "resource": "cuda-floating-point-gpu3",
+          "title": "CUDA 13.4: order and subnormal controls",
+          "url": "https://docs.nvidia.com/cuda/floating-point/index.html#compiler-flags",
+          "locator": "Sections 2.2, Operations and Accuracy; 3.1 to 3.2, dot-product algorithms and comparison; 4.4, Compiler Flags"
+        }
+      ],
+      "focus": [
+        "For finite outputs use \\(|y-\\hat y| \\le a+r|\\hat y|\\), where \\(\\hat y\\) is the reference and \\(a\\) and \\(r\\) are declared absolute and relative tolerances. Near zero, relative error alone is unsuitable.",
+        "Evaluate quantized inputs in higher precision to isolate accumulation error. Comparing with unrounded original inputs adds input-representation error to the result.",
+        "Cancellation and ill-conditioning can amplify relative error. A dtype-only default is not an error bound for arbitrary reduction lengths or applications.",
+        "Test NaN and infinity locations separately. Declare all-masked-row behavior, overflow handling and subnormal preservation or flushing; record precision modes and compiler flags."
+      ],
+      "reproduce": "Run the four CS336 accumulation loops unchanged on CPU. In PyTorch 2.14.1, the FP32 loop gives 10.000133514404297 and the FP16 loop gives 9.953125; both loops with FP16 increments accumulated in FP32 give 10.00213623046875, exactly 1000 times the FP16 value of 0.01 (0.01000213623046875), so all of that error is input rounding. Explain input rounding versus repeated accumulation rounding, then define acceptance and extreme-input policies for your reduction. These are numerical examples, not GPU timing results.",
+      "traps": [
+        "Increasing tolerance until an omitted element or wrong mask passes.",
+        "Setting `equal_nan=True` and calling unexpected NaNs correct.",
+        "Assuming max-subtracted softmax defines an all-masked row. Subtracting negative infinity from itself produces NaN; the application must specify a separate policy."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does promoting a rounded FP16 increment to FP32 not recover the original decimal value?",
+          "a": "Promotion preserves the already rounded value. It improves subsequent accumulation, not the information lost on conversion."
+        },
+        {
+          "q": "Can a finite final mathematical answer guarantee finite intermediate arithmetic?",
+          "a": "No. Intermediate products, squares or sums can overflow even when a rearranged or higher-precision calculation has a representable final answer."
+        },
+        {
+          "q": "Does a larger relative tolerance repair comparison near a zero reference?",
+          "a": "No. The relative term vanishes at zero. Use a justified absolute tolerance and investigate cancellation."
+        },
+        {
+          "q": "What does `-ftz=true` change for single-precision CUDA arithmetic?",
+          "a": "It enables flushing subnormal values to zero in affected operations. Record it as a numerical-semantic choice, not just a performance flag."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `mixed_precision_accumulation`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Problem (`mixed_precision_accumulation`), pp. 7 to 8",
+          "note": "Run all four loops and explain each discrepancy from the real-arithmetic sum of 10. This written experiment has no public autograder. The section mini-project adds cancellation, NaN, infinity, overflow, underflow and all-masked policy tests."
+        }
+      ],
+      "stopWhen": "You explain all four accumulation results and defend a predeclared finite-output tolerance plus separate extreme-value policies that reject a seeded wrong-mask or skipped-element defect.",
+      "fit": {
+        "verdict": "added",
+        "note": "CS336 covers accumulation practice but not the full current comparison and extreme-value contract. PyTorch 2.14 and CUDA 13.4 close those coverage and currency gaps."
+      }
+    },
+    {
+      "id": "compute-sanitizer-diagnosis",
+      "title": "Compute Sanitizer: out-of-bounds, races, initialization and synchronization",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "compute-sanitizer-memcheck",
+        "race-init-sync-checks"
+      ],
+      "outcomes": [
+        "Choose memcheck, racecheck, initcheck or synccheck for a specific failure hypothesis.",
+        "Reduce a seeded defect to a source-attributed diagnostic and retain a regression test.",
+        "Distinguish a clean supported check from an unsupported or incomplete check."
+      ],
+      "why": "Differential tests can miss an invalid access or intermittent race. Sanitizers add execution evidence, but each tool checks only a defined class of hazards.",
+      "next": [
+        {
+          "unit": "gpu/gpu-cuda-primitives-async/primitive-defect-diagnosis",
+          "note": "Apply the diagnostic workflow to parallel primitives."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "Correctness before performance profiling",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 6, Debugging Functional Correctness with NVIDIA Compute Sanitizer"
+        },
+        {
+          "resource": "compute-sanitizer-gpu3",
+          "title": "Compute Sanitizer 2026.3: tool scope and reports",
+          "url": "https://docs.nvidia.com/compute-sanitizer/ComputeSanitizer/#memcheck-tool",
+          "locator": "Compilation Options; Memcheck Tool - What is Memcheck, Understanding Memcheck Errors and Padding; Racecheck Tool - What is Racecheck and Using Racecheck; Initcheck Tool - Using Initcheck and Initcheck Address Space Selection; Synccheck Tool - Using Synccheck and Understanding Synccheck Reports",
+          "depth": "Stop before tensor-core-specific guardrails and advanced barrier APIs. Use the address spaces supported by your installed version; older initcheck versions only cover global memory."
+        }
+      ],
+      "focus": [
+        "Build optimized diagnostic binaries with `-lineinfo` and check every CUDA API result. Debug builds can change scheduling and resources, so they are not performance baselines.",
+        "Run memcheck first. Racecheck primarily checks shared-memory hazards; initcheck defaults to global memory; synccheck checks barrier usage the architecture does not support, not general data-race freedom. From compute capability 7.0 a block barrier inside divergent code is not a synccheck error.",
+        "A logical tensor overrun can remain inside an allocation or land in another valid allocation. Allocation padding improves detection; shape and sentinel tests are still necessary.",
+        "Use `--error-exitcode 1` for automation. Keep source line, access type, thread/block coordinates, tool version and the smallest failing input with each regression."
+      ],
+      "reproduce": "In separate tiny CUDA programs, seed a one-past-the-end write, an uninitialized global read and a shared-memory neighbor read without a barrier. Build them for `sm_86` with `-lineinfo` and run memcheck with `--padding 32`, initcheck and racecheck; each reports its defect. For synccheck, seed `__syncwarp(0x0000ffff)` called by all 32 threads of a warp and build it with `-G`: synccheck reports \"Barrier error detected. Invalid arguments.\" An `-O3` build reports nothing, because the compiler removed the barrier (the SASS has no `WARPSYNC`). A `__syncthreads()` reached by half the block is not a synccheck error on compute capability 7.0 and later; run racecheck on it and read the race it reports. All of this was observed with Compute Sanitizer 2026.3 and CUDA 13.4 on an RTX 3050 6 GB. Repair each defect, rerun the tool and the output tests, and bound every run with a timeout.",
+      "traps": [
+        "Interpreting zero racecheck reports as proof of correct cross-stream or global-memory ordering.",
+        "Treating a skipped kernel, unsupported operation or timed-out run as a clean sanitizer result.",
+        "Adding unconditional device synchronization as a permanent fix instead of expressing the required dependency and lifetime."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does memcheck precede racecheck or synccheck?",
+          "a": "Those tools do not replace memory-access checking. Invalid accesses can also make later diagnostics confusing or incomplete."
+        },
+        {
+          "q": "Why might a one-element tensor overrun escape memcheck?",
+          "a": "It can remain within a larger allocation or enter a neighboring valid allocation. The tool does not know every logical tensor boundary."
+        },
+        {
+          "q": "Does zero reported errors prove all possible inputs and schedules are correct?",
+          "a": "No. It applies only to executed paths within the tool's supported checks. Independent tests and ordering arguments remain necessary."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: four minimal `kernellab` defect reproducers, matching sanitizer logs, repairs and regression tests.",
+      "stopWhen": "Each supported seeded defect produces the expected class of report, its repair passes the same diagnostic and reference tests, and unsupported or incomplete checks remain explicitly open.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book supplies the correctness-first workflow and current tool documentation defines exact scope; the mini-project provides named failure-injection practice."
+      }
+    },
+    {
+      "id": "timelines-nvtx",
+      "title": "CPU-GPU timelines, NVTX ranges and trace-to-source correlation",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "nsight-systems-timeline",
+        "nvtx-source-ranges"
+      ],
+      "outcomes": [
+        "Capture CUDA API, kernel and transfer timelines with source-correlated NVTX ranges.",
+        "Attribute one host gap, transfer or synchronization cost before collecting kernel counters.",
+        "Reconcile timeline intervals with completed wall time without double-counting overlap."
+      ],
+      "why": "A kernel profiler cannot explain time spent waiting for the host to launch work. The timeline connects source phases to device activity and exposes hidden boundaries.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/kernel-counters-replay",
+          "note": "Profile only the hot kernel and hypothesis identified by the timeline."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "System timeline before kernel analysis",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 8, Profiling and Diagnosing GPU Bottlenecks: Nsight Systems Timeline View and Profiling and Tuning the Data Pipeline"
+        },
+        {
+          "resource": "nsight-systems-gpu3",
+          "title": "Nsight Systems 2026.3: capture and correlation",
+          "url": "https://docs.nvidia.com/nsight-systems/UserGuide/#cuda-trace",
+          "locator": "Preparing Your Application for Profiling - Focused Profiling and Marking and Labeling Regions; CUDA Trace - Basic CUDA trace; NVTX Trace; Reading Your Report in GUI - Timeline Correlation; Profiling from the CLI - CLI Stats Command Switch Options",
+          "depth": "Start with CUDA and NVTX tracing only: `--sample=none --cpuctxsw=none` keeps the capture small. Turn on CPU sampling, GPU metric sampling or backtraces only when a question needs them."
+        },
+        {
+          "resource": "cs336-a2-profiling-gpu3",
+          "title": "CS336: profile a completed model step",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.4, Nsight Systems Profiler, and Problem (`nsys_profile`), pp. 4 to 6"
+        }
+      ],
+      "focus": [
+        "Label warmup, forward, backward, optimizer and validation phases. CPU NVTX range duration is not automatically the duration of asynchronous GPU work it launched.",
+        "Correlate a kernel to its CUDA API call and enclosing source range. Inspect stream order, copies, dependencies and GPU idle intervals, not just cumulative kernel rankings.",
+        "Busy time is the union of intervals on the chosen device and capture boundary. Summing overlapping kernels can exceed wall time and is not a utilization percentage.",
+        "Compare unprofiled and traced completed wall time. Trace overhead and different capture boundaries can explain discrepancies; a synchronization wait may represent completion of useful work rather than wasted time."
+      ],
+      "reproduce": "Add an NVTX range around the timing unit's matrix-multiply batch and capture a short CUDA/NVTX trace without CPU sampling. Follow one API call to its kernel, identify the final synchronization and compute the union of kernel intervals within the batch. Compare that busy duration, the event interval and completed wall time; label any gap whose cause the trace does not establish.",
+      "traps": [
+        "Calling a long `cudaDeviceSynchronize` entry pure synchronization overhead when it is waiting for unfinished kernels.",
+        "Calling a device busy because any kernel exists in the trace, without defining the denominator interval.",
+        "Inferring per-SM utilization from kernel start and end timestamps. A device-wide timeline does not reveal how many SMs were active."
+      ],
+      "selfTest": [
+        {
+          "q": "Two kernels each run for 5 ms and overlap completely. How much device busy time do they establish?",
+          "a": "5 ms, the union of their intervals, not 10 ms. This does not establish full utilization of every SM."
+        },
+        {
+          "q": "Does an NVTX range ending mean the launched kernel has finished?",
+          "a": "No. A CPU range ends when its host code ends. GPU completion needs synchronization or trace-based correlation."
+        },
+        {
+          "q": "What should you investigate when event time is small but completed step latency is large?",
+          "a": "Host preparation, dispatch gaps, transfers, allocations, other streams and mismatched boundaries, using the timeline before blaming the kernel."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `nsys_profile`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Problem (`nsys_profile`), parts (a) to (e), p. 6",
+          "note": "The problem asks for two Table 1 sizes and three power-of-two contexts above 128. One full AdamW step at batch 4 peaked at 2.93, 4.83 and 10.74 GiB for the small model at contexts 256, 512 and 1024, and at 8.41 and 13.55 GiB for the medium model at 256 and 512; medium at 1024 did not fit in 24 GB (RTX A5000, PyTorch 2.11). On a 24 GB GPU, profile small and medium at 256 and 512 and small also at 1024. On a 6 GB GPU, profile small training at 256, small forward passes at 512 and 1024 and medium forward passes at 256 and 512, and record the deviation. Keep captures short. These write-up questions have no public autograder."
+        }
+      ],
+      "stopWhen": "Your annotated trace connects a measured phase to source, kernels and dependencies, attributes one observed gap or transfer, and reconciles busy time with event and completed wall intervals.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book and Nsight guide cover capture and source correlation; the accessible named CS336 profiling task supplies practice scaled to available memory."
+      }
+    },
+    {
+      "id": "kernel-counters-replay",
+      "title": "Kernel counters, section sets, replay and profiler overhead",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "nsight-compute-counters",
+        "profiler-overhead-replay"
+      ],
+      "outcomes": [
+        "Choose the smallest section or metric set that can falsify a kernel hypothesis.",
+        "Explain replay, cache and clock controls and their impact on comparability.",
+        "Separate unprofiled latency from profiling overhead and record unavailable counters honestly."
+      ],
+      "why": "Counter collection changes execution and can replay work several times. A detailed report is not automatically a faithful measurement of application latency.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/stalls-bottleneck-classification",
+          "note": "Interpret only counters relevant to a falsifiable bottleneck hypothesis."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nsight-compute-gpu3",
+          "title": "Nsight Compute 2026.3.1: collection and perturbation",
+          "url": "https://docs.nvidia.com/nsight-compute/ProfilingGuide/#metric-collection",
+          "locator": "Sections 2.2.1 to 2.2.3, Sets and Sections, Sections and Rules, and Replay; 2.2.6, Overhead; 2.6.2, Clock Control; 2.6.3, Cache Control",
+          "depth": "Read Kernel Replay, Application Replay and Range Replay. Skip the detailed supported-API enumeration and advanced graph profiling until your hypothesis requires them."
+        },
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "Choose a hot kernel after the system trace",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 8, Profiling and Diagnosing GPU Bottlenecks: Nsight Compute and Roofline Analysis and Profiler-Guided Analysis"
+        }
+      ],
+      "focus": [
+        "Start from one named kernel and one hypothesis. `LaunchStats` describes launch resources; `MemoryWorkloadAnalysis` tests traffic questions; `ComputeWorkloadAnalysis` tests pipeline use.",
+        "Hardware counters may require multiple passes; software-patched metrics have separate overhead. Kernel replay saves/restores memory, while application replay reruns host setup and requires matching launches.",
+        "Record replay mode, pass count, cache control, clock control, selected kernel and tool version. Default cache flushing can differ from warm application reuse.",
+        "On Linux the driver restricts counters to administrators by default, and `ncu` then fails with `ERR_NVGPUCTRPERM`. On your own machine, run `ncu` with `sudo` or grant access as https://developer.nvidia.com/nvidia-development-tools-solutions-err_nvgpuctrperm-permission-issue-performance-counters describes. Where you cannot, keep the error and use events, timelines, static resource reports and instruction inspection, leaving counter conclusions open."
+      ],
+      "reproduce": "Choose one already-validated copy kernel, list available sections and request only `LaunchStats` and the section needed for your hypothesis. On a permitted device, retain the report, replay settings and pass count, then compare completed process wall time with and without collection. If counters are denied, retain the error and substitute an unprofiled event result plus compiler resource report; do not report an overhead ratio for a failed capture.",
+      "traps": [
+        "Using elapsed profiler process time as kernel latency or as production end-to-end latency.",
+        "Collecting the full set by default, then diagnosing a noisy short kernel from unrelated metrics.",
+        "Assuming counters from separate passes describe an unchanged concurrent workload when replay serialized or reran it."
+      ],
+      "selfTest": [
+        {
+          "q": "Why might requesting more metrics increase profiling time greatly?",
+          "a": "Counters cannot all be collected together. Extra passes, memory save/restore, software instrumentation and first-use metric configuration add work."
+        },
+        {
+          "q": "Does restoring global memory restore the original L2 cache state?",
+          "a": "No. Device memory contents and hardware cache residency are separate state. Record cache control and choose replay appropriate to the experiment."
+        },
+        {
+          "q": "What does a denied counter capture tell you about the kernel's DRAM utilization?",
+          "a": "Nothing. It is a permissions failure, not a zero measurement. Keep the counter hypothesis open."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `kernellab` minimal counter captures, replay/cache metadata and observer-overhead comparison, or an explicit permission-blocked evidence record.",
+      "stopWhen": "You have a minimal hypothesis-linked report and separate unprofiled timing, or a documented counter blocker with static/timeline evidence and the remaining counter check marked pending.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The current profiling guide covers sections, replay and overhead at measurement depth; the mini-project handles permitted and permission-blocked capture paths."
+      }
+    },
+    {
+      "id": "useful-work-roofline-placement",
+      "title": "Useful work, achieved throughput and roofline placement",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "useful-executed-work",
+        "achieved-bandwidth-compute",
+        "roofline-model"
+      ],
+      "outcomes": [
+        "Derive useful operations and minimum bytes separately from executed instructions and measured traffic.",
+        "Compute achieved throughput and a roofline bound with consistent units and memory boundaries.",
+        "Place measured points against declared ceilings and explain why a point below a roof does not establish its bottleneck."
+      ],
+      "why": "A throughput number needs an operation and byte definition. A roofline supplies a bound to test, not a diagnosis to infer from position alone.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/stalls-bottleneck-classification",
+          "note": "Test the model's predicted regime with resource and timeline evidence."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "Operations, traffic and the first GPU roofline",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 6, Roofline Model: Compute-Bound or Memory-Bound Workloads; Chapter 8, Kernel Memory Throughput Versus Peak HBM Memory Bandwidth and Kernel Compute Throughput Versus Peak GPU FLOPS",
+          "depth": "Use the model, not the Blackwell peak values, for an Ampere GPU. Low arithmetic intensity identifies the lower roof; it does not prove that measured execution saturates bandwidth."
+        },
+        {
+          "resource": "roofline-gpu3",
+          "title": "Original roofline model and additional ceilings",
+          "url": "https://www2.eecs.berkeley.edu/Pubs/TechRpts/2008/EECS-2008-134.html",
+          "locator": "Technical report EECS-2008-134, October 2008 revision: sections 3, The Roofline Model, and 4, Adding Ceilings to the Model, including Figure 1",
+          "depth": "Stop before the platform survey and application case studies. Note that the paper defines operational intensity using traffic after cache filtering, between caches and DRAM."
+        },
+        {
+          "resource": "nsight-compute-gpu3",
+          "title": "Nsight Compute 2026.3.1: roofline and memory boundaries",
+          "url": "https://docs.nvidia.com/nsight-compute/ProfilingGuide/#roofline-charts",
+          "locator": "Section 2.9, Roofline Charts, Overview and Analysis; section 2.10, Memory Chart, Overview",
+          "depth": "Match the precision and execution path of the roofline section to the kernel. Keep modeled useful work distinct from profiler operation counters."
+        }
+      ],
+      "focus": [
+        "Define useful FLOPs from the operation's mathematical contract. Count a multiply-add as two FLOPs, even if one fused instruction executes it; padding, recomputation and address arithmetic are separate executed work.",
+        "Distinguish useful bytes, requested loads/stores and actual traffic at each memory level. Cache hits, transaction overfetch and repeated reads can make those counts differ.",
+        "With work \\(F\\), bytes \\(Q\\), elapsed seconds \\(t\\), bandwidth ceiling \\(B\\) and compute ceiling \\(P\\), use \\(I=F/Q\\), \\(F/t\\), \\(Q/t\\), and \\(F/t \\le \\min(P,BI)\\). The ridge is \\(P/B\\); the model gives \\(t \\ge \\max(F/P,Q/B)\\).",
+        "State dtype, dense or sparse path, memory level and peak source. Vendor theoretical ceilings and empirically calibrated reference lines are different evidence. Use decimal GB/s consistently, not GiB/s mislabeled as GB/s."
+      ],
+      "reproduce": "For an out-of-place FP32 scaled vector addition with a scalar coefficient held in a register, derive \\(F=2n\\) and minimum requested bytes \\(Q=12n\\): read two vectors and write one. Thus \\(I=1/6\\) FLOP/byte. For a declared streaming, no-reuse DRAM model, derive \\(t \\ge \\max(2n/P,12n/B)\\). Plot your event-timed point with useful FLOPs and modeled bytes explicitly labeled; without traffic counters, do not call \\(12n/t\\) measured DRAM bandwidth.",
+      "traps": [
+        "Dividing useful bytes by time and calling the result actual DRAM throughput when cache reuse or transaction overfetch is unknown.",
+        "Comparing scalar FP32 work with a sparse low-precision tensor-core peak.",
+        "Adding redundant arithmetic to move right on the roofline and claiming more useful work was accomplished."
+      ],
+      "selfTest": [
+        {
+          "q": "A vector copy has no floating-point arithmetic. Should it have a positive FLOP/s point?",
+          "a": "No. Report copy bandwidth with a defined read-plus-write byte count. A log-scale FLOP roofline cannot place zero FLOPs directly."
+        },
+        {
+          "q": "Can useful-byte throughput exceed a device's DRAM bandwidth without violating physics?",
+          "a": "Yes, when cache reuse means useful bytes exceed actual DRAM traffic. The numerator and memory boundary differ."
+        },
+        {
+          "q": "Does a point far below the sloping roof prove a bandwidth bottleneck?",
+          "a": "No. Launch gaps, insufficient parallelism, dependencies, synchronization or instruction limits may prevent reaching that roof."
+        },
+        {
+          "q": "If a kernel executes padded multiply-adds that do not contribute to the output, do they increase useful FLOPs?",
+          "a": "No. They increase executed work. Report useful and executed counts separately."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `kernellab` operation/byte models, explicitly sourced or calibrated ceilings and event-timed roofline points with traffic-counter checks where permitted.",
+      "stopWhen": "Your plot can be regenerated from declared work, byte and timing definitions, with every ceiling sourced or labeled empirical and every unmeasured traffic count labeled modeled.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book, original model and current profiler guide cover derivation and interpretation; the mini-project supplies a measured, unit-consistent report."
+      }
+    },
+    {
+      "id": "stalls-bottleneck-classification",
+      "title": "Warp stalls, resource evidence and bottleneck classification",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "stall-resource-evidence",
+        "bottleneck-classification"
+      ],
+      "outcomes": [
+        "Predict launch-, memory- and compute-sensitive regimes before collecting profiles.",
+        "Combine scheduler, memory, pipeline and resource evidence rather than diagnosing from one stall percentage.",
+        "Distinguish bandwidth saturation from latency, occupancy, synchronization, transfer and host limits."
+      ],
+      "why": "A stall name describes a warp state, not necessarily the critical path. A bottleneck claim needs converging evidence and an experiment that could disprove it.",
+      "next": [
+        {
+          "unit": "gpu/gpu-measurement-profiling-correctness/end-to-end-regressions",
+          "note": "Check whether the diagnosed kernel limits the full workload."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-profiling-gpu3",
+          "title": "Resource and bottleneck reasoning",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 8, Analyzing Warp Stall Reasons with Nsight Compute; Inspecting Achieved Occupancy and GPU Utilization; Iteratively Profiling and Determining the Kernel Bottleneck; Profiling and Mitigating Register Pressure",
+          "depth": "Do not use the Memory-Related Stalls paragraph's definition of Not Selected as waiting for memory transaction slots. It is incorrect; use NVIDIA's Warp Stall Reasons table. Do not infer bandwidth saturation from a large scoreboard percentage alone."
+        },
+        {
+          "resource": "nsight-compute-gpu3",
+          "title": "Nsight Compute 2026.3.1: scheduler states and section evidence",
+          "url": "https://docs.nvidia.com/nsight-compute/ProfilingGuide/#warp-stall-reasons",
+          "locator": "Section 2.2.2, Sections and Rules: SchedulerStats, WarpStateStats, SourceCounters, Occupancy, MemoryWorkloadAnalysis and ComputeWorkloadAnalysis; section 2.4.7, Warp Stall Reasons",
+          "depth": "Read the long-scoreboard, short-scoreboard, not-selected, barrier and math-pipe-throttle entries. Check availability and definitions on the target architecture before collecting them."
+        },
+        {
+          "resource": "aisys-code-profiling-gpu3",
+          "title": "Occupancy API and static-resource example",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch08/occupancy_api_example.cu",
+          "locator": "Commit b57e4c6: `exampleKernel`; `main` from `cudaOccupancyMaxPotentialBlockSize` through theoretical occupancy calculation",
+          "depth": "Read the resource-query sequence, not its first-ten-elements check as a complete correctness suite. Recompute device limits for Ampere and use ceiling division for warps when a block size is not a multiple of 32."
+        }
+      ],
+      "focus": [
+        "Use the timeline first for host gaps, launch supply, transfers and dependencies. Low compute and memory throughput can reflect little work rather than a faulty kernel.",
+        "A long scoreboard indicates a dependency on L1TEX work, not proof of DRAM saturation. Not Selected means an eligible warp lost selection to another warp; it can accompany healthy latency hiding.",
+        "Inspect `SchedulerStats` issue activity before chasing stalls. Corroborate with `MemoryWorkloadAnalysis`, `ComputeWorkloadAnalysis`, resource reports and a controlled size or block-size sweep.",
+        "Use `ptxas` register/spill reports and occupancy API limits as static evidence. Theoretical residency is not measured achieved occupancy or throughput; reducing registers can cause spills and make execution slower."
+      ],
+      "reproduce": "Before running, classify a tiny copy, a streaming copy larger than L2, and a matrix-multiply size sweep as candidate launch-, memory- and compute-sensitive regimes. For each, write one falsifier. Collect interleaved event timings, a timeline and static launch/resource evidence; add the relevant minimal counter sections where permitted. Report confirmed, contradicted or unresolved hypotheses rather than forcing all three labels when the evidence is incomplete.",
+      "traps": [
+        "Treating high theoretical occupancy as the goal instead of measuring latency and spill costs.",
+        "Calling every long-scoreboard stall DRAM traffic; local spills and cache-served loads can also create dependencies.",
+        "Inferring a universal bottleneck from one small shape or a stall percentage averaged over different source regions."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can many Not Selected warps be harmless?",
+          "a": "They are eligible to issue, but another warp issued that cycle. The scheduler may be productive; this is not itself a memory dependency."
+        },
+        {
+          "q": "What distinguishes memory latency from saturated DRAM bandwidth?",
+          "a": "Latency-limited work can wait on dependencies while transferring well below sustainable bandwidth. Saturation requires evidence of high actual traffic throughput, not merely waiting warps."
+        },
+        {
+          "q": "Can the occupancy API establish achieved occupancy?",
+          "a": "No. It predicts resource-limited residency. Runtime work distribution, tails and stalls require execution evidence."
+        },
+        {
+          "q": "How can you test a launch-overhead hypothesis without counters?",
+          "a": "Use a short timeline and size/batch sweeps. Look for launch-supply gaps and near-flat small-work latency, while keeping completed timing boundaries consistent."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: three `kernellab` regime predictions, falsifying sweeps and evidence-backed classifications, with unavailable hardware-counter checks left pending.",
+      "stopWhen": "Each of your three regime reports links a predeclared hypothesis to a model, timing, timeline and resource evidence, and clearly separates confirmed conclusions from blocked counter checks.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book supplies the diagnostic workflow; NVIDIA definitions correct its misleading stall shortcut, and the pinned API example plus mini-project cover static and measured evidence."
+      }
+    },
+    {
+      "id": "end-to-end-regressions",
+      "title": "End-to-end translation, regressions and cross-device reproducibility",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "kernel-end-to-end-translation",
+        "regression-negative-regime",
+        "cross-device-portability"
+      ],
+      "outcomes": [
+        "Predict maximum end-to-end gain from measured kernel share, speedup and added overhead.",
+        "Evaluate the same mechanism over a declared shape/dtype distribution and retain losing regimes.",
+        "Produce a reproducible device-specific result and distinguish a second-device experiment from a portability claim."
+      ],
+      "why": "A local kernel improvement may disappear under dispatch, transfers or unchanged work. Integration and retained regressions determine whether the change is useful.",
+      "next": [
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/endpoint-measurement-attribution",
+          "note": "Carry the same boundary and attribution discipline into serving."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/reproduction-package",
+          "note": "Link each scoped claim to a clean reproduction artifact."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpu-kernel-project-gpu3",
+          "title": "Integration, negative regimes and reproducibility",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md#measurement-requirements",
+          "locator": "Architecture constraints; Hardware variants; Milestone B - Instrumentation; Measurement requirements; Design-defense questions 5 and 6; Rubric, Measurement and Reproducibility",
+          "depth": "Use the harness and reporting requirements here. The complete kernel suite and final design defense belong to later sections. A second device is optional; do not simulate timings and call them measured portability."
+        },
+        {
+          "resource": "cs336-a2-profiling-gpu3",
+          "title": "Where model time goes before optimization",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/main/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1, Profiling, opening motivation; section 2.1.4, Problem (`nsys_profile`), parts (a), (b), (d) and (e), p. 6"
+        }
+      ],
+      "focus": [
+        "For baseline time \\(T\\), replaceable critical-path share \\(f\\), local speedup \\(s\\) and added non-overlapped overhead \\(d\\), predict \\(T' = T(1-f+f/s)+d\\). This assumes unchanged remaining work and dependencies; cumulative overlapping kernel time is not a valid share.",
+        "Measure both isolated kernel time and completed invocation time, including validation of shape/dtype/device guards and any layout conversion, dispatch or synchronization required in deployment.",
+        "Declare workload weights and summarize total weighted time, not an unweighted average of speedups. Retain tiny, strided, edge and cold-start cases where the candidate loses.",
+        "A second GPU of the same generation tests another device, not another compute-capability generation. Rebuild, capture its environment and recompute models; with one device, limit the claim to that device and list portability checks not performed."
+      ],
+      "reproduce": "For a synthetic serial workload taking 100 ms, with a replaceable 40 ms kernel accelerated by a factor of 2 and no added overhead, derive 80 ms total time and a speedup of 1.25. Adding 5 ms of dispatch/conversion gives 85 ms and a speedup of about 1.176. Then apply the formula to a retained trace using critical-path share, measure completed invocation latency across your shape matrix, and explain the residual without fitting the share after seeing the answer.",
+      "traps": [
+        "Using the sum of overlapping kernel durations as a fraction of wall time and applying a serial Amdahl model to it.",
+        "Publishing only shapes used for tuning, or dropping no-benefit and slower regimes from the report.",
+        "Calling the same compute capability a guarantee of identical performance, supported features or library dispatch."
+      ],
+      "selfTest": [
+        {
+          "q": "If only 40% of serial runtime is replaceable, what is the ideal speedup limit with zero overhead?",
+          "a": "As local speedup tends to infinity, the limit is \\(1/(1-0.4)=5/3\\), about 1.667. The unchanged 60% remains."
+        },
+        {
+          "q": "Why might a twice-as-fast kernel make an operator slower?",
+          "a": "Dispatch, conversion, extra allocation or synchronization can cost more than the saved kernel time, especially for small shapes."
+        },
+        {
+          "q": "Does passing correctness on two Ampere devices prove cross-generation portability?",
+          "a": "No. It checks those devices and configurations. Other generations, compilers and feature paths need their own compatibility and measurement evidence."
+        },
+        {
+          "q": "Why retain a shape where the candidate loses?",
+          "a": "It constrains the claim and exposes where a fallback or different dispatch choice is needed. It also protects against a misleading aggregate win."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` end-to-end bound, invocation-versus-kernel report, retained regressions and device-scoped reproduction manifest.",
+      "stopWhen": "Your report compares predicted and measured completed invocation gain over a declared workload matrix, retains a no-benefit or losing case, and states exactly which device/version paths were checked.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The project defines end-to-end relevance, negative regimes and hardware scope; the existing CS336 trace locators support attribution and the mini-project provides the integration report."
+      }
+    }
+  ]
+}

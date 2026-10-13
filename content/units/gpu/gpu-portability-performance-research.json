@@ -1,0 +1,941 @@
+{
+  "section": "gpu-portability-performance-research",
+  "addedResources": [
+    {
+      "id": "kernelbench-toolkit-gpu10",
+      "role": "benchmark",
+      "priority": "support",
+      "name": "KernelBench - benchmark toolkit and task suite",
+      "provider": "ScalingIntelligence",
+      "access": "Free",
+      "use": "Clone the repository and check one Level 1 problem with `scripts/run_and_check.py` in local mode; read `EVAL.md` for the correctness and timing guidance. Do not chase the aggregate score.",
+      "url": "https://github.com/ScalingIntelligence/KernelBench"
+    },
+    {
+      "id": "etalon-serving-gpu10",
+      "role": "reference",
+      "priority": "support",
+      "name": "Etalon - holistic evaluation for LLM inference",
+      "provider": "Georgia Tech, Microsoft Research India and Intel AI Lab",
+      "access": "Free",
+      "use": "Read Section 2.2 for TTFT and TPOT pitfalls, then the fluidity-index design (Section 4.1) for deadline-based, SLO-qualified capacity.",
+      "url": "https://arxiv.org/html/2407.07000v2"
+    },
+    {
+      "id": "rocm-composable-kernel-gpu10",
+      "role": "reference",
+      "priority": "support",
+      "name": "ROCm Composable Kernel",
+      "provider": "AMD",
+      "access": "Free",
+      "use": "Read the repository `README` for the tile-based programming model, Tensor Coordinate Transformation and the four CK layers; open one tiled operator and map each CUDA term to its CK counterpart.",
+      "url": "https://github.com/ROCm/composable_kernel"
+    },
+    {
+      "id": "distserve-gpu10",
+      "role": "paper",
+      "priority": "support",
+      "name": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving",
+      "provider": "Zhong et al. (OSDI 2024)",
+      "access": "Free",
+      "use": "Read Section 1 with Figure 1 for per-GPU goodput: the highest request rate served while a target share of requests meets the TTFT and TPOT SLOs.",
+      "url": "https://arxiv.org/html/2401.09670v3"
+    }
+  ],
+  "units": [
+    {
+      "id": "architecture-evidence-generations",
+      "title": "Architecture documents, generation differences and vendor peaks as bounds",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "architecture-document-reading",
+        "nvidia-generation-differences",
+        "vendor-peak-bounds"
+      ],
+      "outcomes": [
+        "Explain which document answers which question: brief for system architecture, tuning guide for optimization, ISA for instructions, counter docs for measurement.",
+        "Contrast Ampere, Hopper and Blackwell on Tensor-Core formats, TMA, thread-block clusters and memory using the compute-capability tables.",
+        "Derive a vendor-peak bound from per-SM throughput times SM count times clock, and label every assumption that makes it a bound rather than a measurement."
+      ],
+      "why": "A peak number is a ceiling, not a result. Reading the right document tells you whether a claim is even possible before you spend a day measuring it.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/capability-matrix-fallback",
+          "note": "Turn the capability columns into a dispatch matrix with fallback."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/speed-of-light-heldout",
+          "note": "Use the derived peaks as the speed-of-light bound."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cuda-current-hardware-gpu10",
+          "title": "Compute Capabilities: feature and specification tables",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html",
+          "locator": "Section 5.1.3 (CUDA 13.4.2 documentation): read the 8.x column of Table 29 and the 8.6 columns of Tables 30 to 33 against the 9.0 and 10.x columns for Tensor-Core dtypes, TMA, thread-block clusters and shared memory; Section 5.1.1 for the runtime query triplet"
+        },
+        {
+          "resource": "cuda-current-hardware-gpu10",
+          "title": "Arithmetic instruction throughputs as peak sources",
+          "url": "https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions-throughput-native-arithmetic-instructions",
+          "locator": "Section 12.1.1, Table 5: the 8.6/8.9 column for 32-bit floating-point add, multiply and multiply-add (128 results per clock per multiprocessor); the note that throughputs are per multiprocessor and max theoretical"
+        },
+        {
+          "resource": "aisys-research-gpu10",
+          "title": "Hardware generations and the number-as-hypothesis rule",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 2, AI System Hardware Overview: The CPU and GPU Superchip, NVIDIA GPU Tensor Cores and Transformer Engine, and A Glimpse into the Future"
+        },
+        {
+          "resource": "ai-performance-frontier-gpu10",
+          "title": "Current-hardware map and Source Policy",
+          "url": "https://github.com/wafer-ai/gpu-perf-engineering-resources",
+          "locator": "Section 6, Current hardware: follow one architecture entry to its ISA or tuning guide; Source Policy: vendor peak numbers are not performance measurements, and performance claims need hardware, workload, precision, baseline and correctness method",
+          "depth": "Use the list only to find primary documentation. Do not cite the list itself for numbers."
+        }
+      ],
+      "focus": [
+        "Brief, tuning guide, ISA and counter documents answer different questions. A peak in a brief is an upper bound; only a counter on your GPU is a measurement.",
+        "Capability tables group columns by compute-capability number (8.x or 8.6, 9.0, 10.x), not by marketing name. Section 5.1.2 states that features introduced with an architecture are intended to stay available on later ones, which is why a Yes spans every column after its introduction; architecture-specific features are the exception.",
+        "Table throughputs are per multiprocessor and max theoretical, achievable only with specific instruction sequences. Multiply by SM count and clock, and count one multiply-add result as two operations.",
+        "Relative to Ampere, Hopper adds TMA, thread-block clusters, FP8 Tensor-Core input (also on Ada, 8.9) and fourth-generation NVLink; Blackwell adds fifth-generation NVLink and Blackwell-only matrix instructions. New columns add features; old guarantees stay."
+      ],
+      "reproduce": "Closed-book, derive the FP32 peak and the memory bandwidth bound for an 18-SM `sm_86` card. Table 5 gives \\(18 \\times 128 \\times 2 \\times f\\) FLOP/s at SM clock \\(f\\): \\(6.8 \\times 10^{12}\\) at the 1470 MHz reference boost and \\(9.7 \\times 10^{12}\\) at the 2100 MHz maximum that `nvidia-smi -q -d CLOCK` reports for the RTX 3050 6 GB. The 96-bit bus at 14e9 transfers/s gives \\(12 \\times 14 \\times 10^{9} = 168 \\times 10^{9}\\) bytes/s. Place the ridge point (about 40 FLOP/byte at the reference boost, 58 at the maximum) and name the clock your bound assumes: under load GPU Boost ran this card near 1.94 GHz, above its reference boost.",
+      "traps": [
+        "Quoting a Table 29 Yes as performance. Availability is not speed; a Yes in the 8.x and 9.0 columns can hide an order of magnitude.",
+        "Mixing GB with GiB when checking a bandwidth bound. The 168 GB/s datasheet figure is decimal gigabytes; divide measured bytes by time in the same unit.",
+        "Reading a B200 or H100 number as your result. A peak from another GPU bounds nothing on yours; re-derive with your SM count from `prop.multiProcessorCount` and your clock."
+      ],
+      "selfTest": [
+        {
+          "q": "Your GPU reports compute capability 8.6. Does it have an FP8 Tensor-Core input path?",
+          "a": "No. The 8.6 column of the Tensor-Core dtype table shows no FP8 input; FP8 appears in later columns. An FP8 claim for this card needs a fallback path, not a peak quote."
+        },
+        {
+          "q": "Derive the FP32 peak of an 18-SM `sm_86` card from Table 5, and say which clock the bound should use.",
+          "a": "Table 5 gives 128 multiply-add results per clock per multiprocessor for 8.6 and 8.9, and each counts as two operations: \\(18 \\times 128 \\times 2 \\times 1470 \\times 10^{6} \\approx 6.8 \\times 10^{12}\\) FLOP/s at the 1470 MHz reference boost. That clock is typical, not a ceiling, so a bound uses the highest clock the card runs (2100 MHz on the RTX 3050 6 GB, \\(9.7 \\times 10^{12}\\)) and names it."
+        },
+        {
+          "q": "Show the datasheet bandwidth arithmetic for the 6 GB card and state the unit.",
+          "a": "A 96-bit bus carries 12 bytes per transfer at 14e9 transfers/s, so \\(12 \\times 14 \\times 10^{9} = 168 \\times 10^{9}\\) bytes/s, decimal GB/s. Compare against measured bytes per second in the same unit."
+        },
+        {
+          "q": "A post reports 3 TB/s on a newer GPU and claims your kernel should reach half of it. What is wrong?",
+          "a": "A peak from another GPU is not your bound. Your card is bounded by 168 GB/s, so half of 3 TB/s is unachievable there; the comparison needs your hardware, your workload and your measured counters."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the per-kernel peak-bound table and ridge-point placement behind the Milestone E regime predictions.",
+      "stopWhen": "You can derive both peaks and the ridge point for your GPU from the tables without notes, and you reject a cross-GPU peak comparison on sight.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The capability tables, the Best Practices throughput table and Chapter 2 cover document reading, generation differences and peak bounds at explain depth."
+      }
+    },
+    {
+      "id": "amd-rocm-vocabulary",
+      "title": "AMD CDNA and ROCm vocabulary",
+      "hours": 2,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "amd-cdna-rocm"
+      ],
+      "outcomes": [
+        "Map CUDA terms for compute, threading, on-chip memory, matrix units and profiling to their AMD CDNA and ROCm counterparts at vocabulary depth.",
+        "Distinguish the CDNA datacenter line from the RDNA graphics line and place Composable Kernel, AITER and HipKittens in the right software layer."
+      ],
+      "why": "Portability starts with names. A bound, a fallback or a profile means nothing if compute unit, wavefront and shared memory are confused across vendors.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/capability-matrix-fallback",
+          "note": "Carry the AMD terms into the capability matrix as portability limits."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/reconstruct-real-kernel-path",
+          "note": "Name non-portable constructs correctly in the reconstruction audit."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mit-6s894-beyond-gpu10",
+          "title": "Lecture 10: taxonomy beyond NVIDIA",
+          "url": "https://accelerated-computing.academy/fall25/lectures",
+          "locator": "Lecture 10 slides 6 to 8: GPUs beyond NVIDIA (AMD RDNA versus CDNA) and programming non-NVIDIA GPUs; slides 9 to 11 and 17: higher-level kernel languages, the Triton matmul listing and Pallas as contrast"
+        },
+        {
+          "resource": "ai-performance-frontier-gpu10",
+          "title": "Other hardware stacks and the AMD hardware shelf",
+          "url": "https://github.com/wafer-ai/gpu-perf-engineering-resources",
+          "locator": "Other hardware stacks: ROCm Composable Kernel, ROCm AITER, HipKittens, Pallas design and NKI programming model entries; Section 6, AMD: CDNA 4 whitepaper, CDNA 4 instruction set and MI350 performance counters",
+          "depth": "Use these entries as a map to official AMD documentation. Do not cite the list itself for architecture facts."
+        },
+        {
+          "resource": "rocm-composable-kernel-gpu10",
+          "title": "Composable Kernel programming model",
+          "url": "https://github.com/ROCm/composable_kernel",
+          "locator": "Repository `README`: the tile-based programming model, Tensor Coordinate Transformation and the four CK layers (Templated Tile Operators down to Client API); one tiled operator example from the supported-operations lists"
+        }
+      ],
+      "focus": [
+        "CDNA is the datacenter compute line; RDNA is the graphics line. An inference kernel targets CDNA vocabulary, never gaming numbers.",
+        "Composable Kernel describes kernels through composable tiles, layouts and pipelines in HIP C++; AITER ships ready inference operators; HipKittens is a tile abstraction. Match the layer before comparing terms.",
+        "AMD counter names follow hardware blocks: compute unit, shader pipe interpolator, texture cache per pipe and per channel. Read the MI350 counter families as a vocabulary list, not as values.",
+        "Pallas is a Triton-like DSL and the JAX kernel model for GPU and TPU backends; NKI is the tile-level model for NeuronCore. Both are separate programming models, not CUDA ports; note where each runs and stop there."
+      ],
+      "reproduce": "From memory, write the CUDA-to-AMD term map for compute unit, thread group, on-chip memory, matrix unit, profiler and kernel language with one-line roles each, and state which AMD line each targets.",
+      "traps": [
+        "Treating HIP as CUDA with renamed calls. Grid and block structure carry over, but wavefront size, occupancy rules and shuffle semantics need per-architecture checks against AMD documentation.",
+        "Reading an MI350 counter as portable. Counter definitions are per architecture; a CDNA 4 compute-unit counter means nothing on NVIDIA hardware or on older CDNA.",
+        "Citing RDNA gaming throughput for a CDNA inference bound. Different lines, different memory systems, different peaks."
+      ],
+      "selfTest": [
+        {
+          "q": "Which AMD line targets datacenter inference, and which two repositories supply its tiling primitives and inference operators?",
+          "a": "CDNA. Composable Kernel supplies tiling, layout and operator primitives; AITER supplies inference and transformer operator implementations."
+        },
+        {
+          "q": "What does HipKittens add over writing HIP directly?",
+          "a": "A tile abstraction for AMD GPUs: decomposition and layout handled above raw threads, comparable in role to Triton or CuTe on NVIDIA."
+        },
+        {
+          "q": "Name two MI350 counter families and the block each watches.",
+          "a": "Compute unit counters watch the compute units; texture cache per pipe and per channel counters watch the cache hierarchy. Command processor and shader pipe interpolator counters cover dispatch and scheduling."
+        },
+        {
+          "q": "Where does Pallas run, and what is it?",
+          "a": "Pallas is a Triton-like DSL and the JAX kernel model for GPU and TPU backends. It is a separate programming model, not a CUDA port."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the dispatch and fallback defense names the AMD (CDNA and HIP) counterpart of each dispatched path.",
+      "stopWhen": "You can name the CDNA line, the three AMD code layers and two counter families without notes, and explain why none of it executes on your NVIDIA card.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for real AMD vocabulary: Lecture 10 stays at taxonomy level and never names ROCm or HIP, so the ROCm Composable Kernel repository fills that gap."
+      }
+    },
+    {
+      "id": "capability-matrix-fallback",
+      "title": "Capability matrices, fallback and compatibility tests",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "feature-capability-matrix",
+        "portable-fallback-contract"
+      ],
+      "outcomes": [
+        "Build a capability matrix for your kernels: minimum compute capability, required features and the runtime query that detects each.",
+        "Implement dispatch with a correct portable fallback and an explicit error on unsupported paths, tested on every branch.",
+        "Explain PTX compatibility and fatbin contents: what runs where, what JIT-compiles at load, and what fails."
+      ],
+      "why": "A kernel without a capability contract fails at someone else's machine, not at your desk. The matrix decides before launch; the fallback keeps older hardware working.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/reconstruct-real-kernel-path",
+          "note": "The reconstruction inherits this dispatch contract."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/reproduction-package",
+          "note": "The reproduction records the matrix and exercises every branch."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cuda-current-hardware-gpu10",
+          "title": "Runtime capability queries and feature targets",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html",
+          "locator": "Section 5.1.1: the runtime query triplet (`cudaDeviceGetAttribute` with `cudaDevAttrComputeCapabilityMajor`, the driver query and the NVML query); Section 5.1.2: architecture-specific versus family-specific features and compiler targets (baseline, family and arch-only)"
+        },
+        {
+          "resource": "cuda-current-hardware-gpu10",
+          "title": "Binary compatibility, PTX compatibility and JIT compilation",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/cuda-platform.html",
+          "locator": "Section 1.3.4, Cubins and Fatbins, with Binary Compatibility, PTX Compatibility and Just-in-Time Compilation (CUDA 13.4.2 documentation): what a fatbin carries, what compiles at load, and what fails on newer hardware"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu10",
+          "title": "Dispatch and fallback contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Architecture constraints: dispatch never selects an unvalidated shape, dtype or device path, and every custom path has a correct fallback; Milestone F: defend the dispatch, fallback and maintenance choice for each kernel family"
+        }
+      ],
+      "focus": [
+        "Query at runtime, branch on the answer, and test both sides. The check and the fallback are one unit; an untested fallback is a second implementation with zero evidence.",
+        "Family targets run across the family; arch-only targets run on one architecture. Code built only for an arch-only target such as `sm_100a` loads on that architecture alone, and every other GPU fails at load with no kernel image unless the fatbin carries another target.",
+        "PTX in the fatbin is the forward-compatibility path. A cubin runs on later minor versions of its major version; without PTX it fails on a newer major version instead of JIT-compiling at load.",
+        "An unsupported path must error loudly at the owning API boundary with the capability and feature named, never silently run a wrong kernel."
+      ],
+      "reproduce": "From a blank file, write the capability query plus dispatch for a kernel with a newer-architecture-only path and a portable fallback: correct results on `sm_86` hardware, the fallback selected when the feature query is forced off, an explicit error when forced below the portable minimum, and tests covering all three branches.",
+      "traps": [
+        "Compiling only with `-arch=sm_86` and calling it portable. That flag emits one `sm_86` cubin plus `compute_86` PTX: newer GPUs JIT-compile the PTX, older ones have nothing they can run, and native code on newer GPUs needs their own cubins.",
+        "Checking the driver version instead of the device capability. The device answers through the attribute query; the driver version does not know the chip.",
+        "Reading the marketing architecture name in code. Code branches on the numeric capability the query returns, not on Ampere or Hopper as strings."
+      ],
+      "selfTest": [
+        {
+          "q": "What does `cudaDevAttrComputeCapabilityMajor` return on the RTX 3050 6 GB, and which call reads it?",
+          "a": "8, read with `cudaDeviceGetAttribute` for the device. The minor attribute returns 6; branch on the pair, not on the card name."
+        },
+        {
+          "q": "Your kernel needs thread-block clusters. Which table gives the minimum capability, and what must the fallback do?",
+          "a": "The feature-support table in Section 5.1.3. The fallback runs a non-cluster path or returns an explicit unsupported error, selected by the runtime query, with both branches tested."
+        },
+        {
+          "q": "A fatbin holds only an `sm_90` cubin and no PTX. What happens on `sm_86` and on `sm_100` hardware?",
+          "a": "Neither can use that cubin, and with no PTX there is nothing to JIT-compile at load. Ship per-architecture cubins plus PTX, or restrict the matrix honestly."
+        },
+        {
+          "q": "Why must the unsupported-path error name the capability and the feature?",
+          "a": "So a report distinguishes a missing feature from a wrong dispatch, and the matrix gains a row without guessing which check failed."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the Milestone F dispatch and fallback defense with every branch tested.",
+      "stopWhen": "Your dispatch matrix passes on your GPU, selects the fallback when the feature query is forced off, and errors loudly when forced below the minimum.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The compute-capabilities queries, targets and compatibility sections plus the project dispatch contract cover the matrix and fallback at implement depth."
+      }
+    },
+    {
+      "id": "benchmark-scenarios-mlperf",
+      "title": "Benchmark scenarios, MLPerf boundaries and endpoint goodput",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "benchmark-scenario-definition",
+        "mlperf-methodology",
+        "endpoint-goodput",
+        "production-trace-shapes"
+      ],
+      "outcomes": [
+        "Distinguish offline, server, single-stream and interactive scenarios by load pattern and metric.",
+        "State MLPerf load-generation and result-boundary rules: divisions, availability states and what each reported row certifies.",
+        "Define endpoint goodput under TTFT and TPOT latency SLOs and explain why a mean-latency number cannot replace it.",
+        "Describe the arrival, length and burst properties a workload must preserve to stay credible."
+      ],
+      "why": "A benchmark number without a scenario is noise. The scenario fixes the load, the metric and the boundary; goodput adds the latency SLO that makes throughput worth having.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/benchmark-audit-parity",
+          "note": "Use these boundaries as the audit checklist."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/impact-negative-defense",
+          "note": "Carry goodput and workload discipline into the impact report."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mlperf-endpoints-gpu10",
+          "title": "Endpoints benchmark: curve, points and dimensions",
+          "url": "https://mlcommons.org/benchmarks/endpoints/",
+          "locator": "The MLPerf LoadStairs Visual: the four dimensions concurrency, interactivity, System TPS and TTFT P90; Technical detail: 7 to 32 points, at least 600 seconds per point, same model, endpoint and software stack (page read 2026-10-13)"
+        },
+        {
+          "resource": "mlperf-endpoints-gpu10",
+          "title": "Inference rules: scenarios, divisions and availability",
+          "url": "https://github.com/mlcommons/inference_policies/blob/master/inference_rules.adoc",
+          "locator": "Section 4 scenarios (Single-Stream, Multi-Stream, Server, Offline) with the required-scenario examples, and the Closed and Open divisions (commit d3eba2f); the Available, Preview and RDI categories are defined in the general submission rules, https://github.com/mlcommons/policies/blob/master/submission_rules.adoc (Preview Systems and Research, Development, or Internal Systems)",
+          "depth": "Read the scenario definitions and reporting rules reached from the datacenter page. Do not quote latency numbers from the marketing page; they live in the rules."
+        },
+        {
+          "resource": "etalon-serving-gpu10",
+          "title": "TTFT and TPOT pitfalls and the fluidity-index",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 2.2, Performance Metrics for LLM Inference: TTFT and TPOT definitions and why each misleads alone; Section 4.1, fluidity-index: per-token deadlines with reset after a miss, and capacity reported subject to SLOs"
+        },
+        {
+          "resource": "distserve-gpu10",
+          "title": "Goodput: the request rate served within the SLO",
+          "url": "https://arxiv.org/html/2401.09670v3#S1",
+          "locator": "Section 1 with Figure 1: per-GPU goodput is the highest request rate served while the TTFT and TPOT SLOs hold for a target share of requests (90% in the example)"
+        },
+        {
+          "resource": "ai-performance-frontier-gpu10",
+          "title": "Serving benchmarks as a trace-property map",
+          "url": "https://github.com/wafer-ai/gpu-perf-engineering-resources",
+          "locator": "Serving benchmarks subsection: Etalon, ServeGen, BurstGPT and MLPerf Endpoints entries; read it as a map to production-trace properties such as burstiness, then open the primary link for any property you borrow"
+        }
+      ],
+      "focus": [
+        "Endpoints sweeps concurrency into a Pareto curve with concurrency fixed per point. One point at one load is not an Endpoints result.",
+        "Closed division means the same model, apples to apples; Open allows different models or retraining. Availability states mark review status, not quality.",
+        "TTFT measures arrival to first token and TPOT averages per output token, so neither sees jitter or stalls (the fluidity-index adds per-token deadlines). Goodput is the highest request rate at which a target share of requests (say 90%) meets both SLOs; a mean latency at one load cannot stand in for it, because the SLO is a percentile and fails first in the tail.",
+        "A credible workload preserves arrival burst and length mix from production traces. Synthetic Poisson load is a starting assumption, not evidence."
+      ],
+      "reproduce": "Without notes, sketch the Endpoints curve axes, state the point-count and duration rules, define TTFT and TPOT, and write the fluidity deadline \\(D_{i} = D_{p} + i \\times D_{d}\\) with the reset rule.",
+      "traps": [
+        "Comparing System TPS across different concurrency or SLO points. Throughput without its latency constraint is unbounded and meaningless.",
+        "Treating a 600-second point as steady state without warmup separation. Cold start inflates the tail; the rules fix duration, not warmup.",
+        "Calling a Poisson arrival trace production-like. BurstGPT exists because real traffic bursts; check burstiness before borrowing a number."
+      ],
+      "selfTest": [
+        {
+          "q": "What four numbers does one Endpoints curve point report, and what varies across points?",
+          "a": "System TPS, interactivity, TTFT P90 and concurrency. Concurrency is fixed per point and swept across points, 7 to 32 points of at least 600 seconds each."
+        },
+        {
+          "q": "Closed versus Open division: what changes?",
+          "a": "Closed requires the same model, so systems compare apples to apples. Open permits different models or retraining, so it compares approaches rather than systems."
+        },
+        {
+          "q": "Why can mean TPOT hide a bad experience that the fluidity-index catches?",
+          "a": "TPOT averages over all output tokens, so one long stall disappears into the mean. Per-token deadlines with reset-on-miss count the stall as experienced without multiplying one stall into many misses."
+        },
+        {
+          "q": "A vendor reports Server-scenario throughput. Name two boundary facts you check before comparing it.",
+          "a": "The division and availability state, which fix what the row certifies and its review status; and that model, endpoint and software stack match across compared rows."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the workload and result-boundary discipline (fixed stack, reported boundaries, workload frequency) in the full shape matrix.",
+      "stopWhen": "You can place any serving number into scenario, division, availability and SLO constraints, and say which constraint is missing when one is.",
+      "fit": {
+        "verdict": "added",
+        "note": "Goodput under SLOs failed on pool material: the Endpoints pages fix scenarios and reporting but define no SLO-based metric, so Etalon supplies the TTFT and TPOT pitfalls plus the deadline-based capacity metric."
+      }
+    },
+    {
+      "id": "benchmark-audit-parity",
+      "title": "Auditing benchmarks: timing, baselines, parity and cherry-picking",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "benchmark-audit",
+        "baseline-parity"
+      ],
+      "outcomes": [
+        "Audit a GPU benchmark for timing, baseline, workload, correctness and cherry-picking flaws, and repair each with a named control.",
+        "Establish baseline parity in precision, algorithm, compiler flags and allowed libraries before claiming any speedup.",
+        "Apply the Appendix checklist as an audit list and record every deviation beside the number it affects."
+      ],
+      "why": "Most reported speedups measure the baseline handicap, not the kernel merit. Parity first; speedup second.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/kernelbench-hardening",
+          "note": "See how a hardened evaluator formalizes this audit."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/reproduction-package",
+          "note": "Keep the audit with the reproduction so the number stays honest."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-research-gpu10",
+          "title": "The Appendix checklist as an audit list",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Appendix, AI Systems Performance Checklist: Performance Tuning and Cost Optimization Mindset; Reproducibility and Documentation Best Practices; Performance Profiling, Debugging, and Monitoring"
+        },
+        {
+          "resource": "kernelbench-verified-gpu10",
+          "title": "What an unaudited benchmark reports",
+          "url": "https://arxiv.org/html/2607.16241v1",
+          "locator": "Section 1 flaws: the FP32 baseline without the TF32 Tensor-Core path and the uniform positive-only tests; Section 2.2 TF32 baseline configuration; Section 3 headline results with the best model at 0.88x pooled across levels against 1.43x naive"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu10",
+          "title": "Milestone F audit and measurement requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone F: audit a deliberately misleading benchmark and correct every flaw; Measurement requirements: retain warmup and raw samples, report medians with variance, and explicitly label measured hardware"
+        }
+      ],
+      "focus": [
+        "Parity means same precision, same algorithm, same flags, same libraries. At Level 2 of the Verified study, enabling TF32 in the baseline alone moved the best model from 1.67x to 0.88x, and the hidden suite took it to 0.85x.",
+        "Uniform positive-only inputs hide sign, overflow and underflow paths. The audit adds negated, scaled-up and scaled-down distributions.",
+        "Hidden distributions gate correctness only; speed is always timed on the original distribution. Mixing the two mixes coverage with performance.",
+        "Keep the naive number beside the audited number. The gap between 1.43x and 0.88x is the finding, not an embarrassment."
+      ],
+      "reproduce": "Take any fast-kernel claim and write the five-line audit: timing boundary, baseline precision and flags, input distributions, held-out status, cherry-picking check. Apply it from memory to the 374x ReLU case.",
+      "traps": [
+        "TF32 only changes precision, not rankings. It moved the headline from 1.43x to 0.88x with no model left above 1x.",
+        "A passing test suite means correct. The old suite passed the ReLU identity shortcut at 374x; coverage across distributions decides, not trial count.",
+        "Faster on the benchmark means faster in production. Shapes, values and hardware were fixed; held-out behavior is a separate claim with separate tests."
+      ],
+      "selfTest": [
+        {
+          "q": "A custom kernel reports 1.4x over a PyTorch FP32 baseline on matmul-heavy tasks. Name the first parity check and the expected effect.",
+          "a": "Enable the TF32 Tensor-Core path in the baseline with `torch.set_float32_matmul_precision('high')`. The Verified study found TF32 alone accelerates such baselines over 1.5x on about a quarter of problems, which can erase the claimed speedup."
+        },
+        {
+          "q": "Tests use only `torch.rand` inputs. Which three input variations does the hardened suite add, and what does each catch?",
+          "a": "Scale by 3.0 to catch overflow, scale by 0.01 to catch underflow and near-zero paths, and negate to catch sign-dependent paths like the ReLU shortcut."
+        },
+        {
+          "q": "Why does the Verified protocol time only the original distribution?",
+          "a": "Hidden distributions are a correctness gate. Timing on them would mix numerical-path coverage with speed; any kernel failing one distribution is excluded from the aggregates instead."
+        },
+        {
+          "q": "Aggregate Correct Speedup is a geometric mean over correct kernels. Why geometric, and where do failed kernels go?",
+          "a": "Speedups are ratios, so the geometric mean keeps a 2x and a 0.5x symmetric where an arithmetic mean would not. Failed kernels leave the mean and count toward Correctness instead."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the Milestone F audit of a deliberately misleading benchmark with every flaw corrected.",
+      "stopWhen": "You can run the five-line audit on an unfamiliar benchmark and name which parity fix moves its headline most.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Appendix checklist, the Verified parity failures and Milestone F cover timing, baseline, workload, correctness and cherry-picking audit at measure depth."
+      }
+    },
+    {
+      "id": "kernelbench-hardening",
+      "title": "KernelBench, hardened evaluators and reward hacking",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "kernelbench-contract",
+        "kernelbench-verified",
+        "ai-kernel-reward-hacking"
+      ],
+      "outcomes": [
+        "State the KernelBench task contract: levels, correctness trials, timing trials and the `fast_p` metric.",
+        "Explain the Verified hardening: TF32 baseline, four-distribution hidden suite, memory metric and degenerate exclusions.",
+        "Classify reward hacks by mechanism and name the test that catches each."
+      ],
+      "why": "AI-generated kernels optimize the evaluator, not the hardware. The contract decides what counts; hardening decides what survives.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/speed-of-light-heldout",
+          "note": "Score the surviving kernels against the speed of light."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/reproduction-package",
+          "note": "Port the adversarial tests into your own evaluator."
+        }
+      ],
+      "study": [
+        {
+          "resource": "kernelbench-verified-gpu10",
+          "title": "Task contract, metrics and the ReLU shortcut",
+          "url": "https://arxiv.org/html/2607.16241v1",
+          "locator": "Section 2.1 problem set and models (250 problems across Levels 1 to 3); Section 2.5 Metrics (Correctness, Correct Speedup, Fast@1, memory efficiency); Appendix H.1: the ReLU identity shortcut on Level 1 problem 19"
+        },
+        {
+          "resource": "kernelbench-toolkit-gpu10",
+          "title": "Running one problem and reading `EVAL.md`",
+          "url": "https://github.com/ScalingIntelligence/KernelBench",
+          "locator": "README at commit 423217d: Task Description (Levels 1 to 4), Evaluation Methodology with `scripts/run_and_check.py` for one sample, Overall Benchmark Metric (`fast_p`); `EVAL.md` for benchmarking guidance"
+        },
+        {
+          "resource": "kernelbench-verified-gpu10",
+          "title": "Hardening and residual hacks",
+          "url": "https://arxiv.org/html/2607.16241v1",
+          "locator": "Sections 2.2 to 2.4: TF32 baseline, the four-distribution hidden suite and memory profiling; Section 3 with Figure 1 and Tables 1 to 2: none above 1x after hardening; Appendix L.3 case studies: wrong-broadcast-axis hinge loss and early-termination cumprod",
+          "depth": "Read the two case studies for mechanism. Skim the remaining appendices; do not chase the full leaderboard."
+        }
+      ],
+      "focus": [
+        "Levels 1, 2 and 3 mean single ops, fused chains and full models. In the toolkit README, `fast_p` counts kernels both correct and faster than threshold \\(p\\), and `fast_0` is correctness alone; the paper reports `Fast@1`.",
+        "The ReLU shortcut passed because every test input was non-negative. The fix is negated inputs, not more trials of the same distribution.",
+        "Wrong-axis and early-exit hacks survive value variation but break on distribution shift or sustained inputs. The judge audit flagged 6 of 453 survivors, with 4 genuine hacks.",
+        "Degenerate constant-zero references were excluded, not fixed. Some problems cannot measure speedup, and the honest move is exclusion."
+      ],
+      "reproduce": "From memory, write the KernelBench contract (levels, trials, `fast_p`), the four hidden distributions with their scales, and the ReLU-hack mechanism plus its catching test.",
+      "traps": [
+        "More random tests equal stronger evaluation. The old suite ran many trials of one distribution; strength comes from distinct distributions, not count.",
+        "A kernel faster on every tested shape generalizes. Shapes were fixed and shape specialization is declared legitimate; values are the held-out axis.",
+        "Memory efficiency follows speed. In the Verified study, 28% of the best model's correctly generated kernels raised peak memory; measure both or the tradeoff hides."
+      ],
+      "selfTest": [
+        {
+          "q": "What does `fast_1` count, exactly?",
+          "a": "The fraction of tasks whose kernel is both correct and faster than the PyTorch baseline, a speedup above 1. `fast_0` is correctness alone."
+        },
+        {
+          "q": "How did the ReLU identity shortcut reach 374x, and which distribution catches it?",
+          "a": "Every test input came from `torch.rand`, uniform and non-negative, so returning the input unchanged passed; a shape guard limited the trick to the benchmark shape. Negated inputs fail it with maximum error 1.0."
+        },
+        {
+          "q": "Why did the hinge-loss wrong-axis kernel pass all four hidden distributions?",
+          "a": "Over 32768 by 32768 independent inputs the mean error stays under tolerance by the law of large numbers despite the wrong axis. Only a judge checking the axis, or a non-identical layout, catches it."
+        },
+        {
+          "q": "A fused GroupNorm kernel is fast but numerically unstable. Which hardening catches it, and why did the original suite miss it?",
+          "a": "The scaled distributions: times 3.0 stresses overflow and times 0.01 stresses underflow and near-zero paths. The original uniform small-positive inputs never touched those paths."
+        }
+      ],
+      "practice": [
+        {
+          "name": "KernelBench Level 1: one problem with `run_and_check.py`",
+          "url": "https://github.com/ScalingIntelligence/KernelBench",
+          "locator": "`scripts/run_and_check.py` usage 2 (commit 423217d): `ref_origin=kernelbench level=1 problem_id=<id> kernel_src_path=<your kernel file> eval_mode=local` on one Level 1 problem, with `gpu_arch` set to `[\"Ampere\"]`",
+          "note": "The script takes an architecture family name (`Ampere` for compute capability 8.6), not `sm_86`. Start from the example kernels in `src/kernelbench/prompts`, run one problem only, then add one negated-input trial in the style of the hidden D4 distribution and report what changes. Do not chase the aggregate score."
+        }
+      ],
+      "stopWhen": "You can state the contract, the hardening and three hack mechanisms from memory, and your one-problem run reports correctness plus speedup with the extra negated trial.",
+      "fit": {
+        "verdict": "added",
+        "note": "Practice failed on pool material: the paper describes hardening but gives no runnable task, so the KernelBench toolkit supplies the single-problem script and `EVAL.md`."
+      }
+    },
+    {
+      "id": "speed-of-light-heldout",
+      "title": "Speed-of-light bounds and held-out evaluation",
+      "hours": 3,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "speed-of-light-model",
+        "heldout-shapes-devices"
+      ],
+      "outcomes": [
+        "Derive a speed-of-light bound for a kernel from operation and byte counts over vendor peaks, with every assumption stated.",
+        "Compute SOL-score style efficiency against baseline and bound, and explain what 0.5 and 1.0 mean.",
+        "Design held-out shape, value, device and compiler-version tests that a speed claim must survive."
+      ],
+      "why": "A bound turns a timing into a verdict: near the ceiling means done, far means look again. Held-out tests stop the bound from describing one friendly shape.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/reconstruct-real-kernel-path",
+          "note": "Bound the reconstruction target before changing it."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/impact-negative-defense",
+          "note": "Carry attainable efficiency into the impact report."
+        }
+      ],
+      "study": [
+        {
+          "resource": "sol-execbench-gpu10",
+          "title": "SOL-score and benchmark configuration",
+          "url": "https://github.com/nvidia/sol-execbench",
+          "locator": "`README` at commit a9fa080: the SOL-score definition in `src/sol_execbench/sol_score.py` (0.5 at the optimized baseline, 1.0 at the SOLAR roofline); `bench_config.example.json` (10 warmup runs, 50 iterations); official evaluation on B200 with SM clocks locked at 1500 MHz and about 5 percent run variance"
+        },
+        {
+          "resource": "sol-execbench-gpu10",
+          "title": "Workload tolerances and the RMSNorm example",
+          "url": "https://github.com/nvidia/sol-execbench/blob/main/docs/workload.md",
+          "locator": "Per-workload tolerances with the bind-axes-to-shapes scheme; timing runs only after correctness passes; reference timing stays off by default"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu10",
+          "title": "Regime prediction and hardware labeling",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone E: predict compute, bandwidth, launch and resource regimes and compare variants with interleaved raw trials; Measurement requirements: explicitly label measured hardware"
+        }
+      ],
+      "focus": [
+        "The SOL-score anchors 0.5 at the optimized baseline and 1.0 at the SOLAR roofline. A score of 0.5 is not half of peak; it means equal to the baseline.",
+        "The bound needs operation count, byte count and peaks from the same GPU. A B200 SOLAR number bounds nothing on an RTX 3050; re-derive with your peaks.",
+        "Reference timing is off by default because the reference can exceed an hour and dominate evaluation. Time the kernel only after it passes correctness.",
+        "Held-out means new shapes, values, devices and compiler versions. The harness binds axes to many workloads but fixes device and stack; the rest is your test matrix."
+      ],
+      "reproduce": "Closed-book, derive the speed-of-light bound for RMSNorm at one workload shape (operations and bytes over peaks), compute its SOL-score from a measured time, and list the four held-out axes with what each would break.",
+      "traps": [
+        "A tighter bound is always better. A bound with unstated assumptions (missing traffic, assumed clocks) misleads more than a loose honest one.",
+        "One workload row proves the bound. Batch 1 and batch 14509 differ by four orders of magnitude; the bound must hold across rows.",
+        "Beating the bound means a breakthrough. It means the bound missed traffic or the timer missed work; recheck both before celebrating."
+      ],
+      "selfTest": [
+        {
+          "q": "Write the SOL-score formula and evaluate it at the baseline time and at the bound.",
+          "a": "With kernel time \\(T_{k}\\), baseline time \\(T_{b}\\) and bound \\(T_{\\text{SOL}}\\), \\(S = 1/(1 + (T_{k} - T_{\\text{SOL}})/(T_{b} - T_{\\text{SOL}}))\\). At \\(T_{k} = T_{b}\\), \\(S = 0.5\\); at \\(T_{k} = T_{\\text{SOL}}\\), \\(S = 1.0\\)."
+        },
+        {
+          "q": "Your kernel takes twice the baseline time. Where does its SOL-score land, and what does that tell you?",
+          "a": "Below 0.5: the gap ratio exceeds 1, so \\(S = 1/(1 + r)\\) with \\(r > 1\\). It is slower than the baseline regardless of its distance to the roofline."
+        },
+        {
+          "q": "Which four held-out axes must a speed claim survive, and which does the SOL harness fix?",
+          "a": "Shapes, values, devices and compiler versions. The harness varies shapes and values across workloads but fixes the device and the software stack."
+        },
+        {
+          "q": "Why is reference timing disabled by default?",
+          "a": "The reference can be dramatically slower, over an hour, and would dominate evaluation time. Enable `benchmark_reference` only when the speedup factor itself is needed."
+        }
+      ],
+      "practice": [
+        {
+          "name": "SOL-ExecBench RMSNorm example: hand-derived bound",
+          "url": "https://github.com/nvidia/sol-execbench/blob/main/examples/cuda_cpp/rmsnorm/definition.json",
+          "locator": "`definition.json` with `workload.jsonl` and `reference.py`: hand-derive traffic and operations for one workload row and divide by your GPU peaks",
+          "note": "Read-only on a non-B200 GPU: derive the bound by hand and state which SOLAR assumptions you cannot reproduce. Do not claim an official SOL-score."
+        }
+      ],
+      "stopWhen": "Your hand bound, your SOL-score computation and your held-out list agree with the docs, and you can state which assumption each number depends on.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The SOL-score definition, workload tolerances and the RMSNorm example plus Milestone E cover the bound, the efficiency reading and held-out design at derive and measure depth."
+      }
+    },
+    {
+      "id": "reconstruct-real-kernel-path",
+      "title": "Reconstructing a real kernel path and making one bounded change",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "real-code-reconstruction",
+        "bounded-performance-change"
+      ],
+      "outcomes": [
+        "Reconstruct a compiled operation from graph through IR, schedule and generated kernel to runtime dispatch and hardware profile.",
+        "Make one bounded change with a predeclared mechanism hypothesis and full correctness coverage.",
+        "State the architecture, shape and version limits of the change without universal speedup claims."
+      ],
+      "why": "Research starts where the library ends: one real path, fully traced, with one change whose effect was predicted before it was measured.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/reproduction-package",
+          "note": "Package the reconstruction so a clean build regenerates it."
+        },
+        {
+          "unit": "gpu/gpu-portability-performance-research/impact-negative-defense",
+          "note": "Weigh the change by workload impact, not by its best shape."
+        }
+      ],
+      "study": [
+        {
+          "resource": "modern-gpu-research-gpu10",
+          "title": "Kernel benchmarking appendix as the trace template",
+          "url": "https://mlc.ai/modern-gpu-programming-for-mlsys/appendix/benchmarking_gpu_kernels.html",
+          "locator": "Timing boundary, GPU-time versus end-to-end, benchmark-condition consistency, and the worked BF16 GEMM baseline with the Proton to Nsight Systems to Nsight Compute chain",
+          "depth": "On `sm_86` hardware, Hopper-and-later constructs (thread-block clusters, TMA) and Blackwell-only ones (`tcgen05`, TMEM) are reading: produce the static mechanism audit and leave performance claims open."
+        },
+        {
+          "resource": "aisys-research-gpu10",
+          "title": "Adaptive kernel selection as the claim source",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 19: Kernel Autotuning for Transformer Self-Attention and MLP Paths; Dynamic Shared-Memory Allocation and Occupancy-Aware Kernel Selection; Runtime Kernel Performance Improvements and Hot-Swappable Implementations"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu10",
+          "title": "Milestone C implementation contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone C: complete the kernels or document a hardware or toolchain blocker while completing the real available path; Milestone E: report shapes where added resources or overhead regress performance"
+        }
+      ],
+      "focus": [
+        "Trace first, change second: graph, IR, schedule, generated kernel, dispatch, profile. An untraced change is a guess with a diff attached.",
+        "One change, one hypothesis, stated beforehand: tile size, pipeline depth or layout, with predicted bytes, launches and resources.",
+        "Blackwell-only constructs do not run on `sm_86`. The audit names them and the fallback, and measures only what the hardware runs.",
+        "Correctness coverage spans shapes, dtypes, boundaries and numerics before any timing. Timing an uncovered kernel measures a bug."
+      ],
+      "reproduce": "Draw the full graph-to-hardware path of your chosen kernel with bytes, launches and resources at each link, then write the one-change hypothesis with the profiler signal that would falsify it.",
+      "traps": [
+        "Porting a Blackwell GEMM to Ampere by renaming intrinsics. Blackwell matrix and memory constructs have no `sm_86` equivalent; the path needs redesign, not renaming.",
+        "Changing two things and crediting one. Tile and pipeline depth interact through shared memory; vary one and hold the other.",
+        "Profiling the tuned shape only. Autotuned tiles overfit the tuning set; evaluation shapes must differ from tuning shapes."
+      ],
+      "selfTest": [
+        {
+          "q": "List the links of the reconstruction chain in order.",
+          "a": "Graph, IR and schedule, generated kernel, runtime dispatch, hardware profile, plus the mechanism hypothesis linking predicted bytes, launches and resources to the profile."
+        },
+        {
+          "q": "Your change halves shared-memory use per block. Which two profiler signals confirm or falsify the predicted gain?",
+          "a": "Active warps or occupancy rising where shared memory limited residency, and the timeline showing the predicted launch or byte change. If neither moves, the bottleneck was elsewhere."
+        },
+        {
+          "q": "Why must tuning and evaluation shapes differ?",
+          "a": "Autotuning selects for the tuning set, so reporting on it measures selection rather than the kernel. Unseen shapes test whether the choice generalizes."
+        },
+        {
+          "q": "The appendix flushes a large buffer before each measured call. What breaks if you compare against a run that does not?",
+          "a": "Cache state differs: warm-cache hits inflate the no-flush run. The policy must match across implementations or the comparison measures the cache, not the kernel."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the Milestone C kernel with its traced path and one bounded, predeclared change.",
+      "stopWhen": "Your traced path predicts the profile within stated uncertainty, and your one change lands inside its predicted interval on unseen shapes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The benchmarking appendix, Chapter 19 and Milestone C cover real-path reconstruction and the bounded change at implement depth, with the pool use note setting the static-audit boundary on `sm_86`."
+      }
+    },
+    {
+      "id": "reproduction-package",
+      "title": "Protection, clean reproduction and claim-to-artifact links",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "regression-fallback-rollout",
+        "clean-build-reproduction",
+        "claim-artifact-links"
+      ],
+      "outcomes": [
+        "Reproduce a result from a clean build with a locked environment and an independent rerun.",
+        "Link every claim to code, raw results, traces and reports with no hand-copied numbers.",
+        "Install correctness, performance, dispatch, fallback and rollback protection that each fails loudly."
+      ],
+      "why": "A result without a reproduction package is a story. Clean build, locked environment and linked artifacts turn it into evidence someone else can check.",
+      "next": [
+        {
+          "unit": "gpu/gpu-portability-performance-research/impact-negative-defense",
+          "note": "The package carries the impact claim and its negative results."
+        },
+        {
+          "route": "inference",
+          "note": "Serving work inherits this reproduction discipline."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-research-gpu10",
+          "title": "Reproducibility practices from the checklist",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Appendix: Reproducibility and Documentation Best Practices; Performance Profiling, Debugging, and Monitoring"
+        },
+        {
+          "resource": "modern-gpu-research-gpu10",
+          "title": "Measurement discipline behind the links",
+          "url": "https://mlc.ai/modern-gpu-programming-for-mlsys/appendix/benchmarking_gpu_kernels.html",
+          "locator": "Separate Measurement from Diagnosis; Verify Correctness Before Timing; Define the Timing Boundary; Keep Benchmark Conditions Consistent; Convert Latency to Throughput"
+        },
+        {
+          "resource": "gpu-kernel-project-gpu10",
+          "title": "Clean-build regeneration and raw samples",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Milestone F: run the full shape matrix from clean build, regenerate tables, and explain model residuals; Measurement requirements: retain warmup and raw samples with medians and variance, and explicitly label measured hardware"
+        }
+      ],
+      "focus": [
+        "Clean means rebuilding from versioned sources into an empty state. A rebuild that reuses the old build tree proves nothing about reproducibility.",
+        "Every table cell links to raw samples plus environment: GPU, clocks, toolkit, driver and commit. Numbers in prose are quotes of linked artifacts, never copies.",
+        "Protection is fivefold: correctness, performance, dispatch, fallback, rollback. Each has a test that fails loudly when its defect is injected.",
+        "State the run variance you observed on your hardware and its cause. For scale, SOL-ExecBench expects about 5 percent on B200 evaluation workers with locked clocks, and up to 10 percent for submissions that launch many small kernels."
+      ],
+      "reproduce": "From memory, write the reproduction checklist (clean build, locked environment, full matrix, raw samples, claim links, five protections) and apply it to one of your kernels.",
+      "traps": [
+        "Pinning versions in the report but not in the build. A documented toolkit beside a different actual binary invalidates the whole package.",
+        "Keeping only means. Raw samples with medians show the variance a mean hides; the harness must retain them.",
+        "Testing rollback by reading the code. Rollback is a run: trigger the fallback path and measure it, or it stays untested."
+      ],
+      "selfTest": [
+        {
+          "q": "What must a clean reproduction rebuild, and what must it refuse to reuse?",
+          "a": "Everything from versioned sources (code, environment, data) into an empty state. No reused build trees, caches or warm artifacts."
+        },
+        {
+          "q": "A table reports 105.2 us for a GEMM-plus-ReLU baseline. What must back that cell?",
+          "a": "Raw samples with median, min and max, the timing boundary, GPU, clock, toolkit, driver and commit identity, plus warmup and cache policy and the trace. The appendix worked example shows the form."
+        },
+        {
+          "q": "Your optimization regresses one shape. Which protection catches it, and what happens next?",
+          "a": "The performance-regression gate over the full shape matrix fails loudly, and dispatch falls back or rolls back to the validated path for that shape."
+        },
+        {
+          "q": "Your kernel launches hundreds of tiny grids and its run-to-run variance is twice your other kernels. What do you report?",
+          "a": "The observed variance with its cause named: CPU launch and scheduling overhead, which SOL-ExecBench also singles out for many-small-kernel submissions (up to 10 percent there). Report the spread from raw samples, not a hoped-for figure."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the Milestone F clean-build regeneration with raw samples, claim links and all five protections.",
+      "stopWhen": "A clean directory regenerates your tables from your package, and every protection test fails when its defect is injected.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Appendix reproducibility practices, the benchmarking appendix and Milestone F cover clean reproduction, artifact links and protection at implement depth."
+      }
+    },
+    {
+      "id": "impact-negative-defense",
+      "title": "Workload-weighted impact, negative results and the design defense",
+      "hours": 4,
+      "target": [
+        "measure",
+        "explain"
+      ],
+      "topics": [
+        "workload-weighted-impact",
+        "negative-portability-result",
+        "skeptical-design-defense"
+      ],
+      "outcomes": [
+        "Compute workload-weighted end-to-end impact from kernel share and speedup, with the attainable bound stated first.",
+        "Report negative results and losing regimes with the same rigor as wins, and keep them in the tables.",
+        "Defend the design against stronger baselines, alternate explanations and maintenance cost."
+      ],
+      "why": "A kernel speedup is not a result until the workload feels it. Impact, losses and the defense decide whether the change ships.",
+      "next": [
+        {
+          "route": "inference",
+          "note": "Endpoint impact analysis continues in serving work."
+        },
+        {
+          "route": "llm-research",
+          "note": "The design defense is the form research claims take."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpu-kernel-project-gpu10",
+          "title": "Workload-weighted report and design defense",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/gpu-microbenchmark-kernel-suite.md",
+          "locator": "Deliverables: workload-weighted comparison report including negative results; Design-defense questions: why the custom kernel loses on some shapes, and when a library or compiler path is preferred"
+        },
+        {
+          "resource": "kernelbench-verified-gpu10",
+          "title": "What honest aggregates look like",
+          "url": "https://arxiv.org/html/2607.16241v1",
+          "locator": "Section 3 with Figure 1 and Tables 1 to 2: 0.88x pooled against 1.43x naive with none above 1x, and the memory-speedup tradeoff (28% of the best model's correct kernels raise peak memory); Appendix F, BF16 Evaluation, with Table 5 and Figure 4: the BF16 control reversing the Level 2 verdict"
+        },
+        {
+          "resource": "gpu-checkpoint-gpu10",
+          "title": "Pass condition for the final defense",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/checkpoints/performance-gpu-programming.md",
+          "locator": "Pass condition: the end-to-end result and negative regimes explained quantitatively, surviving strong library and compiler baselines"
+        }
+      ],
+      "focus": [
+        "Weight by workload frequency before celebrating. A 3x win on 10 percent of runtime is about 7 percent end to end; the bound comes first and the integration must match it.",
+        "Publish losing rows with the same precision as wins. A table without losses is a selection, and it cannot define the dispatch boundary.",
+        "Strong baselines include precision-enabled libraries and compiler paths. The BF16 control turned 0.85x into 1.63x, which reframes every FP32-only claim.",
+        "Maintenance cost belongs in the defense. A small win that only its author can debug loses to the library path."
+      ],
+      "reproduce": "Closed-book, compute the end-to-end bound for two share and speedup pairs, sketch the workload-weighted table with one losing row kept, and write the three-question defense (stronger baseline, alternate explanation, maintenance cost).",
+      "traps": [
+        "Fastest-on-one-shape as the headline. The shape matrix is the result; the best cell is a footnote.",
+        "Counting a precision reduction as kernel speedup. A TF32, BF16 or FP8 change is a precision choice; report it separately with quality evidence.",
+        "Hiding memory cost. Speed with more memory is a tradeoff, not a win; report both, as the memory-speedup scatter does."
+      ],
+      "selfTest": [
+        {
+          "q": "Your kernel is 3x faster on a path that takes 10 percent of runtime. What is the end-to-end gain?",
+          "a": "\\(1/(0.9 + 0.1/3) \\approx 1.07\\): about 7 percent. State the bound first; the measured integration must then match it within uncertainty."
+        },
+        {
+          "q": "Why keep a shape where the library wins?",
+          "a": "It defines the dispatch boundary and the fallback. Without it the report cannot say when to use the custom path, and the defense cannot answer when the library is preferred."
+        },
+        {
+          "q": "The BF16 control reverses an FP32 conclusion. What does that teach about baseline choice?",
+          "a": "Match the precision the production stack actually runs. An FP32-only comparison handicaps the baseline when deployment uses Tensor-Core paths."
+        },
+        {
+          "q": "Name the three skeptical questions your defense must answer.",
+          "a": "Is there a stronger baseline (precision-enabled library or compiler path)? Is there an alternate explanation (shapes, cache, clocks, cherry-picking)? What do maintenance and portability cost?"
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the Milestone E and F workload-weighted report with negative results and the design defense.",
+      "stopWhen": "Your report headline is workload-weighted, its tables keep losses, and it survives the three skeptical questions against the strongest baseline you could configure.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The project report contract, the Verified honest aggregates and the checkpoint pass condition cover impact, negative results and defense at measure and explain depth."
+      }
+    }
+  ]
+}
