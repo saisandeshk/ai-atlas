@@ -16,15 +16,23 @@ const curriculum = mergeUnits(
 const stageOutputDirectory = path.join(projectRoot, 'content', 'stages');
 const trackOutputDirectory = path.join(projectRoot, 'content', 'tracks');
 
-// Content marks inline math as \( ... \) for KaTeX on the site. GitHub
-// renders inline math written as $`...`$, which no shell variable or price in
-// the content can be mistaken for.
+// Content marks inline math as \( ... \) for KaTeX on the site and inline
+// code with backticks, which Markdown already reads as code. GitHub renders
+// inline math written as $`...`$, which no shell variable or price in the
+// content can be mistaken for. Code spans pass through untouched.
 function githubMath(markdown) {
-  return markdown.replace(/\\\(([\s\S]+?)\\\)/g, (_, source) => `$\`${source}\`$`);
+  return markdown.replace(/\\\(([\s\S]+?)\\\)|`[^`\n]+`/g, (span, source) =>
+    source === undefined ? span : `$\`${source}\`$`,
+  );
 }
 
 function label(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// Ends a field with a full stop unless it already ends a sentence.
+function sentence(value) {
+  return /[.!?]$/.test(value) ? value : `${value}.`;
 }
 
 function routeMarkdown(stage, routeKind) {
@@ -162,7 +170,7 @@ function unitsMarkdown(section) {
       ...unit.study.map((item, itemIndex) => {
         const link = item.url ? `[${item.title}](${item.url})` : item.title;
         const depth = item.depth ? ` Depth: ${item.depth}` : '';
-        return `${itemIndex + 1}. ${link} (${resourceName.get(item.resource)}) - ${item.locator}.${depth}`;
+        return `${itemIndex + 1}. ${link} (${resourceName.get(item.resource)}) - ${sentence(item.locator)}${depth}`;
       }),
       '',
       '**Focus**',
@@ -180,7 +188,7 @@ function unitsMarkdown(section) {
       ...(unit.practice.length
         ? unit.practice.map(
             (item) =>
-              `- [${item.name}](${item.url}) - ${item.locator}${item.note ? `. ${item.note}` : ''}`,
+              `- [${item.name}](${item.url}) - ${item.note ? `${sentence(item.locator)} ${item.note}` : item.locator}`,
           )
         : [`- ${unit.practiceNote}`]),
       '',

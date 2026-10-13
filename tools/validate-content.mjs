@@ -164,11 +164,13 @@ for (const sourceField of ['sourceRoadmap', 'sourceSurvey']) {
   await validateSourceReference(sourcePath, `product.${sourceField}`);
 }
 
-// Inline math is LaTeX between \( and \), typeset by KaTeX (lib/math.tsx).
-// Every formula must parse strictly, delimiters must pair up, and fields that
-// are addresses, identifiers or shell commands never hold math.
-const mathPattern = /\\\(([\s\S]+?)\\\)/g;
-const noMathKeys = new Set([
+// Inline math is LaTeX between \( and \), typeset by KaTeX, and inline code
+// sits between backticks (lib/math.tsx). Whichever span opens first wins.
+// Every formula must parse strictly, delimiters must pair up, code never holds
+// an address (prose addresses become links), and fields that are addresses,
+// identifiers or shell commands hold neither.
+const spanPattern = /\\\(([\s\S]+?)\\\)|`([^`\n]+)`/g;
+const plainKeys = new Set([
   'id',
   'url',
   'resource',
@@ -180,15 +182,24 @@ const noMathKeys = new Set([
 ]);
 
 function checkMath(value, label, key) {
-  if (!value.includes('\\(') && !value.includes('\\)')) return;
-  if (noMathKeys.has(key)) {
-    errors.push(`${label} holds math delimiters, but this field is not typeset`);
+  if (!/\\[()]|`/.test(value)) return;
+  if (plainKeys.has(key)) {
+    errors.push(`${label} holds math or code delimiters, but this field is not typeset`);
     return;
   }
-  const rest = value.replace(mathPattern, '');
+  const rest = value.replace(spanPattern, '');
   if (rest.includes('\\(') || rest.includes('\\)'))
     errors.push(`${label} has an unpaired math delimiter`);
-  for (const [, source] of value.matchAll(mathPattern)) {
+  if (rest.includes('`'))
+    errors.push(`${label} has an unpaired backtick`);
+  for (const [, source, code] of value.matchAll(spanPattern)) {
+    if (code !== undefined) {
+      if (/https?:\/\//.test(code))
+        errors.push(`${label} has an address inside code; leave addresses as plain text: ${code}`);
+      if (code !== code.trim())
+        errors.push(`${label} has code with leading or trailing space: \`${code}\``);
+      continue;
+    }
     try {
       katex.renderToString(source, { throwOnError: true, strict: 'error' });
     } catch (error) {
@@ -202,6 +213,13 @@ function checkStrings(value, label, key = '') {
     if (/[–—]/.test(value))
       errors.push(`${label} contains an en dash or em dash`);
     checkMath(value, label, key);
+    if (!plainKeys.has(key)) {
+      const bare = value
+        .replace(spanPattern, ' ')
+        .match(/(?<![\w./@-])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|io|net|dev|ai|edu|academy)\/[^\s)]*/);
+      if (bare)
+        errors.push(`${label} has an address without https://, which the site cannot link: ${bare[0]}`);
+    }
     return;
   }
   if (Array.isArray(value)) {

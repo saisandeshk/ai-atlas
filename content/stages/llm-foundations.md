@@ -64,40 +64,40 @@ A tokenizer receives encoded text, not the glyphs on your screen. A silent decod
 **Study**
 
 1. [CS336 Assignment 1: Unicode and encodings](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Sections 2.1 and 2.2, including Problems (unicode1) and (unicode2) (pp. 3 to 5); Section 2.6.2, Decoding text (p. 11).
-2. [Canonical and compatibility normalization](https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize) (Python unicodedata - normalization forms) - unicodedata.normalize: NFC, NFD, NFKC and NFKD, with the cedilla and Roman numeral examples; unicodedata.unidata_version.
-3. [Normalization and pre-tokenization](https://huggingface.co/learn/llm-course/chapter6/4#normalization) (Hugging Face LLM Course - tokenizer translation) - Normalization, Pre-tokenization and SentencePiece: normalize_str and the repeated-space examples. Depth: Stop before Algorithm overview. Use the library calls to inspect behavior, not to replace your later blank-file implementation.
+2. [Canonical and compatibility normalization](https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize) (Python unicodedata - normalization forms) - `unicodedata.normalize`: NFC, NFD, NFKC and NFKD, with the cedilla and Roman numeral examples; `unicodedata.unidata_version`.
+3. [Normalization and pre-tokenization](https://huggingface.co/learn/llm-course/chapter6/4#normalization) (Hugging Face LLM Course - tokenizer translation) - Normalization, Pre-tokenization and SentencePiece: `normalize_str` and the repeated-space examples. Depth: Stop before Algorithm overview. Use the library calls to inspect behavior, not to replace your later blank-file implementation.
 
 **Focus**
 
-- Python len(str) counts code points, not visible grapheme clusters. UTF-8 uses one to four bytes per Unicode scalar value; token counts depend on the tokenizer.
+- Python `len(str)` counts code points, not visible grapheme clusters. UTF-8 uses one to four bytes per Unicode scalar value; token counts depend on the tokenizer.
 - NFC merges canonically equivalent spellings. NFKC also collapses compatibility distinctions; lowercasing and accent stripping are separate choices.
 - Rejecting malformed UTF-8, replacing it and preserving raw bytes are different contracts. The CS336 text decoder uses replacement, not a reversible arbitrary-byte interface.
 - Record the encoding, error policy, normalization form and Unicode database version before comparing counts or content hashes.
 
-**Reproduce:** Without notes, make a count table for 'é', 'e\u0301', '牛' and chr(0): code points and UTF-8 bytes before and after NFC. Explain why the first two become identical under NFC, but a token count still needs a named tokenizer.
+**Reproduce:** Without notes, make a count table for `'é'`, `'e\u0301'`, `'牛'` and `chr(0)`: code points and UTF-8 bytes before and after NFC. Explain why the first two become identical under NFC, but a token count still needs a named tokenizer.
 
 **Traps**
 
 - Decoding one byte at a time. A UTF-8 character can span several bytes, so concatenate token bytes before decoding.
 - Promising raw-text round trips after lowercasing or normalization. Lost distinctions cannot be recovered from token IDs alone.
-- Using errors='ignore' as cleanup. It deletes malformed bytes and can make distinct raw documents look identical.
+- Using `errors='ignore'` as cleanup. It deletes malformed bytes and can make distinct raw documents look identical.
 
 **Practice**
 
-- [Hugging Face LLM Course: cased versus uncased normalization](https://huggingface.co/learn/llm-course/chapter6/4#normalization) - Try it out! in Normalization: pass 'Héllò hôw are ü?' to bert-base-cased and bert-base-uncased normalizers. Write down the erased distinctions. Then check the count table from Reproduce with Python and state an explicit invalid-byte policy for your corpus.
+- [Hugging Face LLM Course: cased versus uncased normalization](https://huggingface.co/learn/llm-course/chapter6/4#normalization) - Try it out! in Normalization: pass `'Héllò hôw are ü?'` to bert-base-cased and bert-base-uncased normalizers. Write down the erased distinctions. Then check the count table from Reproduce with Python and state an explicit invalid-byte policy for your corpus.
 
 **Stop when:** Your count table agrees with Python, and you can predict the cased/uncased outputs and explain exactly what your decoding and normalization policy loses.
 
 <details>
 <summary>Self-test</summary>
 
-1. Why can 'é' and 'e\u0301' look identical but have different lengths?
-   - The first has one code point and two UTF-8 bytes. The second has two code points and three bytes. Both represent the same canonical text; NFC maps both to 'é'.
-2. What happens to the Roman numeral 'Ⅰ' under NFC and NFKC?
-   - NFC retains it. NFKC maps it to the Latin capital letter 'I', erasing the compatibility distinction.
+1. Why can `'é'` and `'e\u0301'` look identical but have different lengths?
+   - The first has one code point and two UTF-8 bytes. The second has two code points and three bytes. Both represent the same canonical text; NFC maps both to `'é'`.
+2. What happens to the Roman numeral `'Ⅰ'` under NFC and NFKC?
+   - NFC retains it. NFKC maps it to the Latin capital letter `'I'`, erasing the compatibility distinction.
 3. Does complete byte vocabulary coverage make replacement decoding reversible for malformed input?
    - No. Token bytes can preserve the input, but replacing malformed UTF-8 with U+FFFD loses information. Keep a separate raw-byte path if that round trip is promised.
-4. Is chr(0) an empty string or a text terminator in Python?
+4. Is `chr(0)` an empty string or a text terminator in Python?
    - Neither. It is the NUL code point, has length one and encodes as byte 0. It may be invisible when printed but remains in the string.
 
 </details>
@@ -119,7 +119,7 @@ Every later count in this stage, from sequence lengths to KV-cache bytes, is mea
 **Study**
 
 1. [BPE tokenizer from scratch (notebook)](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/05_bpe-from-scratch/bpe-from-scratch.ipynb) (LLMs from Scratch companion - tokenization and data loading) - Sections 1.1 to 1.4 for bytes, the vocabulary and a worked example, then 3.1 for training, encoding and decoding. Depth: Skim section 2, the simple implementation. Skip 3.3, loading OpenAI's GPT-2 files, until the identity unit.
-2. [CS336 Assignment 1 handout](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Section 2.4, BPE Tokenizer Training, with Example (bpe_example) (pp. 5 to 7), then Section 2.5 on removing special tokens before pre-tokenization and optimizing the merge step (pp. 8 to 9).
+2. [CS336 Assignment 1 handout](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Section 2.4, BPE Tokenizer Training, with Example (`bpe_example`) (pp. 5 to 7), then Section 2.5 on removing special tokens before pre-tokenization and optimizing the merge step (pp. 8 to 9).
 
 **Focus**
 
@@ -128,19 +128,19 @@ Every later count in this stage, from sequence lengths to KV-cache bytes, is mea
 - Ties go to the lexicographically greater pair. Without a fixed rule, two correct trainers produce different merge lists.
 - After a merge, only the counts of pairs that overlap the merged occurrences change. Updating just those makes training fast.
 
-**Reproduce:** By hand, train on the CS336 example corpus (low x5, lower x2, widest x3, newest x6) for six merges and get s t, e st, o w, l ow, w est, n e. Then tokenize newest as [ne, west].
+**Reproduce:** By hand, train on the CS336 example corpus (low x5, lower x2, widest x3, newest x6) for six merges and get s t, e st, o w, l ow, w est, n e. Then tokenize newest as `[ne, west]`.
 
 **Traps**
 
-- Decoding token bytes to str to compare or print them. A merged token can be a partial UTF-8 sequence, so decoding fails or maps distinct tokens to the same replacement character.
-- Pre-tokenizing before splitting on special tokens. Their text then enters the pair counts as ordinary pieces such as <| and endoftext, and steals merges.
-- Treating vocab_size as the number of merges. It includes the 256 byte values, the merges and the special tokens.
+- Decoding token bytes to `str` to compare or print them. A merged token can be a partial UTF-8 sequence, so decoding fails or maps distinct tokens to the same replacement character.
+- Pre-tokenizing before splitting on special tokens. Their text then enters the pair counts as ordinary pieces such as `<|` and `endoftext`, and steals merges.
+- Treating `vocab_size` as the number of merges. It includes the 256 byte values, the merges and the special tokens.
 
 **Practice**
 
-- [CS336 Assignment 1: train_bpe](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_train_bpe.py) - Problem (train_bpe) in Section 2.4; connect your trainer to run_train_bpe in tests/adapters.py and pass tests/test_train_bpe.py. The public tests compare your merges and vocabulary with a reference, check special-token handling, and require training on the small fixture in under 1.5 seconds. Implement it in your own repository.
+- [CS336 Assignment 1: `train_bpe`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_train_bpe.py) - Problem (`train_bpe`) in Section 2.4; connect your trainer to `run_train_bpe` in `tests/adapters.py` and pass `tests/test_train_bpe.py`. The public tests compare your merges and vocabulary with a reference, check special-token handling, and require training on the small fixture in under 1.5 seconds. Implement it in your own repository.
 
-**Stop when:** You reproduce the six example merges by hand, and your own trainer passes all three tests in tests/test_train_bpe.py.
+**Stop when:** You reproduce the six example merges by hand, and your own trainer passes all three tests in `tests/test_train_bpe.py`.
 
 <details>
 <summary>Self-test</summary>
@@ -151,7 +151,7 @@ Every later count in this stage, from sequence lengths to KV-cache bytes, is mea
    - (BA, A). The rule takes the lexicographically greatest pair, and BA sorts after A and B.
 3. After (s, t) merges into st, which pair counts can change?
    - Only counts next to the merged occurrences. Each neighbouring pair (x, s) or (t, y) loses those occurrences, the new pairs (x, st) and (st, y) gain them, and (s, t) loses every occurrence that merged. All other counts stay the same.
-4. A training file contains [Doc 1]<|endoftext|>[Doc 2]. What goes wrong if you pre-tokenize it without splitting on the special token first?
+4. A training file contains [Doc 1]`<|endoftext|>`[Doc 2]. What goes wrong if you pre-tokenize it without splitting on the special token first?
    - The special token's text is pre-tokenized like ordinary text, so its pieces enter the pair counts and can earn merges. The trainer should split on special tokens so that they act as hard boundaries and contribute nothing to the counts.
 
 </details>
@@ -173,9 +173,9 @@ A shorter token sequence buys context space, but a larger vocabulary costs param
 
 **Study**
 
-1. [Unigram tokenization](https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm) (Hugging Face LLM Course - tokenizer translation) - Training algorithm, Tokenization algorithm and Back to training; the Viterbi explanation and the 'huggun' Now your turn! question. Depth: Stop before Implementing Unigram. Recompute examples from the frequency table: the printed 'pug' products mistakenly use 5 rather than 17 for p and pu.
+1. [Unigram tokenization](https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm) (Hugging Face LLM Course - tokenizer translation) - Training algorithm, Tokenization algorithm and Back to training; the Viterbi explanation and the `'huggun'` Now your turn! question. Depth: Stop before Implementing Unigram. Recompute examples from the frequency table: the printed `'pug'` products mistakenly use 5 rather than 17 for p and pu.
 2. [BPE vocabulary sizes and special tokens](https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part1-foundation/02-bpe-tokenizer.ipynb) (Modern LLM Notebook - tokenization and data experiments) - Vocabulary Sizes in Practice and Appendix: Special Tokens and the Vocabulary, immediately before Summary. Depth: Treat the vocabulary-size ranges as examples, not an optimum for every language or corpus. Skip the later step-by-step BPE appendix.
-3. [Compression and special-token contracts](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Section 2.3 (p. 5), Special tokens in Section 2.4 (pp. 6 to 7), and Problem (tokenizer_experiments), parts (a) and (b) in Section 2.7 (p. 12). Depth: Use the experiment's matched-sample method on small local slices; do not train the full OpenWebText tokenizer here.
+3. [Compression and special-token contracts](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Section 2.3 (p. 5), Special tokens in Section 2.4 (pp. 6 to 7), and Problem (`tokenizer_experiments`), parts (a) and (b) in Section 2.7 (p. 12). Depth: Use the experiment's matched-sample method on small local slices; do not train the full OpenWebText tokenizer here.
 4. [Reserved-token policy](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#architecture-constraints) (Tokenizer and Corpus Pipeline - reduced foundation slice) - Architecture constraints: reserved tokens cannot be produced from ordinary text unless explicitly escaped or policy-defined.
 
 **Focus**
@@ -185,7 +185,7 @@ A shorter token sequence buys context space, but a larger vocabulary costs param
 - Adding $`\Delta V`$ tokens adds $`\Delta V \times d`$ embedding parameters, plus the same again for an untied output head. Shorter sequences do not make vocabulary costs disappear.
 - CS336 deliberately recognizes configured special strings. A corpus-facing interface needs a separate policy for untrusted literals and trusted boundary insertion.
 
-**Reproduce:** Closed-book, score both segmentations of 'ab' with $`P(a)=0.4`$, $`P(b)=0.4`$ and $`P(ab)=0.2`$, and select [ab]. Then derive that 12,000 bytes at 3 versus 4 bytes/token require 4,000 versus 3,000 tokens, or 8 versus 6 length-512 windows if the tail is padded.
+**Reproduce:** Closed-book, score both segmentations of `'ab'` with $`P(a)=0.4`$, $`P(b)=0.4`$ and $`P(ab)=0.2`$, and select `[ab]`. Then derive that 12,000 bytes at 3 versus 4 bytes/token require 4,000 versus 3,000 tokens, or 8 versus 6 length-512 windows if the tail is padded.
 
 **Traps**
 
@@ -195,8 +195,8 @@ A shorter token sequence buys context space, but a larger vocabulary costs param
 
 **Practice**
 
-- [Hugging Face LLM Course: Unigram 'huggun' segmentation](https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm) - Now your turn!: determine the tokenization of 'huggun' and its score. Enumerate valid paths from the given vocabulary and frequency table before using code. The best path is [hug, g, un], with score $`(15/210) \times (20/210) \times (16/210)`$.
-- [Deep-ML Lab 19: Build a Tokenizer for Language Modeling](https://www.deep-ml.com/labs/19) - Implement train_tokenizer(corpus, vocab_size) in standard Python; the lab trains a bigram model on your tokens and scores held-out bits per character. Compare a byte-level baseline with BPE at the full 256-token budget, and check whether the better compressor also gives the lower bits per character.
+- [Hugging Face LLM Course: Unigram `'huggun'` segmentation](https://huggingface.co/learn/llm-course/chapter6/7#tokenization-algorithm) - Now your turn!: determine the tokenization of `'huggun'` and its score. Enumerate valid paths from the given vocabulary and frequency table before using code. The best path is `[hug, g, un]`, with score $`(15/210) \times (20/210) \times (16/210)`$.
+- [Deep-ML Lab 19: Build a Tokenizer for Language Modeling](https://www.deep-ml.com/labs/19) - Implement `train_tokenizer(corpus, vocab_size)` in standard Python; the lab trains a bigram model on your tokens and scores held-out bits per character. Compare a byte-level baseline with BPE at the full 256-token budget, and check whether the better compressor also gives the lower bits per character.
 
 **Stop when:** You solve the segmentation and window-count examples without notes, and can defend vocabulary and literal-special-token policies with separate prose, code and non-English examples.
 
@@ -224,16 +224,16 @@ A round trip can succeed even when token IDs differ from the model's training ID
 
 **You can now**
 
-- Implement encode, decode and reload from a byte vocabulary and ordered merges without changing token IDs.
+- Implement `encode`, `decode` and `reload` from a byte vocabulary and ordered merges without changing token IDs.
 - Test multilingual text, whitespace, controls, overlapping specials and malformed decoded byte sequences against a stated contract.
 - Preserve one-shot token IDs across streaming splits, retaining unfinished text until a safe boundary is known.
 - Reject tokenizer artifacts whose vocabulary, merge ranks or preprocessing policy differs from the expected identity.
 
 **Study**
 
-1. [Encoding, decoding and iterable input](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Section 2.6, including Example (bpe_encoding), Memory considerations, Section 2.6.2 and Problem (tokenizer) (pp. 10 to 12).
+1. [Encoding, decoding and iterable input](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - tokenizer contract) - Section 2.6, including Example (`bpe_encoding`), Memory considerations, Section 2.6.2 and Problem (tokenizer) (pp. 10 to 12).
 2. [Saving, loading and reference tokenizer files](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/05_bpe-from-scratch/bpe-from-scratch.ipynb) (LLMs from Scratch companion - tokenization and data loading) - Sections 3.2, Saving and loading the tokenizer, and 3.3, Loading the original GPT-2 BPE tokenizer from OpenAI. Depth: Use the save/reload examples as a workflow, not a byte-correctness oracle. Keep the CS336 bytes-based representation and test against tiktoken through the public suite.
-3. [Public tokenizer acceptance cases](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_tokenizer.py) (Stanford CS336 Assignment 1 - tokenizer contract) - test_roundtrip_unicode_string, test_overlapping_special_tokens, the two test_encode_special_token_* cases, and test_encode_iterable_tinystories_matches_tiktoken; test_encode_iterable_memory_usage.
+3. [Public tokenizer acceptance cases](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_tokenizer.py) (Stanford CS336 Assignment 1 - tokenizer contract) - `test_roundtrip_unicode_string`, `test_overlapping_special_tokens`, the two `test_encode_special_token_*` cases, and `test_encode_iterable_tinystories_matches_tiktoken`; `test_encode_iterable_memory_usage`.
 4. [Tokenizer identity and adversarial boundaries](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#correctness-requirements) (Tokenizer and Corpus Pipeline - reduced foundation slice) - Correctness requirements: supported round trip and deterministic versioned merges/IDs; Failure-injection requirements: malformed encoding, corrupt model and stale tokenizer.
 
 **Focus**
@@ -253,20 +253,20 @@ A round trip can succeed even when token IDs differ from the model's training ID
 
 **Practice**
 
-- [CS336 Assignment 1: tokenizer](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_tokenizer.py) - Problem (tokenizer), Section 2.6; connect your implementation to get_tokenizer in tests/adapters.py and run tests/test_tokenizer.py. Implement in your own repository. The encode memory test is expected to fail; the iterable memory test is Linux-only. Add reload identity, arbitrary chunk-split and malformed-byte properties beyond the public cases.
+- [CS336 Assignment 1: tokenizer](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_tokenizer.py) - Problem (tokenizer), Section 2.6; connect your implementation to `get_tokenizer` in `tests/adapters.py` and run `tests/test_tokenizer.py`. Implement in your own repository. The encode memory test is expected to fail; the iterable memory test is Linux-only. Add reload identity, arbitrary chunk-split and malformed-byte properties beyond the public cases.
 
 **Stop when:** The public tokenizer suite has no unexpected failures, and your own reload and every-split-point tests preserve exact IDs while a changed tokenizer identity is rejected.
 
 <details>
 <summary>Self-test</summary>
 
-1. Why is decode(encode(text)) == text insufficient to establish tokenizer compatibility?
+1. Why is `decode(encode(text)) == text` insufficient to establish tokenizer compatibility?
    - Different ID assignments or segmentations can decode to the same text. Compatibility also requires identical IDs for the same input and identical preprocessing and special-token policies.
-2. An input chunk ends with '<|endo'. Can you emit its ordinary-text IDs immediately?
-   - Not if special recognition is enabled: the next chunk may complete '<|endoftext|>'. Retain the possible special-token prefix until it is resolved.
-3. A token ends with byte 0xC3 and the next begins with 0xA9. How should the decoder handle them?
-   - Concatenate their bytes first. Together they encode 'é'; decoding each token separately can raise or insert replacement characters.
-4. Can a decoder with errors='replace' promise a round trip for arbitrary raw bytes?
+2. An input chunk ends with `'<|endo'`. Can you emit its ordinary-text IDs immediately?
+   - Not if special recognition is enabled: the next chunk may complete `'<|endoftext|>'`. Retain the possible special-token prefix until it is resolved.
+3. A token ends with byte `0xC3` and the next begins with `0xA9`. How should the decoder handle them?
+   - Concatenate their bytes first. Together they encode `'é'`; decoding each token separately can raise or insert replacement characters.
+4. Can a decoder with `errors='replace'` promise a round trip for arbitrary raw bytes?
    - No. It can round-trip supported valid text, but malformed raw bytes are changed. Preserve them with a separate byte decoder if the byte contract requires it.
 
 </details>
@@ -287,8 +287,8 @@ Packing changes which tokens become context and which predictions enter the loss
 
 **Study**
 
-1. [Shifted targets and sliding windows](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/01_main-chapter-code/ch02.ipynb) (LLMs from Scratch companion - tokenization and data loading) - Section 2.4: EOS between independent sources; Section 2.6, Data sampling with a sliding window: GPTDatasetV1 and stride/context-length examples. Depth: Stop before Section 2.7. The single-text loader is a baseline; it does not supply document isolation or split-safe corpus construction.
-2. [Data loader intuition with integers](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/04_bonus_dataloader-intuition/dataloader-intuition.ipynb) (LLMs from Scratch companion - tokenization and data loading) - Data sampling with a sliding window with number data: GPTDatasetV1, then max_length=4 with stride=1 and stride=4. Depth: Stop before Finally, a data loader with shuffling. Track indices and the last omitted tail rather than running the full number file.
+1. [Shifted targets and sliding windows](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/01_main-chapter-code/ch02.ipynb) (LLMs from Scratch companion - tokenization and data loading) - Section 2.4: EOS between independent sources; Section 2.6, Data sampling with a sliding window: `GPTDatasetV1` and stride/context-length examples. Depth: Stop before Section 2.7. The single-text loader is a baseline; it does not supply document isolation or split-safe corpus construction.
+2. [Data loader intuition with integers](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch02/04_bonus_dataloader-intuition/dataloader-intuition.ipynb) (LLMs from Scratch companion - tokenization and data loading) - Data sampling with a sliding window with number data: `GPTDatasetV1`, then `max_length=4` with `stride=1` and `stride=4`. Depth: Stop before Finally, a data loader with shuffling. Track indices and the last omitted tail rather than running the full number file.
 3. [Split ownership and packed boundary contract](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#core-requirements) (Tokenizer and Corpus Pipeline - reduced foundation slice) - Core requirements: split assignment before leakage-causing transforms and deterministic sample/pack construction with document-boundary/loss-mask policy; Architecture constraints: evaluation data cannot influence vocabulary/filters/mixture; Correctness requirements: fixed split ownership and packed masks. Depth: Apply these requirements to a few local documents. Do not implement the full project or distributed corpus processing.
 
 **Focus**
@@ -298,7 +298,7 @@ Packing changes which tokens become context and which predictions enter the loss
 - Attach EOS to the document it ends. Predicting that EOS is valid; predicting the next document's first token from that EOS is masked under the isolated policy.
 - Split raw documents or duplicate groups before fitting and packing. Record token spans back to document IDs, and account for every retained, padded or deliberately dropped tail token.
 
-**Reproduce:** Closed-book, pack $`A=[11,12]`$ and $`B=[21,22]`$ with EOS=9 into $`z=[11,12,9,21,22,9]`$. For $`x=z[:-1]`$ and $`y=z[1:]`$, derive $`y=[12,9,21,22,9]`$ and isolated-document loss mask $`[1,1,0,1,1]`$. Build the lower-triangular same-document attention mask for $`x`$ and explain which prediction it does not remove by itself.
+**Reproduce:** Closed-book, pack $`A=[11,12]`$ and $`B=[21,22]`$ with `EOS=9` into $`z=[11,12,9,21,22,9]`$. For $`x=z[:-1]`$ and $`y=z[1:]`$, derive $`y=[12,9,21,22,9]`$ and isolated-document loss mask $`[1,1,0,1,1]`$. Build the lower-triangular same-document attention mask for $`x`$ and explain which prediction it does not remove by itself.
 
 **Traps**
 
@@ -342,7 +342,7 @@ Distinct files can contain the same document, and distinct documents can share a
 
 **Study**
 
-1. [Exact deduplication, shingles and overlap probes](https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/15-data-engineering.ipynb) (Modern LLM Notebook - tokenization and data experiments) - Sections 3.1 and 3.2 with Exact Dedup and MinHash approximate deduplication code; Section 3.3, Decontamination, with word_ngrams and max_overlap; Exercises, Exercise 2: Complete Jaccard similarity. Depth: Use exact Jaccard as the small-corpus oracle. Treat the four-position MinHash as a noisy demonstration and the stated corpus-removal percentages as unverified examples, not expected results.
+1. [Exact deduplication, shingles and overlap probes](https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/15-data-engineering.ipynb) (Modern LLM Notebook - tokenization and data experiments) - Sections 3.1 and 3.2 with Exact Dedup and MinHash approximate deduplication code; Section 3.3, Decontamination, with `word_ngrams` and `max_overlap`; Exercises, Exercise 2: Complete Jaccard similarity. Depth: Use exact Jaccard as the small-corpus oracle. Treat the four-position MinHash as a noisy demonstration and the stated corpus-removal percentages as unverified examples, not expected results.
 2. [Provenance and duplicate-cluster contract](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#architecture-constraints) (Tokenizer and Corpus Pipeline - reduced foundation slice) - Core requirements: versioned schemas, source/document identities, exact/near dedup and contamination probes; Architecture constraints: raw source identity and separate versioned stages; Correctness requirements: cluster lineage; Failure-injection requirements: hash collision simulation and duplicate clusters spanning sources/splits. Depth: Implement a tiny exact pipeline and all-pairs shingle comparison. Leave large-scale approximate search and distributed processing for later.
 
 **Focus**
@@ -397,13 +397,13 @@ Filter and mixture choices determine which text the model repeatedly sees. A rep
 
 **Study**
 
-1. [Filter decisions and source mixtures](https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/15-data-engineering.ipynb) (Modern LLM Notebook - tokenization and data experiments) - Section 2.1 with quality_check; Section 2.3, PII and Safety Filtering, with redact_or_drop; Sections 4.1 and 4.2 with source effective-token amounts and Recipe A/B; Exercises 1 and 3. Depth: Skip Section 2.2 and Sections 4.3 onward. The rules and recipe scores are teaching examples, not validated quality thresholds or measured model results. Use only synthetic sensitive-data examples.
-2. [Shard ownership, mixture sampling and iterator state](https://huggingface.co/docs/datasets/stream) (Hugging Face Datasets - streaming, sharding and resume) - Shard under Split dataset; Interleave, including probabilities and stopping_strategy; Save a dataset checkpoint and resume iteration, including its shuffle-buffer warning; Export. Depth: Use tiny local records and the six-record checkpoint example. Skip remote corpus downloads, the training loop and Save to the Hub. Library resume is a comparison, not a substitute for testing your own exact-resume contract.
+1. [Filter decisions and source mixtures](https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/15-data-engineering.ipynb) (Modern LLM Notebook - tokenization and data experiments) - Section 2.1 with `quality_check`; Section 2.3, PII and Safety Filtering, with `redact_or_drop`; Sections 4.1 and 4.2 with source effective-token amounts and Recipe A/B; Exercises 1 and 3. Depth: Skip Section 2.2 and Sections 4.3 onward. The rules and recipe scores are teaching examples, not validated quality thresholds or measured model results. Use only synthetic sensitive-data examples.
+2. [Shard ownership, mixture sampling and iterator state](https://huggingface.co/docs/datasets/stream) (Hugging Face Datasets - streaming, sharding and resume) - Shard under Split dataset; Interleave, including probabilities and `stopping_strategy`; Save a dataset checkpoint and resume iteration, including its shuffle-buffer warning; Export. Depth: Use tiny local records and the six-record checkpoint example. Skip remote corpus downloads, the training loop and Save to the Hub. Library resume is a comparison, not a substitute for testing your own exact-resume contract.
 3. [Auditable recipes and local shard publication](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md#core-requirements) (Tokenizer and Corpus Pipeline - reduced foundation slice) - Core requirements: mixture weights, deterministic sample/pack construction, checksums, atomic manifests and resume; Architecture constraints: manifests instead of directory discovery; Milestone B: per-stage counts and filter samples; Correctness requirements: complete nonoverlapping shards. Depth: Keep one process and a few local shards. Leave distributed storage, production classifiers and internet-scale processing for later.
 
 **Focus**
 
-- Log keep, redact, reject or review with a reason and policy version. Report yields by source/language/code slice and by documents, bytes and tokens; a smaller corpus is not automatically better.
+- Log `keep`, `redact`, `reject` or `review` with a reason and policy version. Report yields by source/language/code slice and by documents, bytes and tokens; a smaller corpus is not automatically better.
 - For source document probability $`p_s`$ and mean retained length $`L_s`$, expected token share is $`p_s L_s / \sum_j p_j L_j`$, before truncation and exhaustion effects. Declare the sampling unit and replacement policy.
 - A manifest fixes ordered shard paths, checksums, counts, split, tokenizer identity and recipe version. Publish only complete shards and reject resume under a changed configuration.
 - Exact resume needs input/shard cursor, sampling RNG, any shuffle buffer and the unfinished pack. HF's documented iterable resume loses buffered shuffle examples; a seed alone does not restore them.
@@ -442,8 +442,8 @@ Filter and mixture choices determine which text the model repeatedly sees. A rep
 
 **About 12 to 16 hours.** Turn a small public-domain corpus into a packed, auditable training split with your own byte-level BPE. Every packed token traces back to a source document, and every claim about the split, such as no duplicates across splits and no planted evaluation text in training, is backed by a test or a report you can rerun.
 
-1. Start one repository for the whole stage: a uv project with a src package and a tests folder. Pick a small public-domain corpus under 20 MB, such as a few Project Gutenberg books or the TinyStories validation file.
-2. Implement BPE training, encoding, decoding and streaming encoding. Connect them to tests/adapters.py in your clone of the CS336 assignment and pass tests/test_train_bpe.py and tests/test_tokenizer.py.
+1. Start one repository for the whole stage: a uv project with a `src` package and a `tests` folder. Pick a small public-domain corpus under 20 MB, such as a few Project Gutenberg books or the TinyStories validation file.
+2. Implement BPE training, encoding, decoding and streaming encoding. Connect them to `tests/adapters.py` in your clone of the CS336 assignment and pass `tests/test_train_bpe.py` and `tests/test_tokenizer.py`.
 3. Serialize the tokenizer canonically with a content hash, and make loading fail on a changed merge list, special-token set or normalization policy.
 4. Assign raw documents to train and evaluation splits by a stable hash of their raw ID, before fitting the tokenizer or packing. Record source, raw hash, normalized hash and transform version for each document.
 5. Remove exact and near duplicates while keeping cluster lineage, and simulate a hash collision to show that your byte comparison catches it. Plant three evaluation passages in training documents, make your contamination probe find them, and review its false matches.
@@ -460,7 +460,7 @@ Filter and mixture choices determine which text the model repeatedly sees. A rep
 
 **Checks**
 
-- external-tests: [CS336 tests/test_train_bpe.py and tests/test_tokenizer.py](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_train_bpe.py tests/test_tokenizer.py`. Run in your clone of the assignment with tests/adapters.py calling your package. test_encode_memory_usage is expected to fail.
+- external-tests: [CS336 `tests/test_train_bpe.py` and `tests/test_tokenizer.py`](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_train_bpe.py tests/test_tokenizer.py`. Run in your clone of the assignment with `tests/adapters.py` calling your package. `test_encode_memory_usage` is expected to fail.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
@@ -481,7 +481,7 @@ Feeds into: Capstone artifact 1, the tokenizer and corpus audit pack. Sections 3
 - **Support - Implementation:** [Modern LLM Notebook - tokenization and data experiments](https://walkinglabs.github.io/modern-llm-notebook/?lang=en) - Run English notebooks 01-tokenizer-basics and 02-bpe-tokenizer. Use only the quality, deduplication and mixture examples from 15-data-engineering. Change the corpus and tie cases, then verify every quantitative claim independently.
 - **Support - Project:** [Tokenizer and Corpus Pipeline - reduced foundation slice](https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md) - Use the byte, identity, split, deduplication, contamination, packing, manifest and restart correctness requirements. Keep the corpus small and stop before distributed processing or internet-scale filtering.
 - **Optional - Reference:** [Hugging Face LLM Course - tokenizer translation](https://huggingface.co/learn/llm-course/chapter6/1) - After the blank-file tokenizer passes, use the tokenizer chapters to map vocabulary, special tokens, fast tokenizers and batching into library APIs. Do not replace the deterministic implementation gate with a pretrained tokenizer call.
-- **Reference - Reference:** [Python unicodedata - normalization forms](https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize) - Read unicodedata.normalize for canonical and compatibility equivalence, and unidata_version for recording the normalization database version.
+- **Reference - Reference:** [Python unicodedata - normalization forms](https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize) - Read `unicodedata.normalize` for canonical and compatibility equivalence, and `unidata_version` for recording the normalization database version.
 - **Reference - Reference:** [Hugging Face Datasets - streaming, sharding and resume](https://huggingface.co/docs/datasets/stream) - Read Shard, Interleave, Save a dataset checkpoint and resume iteration, and Export. Use tiny local data and inspect the warning that shuffle buffers are lost on resume; do not download web-scale corpora or upload to the Hub.
 
 ### Exit checkpoint
@@ -555,7 +555,7 @@ Token IDs select rows; their numerical order carries no meaning. Position repres
 - Repeated IDs select identical vectors before position information or contextual layers are applied.
 - Learned and sinusoidal encodings are absolute-position representations. RoPE changes $`Q`$ and $`K`$ rather than adding a position vector to the input.
 
-**Reproduce:** Closed-book, draw a $`[3, 2]`$ embedding table, gather IDs [2, 0, 2], and add distinct position vectors. Explain which two vectors match before the addition and why they need not match afterward.
+**Reproduce:** Closed-book, draw a $`[3, 2]`$ embedding table, gather IDs `[2, 0, 2]`, and add distinct position vectors. Explain which two vectors match before the addition and why they need not match afterward.
 
 **Traps**
 
@@ -599,28 +599,28 @@ Attention is a weighted read from permitted keys, not a framework black box. Cor
 
 1. [Attention scores and causal masking](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part1-foundation/05-transformer-block.ipynb) (Modern LLM Notebook - decoder construction path) - Sections 2, Scaled Dot-Product Attention, and 3, Causal Masking.
 2. [Trainable $`Q`$, $`K`$ and $`V`$ projections](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch03/01_main-chapter-code/ch03.ipynb) (LLMs from Scratch companion - attention and GPT construction) - Section 3.4.1, Computing the attention weights step by step.
-3. [Stable softmax and masked attention contract](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.4.4, Scaled Dot-Product Attention, including problems (softmax) and (scaled_dot_product_attention), printed pp. 23 to 25.
-4. [Mask shape and polarity reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention) (PyTorch scaled dot product attention reference) - Equivalent Python implementation, boolean-mask semantics note, and Parameters: attn_mask and is_causal. Depth: Read this after your explicit oracle works. Use the contract for padding-mask broadcasting; skip kernel selection.
+3. [Stable softmax and masked attention contract](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.4.4, Scaled Dot-Product Attention, including problems (`softmax`) and (`scaled_dot_product_attention`), printed pp. 23 to 25.
+4. [Mask shape and polarity reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention) (PyTorch scaled dot product attention reference) - Equivalent Python implementation, boolean-mask semantics note, and Parameters: `attn_mask` and `is_causal`. Depth: Read this after your explicit oracle works. Use the contract for padding-mask broadcasting; skip kernel selection.
 
 **Focus**
 
 - For $`X=[B, T, D]`$, $`Q`$ and $`K`$ are $`[B, T, d_k]`$, $`V`$ is $`[B, T, d_v]`$, scores are $`[B, T, T]`$, and the output is $`[B, T, d_v]`$.
 - With independent zero-mean unit-variance $`Q`$ and $`K`$ components, their dot product has variance $`d_k`$. Dividing by $`\sqrt{d_k}`$ keeps the variance near one.
 - Subtract each score row's maximum before exponentiating. Mask forbidden entries before softmax and normalize over keys.
-- An allow mask combines $`j\le i`$ with valid_key[b,j]. Broadcast key validity as $`[B, 1, T]`$; exclude padded query outputs separately and define a policy for rows with no valid key.
+- An allow mask combines $`j\le i`$ with `valid_key[b,j]`. Broadcast key validity as $`[B, 1, T]`$; exclude padded query outputs separately and define a policy for rows with no valid key.
 
 **Reproduce:** From a blank file, compute one causal attention row with explicit dot products, max-subtracted exponentials and a weighted sum of $`V`$. Match it with a batched implementation on a three-token example containing a masked key.
 
 **Traps**
 
 - Using $`\sqrt{D}`$ after splitting into heads. The scale uses the query/key width of one head.
-- Copying a boolean mask between APIs without checking polarity. CS336 and SDPA use True for allowed entries; MultiheadAttention padding masks use True for blocked entries.
+- Copying a boolean mask between APIs without checking polarity. CS336 and SDPA use `True` for allowed entries; `MultiheadAttention` padding masks use `True` for blocked entries.
 - Assuming max subtraction fixes an all-negative-infinity row. It gives undefined subtraction; reject that row or explicitly return zero for an ignored padded query.
 
 **Practice**
 
-- [CS336 Assignment 1: softmax](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py) - Problem (softmax), section 3.4.4; implement run_softmax in tests/adapters.py and pass test_softmax_matches_pytorch
-- [CS336 Assignment 1: scaled_dot_product_attention](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (scaled_dot_product_attention), section 3.4.4; implement run_scaled_dot_product_attention and pass test_scaled_dot_product_attention and test_4d_scaled_dot_product_attention. Work in your own repository and respect the course AI policy. Add causal-plus-padding and fully masked-row tests; the public snapshots do not cover every mask edge case.
+- [CS336 Assignment 1: `softmax`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py) - Problem (`softmax`), section 3.4.4; implement `run_softmax` in `tests/adapters.py` and pass `test_softmax_matches_pytorch`
+- [CS336 Assignment 1: `scaled_dot_product_attention`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (`scaled_dot_product_attention`), section 3.4.4; implement `run_scaled_dot_product_attention` and pass `test_scaled_dot_product_attention` and `test_4d_scaled_dot_product_attention`. Work in your own repository and respect the course AI policy. Add causal-plus-padding and fully masked-row tests; the public snapshots do not cover every mask edge case.
 
 **Stop when:** The three named public tests pass, your explicit row matches the batched result, and changing a forbidden key or value cannot affect a valid query's output.
 
@@ -656,14 +656,14 @@ A reshape can preserve every tensor size while mixing tokens and heads. Forward 
 
 1. [Multi-head data flow](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part1-foundation/05-transformer-block.ipynb) (Modern LLM Notebook - decoder construction path) - Section 4, Multi-Head Attention, especially How Multi-Head Is Implemented in Code and Complete Data Flow.
 2. [Explicit head split and merge](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch03/01_main-chapter-code/ch03.ipynb) (LLMs from Scratch companion - attention and GPT construction) - Section 3.6.2, Implementing multi-head attention with weight splits, including the separate-head matrix multiplication example.
-3. [Causal MHA contract](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.4.5, Causal Multi-Head Self-Attention, printed pp. 25 to 26. Depth: Implement the no-RoPE adapter here. Leave Applying RoPE and the with_rope adapter to the RoPE unit.
-4. [Independent batched attention comparison](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention) (PyTorch scaled dot product attention reference) - Equivalent Python implementation, dropout warning, numerical backend note and Shape legend. Depth: Compare only after the explicit per-head oracle passes. Set dropout_p=0.0; kernel tuning is outside this unit.
+3. [Causal MHA contract](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.4.5, Causal Multi-Head Self-Attention, printed pp. 25 to 26. Depth: Implement the no-RoPE adapter here. Leave Applying RoPE and the `with_rope` adapter to the RoPE unit.
+4. [Independent batched attention comparison](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention) (PyTorch scaled dot product attention reference) - Equivalent Python implementation, dropout warning, numerical backend note and Shape legend. Depth: Compare only after the explicit per-head oracle passes. Set `dropout_p=0.0`; kernel tuning is outside this unit.
 
 **Focus**
 
 - With $`D=H \cdot d`$, split $`[B, T, D]`$ to $`[B, T, H, d]`$, then transpose to $`[B, H, T, d]`$. A reshape alone does not exchange $`T`$ and $`H`$.
 - Each head normalizes its own $`[T, T]`$ score matrix. Concatenate head outputs before applying the output projection.
-- Reverse the transpose before merging. A transposed tensor may need contiguous storage or reshape rather than view.
+- Reverse the transpose before merging. A transposed tensor may need contiguous storage or `reshape` rather than `view`.
 - Transfer identical weights into a per-head loop and the batched path. Backpropagate the same scalar contraction of outputs and compare gradients, not just shapes.
 
 **Reproduce:** Implement causal two-head attention for $`B=2`$, $`T=3`$, $`D=8`$. Reproduce its output and gradients with a loop over heads using sliced projection weights, then compare the attention core with SDPA at zero dropout.
@@ -672,13 +672,13 @@ A reshape can preserve every tensor size while mixing tokens and heads. Forward 
 
 - Comparing separately initialized modules. Different random weights do not test implementation equivalence.
 - Merging $`[B, H, T, d]`$ directly into $`[B, T, D]`$. This silently scrambles head and token ordering.
-- Assuming eval() disables functional SDPA dropout. Its dropout_p argument must be zero explicitly.
+- Assuming `eval()` disables functional SDPA dropout. Its `dropout_p` argument must be zero explicitly.
 
 **Practice**
 
-- [CS336 Assignment 1: multihead_self_attention](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (multihead_self_attention), section 3.4.5; implement run_multihead_self_attention in tests/adapters.py and pass test_multihead_self_attention. The public test checks a forward snapshot, not gradients. Extend your own tests with a transferred-weight per-head oracle, input and all four projection gradients, and non-contiguous input.
+- [CS336 Assignment 1: `multihead_self_attention`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (`multihead_self_attention`), section 3.4.5; implement `run_multihead_self_attention` in `tests/adapters.py` and pass `test_multihead_self_attention`. The public test checks a forward snapshot, not gradients. Extend your own tests with a transferred-weight per-head oracle, input and all four projection gradients, and non-contiguous input.
 
-**Stop when:** The named public test passes and your float64 forward and gradient comparisons agree within atol=1e-8 and rtol=1e-6 for one and multiple heads, with dropout disabled.
+**Stop when:** The named public test passes and your `float64` forward and gradient comparisons agree within `atol=1e-8` and `rtol=1e-6` for one and multiple heads, with dropout disabled.
 
 <details>
 <summary>Self-test</summary>
@@ -709,20 +709,20 @@ Sharing $`K`$ and $`V`$ changes both the learned projections and the state kept 
 **Study**
 
 1. [MHA, MQA and grouped-query implementation](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb) (Modern LLM Notebook - decoder construction path) - Multi-Head Attention: MHA and GQA, the MHA vs GQA vs MQA KV Cache hand calculation comparison, and GQA implementation. Depth: Stop before QK-Norm. Skip MLA and the architecture survey. Read Exercise 3, How much KV Cache does GQA save, for practice.
-2. [Contiguous grouped-head reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention) (PyTorch scaled dot product attention reference) - Equivalent Python implementation: enable_gqa and repeat_interleave; GQA constraints note; Parameters and Shape legend. Depth: Use the head mapping and functional contract after your explicit grouped oracle passes. Skip backend and kernel tuning.
+2. [Contiguous grouped-head reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention) (PyTorch scaled dot product attention reference) - Equivalent Python implementation: `enable_gqa` and `repeat_interleave`; GQA constraints note; Parameters and Shape legend. Depth: Use the head mapping and functional contract after your explicit grouped oracle passes. Skip backend and kernel tuning.
 
 **Focus**
 
 - Let $`D=H_q \cdot d`$ and $`H_{\mathrm{kv}}`$ divide $`H_q`$. $`Q`$ is $`[B, H_q, T, d]`$; unexpanded $`K`$ and $`V`$ are $`[B, H_{\mathrm{kv}}, T, d]`$. MHA has $`H_{\mathrm{kv}}=H_q`$; MQA has $`H_{\mathrm{kv}}=1`$.
 - In PyTorch weight layout, $`W_q`$ and $`W_o`$ are $`[D, D]`$, while $`W_k`$ and $`W_v`$ are $`[H_{\mathrm{kv}} \cdot d, D]`$. The bias-free total is $`2D^2 + 2D \cdot H_{\mathrm{kv}} \cdot d`$.
 - SDPA maps query head $`h`$ to KV head $`\lfloor h/(H_q/H_{\mathrm{kv}}) \rfloor`$. The notebook's expand-then-reshape instead interleaves KV heads; choose one convention and make weight ordering and the oracle agree.
-- Optional comparison: allocate unexpanded $`K`$ and $`V`$ at the same $`B`$, $`T`$, $`d`$ and dtype for MHA and GQA, then compare numel()*element_size(). Do not count expanded temporary tensors as compact cache storage.
+- Optional comparison: allocate unexpanded $`K`$ and $`V`$ at the same $`B`$, $`T`$, $`d`$ and dtype for MHA and GQA, then compare `numel()*element_size()`. Do not count expanded temporary tensors as compact cache storage.
 
 **Reproduce:** Implement a causal grouped-head loop and batched path for $`D=16`$, $`H_q=4`$ and $`H_{\mathrm{kv}}=2`$, using contiguous groups. Derive 768 projection parameters versus MHA's 1024, and show that compact KV tensors use half the bytes at matched $`B`$, $`T`$ and dtype.
 
 **Traps**
 
-- Using repeat rather than repeat_interleave while assuming contiguous groups. Shapes match, but queries read the wrong KV head.
+- Using `repeat` rather than `repeat_interleave` while assuming contiguous groups. Shapes match, but queries read the wrong KV head.
 - Storing expanded K and V as the cache. That loses the compact representation's memory saving.
 - Expecting independently initialized MHA and GQA to produce equal outputs. Sharing restricts projections; equality needs a deliberately expanded shared-weight MHA reference.
 
@@ -767,22 +767,22 @@ RoPE makes position differences enter attention through rotations of $`Q`$ and $
 
 **Focus**
 
-- For zero-based pair $`r`$, frequency is $`\theta^{-2r/d}`$. Rotate $`[x_{2r}, x_{2r+1}]`$ by position*frequency using radians, not degrees.
+- For zero-based pair $`r`$, frequency is $`\theta^{-2r/d}`$. Rotate $`[x_{2r}, x_{2r+1}]`$ by `position*frequency` using radians, not degrees.
 - $`R_i^\top R_j=R_{j-i}`$. The positional factor depends on the difference; content vectors $`q`$ and $`k`$ still matter.
 - Apply the rotation after projection and head splitting to $`Q`$ and $`K`$, not $`V`$. Require an even rotary width and agree on adjacent-pair versus split-half layout.
-- Index $`\sin/\cos`$ with the supplied positions, including nonzero offsets. Compute angles and rotations in float32 when needed and cast the result back; buffers are not trainable weights.
+- Index $`\sin/\cos`$ with the supplied positions, including nonzero offsets. Compute angles and rotations in `float32` when needed and cast the result back; buffers are not trainable weights.
 
 **Reproduce:** Closed-book, multiply the two 2D rotation matrices to derive $`R_i^\top R_j=R_{j-i}`$, then implement adjacent-pair RoPE. For fixed $`q`$ and $`k`$, verify equal dot products at positions $`(2, 5)`$ and $`(12, 15)`$ and compare against the unrotated relative-rotation expression.
 
 **Traps**
 
 - Mixing adjacent pairs with a split-half reference without permuting channels and projection weights. Both conventions can work, but their raw tensors are not interchangeable.
-- Using arange(T) instead of supplied position IDs. This discards offsets and per-sequence positions.
+- Using `arange(T)` instead of supplied position IDs. This discards offsets and per-sequence positions.
 - Inferring monotonic distance decay or reliable long-context quality from the identity. Rotations are periodic, and the identity alone guarantees neither.
 
 **Practice**
 
-- [CS336 Assignment 1: rope and rotary multihead_self_attention](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (rope), section 3.4.3, and Applying RoPE, section 3.4.5; implement run_rope and run_multihead_self_attention_with_rope and pass test_rope and test_multihead_self_attention_with_rope. Add your own position-zero, nonzero-offset, common-offset dot-product, norm-preservation and odd-width rejection tests. Test float32 and a supported low-precision dtype. For positions beyond a precomputed table, test the documented extension or rejection policy.
+- [CS336 Assignment 1: `rope` and rotary `multihead_self_attention`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (`rope`), section 3.4.3, and Applying RoPE, section 3.4.5; implement `run_rope` and `run_multihead_self_attention_with_rope` and pass `test_rope` and `test_multihead_self_attention_with_rope`. Add your own position-zero, nonzero-offset, common-offset dot-product, norm-preservation and odd-width rejection tests. Test `float32` and a supported low-precision dtype. For positions beyond a precomputed table, test the documented extension or rejection policy.
 
 **Stop when:** Both named public tests and your offset and pairing tests pass, and you derive the relative-position identity without looking at the notebook.
 
@@ -819,8 +819,8 @@ Attention mixes positions; the feed-forward network transforms each position, an
 
 1. [Normalization, gating and norm placement](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb) (Modern LLM Notebook - decoder construction path) - Component Upgrades: LayerNorm and RMSNorm hand calculations, RMSNorm full implementation, The SwiGLU gating mechanism, Full SwiGLU FFN implementation, and Post-Norm versus Pre-Norm comparison. Depth: Read the formulas and code. Skip the eight-layer gradient demonstration; a single random example is not a general stability proof.
 2. [GELU FFN baseline](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/01_main-chapter-code/ch04.ipynb) (LLMs from Scratch companion - attention and GPT construction) - Section 4.3, Implementing a feed forward network with GELU activations.
-3. [Initialization and modern block specifications](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.3.1, Parameter Initialization, printed p. 17; section 3.4 through 3.4.2, printed pp. 19 to 22; section 3.5 through problem (transformer_block), printed p. 26.
-4. [Depth-scaled residual initialization](https://github.com/karpathy/nanoGPT/blob/master/model.py) (nanoGPT - residual projection initialization) - MLP and Block classes; GPT.__init__ from self.apply(self._init_weights) through the c_proj.weight initialization loop; GPT._init_weights. Depth: Use this as a contrasting GPT-2 recipe, not a replacement for the CS336 test architecture. Skip pretrained loading, optimizer setup and generation.
+3. [Initialization and modern block specifications](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.3.1, Parameter Initialization, printed p. 17; section 3.4 through 3.4.2, printed pp. 19 to 22; section 3.5 through problem (`transformer_block`), printed p. 26.
+4. [Depth-scaled residual initialization](https://github.com/karpathy/nanoGPT/blob/master/model.py) (nanoGPT - residual projection initialization) - `MLP` and `Block` classes; `GPT.__init__` from `self.apply(self._init_weights)` through the `c_proj.weight` initialization loop; `GPT._init_weights`. Depth: Use this as a contrasting GPT-2 recipe, not a replacement for the CS336 test architecture. Skip pretrained loading, optimizer setup and generation.
 
 **Focus**
 
@@ -834,13 +834,13 @@ Attention mixes positions; the feed-forward network transforms each position, an
 **Traps**
 
 - Normalizing across tokens instead of the feature axis. That couples positions and can leak future information even when attention is causal.
-- Squaring low-precision activations before upcasting. Overflow has already happened; accumulate RMS statistics in float32 first.
+- Squaring low-precision activations before upcasting. Overflow has already happened; accumulate RMS statistics in `float32` first.
 - Copying the notebook's explanation that a SwiGLU gate is a probability. SiLU can be negative or exceed one; the sigmoid factor alone is bounded.
 
 **Practice**
 
-- [CS336 Assignment 1: rmsnorm and positionwise_feedforward](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problems (rmsnorm) and (positionwise_feedforward), sections 3.4.1 and 3.4.2; implement run_rmsnorm, run_silu and run_swiglu and pass test_rmsnorm, test_silu_matches_pytorch and test_swiglu
-- [CS336 Assignment 1: transformer_block](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (transformer_block), section 3.5; implement run_transformer_block and pass test_transformer_block. Add your own zero-branch identity and gradient test, zero-input RMSNorm test and a test showing that changing another token cannot change this token's norm or FFN output.
+- [CS336 Assignment 1: `rmsnorm` and `positionwise_feedforward`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problems (`rmsnorm`) and (`positionwise_feedforward`), sections 3.4.1 and 3.4.2; implement `run_rmsnorm`, `run_silu` and `run_swiglu` and pass `test_rmsnorm`, `test_silu_matches_pytorch` and `test_swiglu`
+- [CS336 Assignment 1: `transformer_block`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (`transformer_block`), section 3.5; implement `run_transformer_block` and pass `test_transformer_block`. Add your own zero-branch identity and gradient test, zero-input RMSNorm test and a test showing that changing another token cannot change this token's norm or FFN output.
 
 **Stop when:** All four named public tests pass, the zero-branch block passes output and input-gradient identity checks, and you explain norm placement, gating and your initialization recipe without notes.
 
@@ -853,7 +853,7 @@ Attention mixes positions; the feed-forward network transforms each position, an
    - Three matrices give $`3DF`$ weights. Setting $`F=8D/3`$ matches the $`8D^2`$ weights of a two-matrix FFN with hidden width $`4D`$, before rounding or biases.
 3. What is the clean gradient path supplied by $`x+f(\operatorname{norm}(x))`$?
    - Its Jacobian includes an identity term plus the branch Jacobian. Unlike post-norm, the residual identity contribution does not pass through a normalization Jacobian; this is not a guarantee against every training instability.
-4. In nanoGPT, why are both attention and MLP c_proj weights scaled with layer count?
+4. In nanoGPT, why are both attention and `MLP` `c_proj` weights scaled with layer count?
    - Both project branch outputs back into the residual stream. With two residual branches per layer, the recipe reduces their initial standard deviation by $`\sqrt{2L}`$ to limit accumulation across depth.
 
 </details>
@@ -875,15 +875,15 @@ Correct components do not automatically make a correct model. Assembly checks ca
 
 **Study**
 
-1. [Decoder assembly, configuration and tying](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part1-foundation/06-mini-gpt.ipynb) (Modern LLM Notebook - decoder construction path) - Implementing MiniGPT from scratch: Implementation of MiniGPT and Logits and predictions; Reading the nanoGPT source code: The main thread of GPT.forward and Weight Tying: sharing weights between input and output. Depth: Read architecture and shape flow only. Skip training, generation demos and the full GPT-2 parameter survey; substitute your modern blocks for the teaching version.
+1. [Decoder assembly, configuration and tying](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part1-foundation/06-mini-gpt.ipynb) (Modern LLM Notebook - decoder construction path) - Implementing `MiniGPT` from scratch: Implementation of `MiniGPT` and Logits and predictions; Reading the nanoGPT source code: The main thread of `GPT.forward` and Weight Tying: sharing weights between input and output. Depth: Read architecture and shape flow only. Skip training, generation demos and the full GPT-2 parameter survey; substitute your modern blocks for the teaching version.
 2. [Full tensor model and tied parameter count](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/01_main-chapter-code/ch04.ipynb) (LLMs from Scratch companion - attention and GPT construction) - Section 4.6, Coding the GPT model, through the weight-tying and memory-count discussion. Depth: Skip the larger GPT-2 configuration exercise and section 4.7 generation. Keep the final normalization and raw-logit contract.
-3. [Full model and resource accounting](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.1, Transformer LM, printed pp. 13 to 14; section 3.5, The Full Transformer LM, including (transformer_lm), Resource accounting and (transformer_accounting), printed pp. 26 to 28. Depth: Do transformer_accounting parts (a) to (c). Leave the model-size sweep and long-context sweep in parts (d) and (e) for the model-arithmetic section.
+3. [Full model and resource accounting](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - model contract) - Section 3.1, Transformer LM, printed pp. 13 to 14; section 3.5, The Full Transformer LM, including (`transformer_lm`), Resource accounting and (`transformer_accounting`), printed pp. 26 to 28. Depth: Do `transformer_accounting` parts (a) to (c). Leave the model-size sweep and long-context sweep in parts (d) and (e) for the model-arithmetic section.
 4. [Optional encoder-only contrast](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/08-gpt2-to-modern-models.ipynb) (Modern LLM Notebook - decoder construction path) - Decoder-Only Architecture: the Encoder-Only, Encoder-Decoder and next-token-training comparison. Depth: Use only for the optional BERT contrast. Do not start an encoder implementation or model survey.
 
 **Focus**
 
 - One configuration owns $`V`$, $`D`$, layer count $`L`$, query and KV head counts, FFN width $`F`$, RoPE $`\theta`$, context policy and tying. Validate divisibility before creating weights; different layers share a design, not all their parameters.
-- A tied head uses the same $`[V, D]`$ Parameter as input lookup and computes $`h @ E^\top`$. Equal initial values in separate Parameters are not tying; gradients from lookup and classification must accumulate into one weight.
+- A tied head uses the same $`[V, D]`$ `Parameter` as input lookup and computes $`h @ E^\top`$. Equal initial values in separate Parameters are not tying; gradients from lookup and classification must accumulate into one weight.
 - For bias-free MHA with two RMSNorms and SwiGLU per block, untied parameters are $`2VD + L(4D^2 + 3DF + 2D) + D`$. Tying subtracts $`VD`$; standard RoPE adds no learned parameters.
 - List dense forward terms: per layer $`8BTD^2`$ for MHA projections, $`4BT^2D`$ for $`QK`$ and $`AV`$, and $`6BTDF`$ for SwiGLU matrices; the vocabulary head adds $`2BTDV`$. Use the slow per-head oracle and suffix interventions to check causality, not a loss curve.
 
@@ -892,13 +892,13 @@ Correct components do not automatically make a correct model. Assembly checks ca
 **Traps**
 
 - Adding softmax inside the model's training forward path. Return raw logits; the loss owns normalization.
-- Matching a CS336 snapshot with a tied output head. Its supplied embedding and lm_head weights are independent; test untied mode there and tying separately.
+- Matching a CS336 snapshot with a tied output head. Its supplied embedding and `lm_head` weights are independent; test untied mode there and tying separately.
 - Checking causality only in the attention matrix. Cross-token normalization or a composition error can still alter prefix logits.
 
 **Practice**
 
-- [CS336 Assignment 1: transformer_lm](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (transformer_lm), section 3.5; implement run_transformer_lm and pass test_transformer_lm and test_transformer_lm_truncated_input. Use the untied MHA contract for snapshots. Add prefix-alone versus full-sequence comparisons, adversarial suffix changes, tied-weight identity and gradient accumulation checks, and a full-model comparison using the slow attention oracle. Keep dropout off.
-- [CS336 Assignment 1: transformer_accounting, parts (a) to (c)](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) - Problem (transformer_accounting), printed pp. 27 to 28: parameter and FP32 weight memory count, forward matrix multiplies and dominant FLOPs. This written problem has no public accounting test. Check its algebra against your tiny model's unique parameter count, using tests/test_model.py's model tests for implementation correctness; do not allocate the XL model.
+- [CS336 Assignment 1: `transformer_lm`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py) - Problem (`transformer_lm`), section 3.5; implement `run_transformer_lm` and pass `test_transformer_lm` and `test_transformer_lm_truncated_input`. Use the untied MHA contract for snapshots. Add prefix-alone versus full-sequence comparisons, adversarial suffix changes, tied-weight identity and gradient accumulation checks, and a full-model comparison using the slow attention oracle. Keep dropout off.
+- [CS336 Assignment 1: `transformer_accounting`, parts (a) to (c)](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) - Problem (`transformer_accounting`), printed pp. 27 to 28: parameter and FP32 weight memory count, forward matrix multiplies and dominant FLOPs. This written problem has no public accounting test. Check its algebra against your tiny model's unique parameter count, using `tests/test_model.py`'s model tests for implementation correctness; do not allocate the XL model.
 
 **Stop when:** Both full-model public tests pass, the tiny parameter count matches the derivation, and your model matches the slow reference and preserves prefix logits under suffix replacement in tied and untied modes.
 
@@ -920,10 +920,10 @@ Correct components do not automatically make a correct model. Assembly checks ca
 
 **About 10 to 14 hours.** Build a configurable decoder-only model from tensor operations in the same repository, and prove it correct without trusting a training curve: public snapshot tests for each component, a slow per-head reference for attention, and intervention tests for causality.
 
-1. Implement linear, embedding, RMSNorm, SwiGLU, RoPE, softmax and scaled dot-product attention from tensor operations, and pass the matching CS336 tests in tests/test_model.py and tests/test_nn_utils.py.
+1. Implement linear, embedding, RMSNorm, SwiGLU, RoPE, softmax and scaled dot-product attention from tensor operations, and pass the matching CS336 tests in `tests/test_model.py` and `tests/test_nn_utils.py`.
 2. Add grouped KV heads to your attention with an explicit map, query head $`h`$ reads KV head $`\lfloor h/(H_q/H_{\mathrm{kv}}) \rfloor`$, so that MHA and MQA are the two ends of one code path.
-3. Write a slow reference that loops over heads with sliced weights, and compare outputs and gradients in float64 with your batched path for MHA, GQA and MQA.
-4. Assemble the decoder from one config object with optional embedding tying, and pass test_transformer_block, test_transformer_lm and test_transformer_lm_truncated_input.
+3. Write a slow reference that loops over heads with sliced weights, and compare outputs and gradients in `float64` with your batched path for MHA, GQA and MQA.
+4. Assemble the decoder from one config object with optional embedding tying, and pass `test_transformer_block`, `test_transformer_lm` and `test_transformer_lm_truncated_input`.
 5. Derive the parameter count of your config by hand and assert that it equals the count of unique registered parameters, tied and untied.
 6. Write property tests: RoPE preserves vector norms, the rotated query-key score depends only on the relative position, and a query offset gives the same result as the matching absolute positions. Changing a future token must leave earlier outputs unchanged, and each batch row must not depend on the others.
 
@@ -935,13 +935,13 @@ Correct components do not automatically make a correct model. Assembly checks ca
 
 **Checks**
 
-- external-tests: [CS336 tests/test_model.py and the softmax test](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_model.py tests/test_nn_utils.py::test_softmax_matches_pytorch`. Use the untied head for the snapshot tests; test tying separately.
+- external-tests: [CS336 `tests/test_model.py` and the softmax test](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_model.py tests/test_nn_utils.py::test_softmax_matches_pytorch`. Use the untied head for the snapshot tests; test tying separately.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Component correctness | All CS336 model tests and the softmax test pass. | Your own tests add fully masked rows, padding plus causal masks and non-contiguous inputs. |
-| Independent oracle | The batched attention matches the head loop on outputs. | Outputs and all projection gradients match in float64 for MHA, GQA and MQA within atol 1e-8. |
+| Independent oracle | The batched attention matches the head loop on outputs. | Outputs and all projection gradients match in `float64` for MHA, GQA and MQA within `atol 1e-8`. |
 | Causality | Changing a suffix leaves prefix logits unchanged. | Your tests also show that the change does reach the logits at and after the edited position, and they cover batch independence. |
 | Grouped heads and RoPE | Your batched attention matches the head-loop reference for MHA, GQA and MQA, and the RoPE, causality and batch-independence tests pass. | You explain why an interleaved KV expansion differs from the PyTorch grouping convention, and your weights load correctly under yours. |
 | Accounting | The hand-derived parameter count equals the registered count. | The sheet also gives the dominant forward FLOP terms and predicts how each scales when the sequence length doubles. |
@@ -955,7 +955,7 @@ Feeds into: Capstone artifact 2, the tiny decoder stack. Section 3 trains this m
 - **Required - Assessment:** [Stanford CS336 Assignment 1 - model contract](https://github.com/stanford-cs336/assignment1-basics) - Use the named linear, embedding, rmsnorm, positionwise_feedforward, rope, softmax, scaled_dot_product_attention, multihead_self_attention, transformer_block, transformer_lm and transformer_accounting specifications and public tests. Keep implementation independent and respect the course AI and honor-code boundary.
 - **Support - Reference:** [PyTorch scaled dot product attention reference](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) - Use the functional contract only after the explicit attention oracle passes. Transfer identical weights and masks, compare outputs and gradients, and explain dtype, causal and dropout behavior from the documented semantics.
 - **Optional - Practice:** [Deep-ML candidate - three transformer closing drills](https://www.deep-ml.com/problems) - After the platform quality sample passes, attempt at most problems 490, 53 and 904 as changed-prompt drills for attention shapes and multi-head composition. Preserve independent tests; a judge result does not replace the section checkpoint.
-- **Support - Implementation:** [nanoGPT - residual projection initialization](https://github.com/karpathy/nanoGPT/blob/master/model.py) - Read model.py: MLP, Block, GPT.__init__'s special scaled initialization of c_proj.weight, and GPT._init_weights. Contrast the depth-dependent residual initialization with CS336's component initialization; do not adopt the training or generation code.
+- **Support - Implementation:** [nanoGPT - residual projection initialization](https://github.com/karpathy/nanoGPT/blob/master/model.py) - Read `model.py`: `MLP`, `Block`, `GPT.__init__`'s special scaled initialization of `c_proj.weight`, and `GPT._init_weights`. Contrast the depth-dependent residual initialization with CS336's component initialization; do not adopt the training or generation code.
 
 ### Exit checkpoint
 
@@ -1021,17 +1021,17 @@ Every later number in this section, from optimizer steps to evaluation claims, r
 **Study**
 
 1. [CS336 Assignment 1 handout: cross-entropy and perplexity](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 4.1, Cross-entropy loss (pp. 28 to 29): equations 16 to 18 for shifted likelihood, the numerically stable cross-entropy requirements and perplexity.
-2. [LLMs from Scratch ch05: generation loss and train/val loss](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb) (LLMs from Scratch companion - training and generation) - Sections 5.1.2 (shifted inputs and targets, flattening logits for cross_entropy, perplexity as the exponential of the loss) and 5.1.3 (train and validation loss with calc_loss_batch and calc_loss_loader).
-3. [Modern LLM Notebook 10-training-loss: shift, hand loss and valid tokens](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/10-training-loss.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Sections 1 (input and label shift on [1, 3, 4, 5, 6]), 3 (hand-computed cross-entropy from logits [2.0, 1.0, 0.1, -1.0]), 10 (perplexity table) and 11 (shift in the data versus shift in the model), plus Homework 3 (mean over valid tokens only).
+2. [LLMs from Scratch ch05: generation loss and train/val loss](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb) (LLMs from Scratch companion - training and generation) - Sections 5.1.2 (shifted inputs and targets, flattening `logits` for `cross_entropy`, perplexity as the exponential of the loss) and 5.1.3 (train and validation loss with `calc_loss_batch` and `calc_loss_loader`).
+3. [Modern LLM Notebook 10-training-loss: shift, hand loss and valid tokens](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/10-training-loss.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Sections 1 (input and label shift on `[1, 3, 4, 5, 6]`), 3 (hand-computed cross-entropy from `logits` `[2.0, 1.0, 0.1, -1.0]`), 10 (perplexity table) and 11 (shift in the data versus shift in the model), plus Homework 3 (mean over valid tokens only).
 
 **Focus**
 
 - Position $`i`$ predicts token $`i+1`$ from context $`1`$ to $`i`$. Inputs and labels are the same sequence offset by one.
-- The mean runs over valid tokens only. Padding and -100 label positions leave both the sum and the count.
+- The mean runs over valid tokens only. Padding and `-100` label positions leave both the sum and the count.
 - Perplexity is exp of the mean cross-entropy, so it reads as the effective shortlist size at each step.
 - One forward pass yields every position's distribution at once, which is why training parallelizes but generation does not.
 
-**Reproduce:** From a $`2 \times 3`$ logit batch and its targets, derive the per-position losses, the masked mean and the perplexity by hand, then match F.cross_entropy on the flattened tensors.
+**Reproduce:** From a $`2 \times 3`$ logit batch and its targets, derive the per-position losses, the masked mean and the perplexity by hand, then match `F.cross_entropy` on the flattened tensors.
 
 **Traps**
 
@@ -1041,20 +1041,20 @@ Every later number in this section, from optimizer steps to evaluation claims, r
 
 **Practice**
 
-- [CS336 Assignment 1: cross_entropy](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py) - Problem (cross_entropy) in Section 4.1; connect your function to run_cross_entropy in tests/adapters.py and pass test_cross_entropy in tests/test_nn_utils.py. The tests compare against F.cross_entropy on a fixed batch and on a 1000x scaled copy, so subtract the row max and cancel log with exp. Implement it in your own repository.
+- [CS336 Assignment 1: `cross_entropy`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py) - Problem (`cross_entropy`) in Section 4.1; connect your function to `run_cross_entropy` in `tests/adapters.py` and pass `test_cross_entropy` in `tests/test_nn_utils.py`. The tests compare against `F.cross_entropy` on a fixed batch and on a 1000x scaled copy, so subtract the row max and cancel log with exp. Implement it in your own repository.
 
-**Stop when:** You hand-compute a masked loss and perplexity that match code, and your cross_entropy passes test_cross_entropy including the overflow case.
+**Stop when:** You hand-compute a masked loss and perplexity that match code, and your `cross_entropy` passes `test_cross_entropy` including the overflow case.
 
 <details>
 <summary>Self-test</summary>
 
-1. Why does the Raschka code flatten logits to $`(B \times T, V)`$ before calling cross_entropy?
+1. Why does the Raschka code flatten `logits` to $`(B \times T, V)`$ before calling `cross_entropy`?
    - The function expects a 2D $`(N, C)`$ input with one target index per row. Flattening keeps one row per position while targets flatten to $`(N,)`$, so each position is scored against its own shifted target.
-2. Logits are [2.0, 1.0, 0.1, -1.0] and the correct token is 0. What is the loss?
+2. Logits are `[2.0, 1.0, 0.1, -1.0]` and the correct token is 0. What is the loss?
    - About 0.45. Softmax gives the correct token probability $`\exp(2.0)/(\exp(2.0)+\exp(1.0)+\exp(0.1)+\exp(-1.0))=0.64`$, and $`-\log(0.64)=0.45`$.
 3. Labels are not shifted, so position $`i`$ supervises with token $`i`$. What breaks?
    - The model is asked to output a token already in its context, so it learns copying. The loss still falls, but the trained objective is not next-token prediction and the perplexity is meaningless.
-4. Six positions have losses [0.2, 0.4, 1.0, 0.3, 0.8, 0.5] with labels [10, 11, -100, 3, -100, 12]. What is the training loss?
+4. Six positions have losses `[0.2, 0.4, 1.0, 0.3, 0.8, 0.5]` with labels `[10, 11, -100, 3, -100, 12]`. What is the training loss?
    - 0.35. Only the four positions with real labels count: $`(0.2+0.4+0.3+0.5)/4`$. Including the masked positions changes both the sum and the denominator.
 
 </details>
@@ -1075,18 +1075,18 @@ Silent data bugs, from ordered batches to bad initialization, waste every GPU ho
 
 **Study**
 
-1. [CS336 Assignment 1 handout: data loading](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 5.1, Data Loader (pp. 34 to 35): (batch_size, context_length) input and target pairs, targets offset by one, random start indices and memory-mapped loading with np.memmap.
-2. [CS336 Assignment 1 handout: initialization recipe](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 3.3.1, Parameter Initialization (p. 17): truncated normal for linear weights and embeddings with torch.nn.init.trunc_normal_, ones for RMSNorm.
+1. [CS336 Assignment 1 handout: data loading](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 5.1, Data Loader (pp. 34 to 35): `(batch_size, context_length)` input and target pairs, targets offset by one, random start indices and memory-mapped loading with `np.memmap`.
+2. [CS336 Assignment 1 handout: initialization recipe](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 3.3.1, Parameter Initialization (p. 17): truncated normal for linear weights and embeddings with `torch.nn.init.trunc_normal_`, ones for `RMSNorm`.
 3. [CS336 Assignment 1 handout: debugging controls](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 7.2.3, Tips and tricks for debugging model architectures (p. 40): overfit a single minibatch to near-zero loss, inspect tensor shapes in a debugger, monitor activation, weight and gradient norms.
 
 **Focus**
 
 - Each row draws its own random start in $`[0, n-m)`$, so a start never runs past the end of the token array.
-- Inputs and targets share the same device as the model. The handout CPU tip names cpu and mps explicitly.
+- Inputs and targets share the same device as the model. The handout CPU tip names `cpu` and `mps` explicitly.
 - Linear, embedding and norm layers get different initial scales because they play different roles in the first forward pass.
 - The two controls answer different questions. Driving one tiny batch to near-zero loss proves the model and optimizer can fit at all. Training on shuffled targets should leave validation loss near the unigram baseline; doing much better means the answer leaks in, for example through a broken causal mask or a missing shift.
 
-**Reproduce:** Write get_batch from scratch: memory-mapped load, uniform random starts, and $`(B, m)`$ input and target tensors with targets offset by one.
+**Reproduce:** Write `get_batch` from scratch: memory-mapped load, uniform random starts, and $`(B, m)`$ input and target tensors with targets offset by one.
 
 **Traps**
 
@@ -1096,9 +1096,9 @@ Silent data bugs, from ordered batches to bad initialization, waste every GPU ho
 
 **Practice**
 
-- [CS336 Assignment 1: data_loading](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_data.py) - Problem (data_loading) in Section 5.1; connect your sampler to run_get_batch in tests/adapters.py and pass test_get_batch in tests/test_data.py. The test draws 1000 batches from arange(100) and checks shapes, the offset-by-one relation and uniform start coverage. Implement it in your own repository.
+- [CS336 Assignment 1: `data_loading`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_data.py) - Problem (`data_loading`) in Section 5.1; connect your sampler to `run_get_batch` in `tests/adapters.py` and pass `test_get_batch` in `tests/test_data.py`. The test draws 1000 batches from `arange(100)` and checks shapes, the offset-by-one relation and uniform start coverage. Implement it in your own repository.
 
-**Stop when:** Your sampler passes test_get_batch, your loop drives one tiny batch to near-zero loss, and a run on shuffled targets leaves validation loss near the unigram baseline.
+**Stop when:** Your sampler passes `test_get_batch`, your loop drives one tiny batch to near-zero loss, and a run on shuffled targets leaves validation loss near the unigram baseline.
 
 <details>
 <summary>Self-test</summary>
@@ -1109,7 +1109,7 @@ Silent data bugs, from ordered batches to bad initialization, waste every GPU ho
    - The model is reading the answer through a leak, such as a causal mask that lets position $`i`$ see position $`i+1`$, or inputs and targets taken from the same unshifted window. Shuffled targets carry no signal beyond token frequencies, so validation loss should stall near the unigram baseline.
 3. Overfit-one-batch stalls at high loss. What does that verdict mean?
    - The pipeline or model is broken, not the data. Check tensor shapes, the label shift, the learning rate and whether any parameter is frozen or detached.
-4. Why does the recipe give RMSNorm ones but small truncated weights to linear and embedding layers?
+4. Why does the recipe give `RMSNorm` ones but small truncated weights to linear and embedding layers?
    - Norms start as identity so they pass activations through, while small weights keep first-step activations and gradients finite. Large or constant init risks exploding or vanishing gradients before step one.
 
 </details>
@@ -1124,45 +1124,45 @@ Learning rate, batch size and schedule interact, and runs compare by tokens, not
 
 **You can now**
 
-- Derive one AdamW step from the two moments, the bias correction and the decoupled decay.
-- Implement AdamW and the warmup-cosine schedule so both pass the CS336 public tests.
+- Derive one `AdamW` step from the two moments, the bias correction and the decoupled decay.
+- Implement `AdamW` and the warmup-cosine schedule so both pass the CS336 public tests.
 - Derive the global token batch and step count from sequences, length, accumulation and parallelism.
 
 **Study**
 
-1. [CS336 Assignment 1 handout: AdamW and its accounting](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 4.3, AdamW (pp. 31 to 32): Algorithm 1 with moments, bias-corrected step and decoupled decay, typical betas (0.9, 0.999) versus (0.9, 0.95), then the adamw_accounting deliverables for memory, FLOPs and MFU time.
+1. [CS336 Assignment 1 handout: `AdamW` and its accounting](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 4.3, `AdamW` (pp. 31 to 32): Algorithm 1 with moments, bias-corrected step and decoupled decay, typical betas `(0.9, 0.999)` versus `(0.9, 0.95)`, then the `adamw_accounting` deliverables for memory, FLOPs and MFU time.
 2. [CS336 Assignment 1 handout: cosine schedule with warmup](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 4.4, Learning rate scheduling (p. 33): linear warmup, cosine annealing and post-annealing phases as a pure function of step $`t`$.
 3. [LLMs from Scratch Appendix D: warmup, cosine and the modified loop](https://github.com/rasbt/LLMs-from-scratch/blob/main/appendix-D/01_main-chapter-code/appendix-D.ipynb) (LLMs from Scratch companion - training and generation) - Sections D.1 (warmup over 0.1 percent to 20 percent of steps), D.2 (cosine decay) and D.4 (the modified training function combining both with gradient clipping).
-4. [Modern LLM Notebook 10-training-loss: mini Trainer and batch arithmetic](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/10-training-loss.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Section 6 (mini Trainer skeleton with optimizer and scheduler step order) and Homework 2 (effective batch size from per-device batch, GPU count and accumulation steps).
+4. [Modern LLM Notebook 10-training-loss: mini `Trainer` and batch arithmetic](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/10-training-loss.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Section 6 (mini `Trainer` skeleton with optimizer and scheduler step order) and Homework 2 (effective batch size from per-device batch, GPU count and accumulation steps).
 
 **Focus**
 
-- Weight decay sits outside the gradient in AdamW: parameters shrink by $`\alpha`$ times $`\lambda`$ directly, not through the moments.
+- Weight decay sits outside the gradient in `AdamW`: parameters shrink by $`\alpha`$ times $`\lambda`$ directly, not through the moments.
 - The schedule is a pure function of $`t`$, so resuming needs $`t`$ itself rather than a schedule object.
 - Global tokens per optimizer step equal sequences times length times accumulation times data-parallel width.
 - Appendix D sizes warmup as a fraction of total steps, typically 0.1 to 20 percent; many runs fix a step count instead. Either way, the warmup length belongs in the config.
 
-**Reproduce:** Derive one scalar AdamW update from Algorithm 1, the learning rate at a step inside each of the three schedule phases, and the step count for a 327.68M-token budget.
+**Reproduce:** Derive one scalar `AdamW` update from Algorithm 1, the learning rate at a step inside each of the three schedule phases, and the step count for a 327.68M-token budget.
 
 **Traps**
 
-- Adding weight decay to the gradients and calling it AdamW. That is Adam with L2, and the decay gets divided by the adaptive denominator.
+- Adding weight decay to the gradients and calling it `AdamW`. That is `Adam` with L2, and the decay gets divided by the adaptive denominator.
 - Stepping the scheduler per microbatch under accumulation. The schedule then decays faster than intended because it sees more steps.
 - Comparing two runs by step count at different batch sizes. Fix tokens first: batch times steps times length is the common currency.
 
 **Practice**
 
-- [CS336 Assignment 1: adamw](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_optimizer.py) - Problem (adamw) in Section 4.3; expose your optimizer through get_adamw_cls in tests/adapters.py and pass test_adamw in tests/test_optimizer.py. The test trains a small linear model for 1000 steps and matches PyTorch AdamW or the reference snapshot. Implement it in your own repository.
-- [CS336 Assignment 1: learning_rate_schedule](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_optimizer.py) - Problem (learning_rate_schedule) in Section 4.4; expose your function through get_lr_cosine_schedule in tests/adapters.py and pass test_get_lr_cosine_schedule in tests/test_optimizer.py
-- [Modern LLM Notebook 10-training-loss Homework 2: effective batch size](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/10-training-loss.ipynb) - Homework 2: compute effective_batch_size from per-device batch, GPU count and accumulation steps; the cell asserts 64. Derive the token batch for your own planned run the same way before trusting any step-based comparison.
+- [CS336 Assignment 1: `adamw`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_optimizer.py) - Problem (`adamw`) in Section 4.3; expose your optimizer through `get_adamw_cls` in `tests/adapters.py` and pass `test_adamw` in `tests/test_optimizer.py`. The test trains a small linear model for 1000 steps and matches PyTorch `AdamW` or the reference snapshot. Implement it in your own repository.
+- [CS336 Assignment 1: `learning_rate_schedule`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_optimizer.py) - Problem (`learning_rate_schedule`) in Section 4.4; expose your function through `get_lr_cosine_schedule` in `tests/adapters.py` and pass `test_get_lr_cosine_schedule` in `tests/test_optimizer.py`
+- [Modern LLM Notebook 10-training-loss Homework 2: effective batch size](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/10-training-loss.ipynb) - Homework 2: compute `effective_batch_size` from per-device batch, GPU count and accumulation steps; the cell asserts 64. Derive the token batch for your own planned run the same way before trusting any step-based comparison.
 
-**Stop when:** Your AdamW and schedule pass both optimizer tests including phase boundaries, and you can state any run's token batch and step count from its config.
+**Stop when:** Your `AdamW` and schedule pass both optimizer tests including phase boundaries, and you can state any run's token batch and step count from its config.
 
 <details>
 <summary>Self-test</summary>
 
-1. How does AdamW apply weight decay differently from Adam with L2 regularization?
-   - AdamW subtracts $`\alpha`$ times $`\lambda`$ times $`\theta`$ from the parameters directly. With L2 in Adam, the decay enters the gradient and is rescaled by the adaptive denominator, so large-gradient parameters get less decay.
+1. How does `AdamW` apply weight decay differently from `Adam` with L2 regularization?
+   - `AdamW` subtracts $`\alpha`$ times $`\lambda`$ times $`\theta`$ from the parameters directly. With L2 in `Adam`, the decay enters the gradient and is rescaled by the adaptive denominator, so large-gradient parameters get less decay.
 2. Per-device batch 2, 4 GPUs, 8 accumulation steps. What is the effective batch size?
    - 64 samples. $`2 \times 4 \times 8`$ accumulation groups form one optimizer step, matching the notebook Homework 2 assert.
 3. Batch size 1024, context 256, budget 327.68M tokens. How many optimizer steps?
@@ -1183,48 +1183,48 @@ One bad batch can end a run, and mixed precision makes bad batches likelier. Cli
 **You can now**
 
 - Explain the clipping rule, where it sits in the step order, and how it changes with a gradient scaler.
-- Explain autocast dtype choice and how GradScaler protects small gradients from underflow.
+- Explain `autocast` dtype choice and how `GradScaler` protects small gradients from underflow.
 - Log gradient norms, loss scale and skipped steps, and read overflow signals from the log.
 
 **Study**
 
-1. [CS336 Assignment 1 handout: gradient clipping](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 4.5, Gradient clipping (p. 34): the global norm rule with max $`M`$ and eps 1e-6, applied in place after the backward pass.
-2. [PyTorch AMP recipe: autocast, GradScaler and clipping order](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) (PyTorch Automatic Mixed Precision recipe) - Sections Adding torch.autocast (forward under autocast, never backward), Adding GradScaler (scale, backward, conditional step, update) and Inspecting/modifying gradients (unscale_ before clipping), plus Troubleshooting for inf and NaN loss.
+1. [CS336 Assignment 1 handout: gradient clipping](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 4.5, Gradient clipping (p. 34): the global norm rule with max $`M`$ and `eps` 1e-6, applied in place after the backward pass.
+2. [PyTorch AMP recipe: `autocast`, `GradScaler` and clipping order](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) (PyTorch Automatic Mixed Precision recipe) - Sections Adding `torch.autocast` (forward under `autocast`, never backward), Adding `GradScaler` (scale, backward, conditional step, update) and Inspecting/modifying gradients (`unscale_` before clipping), plus Troubleshooting for `inf` and `NaN` loss.
 3. [LLMs from Scratch Appendix D: worked clipping example](https://github.com/rasbt/LLMs-from-scratch/blob/main/appendix-D/01_main-chapter-code/appendix-D.ipynb) (LLMs from Scratch companion - training and generation) - Section D.3 (L2 norm worked example on the gradient matrix $`G`$, before-and-after clipping comparison) and Section D.4 (clipping inside the modified training function).
 
 **Focus**
 
 - Clipping rescales the whole gradient vector when its global norm passes $`M`$. Direction is preserved; only the step length is capped.
-- Under a scaler, gradients are scaled by $`s`$, so unscale_ must run before the norm check or the threshold tests the wrong numbers.
-- Autocast keeps compute-heavy ops in float16 but reductions and the loss in float32, because they need the dynamic range.
+- Under a scaler, gradients are scaled by $`s`$, so `unscale_` must run before the norm check or the threshold tests the wrong numbers.
+- Autocast keeps compute-heavy ops in `float16` but reductions and the loss in `float32`, because they need the dynamic range.
 - A skipped optimizer step is protection working, not a bug. The log should show the skip, the shrunken scale and the recovery.
 
-**Reproduce:** Write the clip-then-step order for a plain loop and an AMP loop, including unscale_, the skip-on-inf rule and the per-step values to log.
+**Reproduce:** Write the clip-then-step order for a plain loop and an AMP loop, including `unscale_`, the skip-on-inf rule and the per-step values to log.
 
 **Traps**
 
 - Clipping the scaled gradients. The norm test then uses a threshold meant for unscaled values and either never fires or always fires.
-- Running backward under autocast. Backward ops must run in the dtype chosen for the forward ops, outside the context.
+- Running `backward` under `autocast`. Backward ops must run in the dtype chosen for the `forward` ops, outside the context.
 - Retrying a diverged run with the same seed and settings. The overflow recurs; lower the scale policy, the clip threshold or the learning rate first.
 
 **Practice**
 
-- [CS336 Assignment 1: gradient_clipping](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py) - Problem (gradient_clipping) in Section 4.5; connect your function to run_gradient_clipping in tests/adapters.py and pass test_gradient_clipping in tests/test_nn_utils.py. The test compares against clip_grad_norm_ with a frozen parameter and max_norm 1e-2. Implement it in your own repository.
-- [PyTorch AMP recipe: add autocast and GradScaler to the default-precision loop](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) - Sections Adding torch.autocast through All together: run the default-precision loop, convert it, and keep the output-dtype and loss-dtype asserts green. Run on any CUDA machine you can access; on CPU, read the scale and skip logic and wire the same order into your own loop without claiming speedups.
+- [CS336 Assignment 1: `gradient_clipping`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_nn_utils.py) - Problem (`gradient_clipping`) in Section 4.5; connect your function to `run_gradient_clipping` in `tests/adapters.py` and pass `test_gradient_clipping` in `tests/test_nn_utils.py`. The test compares against `clip_grad_norm_` with a frozen parameter and `max_norm` 1e-2. Implement it in your own repository.
+- [PyTorch AMP recipe: add `autocast` and `GradScaler` to the default-precision loop](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) - Sections Adding `torch.autocast` through All together: run the default-precision loop, convert it, and keep the output-dtype and loss-dtype asserts green. Run on any CUDA machine you can access; on CPU, read the scale and skip logic and wire the same order into your own loop without claiming speedups.
 
-**Stop when:** Your clipping matches the reference in test_gradient_clipping, and your AMP loop holds the recipe dtype asserts while you explain each skip from your own log.
+**Stop when:** Your clipping matches the reference in `test_gradient_clipping`, and your AMP loop holds the recipe dtype asserts while you explain each skip from your own log.
 
 <details>
 <summary>Self-test</summary>
 
 1. The global gradient norm is 5 and $`M`$ is 1. What does clipping do?
    - It multiplies every gradient by about $`\frac{1}{5}`$, the factor $`M/(\text{norm}+\text{eps})`$. The resulting norm sits just under 1 and the update direction is unchanged.
-2. Why must scaler.unscale_ run before gradient clipping?
+2. Why must `scaler.unscale_` run before gradient clipping?
    - Backward under a scaler leaves gradients multiplied by the scale $`s`$. Clipping tests the norm against $`M`$, so on scaled values the comparison is wrong by a factor of $`s`$ and corrupts the step.
-3. The scaler finds inf gradients and skips optimizer.step. What must still run, and what happens to the batch?
-   - scaler.update() still runs so the scale shrinks for the next step. The batch contributes no update; its gradients are discarded.
-4. Under autocast, linear layers run in float16 but the loss stays in float32. Why?
-   - Linears are compute-heavy and safe in half precision, while the loss is a reduction that needs float32 dynamic range. The recipe asserts output is float16 and loss is float32.
+3. The scaler finds `inf` gradients and skips `optimizer.step`. What must still run, and what happens to the batch?
+   - `scaler.update()` still runs so the scale shrinks for the next step. The batch contributes no update; its gradients are discarded.
+4. Under `autocast`, linear layers run in `float16` but the loss stays in `float32`. Why?
+   - Linears are compute-heavy and safe in half precision, while the loss is a reduction that needs `float32` dynamic range. The recipe asserts output is `float16` and loss is `float32`.
 
 </details>
 
@@ -1244,11 +1244,11 @@ A weights-only checkpoint restarts training but not the run: learning rate, mome
 
 **Study**
 
-1. [CS336 Assignment 1 handout: checkpointing and the training loop](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 5.2, Checkpointing (p. 35): model and optimizer state_dict plus iteration through torch.save and torch.load; then Section 5.3, Training loop (p. 36): configurable hyperparameters, memmap datasets, checkpoint paths and step plus wall-clock logging.
-2. [LLMs from Scratch ch05: saving and loading weights](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb) (LLMs from Scratch companion - training and generation) - Section 5.4 (torch.save on state_dict, load_state_dict into a fresh model, and why adaptive optimizers need their state saved too).
+1. [CS336 Assignment 1 handout: `checkpointing` and the training loop](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 5.2, Checkpointing (p. 35): model and optimizer `state_dict` plus iteration through `torch.save` and `torch.load`; then Section 5.3, Training loop (p. 36): configurable hyperparameters, memmap datasets, checkpoint paths and step plus wall-clock logging.
+2. [LLMs from Scratch ch05: saving and loading weights](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb) (LLMs from Scratch companion - training and generation) - Section 5.4 (`torch.save` on `state_dict`, `load_state_dict` into a fresh model, and why adaptive optimizers need their state saved too).
 3. [PyTorch saving and loading: general checkpoint plus RNG control](https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html) (PyTorch saving, loading and reproducibility references) - Saving and Loading a General Checkpoint for Inference and/or Resuming Training (Save and Load: model plus optimizer state dicts with the epoch or step).
-4. [PyTorch reproducibility notes: RNG and DataLoader state](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch saving, loading and reproducibility references) - Controlling sources of randomness (torch, Python and other libraries) and DataLoader (generator seeds for worker shuffling), plus Avoiding nondeterministic algorithms. Depth: Read for the checklist of what counts as state; skip CUDA kernel backend options until GPU work needs them.
-5. [Modern LLM Notebook 09-model-config: repository and config identity](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/09-model-config.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Repository File Map (config, tokenizer_config and generation_config roles) and the tokenizer_config section (special tokens, max length, truncation and padding sides).
+4. [PyTorch reproducibility notes: RNG and `DataLoader` state](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch saving, loading and reproducibility references) - Controlling sources of randomness (torch, Python and other libraries) and `DataLoader` (generator seeds for worker shuffling), plus Avoiding nondeterministic algorithms. Depth: Read for the checklist of what counts as state; skip CUDA kernel backend options until GPU work needs them.
+5. [Modern LLM Notebook 09-model-config: repository and `config` identity](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/09-model-config.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Repository File Map (`config`, `tokenizer_config` and `generation_config` roles) and the `tokenizer_config` section (special tokens, max length, truncation and padding sides).
 
 **Focus**
 
@@ -1257,7 +1257,7 @@ A weights-only checkpoint restarts training but not the run: learning rate, mome
 - Equivalence needs a stated level: exact loss match for a few steps on fixed hardware, then tolerance bands beyond that.
 - Tokenizer and config versions pin the meaning of every saved tensor. A changed vocabulary or width redefines all IDs and shapes.
 
-**Reproduce:** Write save and load for model, optimizer, iteration, scaler and RNG seeds, then an interrupted-versus-uninterrupted equivalence test over fixed steps.
+**Reproduce:** Write `save` and `load` for model, optimizer, iteration, scaler and RNG seeds, then an interrupted-versus-uninterrupted equivalence test over fixed steps.
 
 **Traps**
 
@@ -1267,9 +1267,9 @@ A weights-only checkpoint restarts training but not the run: learning rate, mome
 
 **Practice**
 
-- [CS336 Assignment 1: checkpointing](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_serialization.py) - Problem (checkpointing) in Section 5.2; connect save and load to run_save_checkpoint and run_load_checkpoint in tests/adapters.py and pass test_checkpointing in tests/test_serialization.py. The test trains 10 AdamW steps, round-trips through a file and compares model and optimizer states exactly. Then extend it in your own repository with scaler, RNG and DataLoader order plus a resume-equivalence check.
+- [CS336 Assignment 1: `checkpointing`](https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_serialization.py) - Problem (`checkpointing`) in Section 5.2; connect `save` and `load` to `run_save_checkpoint` and `run_load_checkpoint` in `tests/adapters.py` and pass `test_checkpointing` in `tests/test_serialization.py`. The test trains 10 `AdamW` steps, round-trips through a file and compares model and optimizer states exactly. Then extend it in your own repository with scaler, RNG and `DataLoader` order plus a resume-equivalence check.
 
-**Stop when:** Your checkpoint round-trips through test_checkpointing, and your own resume test matches the uninterrupted loss to your stated tolerance.
+**Stop when:** Your checkpoint round-trips through `test_checkpointing`, and your own resume test matches the uninterrupted loss to your stated tolerance.
 
 <details>
 <summary>Self-test</summary>
@@ -1279,8 +1279,8 @@ A weights-only checkpoint restarts training but not the run: learning rate, mome
 2. Your resume test matches the uninterrupted run exactly for five steps on CPU, but on a GPU the losses drift apart by about 1e-6 per step. Is resume broken?
    - Not necessarily. Nondeterministic kernels and reduction order give tiny float differences that compound, so state the equivalence level: exact on CPU with deterministic algorithms, a tolerance band on GPU. A sudden jump at the resume step, by contrast, means missing state.
 3. Resumed loss diverges from the uninterrupted run within a few steps. Name two suspects.
-   - Unrestored RNG or DataLoader order, which feeds different batches, and missing scaler or optimizer moment state, which changes the update itself.
-4. Why pin tokenizer_config and config versions alongside the checkpoint?
+   - Unrestored RNG or `DataLoader` order, which feeds different batches, and missing scaler or optimizer moment state, which changes the update itself.
+4. Why pin `tokenizer_config` and `config` versions alongside the checkpoint?
    - Token IDs and tensor shapes are config-relative. A changed vocabulary or width silently redefines what every saved number means, so the binding must fail loudly on mismatch.
 
 </details>
@@ -1302,7 +1302,7 @@ The model outputs probabilities; the policy decides the text. The same logits ca
 **Study**
 
 1. [CS336 Assignment 1 handout: decoding with temperature and top-$`p`$](https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf) (Stanford CS336 Assignment 1 - training and decoding contract) - Section 6, Generating text (pp. 37 to 38): equations 21 and 22 for last-position sampling, temperature scaling in equation 23 with the $`\operatorname{argmax}`$ limit, and nucleus sampling in equation 24 as the smallest set with cumulative probability at least $`p`$.
-2. [LLMs from Scratch ch05: temperature, top-$`k`$ and the generate function](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb) (LLMs from Scratch companion - training and generation) - Sections 5.3.1 (multinomial versus $`\operatorname{argmax}`$, temperature 0.1 and 5.0 behavior), 5.3.2 (top-$`k`$ masking with negative infinity) and 5.3.3 (the generate function combining temperature, top-$`k`$ and eos_id).
+2. [LLMs from Scratch ch05: temperature, top-$`k`$ and the `generate` function](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/ch05.ipynb) (LLMs from Scratch companion - training and generation) - Sections 5.3.1 (`multinomial` versus $`\operatorname{argmax}`$, temperature 0.1 and 5.0 behavior), 5.3.2 (top-$`k`$ masking with negative infinity) and 5.3.3 (the `generate` function combining temperature, top-$`k`$ and `eos_id`).
 3. [Modern LLM Notebook 20-generation: truncation arithmetic](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/20-generation.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Sections 3 (greedy as $`\operatorname{argmax}`$), 4 (temperature table), 5.1 (top-$`k`$ with the 0.71 and 0.29 renormalization), 5.2 (top-$`p`$ nucleus with $`p`$ 0.9) and 5.3 (industry default of top-$`k`$ plus top-$`p`$).
 4. [Modern LLM Notebook 20-generation: beam search and repetition](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/20-generation.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Sections 6 (beam search keeps $`K`$ paths, fits translation and summarization, bores creative writing) and 7 (repetition penalty divides positive logits and multiplies negative ones). Depth: Read for objective and cost vocabulary only; full beam and penalty tuning belong to later tracks.
 
@@ -1317,8 +1317,8 @@ The model outputs probabilities; the policy decides the text. The same logits ca
 
 **Traps**
 
-- Applying top-$`p`$ to raw logits. Cumulative probability needs probabilities, so softmax must come before sorting and accumulation.
-- Forgetting renormalization after masking. The kept tokens must sum to one before multinomial sees them.
+- Applying top-$`p`$ to raw logits. Cumulative probability needs probabilities, so `softmax` must come before sorting and accumulation.
+- Forgetting renormalization after masking. The kept tokens must sum to one before `multinomial` sees them.
 - Expecting diversity from beam search. Wider beams concentrate on safe sequences; temperature and nucleus control diversity instead.
 
 **Practice**
@@ -1330,11 +1330,11 @@ The model outputs probabilities; the policy decides the text. The same logits ca
 <details>
 <summary>Self-test</summary>
 
-1. Logits [2.0, 1.0, 0.5] with temperature 0.5. What are the scaled logits?
-   - [4.0, 2.0, 1.0]. Temperature divides the logits, which sharpens the distribution toward the $`\operatorname{argmax}`$.
-2. Logits [0.1, 2.0, 0.5, 3.0, 0.01] with top_k 2. Which positions survive?
-   - Positions 3 (value 3.0) and 1 (value 2.0). Everything else is set to negative infinity before softmax.
-3. Probabilities [0.4, 0.3, 0.15, 0.1, 0.05] with $`p`$ 0.8. Which tokens stay?
+1. Logits `[2.0, 1.0, 0.5]` with temperature 0.5. What are the scaled logits?
+   - `[4.0, 2.0, 1.0]`. Temperature divides the logits, which sharpens the distribution toward the $`\operatorname{argmax}`$.
+2. Logits `[0.1, 2.0, 0.5, 3.0, 0.01]` with `top_k` 2. Which positions survive?
+   - Positions 3 (value 3.0) and 1 (value 2.0). Everything else is set to negative infinity before `softmax`.
+3. Probabilities `[0.4, 0.3, 0.15, 0.1, 0.05]` with $`p`$ 0.8. Which tokens stay?
    - The first three. Sorted accumulation gives 0.4, then 0.7, then 0.85, which first reaches 0.8 at the third token.
 4. The distribution is sharp and $`k`$ is 40. What goes wrong, and what fixes it?
    - Top-$`k`$ drags 39 implausible tail tokens into the candidate set. Top-$`p`$ fixes it by stopping accumulation once the nucleus reaches $`p`$, keeping only the concentrated head.
@@ -1351,16 +1351,16 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 
 **You can now**
 
-- Implement EOS, stop-sequence, maximum-length and finished-batch handling in a generate loop.
+- Implement EOS, stop-sequence, maximum-length and finished-batch handling in a `generate` loop.
 - Make sampling exactly reproducible from a recorded seed and validate the outputs.
 - Compare prompts and chat templates while holding decoding fixed, and state each choice in config.
 
 **Study**
 
-1. [Raschka gpt_generate.py: bounded generation with eos_id](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/gpt_generate.py) (LLMs from Scratch companion - training and generation) - generate(): context-window slicing of the running sequence, the max_new_tokens loop, the eos_id early break and appending each sampled token.
-2. [Modern LLM Notebook 20-generation: complete pipeline and order](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/20-generation.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Section 9 (complete generate with penalty, temperature, top-$`k`$ and top-$`p`$, eos_id and seed) and the Summary execution order: penalty, temperature, top-$`k`$ and top-$`p`$, sample, then eos.
-3. [PyTorch reproducibility notes: seeding for exact reruns](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch saving, loading and reproducibility references) - Controlling sources of randomness (seed torch, Python and other libraries together); the Raschka scripts set torch.manual_seed(123) before generation.
-4. [Modern LLM Notebook 20-generation and 10-training-loss: templates](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/20-generation.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Notebook 20 Section 8 (chat templates stitch turns into model text, wrong template degrades quality, apply_chat_template) with notebook 10 Section 2 (templates decide which tokens the loss sees).
+1. [Raschka `gpt_generate.py`: bounded generation with `eos_id`](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch05/01_main-chapter-code/gpt_generate.py) (LLMs from Scratch companion - training and generation) - `generate()`: context-window slicing of the running sequence, the `max_new_tokens` loop, the `eos_id` early break and appending each sampled token.
+2. [Modern LLM Notebook 20-generation: complete pipeline and order](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/20-generation.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Section 9 (complete `generate` with penalty, temperature, top-$`k`$ and top-$`p`$, `eos_id` and seed) and the Summary execution order: penalty, temperature, top-$`k`$ and top-$`p`$, sample, then `eos`.
+3. [PyTorch reproducibility notes: seeding for exact reruns](https://docs.pytorch.org/docs/stable/notes/randomness.html) (PyTorch saving, loading and reproducibility references) - Controlling sources of randomness (seed torch, Python and other libraries together); the Raschka scripts set `torch.manual_seed(123)` before generation.
+4. [Modern LLM Notebook 20-generation and 10-training-loss: templates](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/20-generation.ipynb) (Modern LLM Notebook - configuration, loss and generation) - Notebook 20 Section 8 (chat templates stitch turns into model text, wrong template degrades quality, `apply_chat_template`) with notebook 10 Section 2 (templates decide which tokens the loss sees).
 5. [Hugging Face LLM Course: inference translation](https://huggingface.co/learn/llm-course/chapter1/8) (Hugging Face LLM Course - library translation) - Chapter 1, Inference with LLMs (chapter1/8): map generation configuration and stopping behavior into library APIs. Depth: Open only after the blank-file loop passes fixed-seed checks; the from-scratch tests stay the authority.
 
 **Focus**
@@ -1370,7 +1370,7 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 - Validation is cheap and explicit: EOS present, length within cap, template matching training, decoded text well-formed.
 - Hold decoding fixed when comparing prompts or templates, or policy differences will masquerade as prompt effects.
 
-**Reproduce:** Write a generate loop with max_new_tokens, eos_id, a stop-sequence check and seed control that returns identical tokens on every rerun.
+**Reproduce:** Write a `generate` loop with `max_new_tokens`, `eos_id`, a stop-sequence check and seed control that returns identical tokens on every rerun.
 
 **Traps**
 
@@ -1380,20 +1380,20 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 
 **Practice**
 
-- [Modern LLM Notebook 09-model-config Exercise 1: compare generation configs](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/09-model-config.ipynb) - Exercise 1: open two model generation_config files, write three differences with explanations for temperature, top_p, top_k, max_new_tokens and stopping entries. Then encode your own loop's stopping and sampling choices as one such config and demonstrate the EOS plus max-length stops with a fixed seed.
+- [Modern LLM Notebook 09-model-config Exercise 1: compare generation configs](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/09-model-config.ipynb) - Exercise 1: open two model `generation_config` files, write three differences with explanations for `temperature`, `top_p`, `top_k`, `max_new_tokens` and stopping entries. Then encode your own loop's stopping and sampling choices as one such config and demonstrate the EOS plus max-length stops with a fixed seed.
 
 **Stop when:** Your loop stops on EOS and on the cap, reruns bit-identically from a recorded seed, and every stopping and template choice is stated in one config.
 
 <details>
 <summary>Self-test</summary>
 
-1. Why does the loop need both eos_id and max_new_tokens?
+1. Why does the loop need both `eos_id` and `max_new_tokens`?
    - EOS is emitted by the model and may never come, so it cannot bound cost. The cap bounds tokens, latency and cost on every call no matter what the model does.
 2. Same seed, different outputs on rerun. Name two suspects.
-   - An unseeded RNG such as Python random or a sampler without generator control, and a nondeterministic kernel or op ordering. Both must be fixed before blaming the policy code.
-3. What failure does apply_chat_template prevent?
+   - An unseeded RNG such as Python `random` or a sampler without generator control, and a nondeterministic kernel or op ordering. Both must be fixed before blaming the policy code.
+3. What failure does `apply_chat_template` prevent?
    - Train and serve format mismatch. The template wraps turns exactly as training saw them; a hand-rolled prompt can silently use the wrong markers and degrade quality.
-4. A run uses temperature 0.6, top_p 0.9, top_k 50 and repetition penalty 1.1. In what order do they apply?
+4. A run uses `temperature` 0.6, `top_p` 0.9, `top_k` 50 and repetition penalty 1.1. In what order do they apply?
    - Penalty first, then temperature, then top-$`k`$ and top-$`p`$ truncation, then sampling, then the EOS check, as the notebook summary lists. The order matters: temperature changes the probabilities, so applying it before or after top-$`p`$ changes which tokens the nucleus keeps. Record the order in the config.
 
 </details>
@@ -1402,11 +1402,11 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 
 **About 10 to 14 hours.** Turn the decoder into a trained model you can trust: a loss you can derive by hand, a loop that resumes exactly, and decoding policies whose distributions you can check. Train on the packed split from section 1 on a CPU or a free GPU notebook.
 
-1. Implement cross-entropy, gradient clipping, AdamW, the warmup-cosine schedule, get_batch and checkpointing, and pass the CS336 tests in test_nn_utils.py, test_optimizer.py, test_data.py and test_serialization.py.
+1. Implement cross-entropy, gradient clipping, `AdamW`, the warmup-cosine schedule, `get_batch` and checkpointing, and pass the CS336 tests in `test_nn_utils.py`, `test_optimizer.py`, `test_data.py` and `test_serialization.py`.
 2. Run two controls before any real run: drive one tiny batch to near-zero loss, and confirm that a run on shuffled targets leaves validation loss near the unigram baseline.
 3. Train on your section 1 split with a fixed seed, logging loss, gradient norm, learning rate and tokens seen, with a validation curve from the held-out split.
 4. Save complete state, including model, optimizer, step, RNG and data cursor, and show that an interrupted run matches an uninterrupted one to a stated level.
-5. Implement greedy, temperature, top-$`k`$ and top-$`p`$ sampling with EOS and length stops, and reproduce fixed-seed outputs exactly.
+5. Implement greedy, temperature, top-$`k`$ and top-$`p`$ sampling with `EOS` and length stops, and reproduce fixed-seed outputs exactly.
 6. Train on a synthetic Markov chain with a known entropy rate: validation loss should approach that rate, and a loss clearly below it means the labels leak. On CPU, a resumed run should match an uninterrupted one exactly.
 
 **Deliverables**
@@ -1418,7 +1418,7 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 
 **Checks**
 
-- external-tests: [CS336 tests for cross-entropy, clipping, AdamW, the schedule, data loading and checkpointing](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_nn_utils.py tests/test_optimizer.py tests/test_data.py tests/test_serialization.py`.
+- external-tests: [CS336 tests for cross-entropy, clipping, `AdamW`, the schedule, data loading and checkpointing](https://github.com/stanford-cs336/assignment1-basics/tree/main/tests). Run `uv run pytest tests/test_nn_utils.py tests/test_optimizer.py tests/test_data.py tests/test_serialization.py`.
 - rubric: Self-grade with the rubric below.
 
 | Criterion | Pass | Strong |
@@ -1426,7 +1426,7 @@ Unbounded generation never terminates cleanly, and unseeded sampling cannot be d
 | Objective | Your cross-entropy passes the public test, including the overflow case. | You derive one masked loss by hand and match your code, and the shuffled-target control behaves as you predicted. |
 | Training | Validation loss falls on your split, and on the Markov chain it approaches the entropy rate without going clearly below it. | The log shows learning rate, gradient norm and tokens seen, and you explain one anomaly from it. |
 | Resume | An interrupted run continues without a loss jump. | Losses after resume match the uninterrupted run exactly on CPU, and your stated GPU tolerance is justified. |
-| Decoding | Each policy runs and stops on EOS or the length cap. | Fixed-seed outputs reproduce exactly, and you show by hand how temperature followed by top-$`p`$ changes the kept set at one step. |
+| Decoding | Each policy runs and stops on `EOS` or the length cap. | Fixed-seed outputs reproduce exactly, and you show by hand how temperature followed by top-$`p`$ changes the kept set at one step. |
 
 Feeds into: Capstone artifact 2: the trained checkpoint and its decoding policies. Section 4 evaluates this checkpoint, and section 5 must reproduce its greedy outputs with a cache.
 
@@ -1437,7 +1437,7 @@ Feeds into: Capstone artifact 2: the trained checkpoint and its decoding policie
 - **Support - Implementation:** [Modern LLM Notebook - configuration, loss and generation](https://walkinglabs.github.io/modern-llm-notebook/?lang=en) - Use English notebooks 09-model-config, 10-training-loss and 20-generation to visualize configuration ownership, shifted loss and decoding policies. Change edge cases and cross-check probability calculations against your own implementation.
 - **Support - Reference:** [PyTorch saving, loading and reproducibility references](https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html) - Use the state-dict and reproducibility notes to enumerate all state needed for the supported resume guarantee. Test model, optimizer, schedule, scaler, data order and RNG state across an interruption.
 - **Optional - Application:** [Hugging Face LLM Course - library translation](https://huggingface.co/learn/llm-course/chapter1/1) - Only after the blank-file loop passes, map tokenization, model configuration, data collation, generation configuration and stopping behavior into Transformers APIs. Keep the from-scratch tests as the authority.
-- **Support - Reference:** [PyTorch Automatic Mixed Precision recipe](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) - Use the autocast, GradScaler, unscale-before-clip, scaler checkpointing and inf-NaN troubleshooting sections to add mixed precision to the blank-file loop. Keep the CS336 clipping contract as the authority for the clipping rule.
+- **Support - Reference:** [PyTorch Automatic Mixed Precision recipe](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) - Use the `autocast`, `GradScaler`, unscale-before-clip, scaler checkpointing and inf-NaN troubleshooting sections to add mixed precision to the blank-file loop. Keep the CS336 clipping contract as the authority for the clipping rule.
 
 ### Exit checkpoint
 
@@ -1501,10 +1501,10 @@ Perplexity guides training and scaling because it is smooth, but it scores every
 
 **Study**
 
-1. [CS336 Lecture 12: perplexity()](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function perplexity(): $`p(x)`$ over token sequences, perplexity $`\left(1/p(D)\right)^{1/|D|}`$, PTB, WikiText-103 and One Billion Word splits, GPT-2 WebText 40GB zero-shot on small versus 1BW sets, conditional perplexity $`p(\text{response} \mid \text{prompt})^{1/|\text{response}|}`$, the trust warning for perplexity leaderboards, and LAMBADA plus HellaSwag as perplexity in disguise.
+1. [CS336 Lecture 12: `perplexity()`](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function `perplexity()`: $`p(x)`$ over token sequences, perplexity $`\left(1/p(D)\right)^{1/|D|}`$, PTB, WikiText-103 and One Billion Word splits, GPT-2 WebText 40GB zero-shot on small versus 1BW sets, conditional perplexity $`p(\text{response} \mid \text{prompt})^{1/|\text{response}|}`$, the trust warning for perplexity leaderboards, and LAMBADA plus HellaSwag as perplexity in disguise.
 2. [Modern LLM Notebook 25-evaluation: perplexity and metric choice](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Intro (perplexity suits language modeling and pretraining monitoring, not chat, reasoning or safety) and Section 9.1 (perplexity row: sum of logprobs, ppl and bpb on WikiText and Lambada).
-3. [lm-eval-harness: wikitext perplexity config](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/wikitext/wikitext.yaml) (Language Model Evaluation Harness) - wikitext.yaml: loglikelihood_rolling with word_perplexity, byte_perplexity and bits_per_byte (version 2.0).
-4. [lm-eval-harness: perplexity aggregations in metrics.py](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/api/metrics.py) (Language Model Evaluation Harness) - perplexity as $`\exp(-\text{mean})`$, weighted_perplexity as $`\exp(-\text{weighted\_mean})`$ and bits_per_byte as $`-\text{weighted\_mean}/\log(2)`$.
+3. [lm-eval-harness: wikitext perplexity config](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/wikitext/wikitext.yaml) (Language Model Evaluation Harness) - `wikitext.yaml`: `loglikelihood_rolling` with `word_perplexity`, `byte_perplexity` and `bits_per_byte` (version 2.0).
+4. [lm-eval-harness: perplexity aggregations in `metrics.py`](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/api/metrics.py) (Language Model Evaluation Harness) - `perplexity` as $`\exp(-\text{mean})`$, `weighted_perplexity` as $`\exp(-\text{weighted\_mean})`$ and `bits_per_byte` as $`-\text{weighted\_mean}/\log(2)`$.
 
 **Focus**
 
@@ -1523,7 +1523,7 @@ Perplexity guides training and scaling because it is smooth, but it scores every
 
 **Practice**
 
-- [Modern LLM Notebook 25-evaluation Exercise 1: Perplexity by Hand](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) - Exercises: Exercise 1 with output probs [0.5, 0.3, 0.2], [0.1, 0.7, 0.2], [0.4, 0.1, 0.5]; take the log prob at each step, average, then exponentiate. Take the stated correct-token probs as given and compare your hand result with code. Then rescore the same text after a tokenizer change to see the denominator move.
+- [Modern LLM Notebook 25-evaluation Exercise 1: Perplexity by Hand](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) - Exercises: Exercise 1 with output probs `[0.5, 0.3, 0.2]`, `[0.1, 0.7, 0.2]`, `[0.4, 0.1, 0.5]`; take the log prob at each step, average, then exponentiate. Take the stated correct-token probs as given and compare your hand result with code. Then rescore the same text after a tokenizer change to see the denominator move.
 
 **Stop when:** You hand-compute 1.79 from the three probs, and you can say for any reported perplexity which tokenizer, split and conditioning it used.
 
@@ -1557,20 +1557,20 @@ Most evaluation gains come from parsing, prompts or versions, not from the model
 
 **Study**
 
-1. [Modern LLM Notebook 25-evaluation: metric system and pitfalls](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 9.1 (loglikelihood acc and acc_norm for MCQ, generate_until exact_match, pass@k and F1 for generation, strict_acc for IFEval) and Sections 10.1 to 10.2 (prompt sensitivity 5 to 15 percent with OLMES prompts, few-shot 0, 5 and 8, seed, temperature 0, Chat versus Completions API confusion).
-2. [lm-eval-harness: GSM8K task contract](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/gsm8k/gsm8k.yaml) (Language Model Evaluation Harness) - doc_to_text and doc_to_target, metric exact_match with strict-match regex #### (number) versus flexible-extract last-number regex, generation_kwargs until Question with do_sample false and temperature 0.0, num_fewshot 5, metadata version 3.0.
-3. [lm-eval-harness: task configuration guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md) (Language Model Evaluation Harness) - Task naming, doc_to_text, doc_to_target, doc_to_choice, num_fewshot, output_type generate_until, loglikelihood and multiple_choice, filter_list pipelines, metadata version.
-4. [lm-eval-harness: exact match and accuracy metrics](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/api/metrics.py) (Language Model Evaluation Harness) - exact_match_hf_evaluate with regexes_to_ignore, ignore_case and ignore_punctuation plus mean aggregation; acc and acc_norm entries for loglikelihood and multiple_choice.
-5. [CS336 Lecture 12: exam benchmarks and rules of the game](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function exam_benchmarks() with MMLU 57 subjects and few-shot prompting, MMLU-Pro 4 to 10 choices with 16 to 33 percent drops, IFEval synthetic constraints that check format not semantics; plus how_to_think_about_evaluation() with methods versus models and the nanogpt speedrun and DataComp-LM rules of the game.
+1. [Modern LLM Notebook 25-evaluation: metric system and pitfalls](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 9.1 (`loglikelihood` `acc` and `acc_norm` for MCQ, `generate_until` `exact_match`, `pass@k` and `F1` for generation, `strict_acc` for IFEval) and Sections 10.1 to 10.2 (prompt sensitivity 5 to 15 percent with OLMES prompts, few-shot 0, 5 and 8, `seed`, `temperature` 0, Chat versus Completions API confusion).
+2. [lm-eval-harness: GSM8K task contract](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/gsm8k/gsm8k.yaml) (Language Model Evaluation Harness) - `doc_to_text` and `doc_to_target`, metric `exact_match` with strict-match regex `#### (number)` versus flexible-extract last-number regex, `generation_kwargs` `until Question` with `do_sample false` and `temperature 0.0`, `num_fewshot 5`, metadata version 3.0.
+3. [lm-eval-harness: task configuration guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md) (Language Model Evaluation Harness) - Task naming, `doc_to_text`, `doc_to_target`, `doc_to_choice`, `num_fewshot`, `output_type` `generate_until`, `loglikelihood` and `multiple_choice`, `filter_list` pipelines, metadata version.
+4. [lm-eval-harness: exact match and accuracy metrics](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/api/metrics.py) (Language Model Evaluation Harness) - `exact_match_hf_evaluate` with `regexes_to_ignore`, `ignore_case` and `ignore_punctuation` plus mean aggregation; `acc` and `acc_norm` entries for `loglikelihood` and `multiple_choice`.
+5. [CS336 Lecture 12: exam benchmarks and rules of the game](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function `exam_benchmarks()` with MMLU 57 subjects and few-shot prompting, MMLU-Pro 4 to 10 choices with 16 to 33 percent drops, IFEval synthetic constraints that check format not semantics; plus `how_to_think_about_evaluation()` with methods versus models and the nanogpt speedrun and DataComp-LM rules of the game.
 
 **Focus**
 
 - The task is the prompt plus few-shot plus parsing plus version, not just the dataset name. Change any part and the score means something new.
-- Strict match needs the #### marker, flexible extract takes the last number. The same outputs can pass one and fail the other.
-- acc picks the highest-prob choice, acc_norm corrects for length. IFEval strict_acc checks format and keywords, not whether the answer is right.
+- Strict match needs the `####` marker, flexible extract takes the last number. The same outputs can pass one and fail the other.
+- `acc` picks the highest-prob choice, `acc_norm` corrects for length. IFEval `strict_acc` checks format and keywords, not whether the answer is right.
 - Keep raw generations and the config hash. Reruns compare filtered outputs, not just the mean.
 
-**Reproduce:** From one GSM8K output without a #### marker that states the right number, show strict-match failing while flexible-extract passes, then write the version string that would catch the parser change.
+**Reproduce:** From one GSM8K output without a `####` marker that states the right number, show strict-match failing while flexible-extract passes, then write the version string that would catch the parser change.
 
 **Traps**
 
@@ -1587,14 +1587,14 @@ Most evaluation gains come from parsing, prompts or versions, not from the model
 <details>
 <summary>Self-test</summary>
 
-1. An output says The answer is 42 with no #### marker. How do strict-match and flexible-extract score it?
-   - Strict fails because there is no #### (number) match, while flexible extracts the last number-like token 42 and passes. Report both pipeline names with the score.
-2. When should you report acc_norm instead of acc?
-   - acc compares raw choice loglikelihoods, acc_norm normalizes by length or bytes. Use the normalized form when choices differ in length or tokenization, and state which one the table uses.
+1. An output says The answer is 42 with no `####` marker. How do strict-match and flexible-extract score it?
+   - Strict fails because there is no `#### (number)` match, while flexible extracts the last number-like token 42 and passes. Report both pipeline names with the score.
+2. When should you report `acc_norm` instead of `acc`?
+   - `acc` compares raw choice loglikelihoods, `acc_norm` normalizes by length or bytes. Use the normalized form when choices differ in length or tokenization, and state which one the table uses.
 3. Which temperature and sampling settings suit deterministic task metrics?
-   - Use temperature 0 with do_sample false for exact and structured metrics. Use non-zero temperature only for pass@k, self-consistency or robustness runs, and then fix the seed.
+   - Use `temperature` 0 with `do_sample false` for exact and structured metrics. Use non-zero `temperature` only for `pass@k`, self-consistency or robustness runs, and then fix the `seed`.
 4. What must be versioned for a task result to be reproducible?
-   - Task YAML plus commit hash, prompt text, few-shot count and split, filter regexes, generation kwargs, model version and evaluator version, plus raw outputs saved with log_samples and output_path.
+   - Task YAML plus commit hash, prompt text, few-shot count and split, filter regexes, generation kwargs, model version and evaluator version, plus raw outputs saved with `log_samples` and `output_path`.
 
 </details>
 
@@ -1614,9 +1614,9 @@ Open-ended quality has no ground truth, so a judge is a measuring instrument wit
 
 **Study**
 
-1. [Modern LLM Notebook 25-evaluation: LLM-as-Judge and AlpacaEval](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 4.1 to 4.3 (judge idea, WR, LC win rate and MT-Bench scores, JUDGE_PROMPT with [[rating]] format and the two-sample scoring loop) and Section 6.1 to 6.5 (AlpacaEval 805-prompt workflow, CLI and Python API, LC versus raw win rate with average length).
-2. [Modern LLM Notebook 25-evaluation: judge bias and consistency](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 8.1 (position, length, egocentric and verbosity biases with randomize, LC win rate and cross-judge mitigations) and Section 8.2 (CR@K, prompt, order and sampling robustness, plus manual review proportion by risk).
-3. [CS336 Lecture 12: chat benchmarks](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function chat_benchmarks() with Chatbot Arena pairwise ELO, live prompts, style versus correctness and sycophancy risks; AlpacaEval 805 win rate versus GPT-4 preview with length gaming and 2.0 regression debias plus Arena correlation; WildBench 1024 examples with checklist judging.
+1. [Modern LLM Notebook 25-evaluation: LLM-as-Judge and AlpacaEval](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 4.1 to 4.3 (judge idea, WR, LC win rate and MT-Bench scores, `JUDGE_PROMPT` with `[[rating]]` format and the two-sample scoring loop) and Section 6.1 to 6.5 (AlpacaEval 805-prompt workflow, CLI and Python API, LC versus raw win rate with average length).
+2. [Modern LLM Notebook 25-evaluation: judge bias and consistency](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 8.1 (position, length, egocentric and verbosity biases with randomize, LC win rate and cross-judge mitigations) and Section 8.2 (`CR@K`, prompt, order and sampling robustness, plus manual review proportion by risk).
+3. [CS336 Lecture 12: chat benchmarks](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function `chat_benchmarks()` with Chatbot Arena pairwise ELO, live prompts, style versus correctness and sycophancy risks; AlpacaEval 805 win rate versus GPT-4 preview with length gaming and 2.0 regression debias plus Arena correlation; WildBench 1024 examples with checklist judging.
 
 **Focus**
 
@@ -1670,9 +1670,9 @@ A single mean hides where a model fails and how fragile the number is. Slices pl
 **Study**
 
 1. [Modern LLM Notebook 25-evaluation: aggregation and composite scores](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 5 comparison table with analysis points (same-scale compare, business-relevant metrics, trends over single numbers, labeled source and config) and Section 5.2 (arithmetic, normalized, weighted, geometric and rank-sum methods with geometric penalizing weak spots).
-2. [Modern LLM Notebook 25-evaluation: robustness and pitfalls](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 8.2 (CR@K, prompt, order and sampling robustness) and Sections 10.1 to 10.3 (prompt sensitivity 5 to 15 percent with OLMES prompts, few-shot counts, HumanEval 164 variance, seed, temperature, mean plus minus std, per-subject slices, length bias, best-score reporting).
-3. [lm-eval-harness: bootstrap uncertainty in metrics.py](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/api/metrics.py) (Language Model Evaluation Harness) - bootstrap_stderr with resampling and iters, stderr_for_metric with the bootstrappable list (median, matthews, f1, perplexity, bleu, chrf, ter, nanmean) and closed-form mean and acc_all, plus pooled_sample_stderr for groups.
-4. [CS336 Lecture 12: safety benchmarks and realism](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function safety_benchmarks() with HarmBench 510 behaviors, AIR-Bench 314 categories and 5694 prompts, GCG transfer, contextual safety and dual-use CyBench; plus realism() with GDPVal, MedHELM 121 tasks from 29 clinicians, and Clio.
+2. [Modern LLM Notebook 25-evaluation: robustness and pitfalls](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 8.2 (`CR@K`, prompt, order and sampling robustness) and Sections 10.1 to 10.3 (prompt sensitivity 5 to 15 percent with OLMES prompts, few-shot counts, HumanEval 164 variance, `seed`, `temperature`, mean plus minus std, per-subject slices, length bias, best-score reporting).
+3. [lm-eval-harness: bootstrap uncertainty in `metrics.py`](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/api/metrics.py) (Language Model Evaluation Harness) - `bootstrap_stderr` with resampling and `iters`, `stderr_for_metric` with the bootstrappable list (`median`, `matthews`, `f1`, `perplexity`, `bleu`, `chrf`, `ter`, `nanmean`) and closed-form mean and `acc_all`, plus `pooled_sample_stderr` for groups.
+4. [CS336 Lecture 12: safety benchmarks and realism](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function `safety_benchmarks()` with HarmBench 510 behaviors, AIR-Bench 314 categories and 5694 prompts, GCG transfer, contextual safety and dual-use CyBench; plus `realism()` with GDPVal, MedHELM 121 tasks from 29 clinicians, and Clio.
 
 **Focus**
 
@@ -1700,8 +1700,8 @@ A single mean hides where a model fails and how fragile the number is. Slices pl
 
 1. Exercise 3 scores Model A at 82, 71, 65, 78 and Model B at 78, 75, 70, 72. What do the two means say?
    - Arithmetic: A 74.0, B 73.8, so A leads by 0.25. Geometric: both about 73.7, so the gap vanishes. B is more balanced (range 8 versus 17) because the geometric mean punishes the weak 65 that the headline average hides.
-2. When should you use bootstrap_stderr instead of a closed-form SE?
-   - Plain means and acc_all have closed forms (mean_stderr, acc_all_stderr). Medians, F1, perplexity, BLEU and similar use bootstrap_stderr with resampling, and groups combine with pooled_sample_stderr.
+2. When should you use `bootstrap_stderr` instead of a closed-form SE?
+   - Plain means and `acc_all` have closed forms (`mean_stderr`, `acc_all_stderr`). Medians, F1, perplexity, BLEU and similar use `bootstrap_stderr` with resampling, and groups combine with `pooled_sample_stderr`.
 3. Why compare paired deltas rather than two independent means?
    - Both models see the same prompts, so prompt difficulty cancels and the $`\delta`$ isolates the model effect. Independent means mix model differences with prompt sampling noise.
 4. How should capability and safety results be gated?
@@ -1725,19 +1725,19 @@ Training on the Internet means the test set may already be in the weights. Witho
 
 **Study**
 
-1. [CS336 Lecture 12: validity and train-test overlap](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function validity() with train-test overlap routes (exchangeability paper 2310.17623, reporting norms 2410.08385 with confidence intervals, fresh evals LiveCodeBench and UncheatableEval with unsafe timestamps, private evals with perplexity as the easiest private check) plus dataset quality (SWE-Bench Verified, Platinum, agentic test gaps with Docent).
-2. [Modern LLM Notebook 25-evaluation: contamination pitfalls](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 10.1 (contamination as critical with exact, n-gram and embedding matching, check_integrity limits, stale HumanEval toward HumanEval+ and LiveCodeBench, small-data variance).
-3. [lm-eval-harness: decontamination guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/decontamination.md) (Language Model Evaluation Harness) - 13-gram overlap rule from Few-Shot Learners Appendix C with $`N`$ 8 to 13, decontaminate.py n-gram dicts plus training scan, clean benchmark with decontaminate suffix, disabled by default.
-4. [lm-eval-harness: task decontamination fields](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md) (Language Model Evaluation Harness) - should_decontaminate and doc_to_decontamination_query fields for enabling task decontamination.
+1. [CS336 Lecture 12: validity and train-test overlap](https://github.com/stanford-cs336/lectures/blob/main/lecture_12.py) (Stanford CS336 - resource accounting, inference and evaluation) - Function `validity()` with train-test overlap routes (exchangeability paper 2310.17623, reporting norms 2410.08385 with confidence intervals, fresh evals LiveCodeBench and UncheatableEval with unsafe timestamps, private evals with perplexity as the easiest private check) plus dataset quality (SWE-Bench Verified, Platinum, agentic test gaps with Docent).
+2. [Modern LLM Notebook 25-evaluation: contamination pitfalls](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/25-evaluation.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 10.1 (contamination as critical with exact, n-gram and embedding matching, `check_integrity` limits, stale HumanEval toward HumanEval+ and LiveCodeBench, small-data variance).
+3. [lm-eval-harness: decontamination guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/decontamination.md) (Language Model Evaluation Harness) - 13-gram overlap rule from Few-Shot Learners Appendix C with $`N`$ 8 to 13, `decontaminate.py` n-gram dicts plus training scan, clean benchmark with `decontaminate` suffix, disabled by default.
+4. [lm-eval-harness: task decontamination fields](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md) (Language Model Evaluation Harness) - `should_decontaminate` and `doc_to_decontamination_query` fields for enabling task decontamination.
 
 **Focus**
 
 - Run both exact and approximate (n-gram or embedding) checks. Exact catches copies, n-grams catch near copies.
-- check_integrity checks task and data plumbing, not training overlap. Do not cite it as decontamination.
+- `check_integrity` checks task and data plumbing, not training overlap. Do not cite it as decontamination.
 - Duplicates and memorized benchmarks inflate scores without new capability. Prefer fresh or private evals for the headline claim.
 - Report full versus clean side by side. A large drop is evidence of leakage, not a worse model.
 
-**Reproduce:** Write the 13-gram overlap scan from decontamination.md: build eval n-grams, scan training n-grams, mark contaminated docs, and report the metric with a decontaminate suffix on the clean subset.
+**Reproduce:** Write the 13-gram overlap scan from `decontamination.md`: build eval n-grams, scan training n-grams, mark contaminated docs, and report the metric with a `decontaminate` suffix on the clean subset.
 
 **Traps**
 
@@ -1756,7 +1756,7 @@ Training on the Internet means the test set may already be in the weights. Witho
 
 1. Which $`n`$ does the harness use for decontamination, and what marks a doc as contaminated?
    - 13. OpenAI used 8 to 13 by dataset, and the harness fixes 13 for simplicity. A doc is contaminated if any 13-gram overlaps a training doc.
-2. What does check_integrity do, and what does it not do?
+2. What does `check_integrity` do, and what does it not do?
    - It checks task and data integrity such as config and loading, not train-eval overlap. It cannot replace decontamination.
 3. HumanEval is stale and widely memorized. What should you do?
    - Move to HumanEval+ or LiveCodeBench, run overlap checks, and cross-validate with more sets, because 164 items carry high variance on their own.
@@ -1781,11 +1781,11 @@ Every cost claim in later sections multiplies these counts. A wrong parameter or
 
 **Study**
 
-1. [Modern LLM Notebook Appendix B Section 1: parameter counting](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 1 ($`D, L, V, H, K, d_h, F, B, S, P`$ symbols, GQA $`Q, K, V, O`$ shapes, SwiGLU $`3DF`$ with $`8D/3`$ rationale, per-layer $`12D^2`$, global $`2VD`$ plus $`12LD^2`$, tied versus untied, SmolLM2-135M validation with sum(p.numel())).
+1. [Modern LLM Notebook Appendix B Section 1: parameter counting](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 1 ($`D, L, V, H, K, d_h, F, B, S, P`$ symbols, GQA $`Q, K, V, O`$ shapes, SwiGLU $`3DF`$ with $`8D/3`$ rationale, per-layer $`12D^2`$, global $`2VD`$ plus $`12LD^2`$, tied versus untied, SmolLM2-135M validation with `sum(p.numel())`).
 2. [Modern LLM Notebook Appendix B Sections 3 and 4: FLOPs and training rule](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 3 (matmul $`2mkn`$, attention $`8BSD^2`$ plus $`4BS^2D`$, FFN $`6BSDF`$ as $`16BSD^2`$, global $`2BSD(12LD + 2LS + V)`$ with unembedding) and Section 4 (backward 2 times forward, $`6PD`$ rule with SmolLM2 135M on 2T and 7B on 1.5T wall-clock).
-3. [CS336 Lecture 2: napkin math, FLOPs and gradients](https://github.com/stanford-cs336/lectures/blob/main/lecture_02.py) (Stanford CS336 - resource accounting, inference and evaluation) - motivating_questions() with $`6 \times 70 \times 10^9 \times 15 \times 10^{12}`$ at MFU 0.5 and the $`80 \times 10^9 \times 8/12`$ bound, tensor_operations_flops() with $`2 \times B \times D \times K`$ and MFU, gradients_flops() with forward $`2NP`$, backward $`4NP`$ and total $`6NP`$.
+3. [CS336 Lecture 2: napkin math, FLOPs and gradients](https://github.com/stanford-cs336/lectures/blob/main/lecture_02.py) (Stanford CS336 - resource accounting, inference and evaluation) - `motivating_questions()` with $`6 \times 70 \times 10^9 \times 15 \times 10^{12}`$ at MFU 0.5 and the $`80 \times 10^9 \times 8/12`$ bound, `tensor_operations_flops()` with $`2 \times B \times D \times K`$ and MFU, `gradients_flops()` with forward $`2NP`$, backward $`4NP`$ and total $`6NP`$.
 4. [Raschka FLOPS analysis: thop benchmarks and MFU](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/02_performance-analysis/flops-analysis.ipynb) (LLMs from Scratch companion - GPT FLOP analysis) - Fixed-batch forward with thop profile and MACS times 2 on gpt-small to gpt-xl (vocab 50257, context 1024), plus the MFU section with observed over theoretical tokens per second and forward plus backward as 3 times forward.
-5. [CS336 Assignment 3: IsoFLOPs method and offline curves](https://github.com/stanford-cs336/assignment3-scaling/blob/main/cs336_assignment3_scaling.pdf) (Stanford CS336 Assignment 3 - IsoFLOPs scaling) - Section 2.1 Scaling Laws from IsoFLOPs profiles with $`C`$ about $`6ND`$, quadratic loss versus size per budget, optima per profile then power laws $`N_{\text{opt}}`$ and $`D_{\text{opt}}`$; Problem chinchilla_isoflops with data/isoflops_curves.json fields parameters, compute_budget and final_loss, fitted offline without the training API.
+5. [CS336 Assignment 3: IsoFLOPs method and offline curves](https://github.com/stanford-cs336/assignment3-scaling/blob/main/cs336_assignment3_scaling.pdf) (Stanford CS336 Assignment 3 - IsoFLOPs scaling) - Section 2.1 Scaling Laws from IsoFLOPs profiles with $`C`$ about $`6ND`$, quadratic loss versus size per budget, optima per profile then power laws $`N_{\text{opt}}`$ and $`D_{\text{opt}}`$; Problem `chinchilla_isoflops` with `data/isoflops_curves.json` fields `parameters`, `compute_budget` and `final_loss`, fitted offline without the training API.
 
 **Focus**
 
@@ -1800,12 +1800,12 @@ Every cost claim in later sections multiplies these counts. A wrong parameter or
 
 - Counting MACs as FLOPs. One multiply-accumulate is two FLOPs, so double the thop MACS number.
 - Comparing runs by steps at different batch sizes. Convert to tokens first: batch times steps times length.
-- Fitting IsoFLOPs on the hosted API when the exercise gives offline curves. The bounded task uses isoflops_curves.json only.
+- Fitting IsoFLOPs on the hosted API when the exercise gives offline curves. The bounded task uses `isoflops_curves.json` only.
 
 **Practice**
 
 - [Modern LLM Notebook Appendix B Exercise 1: LLaMA-2 70B parameters and FP16 memory](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb) - Exercise 1 with $`D`$8192 $`L`$80 $`H`$64 $`K`$8 $`V`$32000; compute $`P`$ as $`2VD`$ plus $`12LD^2`$ and FP16 bytes as $`2P`$; the cells assert within 1 percent
-- [CS336 Assignment 3: chinchilla_isoflops (bounded, offline)](https://github.com/stanford-cs336/assignment3-scaling/blob/main/data/isoflops_curves.json) - Problem (chinchilla_isoflops) in Section 2.1; fit power laws from data/isoflops_curves.json offline (fields parameters, compute_budget, final_loss) without the training API
+- [CS336 Assignment 3: `chinchilla_isoflops` (bounded, offline)](https://github.com/stanford-cs336/assignment3-scaling/blob/main/data/isoflops_curves.json) - Problem (`chinchilla_isoflops`) in Section 2.1; fit power laws from `data/isoflops_curves.json` offline (fields `parameters`, `compute_budget`, `final_loss`) without the training API
 
 **Stop when:** You derive the 64.9B estimate and the 6.3e24 total from shapes alone, and your IsoFLOPs script predicts optimal sizes from the offline JSON.
 
@@ -1839,9 +1839,9 @@ Analytical math sets the budget, but allocators, graphs and kernels decide what 
 
 **Study**
 
-1. [Modern LLM Notebook Appendix B: activations, inference, training and checkpointing](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 2 (attention $`6BSD`$ plus $`BHS^2`$, FFN $`2BSD`$ plus $`2BSF`$ to $`8BSD`$, per-layer $`14BSD`$ plus $`BNS^2`$ with the $`S`$4096 dominant-term check), Section 5 (FP16 weights $`2P`$, KV $`B`$ times $`S`$ times $`K`$ times $`d_h`$ times $`L`$ times 2 times bytes with 7B scenarios and weights, KV and activations regimes), Section 6 (AdamW ledger with FP32 master, BF16 copy, $`m, v`$ and grads plus BF16 activations and A100 fit) and Section 7 (checkpoint trade to $`O(\sqrt{L})`$ with torch.utils.checkpoint API).
-2. [CS336 Lecture 2: intensity, roofline and checkpointing](https://github.com/stanford-cs336/lectures/blob/main/lecture_02.py) (Stanford CS336 - resource accounting, inference and evaluation) - arithmetic_intensity_relu through arithmetic_intensity_matmul with H100 accelerator intensity and roofline_plots(), activation_checkpointing() with the $`O(\sqrt{L})`$ rule, tensors_memory() with dtypes and the 2.3GB example, and optimizer() memory plus erees and adamcasson links.
-3. [CS336 Lecture 10: inference intensity and throughput](https://github.com/stanford-cs336/lectures/blob/main/lecture_10.py) (Stanford CS336 - resource accounting, inference and evaluation) - review_of_arithmetic_intensity() with $`2BDF`$ over $`2BD`$ plus $`2DF`$ plus $`2BF`$ to intensity $`B`$ and the H100 295 bound, arithmetic_intensity_of_inference() with MLP $`6BTDF`$ and attention $`4BSTD`$ to $`BT`$ and $`ST/(S + T)`$ plus prefill $`S/2`$ and generation below 1, and throughput_and_latency() with Llama 2 13B at $`B`$1, $`B`$64 and $`B`$256 plus the TTFT note.
+1. [Modern LLM Notebook Appendix B: activations, inference, training and checkpointing](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb) (Modern LLM Notebook - evaluation and FLOP accounting) - Section 2 (attention $`6BSD`$ plus $`BHS^2`$, FFN $`2BSD`$ plus $`2BSF`$ to $`8BSD`$, per-layer $`14BSD`$ plus $`BNS^2`$ with the $`S`$4096 dominant-term check), Section 5 (FP16 weights $`2P`$, KV $`B`$ times $`S`$ times $`K`$ times $`d_h`$ times $`L`$ times 2 times bytes with 7B scenarios and weights, KV and activations regimes), Section 6 (AdamW ledger with FP32 master, BF16 copy, $`m, v`$ and grads plus BF16 activations and A100 fit) and Section 7 (checkpoint trade to $`O(\sqrt{L})`$ with `torch.utils.checkpoint` API).
+2. [CS336 Lecture 2: intensity, roofline and checkpointing](https://github.com/stanford-cs336/lectures/blob/main/lecture_02.py) (Stanford CS336 - resource accounting, inference and evaluation) - `arithmetic_intensity_relu` through `arithmetic_intensity_matmul` with H100 accelerator intensity and `roofline_plots()`, `activation_checkpointing()` with the $`O(\sqrt{L})`$ rule, `tensors_memory()` with dtypes and the 2.3GB example, and `optimizer()` memory plus erees and adamcasson links.
+3. [CS336 Lecture 10: inference intensity and throughput](https://github.com/stanford-cs336/lectures/blob/main/lecture_10.py) (Stanford CS336 - resource accounting, inference and evaluation) - `review_of_arithmetic_intensity()` with $`2BDF`$ over $`2BD`$ plus $`2DF`$ plus $`2BF`$ to intensity $`B`$ and the H100 295 bound, `arithmetic_intensity_of_inference()` with MLP $`6BTDF`$ and attention $`4BSTD`$ to $`BT`$ and $`ST/(S + T)`$ plus prefill $`S/2`$ and generation below 1, and `throughput_and_latency()` with Llama 2 13B at $`B`$1, $`B`$64 and $`B`$256 plus the TTFT note.
 4. [LLM Foundations Checkpoint: debug and measure contract](https://github.com/saisandeshk/Roadmap-Final/blob/main/checkpoints/llm-foundations.md) (LLM Foundations Checkpoint - evaluation and arithmetic slice) - Debug and measure bullets: reconcile analytical parameters, FLOPs, state and KV with profiles and separate prefill and decode across batch and context regimes.
 
 **Focus**
@@ -1855,7 +1855,7 @@ Analytical math sets the budget, but allocators, graphs and kernels decide what 
 
 **Traps**
 
-- Quoting the formula as the fit result. torch.cuda.memory_allocated includes caching and fragmentation, so report both numbers and explain the gap.
+- Quoting the formula as the fit result. `torch.cuda.memory_allocated` includes caching and fragmentation, so report both numbers and explain the gap.
 - Assuming a bigger batch fixes generation attention. Its intensity stays below 1 because each sequence owns its KV, while batching only helps the MLP part.
 - Comparing quality at unequal compute. Fix prompts, decoding, budgets and evaluator versions, then report quality with compute ranges.
 
@@ -1888,7 +1888,7 @@ Analytical math sets the budget, but allocators, graphs and kernels decide what 
 3. Report the metric per slice with bootstrap intervals, compare two checkpoints or decoding settings with a paired bootstrap, and report the range across two prompt versions.
 4. Expose one evaluator failure on purpose, such as a parser that accepts a wrong format or a judge that prefers longer answers, and show the fix.
 5. Run exact and n-gram contamination checks between the evaluation set and your training split, report full and clean scores side by side, and state what the checks cannot rule out.
-6. Write a worksheet of parameters, forward FLOPs, activation memory and AdamW memory for your model, and reconcile each with a measurement: FlopCounterMode, tensor sizes or peak memory.
+6. Write a worksheet of parameters, forward FLOPs, activation memory and AdamW memory for your model, and reconcile each with a measurement: `FlopCounterMode`, tensor sizes or peak memory.
 7. Test the arithmetic and statistics code: parameter and matmul-FLOP counts equal exact counts from a reference module, a fixed seed gives identical bootstrap intervals, and on simulated data with a known mean roughly 95 percent of your 95 percent intervals cover it.
 
 **Deliverables**
@@ -1919,7 +1919,7 @@ Feeds into: Capstone artifact 3, the evaluation and arithmetic half of the dossi
 - **Required - Implementation:** [Modern LLM Notebook - evaluation and FLOP accounting](https://walkinglabs.github.io/modern-llm-notebook/?lang=en) - Use English notebook 25-evaluation and Appendix B FLOP and memory accounting. Build a 20-example evaluator with two slices, raw outputs and bootstrap intervals, and deliberately create one parser, prompt or judge failure.
 - **Support - Assessment:** [LLM Foundations Checkpoint - evaluation and arithmetic slice](https://github.com/saisandeshk/Roadmap-Final/blob/main/checkpoints/llm-foundations.md) - Use the contamination, evaluator-bias, parameter, FLOP, activation, state and KV requirements as the assessment contract. Keep raw outputs and distinguish a verified task result from a broad model capability claim.
 - **Optional - Reference:** [Language Model Evaluation Harness](https://github.com/EleutherAI/lm-evaluation-harness) - After the small evaluator passes, inspect task versioning, request construction and result schemas to understand production evaluation plumbing. Do not use the harness as a substitute for owning the task and metric contract.
-- **Optional - Practice:** [Stanford CS336 Assignment 3 - IsoFLOPs scaling](https://github.com/stanford-cs336/assignment3-scaling/blob/main/cs336_assignment3_scaling.pdf) - Use Section 2.1 and Problem chinchilla_isoflops with data/isoflops_curves.json for the bounded curve-fitting exercise only. Do not use the hosted training API or costly experiments.
+- **Optional - Practice:** [Stanford CS336 Assignment 3 - IsoFLOPs scaling](https://github.com/stanford-cs336/assignment3-scaling/blob/main/cs336_assignment3_scaling.pdf) - Use Section 2.1 and Problem `chinchilla_isoflops` with `data/isoflops_curves.json` for the bounded curve-fitting exercise only. Do not use the hosted training API or costly experiments.
 
 ### Exit checkpoint
 
@@ -1985,9 +1985,9 @@ Serial generation reprocesses its own prefix at every step, so cost grows faster
 
 **Study**
 
-1. [Modern LLM Notebook 21: why generation is slow](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 1 (naive_generation_cost table for 10 to 2000 tokens with 99.8 percent repeated work at 1000 tokens, plus the $`O(N^2)`$ versus $`O(N)`$ plot).
-2. [Raschka ch04/03_kv-cache README: how it works](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/README.md) (LLMs from Scratch companion - KV cache and GQA) - How it works (Time flies then Time flies fast figures with identical keys and values for the first two tokens) and KV cache advantages and disadvantages (per-step work $`O(n^2)`$ versus $`O(n)`$, memory grows linearly).
-3. [Modern LLM Notebook 21 Section 2: KV cache saves $`K`$ and $`V`$ only](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 2 through the AttentionWithKVCache class and the 5-token equivalence check (max diff 2e, cache shapes [1,4,1,8] growing to [1,4,5,8]).
+1. [Modern LLM Notebook 21: why generation is slow](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 1 (`naive_generation_cost` table for 10 to 2000 tokens with 99.8 percent repeated work at 1000 tokens, plus the $`O(N^2)`$ versus $`O(N)`$ plot).
+2. [Raschka `ch04/03_kv-cache` README: how it works](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/README.md) (LLMs from Scratch companion - KV cache and GQA) - How it works (Time flies then Time flies fast figures with identical keys and values for the first two tokens) and KV cache advantages and disadvantages (per-step work $`O(n^2)`$ versus $`O(n)`$, memory grows linearly).
+3. [Modern LLM Notebook 21 Section 2: KV cache saves $`K`$ and $`V`$ only](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 2 through the `AttentionWithKVCache` class and the 5-token equivalence check (max diff 2e, cache shapes `[1,4,1,8]` growing to `[1,4,5,8]`).
 
 **Focus**
 
@@ -2006,9 +2006,9 @@ Serial generation reprocesses its own prefix at every step, so cost grows faster
 
 **Practice**
 
-- [No Magic microkv.py: no-cache versus cached multiply comparison](https://github.com/no-magic-ai/no-magic/blob/main/03-systems/microkv.py) - generate_no_cache versus generate_with_cache with GEN_LEN 16, the assert that both token lists match, the per-step multiply table and the linear memory-growth table. CPU multiply counts only. Do not present wall time as GPU or serving evidence.
+- [No Magic `microkv.py`: no-cache versus cached multiply comparison](https://github.com/no-magic-ai/no-magic/blob/main/03-systems/microkv.py) - `generate_no_cache` versus `generate_with_cache` with `GEN_LEN` 16, the assert that both token lists match, the per-step multiply table and the linear memory-growth table. CPU multiply counts only. Do not present wall time as GPU or serving evidence.
 
-**Stop when:** You derive the triangular share by hand and your microkv.py run shows identical tokens with per-step multiplies falling from growing to flat.
+**Stop when:** You derive the triangular share by hand and your `microkv.py` run shows identical tokens with per-step multiplies falling from growing to flat.
 
 <details>
 <summary>Self-test</summary>
@@ -2017,10 +2017,10 @@ Serial generation reprocesses its own prefix at every step, so cost grows faster
    - Past tokens never change, so their $`K`$ and $`V`$ projections stay valid. The new token needs a fresh $`Q`$ to score against the cached $`K`$, so $`Q`$ work remains each step.
 2. Under the triangular proxy, what share of work is repeated prefix processing when generating 1000 tokens?
    - 99.8 percent. Total proxy cost is 500500, new-token work is 1000, so 499500 of 500500 is avoidable recomputation.
-3. microkv.py asserts the cached and uncached token lists are identical. Does the cache change the sampling distribution?
+3. `microkv.py` asserts the cached and uncached token lists are identical. Does the cache change the sampling distribution?
    - No. It memoizes the same math, so greedy tokens must match exactly. Logits can differ in the last bits because the cached path multiplies differently shaped tensors, so compare them with a small tolerance; a larger mismatch is a bug in positions, masking or stale state.
-4. In the Modern 21 demo with d_model 32 and 4 heads, what is the $`K`$ cache shape at step 5 and what does each dim mean?
-   - [1,4,5,8]: batch 1, 4 heads, 5 cached tokens, head dim 8. Step $`i`$ holds $`i`$ tokens and each step computes $`K`$ and $`V`$ for 1 new token only.
+4. In the Modern 21 demo with `d_model` 32 and 4 heads, what is the $`K`$ cache shape at step 5 and what does each dim mean?
+   - `[1,4,5,8]`: batch 1, 4 heads, 5 cached tokens, head dim 8. Step $`i`$ holds $`i`$ tokens and each step computes $`K`$ and $`V`$ for 1 new token only.
 
 </details>
 
@@ -2035,44 +2035,44 @@ A cache that shares layers, mixes sequences or misplaces positions returns fluen
 **You can now**
 
 - Implement per-layer KV allocation, append and single-token cached decode with absolute position offsets for the tiny transformer.
-- Explain MHA, MQA and GQA head mappings and the repeat_interleave rule for shared KV heads.
+- Explain MHA, MQA and GQA head mappings and the `repeat_interleave` rule for shared KV heads.
 - Explain KV tensor shapes and why each layer owns its cache for its own sequence.
 
 **Study**
 
-1. [Raschka gpt_with_kv_cache.py: per-layer cache with positions](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py) (LLMs from Scratch companion - KV cache and GQA) - MultiHeadAttention (cache_k and cache_v buffers, use_cache append by torch.cat on dim 1, ptr_current_pos mask slice, reset_cache), GPTModel (current_pos with pos_ids arange, ModuleList loop, reset_kv_cache) and generate_text_simple_cached (full-prompt prefill then single-token loop).
-2. [Raschka ch04/04_gqa: GQA head mapping and memory](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/04_gqa/gpt_with_kv_gqa.py) (LLMs from Scratch companion - KV cache and GQA) - GroupedQueryAttention (num_kv_groups with group_size, $`K`$ and $`V`$ cache on dim 2, repeat_interleave mapping with the repeat versus repeat_interleave comment, q_positions versus k_positions mask) plus the README bytes formula with n_kv_heads and the 4096/32/32/32768 example.
-3. [Modern LLM Notebook 21 Sections 2 and 4: shapes and head sharing](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 2 shape evolution ([batch, num_heads, cached_seq_len, d_k] from [1,4,1,8] to [1,4,5,8]) and Section 4 MHA/MQA/GQA (32 $`Q`$ heads with 32, 8 and 1 KV heads at 8K, the 8 $`Q`$ with 2 KV repeat_interleave demo, savings ratio 32/8 = 4x). Depth: Skip Sections 5 to 8 and 10 (quantization, GGUF, PagedAttention, FlashAttention, batching) until their own units.
+1. [Raschka `gpt_with_kv_cache.py`: per-layer cache with positions](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py) (LLMs from Scratch companion - KV cache and GQA) - `MultiHeadAttention` (`cache_k` and `cache_v` buffers, `use_cache` append by `torch.cat` on dim 1, `ptr_current_pos` mask slice, `reset_cache`), `GPTModel` (`current_pos` with `pos_ids` `arange`, `ModuleList` loop, `reset_kv_cache`) and `generate_text_simple_cached` (full-prompt prefill then single-token loop).
+2. [Raschka `ch04/04_gqa`: GQA head mapping and memory](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/04_gqa/gpt_with_kv_gqa.py) (LLMs from Scratch companion - KV cache and GQA) - `GroupedQueryAttention` (`num_kv_groups` with `group_size`, $`K`$ and $`V`$ cache on dim 2, `repeat_interleave` mapping with the `repeat` versus `repeat_interleave` comment, `q_positions` versus `k_positions` mask) plus the README bytes formula with `n_kv_heads` and the 4096/32/32/32768 example.
+3. [Modern LLM Notebook 21 Sections 2 and 4: shapes and head sharing](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 2 shape evolution (`[batch, num_heads, cached_seq_len, d_k]` from `[1,4,1,8]` to `[1,4,5,8]`) and Section 4 MHA/MQA/GQA (32 $`Q`$ heads with 32, 8 and 1 KV heads at 8K, the 8 $`Q`$ with 2 KV `repeat_interleave` demo, savings ratio 32/8 = 4x). Depth: Skip Sections 5 to 8 and 10 (quantization, GGUF, PagedAttention, FlashAttention, batching) until their own units.
 
 **Focus**
 
 - Each layer owns its $`K`$ and $`V`$ tensors and each batch row owns its positions. Sharing a cache across layers or sequences mixes unrelated spaces.
 - Append grows the sequence dim by the new chunk only. Prefill appends the whole prompt at once, decode appends one token per step.
-- Positions are absolute. pos_ids and the mask pointer advance by the chunk length, so decode step $`k`$ uses position current_pos plus $`k`$.
-- GQA stores fewer KV heads and expands them with repeat_interleave. With 8 $`Q`$ heads and 2 KV heads, heads 0 to 3 share KV head 0.
+- Positions are absolute. `pos_ids` and the mask pointer advance by the chunk length, so decode step $`k`$ uses position `current_pos` plus $`k`$.
+- GQA stores fewer KV heads and expands them with `repeat_interleave`. With 8 $`Q`$ heads and 2 KV heads, heads 0 to 3 share KV head 0.
 
-**Reproduce:** Write the cache-owning attention forward from scratch: buffers, append, pointer-based mask slice, absolute pos_ids, reset, and the GQA repeat_interleave mapping for 8 $`Q`$ heads with 2 KV heads.
+**Reproduce:** Write the cache-owning attention forward from scratch: buffers, append, pointer-based mask slice, absolute `pos_ids`, reset, and the GQA `repeat_interleave` mapping for 8 $`Q`$ heads with 2 KV heads.
 
 **Traps**
 
-- Forgetting reset_kv_cache between independent generations. Stale $`K`$, $`V`$ and pointers leak the old sequence into the new one.
-- Using repeat instead of repeat_interleave for grouped heads. Tiling maps the wrong KV head to each query group while shapes still match.
+- Forgetting `reset_kv_cache` between independent generations. Stale $`K`$, $`V`$ and pointers leak the old sequence into the new one.
+- Using `repeat` instead of `repeat_interleave` for grouped heads. Tiling maps the wrong KV head to each query group while shapes still match.
 - Restarting positions at 0 on every decode step. Absolute embeddings repeat and RoPE rotations reuse early angles, so logits diverge from the full prefix.
 
 **Practice**
 
-- [Raschka ch04/03_kv-cache tests: cached equivalence](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py) - test_gpt_model_equivalence_cached and test_gpt_model_equivalence_not_cached (30 new tokens from Hello, I am across base, cached and optimized models with torch.equal). Run against the reference files, then re-run against your own per-layer cache in your own repository.
+- [Raschka `ch04/03_kv-cache` tests: cached equivalence](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py) - `test_gpt_model_equivalence_cached` and `test_gpt_model_equivalence_not_cached` (30 new tokens from `Hello, I am` across base, cached and optimized models with `torch.equal`). Run against the reference files, then re-run against your own per-layer cache in your own repository.
 
-**Stop when:** Your own cache passes both equivalence tests with torch.equal and you can state the cache shape after each step.
+**Stop when:** Your own cache passes both equivalence tests with `torch.equal` and you can state the cache shape after each step.
 
 <details>
 <summary>Self-test</summary>
 
 1. After a 4-token prefill, the first decode step feeds 1 token. What are the $`Q`$ and $`K`$ lengths and which mask row applies?
    - $`Q`$ has 1 token and $`K`$ has 5 (4 cached plus 1 new). The pointer is 4, so the slice is row 4 over 5 columns, which lets the new query attend to all 5 positions.
-2. With 32 $`Q`$ heads and 8 KV heads, which $`Q`$ heads share KV head 0, and why repeat_interleave?
-   - $`Q`$ heads 0 to 3 share KV head 0 in contiguous groups of 4. repeat_interleave gives [K1,K1,K2,K2], while repeat would tile as [K1,K2,K1,K2] and map the wrong heads.
-3. Why must decode pos_ids use current_pos, and what breaks for RoPE if they restart at 0?
+2. With 32 $`Q`$ heads and 8 KV heads, which $`Q`$ heads share KV head 0, and why `repeat_interleave`?
+   - $`Q`$ heads 0 to 3 share KV head 0 in contiguous groups of 4. `repeat_interleave` gives `[K1,K1,K2,K2]`, while `repeat` would tile as `[K1,K2,K1,K2]` and map the wrong heads.
+3. Why must decode `pos_ids` use `current_pos`, and what breaks for RoPE if they restart at 0?
    - Positions are absolute. Restarting at 0 reuses early embeddings and early RoPE angles for late tokens, so relative distances are wrong and logits diverge from the full prefix.
 4. Two layers share one cache object to save memory. What fails?
    - Each layer has its own projections, so its $`K`$ and $`V`$ live in different spaces. Sharing mixes them and equivalence fails; each layer needs its own cache just as each sequence needs its own rows.
@@ -2095,13 +2095,13 @@ A cache that is fast but subtly wrong poisons every measurement after it. Equiva
 
 **Study**
 
-1. [Raschka tests.py and optimized cache: equivalence, chunking and overflow](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py) (LLMs from Scratch companion - KV cache and GQA) - test_gpt_model_equivalence_cached and not_cached (30 tokens with torch.equal), test_prefill_chunking_basic (kv_window_size 4 over 10 tokens in 3 chunks, 12 total with input preserved) and test_context_overflow_bug (context_length 10 with 5 plus 10 tokens hitting the position-embedding assert).
-2. [CS336 Lecture 10: selective batching and paged sharing](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - continuous_batching (ragged lengths [3,9,5] with attention per sequence and non-attention concatenated) and paged_attention (blocks, sharing the system prompt and parallel samples, copy-on-write at block level). Depth: Read the two functions only. Keep kernels, distributed serving and expensive performance experiments for the later tracks.
+1. [Raschka `tests.py` and optimized cache: equivalence, chunking and overflow](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py) (LLMs from Scratch companion - KV cache and GQA) - `test_gpt_model_equivalence_cached` and `not_cached` (30 tokens with `torch.equal`), `test_prefill_chunking_basic` (`kv_window_size` 4 over 10 tokens in 3 chunks, 12 total with input preserved) and `test_context_overflow_bug` (`context_length` 10 with 5 plus 10 tokens hitting the position-embedding assert).
+2. [CS336 Lecture 10: selective batching and paged sharing](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - `continuous_batching` (ragged lengths `[3,9,5]` with attention per sequence and non-attention concatenated) and `paged_attention` (blocks, sharing the system prompt and parallel samples, copy-on-write at block level). Depth: Read the two functions only. Keep kernels, distributed serving and expensive performance experiments for the later tracks.
 3. [JAX scaling book inference: ragged reads and the EOS loop](https://jax-ml.github.io/scaling-book/inference/) (How to Scale Your Model - inference chapter) - Tricks section (ragged HBM reads and Paged Attention that read only the non-padding part) and The Basics (Generation repeats until EOS or a maximum length).
 
 **Focus**
 
-- Generated tokens must match exactly at a fixed seed; logits must match within a small tolerance, such as 1e-5 in float32, because different matmul shapes round differently. Check both before trusting any timing.
+- Generated tokens must match exactly at a fixed seed; logits must match within a small tolerance, such as `1e-5` in `float32`, because different matmul shapes round differently. Check both before trusting any timing.
 - Variable lengths need per-row lengths and padding masks. Reading the padded tail as real tokens breaks both equivalence and the batch.
 - Finished sequences need compaction: free or clear their rows, compact the batch, and stop them at EOS plus a length cap. Reused slots must be cleared first.
 - Truncation, forks and reuse without reset are stale-cache hazards. Chunked prefill and windowed caches must preserve order and positions.
@@ -2116,7 +2116,7 @@ A cache that is fast but subtly wrong poisons every measurement after it. Equiva
 
 **Practice**
 
-- [Raschka ch04/03_kv-cache tests: chunking and overflow](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py) - test_prefill_chunking_basic and test_context_overflow_bug (windowed chunking with input preservation, plus the position-embedding overflow assert). Then extend in your own repository to variable-length batches with padding masks, EOS compaction and a stale-cache reuse test. The mini-project checks the full matrix across MHA and GQA.
+- [Raschka `ch04/03_kv-cache` tests: chunking and overflow](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/tests.py) - `test_prefill_chunking_basic` and `test_context_overflow_bug` (windowed chunking with input preservation, plus the position-embedding overflow assert). Then extend in your own repository to variable-length batches with padding masks, EOS compaction and a stale-cache reuse test. The mini-project checks the full matrix across MHA and GQA.
 
 **Stop when:** Your harness shows identical tokens and per-step logits within tolerance on adversarial MHA and GQA shapes with offsets, and your chunking, overflow and slot-reuse tests all pass.
 
@@ -2125,9 +2125,9 @@ A cache that is fast but subtly wrong poisons every measurement after it. Equiva
 
 1. Cached and full-prefix logits differ from position 0 onward. What class of bug is it?
    - A systematic one: wrong weights, a different prompt, a stale cache from a prior run, or a wrong mask or position base. Late-only divergence would point at windows or truncation instead.
-2. With kv_window_size 4, a 10-token prompt prefills in 3 chunks and generates 2 tokens. What total length and input check must hold?
+2. With `kv_window_size` 4, a 10-token prompt prefills in 3 chunks and generates 2 tokens. What total length and input check must hold?
    - 12 total tokens. The first 10 must equal the input, as the chunking test asserts with shape 12 and input preservation.
-3. Batch lengths are [3,9,5]. Why does CS336 run attention per sequence but concatenate to [17,H] for the MLP?
+3. Batch lengths are `[3,9,5]`. Why does CS336 run attention per sequence but concatenate to `[17,H]` for the MLP?
    - MLP weights are shared, so concatenated tokens batch well. Attention KV differs per sequence, so scores must stay per sequence; padding all to 9 wastes compute.
 4. A finished sequence is freed without clearing and a new request reuses the slot. What hazard and what fix?
    - A stale-cache hazard: the new request attends to old $`K`$ and $`V`$, possibly leaking another sequence. Clear or reset slots on finish, compact the batch, and test slot reuse against the full prefix.
@@ -2150,14 +2150,14 @@ The cache can outweigh the weights at long context, so every serving decision st
 
 **Study**
 
-1. [Modern LLM Notebook 21 Section 3 and Exercise 1: KV sizes](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 3 (kv_cache_size as $`2 \times \text{layers} \times \text{heads} \times \text{head\_dim} \times \text{seq\_len} \times \text{bytes}`$, LLaMA-2 7B, 13B and 70B from 2K to 128K, FP16/INT8/INT4 plot) and Exercise 1 (32 layers, 32 heads, 128 dim, 4096 tokens FP16 with the 2048 MB assert).
-2. [Raschka GQA estimator and README numbers](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/04_gqa/memory_estimator_gqa.py) (LLMs from Scratch companion - KV cache and GQA) - calc_kv_bytes_total (per_layer as $`\text{batch} \times \text{context} \times \text{head\_dim} \times \text{n\_kv\_heads} \times 2 \times \text{bytes}`$, times $`\text{layers}`$; DTYPE_BYTES with fp32 4, bf16 and fp16 2, fp8 and int8 1) and the README example (4096 emb, 32 heads, 32 layers, 32768 context, 4 groups, bf16: MHA 17.18 GB versus GQA 4.29 GB at 4.00x and 75 percent).
-3. [Modern LLM Notebook 11 Sections 1 and 2: back-of-envelope and head schemes](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/11-mla-kv-cache.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 1 (Llama-7B 32K FP16 back-of-envelope with the cache above the 13 GB weights) and Section 2 (MHA, GQA-8, GQA-4 and MQA table at 32768 tokens with the kv_cache_elements function).
+1. [Modern LLM Notebook 21 Section 3 and Exercise 1: KV sizes](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 3 (`kv_cache_size` as $`2 \times \text{layers} \times \text{heads} \times \text{head\_dim} \times \text{seq\_len} \times \text{bytes}`$, LLaMA-2 7B, 13B and 70B from 2K to 128K, FP16/INT8/INT4 plot) and Exercise 1 (32 layers, 32 heads, 128 dim, 4096 tokens FP16 with the 2048 MB assert).
+2. [Raschka GQA estimator and README numbers](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/04_gqa/memory_estimator_gqa.py) (LLMs from Scratch companion - KV cache and GQA) - `calc_kv_bytes_total` (`per_layer` as $`\text{batch} \times \text{context} \times \text{head\_dim} \times \text{n\_kv\_heads} \times 2 \times \text{bytes}`$, times $`\text{layers}`$; `DTYPE_BYTES` with `fp32` 4, `bf16` and `fp16` 2, `fp8` and `int8` 1) and the README example (4096 emb, 32 heads, 32 layers, 32768 context, 4 groups, `bf16`: MHA 17.18 GB versus GQA 4.29 GB at 4.00x and 75 percent).
+3. [Modern LLM Notebook 11 Sections 1 and 2: back-of-envelope and head schemes](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/11-mla-kv-cache.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 1 (Llama-7B 32K FP16 back-of-envelope with the cache above the 13 GB weights) and Section 2 (MHA, GQA-8, GQA-4 and MQA table at 32768 tokens with the `kv_cache_elements` function).
 
 **Focus**
 
 - Bytes equal $`\text{batch} \times \text{seq\_len} \times \text{layers} \times \text{n\_kv\_heads} \times \text{head\_dim} \times 2 \text{ for } K \text{ and } V \times \text{bytes per element}`$. Every term is load-bearing.
-- MHA stores $`\text{n\_heads}`$ KV heads, MQA stores one, and GQA stores something in between, so the saving is $`\text{n\_heads}/\text{n\_kv\_heads}`$. In the Raschka estimator, --n_kv_groups is the number of query heads per KV head: 32 heads with --n_kv_groups 4 store 8 KV heads.
+- MHA stores $`\text{n\_heads}`$ KV heads, MQA stores one, and GQA stores something in between, so the saving is $`\text{n\_heads}/\text{n\_kv\_heads}`$. In the Raschka estimator, `--n_kv_groups` is the number of query heads per KV head: 32 heads with `--n_kv_groups 4` store 8 KV heads.
 - Dtype scales the total directly: FP16 2 bytes, INT8 1 byte, INT4 half a byte. Quantized cache is lossy while head sharing is structural.
 - The estimator divides by $`1000^3`$ (GB) and the notebooks by $`1024^3`$ (GiB). Same bytes, different labels.
 
@@ -2171,8 +2171,8 @@ The cache can outweigh the weights at long context, so every serving decision st
 
 **Practice**
 
-- [Modern LLM Notebook 21 Exercise 1: KV cache memory](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) - Exercise 1: compute kv_bytes for 32 layers, 32 heads, 128 dim and 4096 tokens FP16; the cell asserts 2048 MB. Solve by hand from the head formula first, then confirm with the cell.
-- [Modern LLM Notebook 11 Exercise 1: KV footprint at 16K](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/11-mla-kv-cache.ipynb) - Exercise 1: fill elements_per_token_per_layer, total_elements and total_gb for 4096 hidden, 32 layers, 32 heads and 16384 tokens FP16; the cell asserts 8.00 GB. Report the answer in both GB and GiB and name which divisor each uses.
+- [Modern LLM Notebook 21 Exercise 1: KV cache memory](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) - Exercise 1: compute `kv_bytes` for 32 layers, 32 heads, 128 dim and 4096 tokens FP16; the cell asserts 2048 MB. Solve by hand from the head formula first, then confirm with the cell.
+- [Modern LLM Notebook 11 Exercise 1: KV footprint at 16K](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part2-training/11-mla-kv-cache.ipynb) - Exercise 1: fill `elements_per_token_per_layer`, `total_elements` and `total_gb` for 4096 hidden, 32 layers, 32 heads and 16384 tokens FP16; the cell asserts 8.00 GB. Report the answer in both GB and GiB and name which divisor each uses.
 
 **Stop when:** You derive the 2048 MB and 8.00 GB answers by hand and both exercise asserts pass with units stated.
 
@@ -2185,7 +2185,7 @@ The cache can outweigh the weights at long context, so every serving decision st
    - $`4294967296 \text{ elements} \times 2 \text{ bytes} = 8589934592 \text{ bytes}`$, which is 8.0 GiB in $`1024^3`$ units.
 3. The estimator says 17.18 GB and notebook math says 16.0 for Llama-7B at 32K. Which is right?
    - Both. The bytes are 17179869184 either way; the estimator divides by 1000 cubed (GB) and the notebook by 1024 cubed (GiB). State the units.
-4. 32 heads at bf16 with the estimator's --n_kv_groups 4, which stores 8 KV heads, then an INT8 cache. What are the savings?
+4. 32 heads at `bf16` with the estimator's `--n_kv_groups 4`, which stores 8 KV heads, then an INT8 cache. What are the savings?
    - Head sharing gives 32/8 = 4x (MHA 17.18 GB to GQA 4.29 GB decimal, as run). INT8 halves it again to about 2.15 GB, for 8x versus FP16 MHA at a small quality risk.
 
 </details>
@@ -2206,7 +2206,7 @@ Latency and throughput numbers are meaningless without the regime behind them. P
 
 **Study**
 
-1. [CS336 Lecture 10: arithmetic intensity of inference](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - arithmetic_intensity_of_inference (naive $`O(T^3)`$ without cache, MLP intensity $`B \times T`$ with prefill large-$`T`$ versus generation $`T=1`$, attention intensity $`S \times T/(S+T)`$ with prefill $`S/2`$ versus generation below 1, batching helps MLP but not attention).
+1. [CS336 Lecture 10: arithmetic intensity of inference](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - `arithmetic_intensity_of_inference` (naive $`O(T^3)`$ without cache, MLP intensity $`B \times T`$ with prefill large-$`T`$ versus generation $`T=1`$, attention intensity $`S \times T/(S+T)`$ with prefill $`S/2`$ versus generation below 1, batching helps MLP but not attention).
 2. [JAX scaling book inference: linear ops, attention and the step-time formula](https://jax-ml.github.io/scaling-book/inference/#theoretical-estimates-for-llm-latency-and-throughput) (How to Scale Your Model - inference chapter) - Linear operations (critical batch 240 on TPU v5e, about 280 on H100), What about attention (prefill $`T/2`$ compute-bound, generation about 1 and always bandwidth-bound) and Theoretical estimates (step time as batch x KV plus params over bandwidth, with the batch 4 versus 256 Pop Quiz). Depth: Read the three named subsections only. Skip sharding, the serving engine and worked problems; they belong to the later tracks.
 3. [Modern LLM Notebook 21 Section 9: prefill versus decode](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 9 table (prefill parallel and compute-bound with FlashAttention versus decode serial and bandwidth-bound with KV cache plus PagedAttention) with the 50-token prefill versus 20-step decode timing cell.
 
@@ -2227,7 +2227,7 @@ Latency and throughput numbers are meaningless without the regime behind them. P
 
 **Practice**
 
-- [JAX scaling book inference Pop Quiz: step-time bounds at batch 4 and 256](https://jax-ml.github.io/scaling-book/inference/#theoretical-estimates-for-llm-latency-and-throughput) - Pop Quiz under Theoretical estimates (30B dense, TPU v5e $`4 \times 4`$ slice, int8 params with bf16 FLOPs, 8192 context, 100 kB per token KV; batch 4 bounds 2.5 ms memory-bound, batch 256 bounds 21 ms compute-bound). Derive both bounds from the step-time formula by hand first, then check against the given answer.
+- [JAX scaling book inference Pop Quiz: step-time bounds at batch 4 and 256](https://jax-ml.github.io/scaling-book/inference/#theoretical-estimates-for-llm-latency-and-throughput) - Pop Quiz under Theoretical estimates (30B dense, TPU v5e $`4 \times 4`$ slice, `int8` params with `bf16` FLOPs, 8192 context, 100 kB per token KV; batch 4 bounds 2.5 ms memory-bound, batch 256 bounds 21 ms compute-bound). Derive both bounds from the step-time formula by hand first, then check against the given answer.
 
 **Stop when:** You derive both Pop Quiz bounds within rounding and classify all four regimes with the intensity formulas.
 
@@ -2235,7 +2235,7 @@ Latency and throughput numbers are meaningless without the regime behind them. P
 <summary>Self-test</summary>
 
 1. MLP intensity is $`B \times T`$. Compare $`B=8`$, $`T=1`$ decode with $`B=1`$, $`T=1024`$ prefill against a critical batch near 240.
-   - 8 versus 1024. The decode step is memory-bound and the prefill is compute-bound in bf16.
+   - 8 versus 1024. The decode step is memory-bound and the prefill is compute-bound in `bf16`.
 2. Attention intensity is $`S \times T/(S+T)`$. Compare prefill with $`S=2048`$ to decode with $`S=2048`$ and $`T=1`$.
    - Prefill gives $`S/2=1024`$ (compute-bound) while decode gives about 1 (always bandwidth-bound). Batching does not raise the decode value because each sequence has its own KV.
 3. The JAX Pop Quiz bounds a 30B step at 2.5 ms for batch 4 and 21 ms for batch 256. Why does latency rise while throughput improves?
@@ -2262,8 +2262,8 @@ One blended tokens-per-second number hides whether the prompt or the generation 
 **Study**
 
 1. [Modern LLM Notebook 21 Section 9: split prefill and decode timing](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 9 code cell (50-token prefill timed once for TTFT, then 20 single-token decodes timed separately with mean ITL and the per-step plot).
-2. [Raschka gpt_with_kv_cache.py main(): synchronized timing pattern](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py) (LLMs from Scratch companion - KV cache and GQA) - main() (torch.cuda.synchronize before and after the run, time.time around 200-token generation from Hello, I am, tokens/sec plus max_memory_allocated). Depth: Read for the synchronization pattern only. main() times the whole run at once, so add your own warmup and phase split from the focus points.
-3. [CS336 Lecture 10: metrics and batch trade-offs](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - landscape (TTFT, latency in seconds per token and throughput in tokens per second, training parallel versus inference sequential) and throughput_and_latency (Llama 2 13B on H100 at batch 1, 64 and 256 with smaller batches favoring latency and larger favoring throughput, TTFT as a function of prefill).
+2. [Raschka `gpt_with_kv_cache.py` `main()`: synchronized timing pattern](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py) (LLMs from Scratch companion - KV cache and GQA) - `main()` (`torch.cuda.synchronize` before and after the run, `time.time` around 200-token generation from `Hello, I am`, tokens/sec plus `max_memory_allocated`). Depth: Read for the synchronization pattern only. `main()` times the whole run at once, so add your own warmup and phase split from the focus points.
+3. [CS336 Lecture 10: metrics and batch trade-offs](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - `landscape` (TTFT, latency in seconds per token and throughput in tokens per second, training parallel versus inference sequential) and `throughput_and_latency` (Llama 2 13B on H100 at batch 1, 64 and 256 with smaller batches favoring latency and larger favoring throughput, TTFT as a function of prefill).
 
 **Focus**
 
@@ -2282,7 +2282,7 @@ One blended tokens-per-second number hides whether the prompt or the generation 
 
 **Practice**
 
-- [Raschka ch04 KV-cache timing: uncached versus cached 200-token runs](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py) - main() in gpt_with_kv_cache.py versus gpt_ch04.py (Hello, I am prompt with 200 new tokens, synchronize-then-time, tokens/sec and max_memory_allocated; README table of 27 versus 144 versus 166 tokens/sec on M4 CPU). Your numbers will differ by hardware. The checks are identical outputs, then your own phase-split repeat with warmup. The mini-project does the full two-regime matrix.
+- [Raschka `ch04` KV-cache timing: uncached versus cached 200-token runs](https://github.com/rasbt/LLMs-from-scratch/blob/main/ch04/03_kv-cache/gpt_with_kv_cache.py) - `main()` in `gpt_with_kv_cache.py` versus `gpt_ch04.py` (`Hello, I am` prompt with 200 new tokens, synchronize-then-time, tokens/sec and `max_memory_allocated`; README table of 27 versus 144 versus 166 tokens/sec on M4 CPU). Your numbers will differ by hardware. The checks are identical outputs, then your own phase-split repeat with warmup. The mini-project does the full two-regime matrix.
 
 **Stop when:** You report separate TTFT and ITL with warmup and synchronization at two regimes, with identical outputs on both sides.
 
@@ -2292,7 +2292,7 @@ One blended tokens-per-second number hides whether the prompt or the generation 
 1. Where do TTFT and ITL come from in the Modern 21 Section 9 cell?
    - The cell times one 50-token prefill call (the TTFT proxy; a full TTFT adds the first sample) and takes ITL as the mean of the 20 one-token calls. Mixing them hides the regime difference.
 2. CUDA timing without synchronization shows impossibly fast decodes. Why?
-   - Kernel launches are async, so the clock measures launch instead of work. Synchronize before and after each region as the Raschka main() does.
+   - Kernel launches are async, so the clock measures launch instead of work. Synchronize before and after each region as the Raschka `main()` does.
 3. The first timed run is 3x slower than repeats. What do you do?
    - Discard it as warmup (cold allocation, compilation and caches) and report the median or mean over repeats with fixed prompt, batch and lengths.
 4. The cached run is faster but its tokens differ from the baseline. Is that a valid speedup?
@@ -2316,9 +2316,9 @@ Single-request caching stops at the serving door. Shared prefixes, paged blocks 
 
 **Study**
 
-1. [CS336 Lecture 10: paged attention and speculative sampling](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - paged_attention (blocks, fragmentation, sharing the system prompt and parallel samples, copy-on-write at block level) and speculative_sampling (draft $`p`$ guesses 4 tokens with target $`q`$ verifying in parallel, exact-sample guarantee with the $`\{A,B\}`$ proof, 70B/8B and 8B/1B pairs, Medusa and EAGLE).
-2. [Modern LLM Notebook 21 Section 7: PagedAttention waste](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 7 (contiguous versus paged diagram with fixed-size pages, simulate_memory with block_size 16 showing paged waste 3 to 5 percent versus contiguous 13 to 20 percent).
-3. [Modern LLM Notebook 23 Sections 2 and 3: acceptance and exactness](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/23-speculative-decoding.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 2 (draft guesses $`K`$ tokens, target verifies in one pass) and Section 3 (accept_prob as $`\min(1, p_{\text{target}}/p_{\text{draft}})`$) with Exercise 1 (0.5 versus 0.8 giving 1.0). Depth: Do Sections 2 and 3 and Exercise 1 only. Skip Exercises 2 and 3: their expected-token formula drops the extra token the target always contributes, so their numbers disagree with the $`K+1`$ ceiling. Skip draft-model training and variants; they belong to later tracks.
+1. [CS336 Lecture 10: paged attention and speculative sampling](https://cs336.stanford.edu/lectures/?trace=lecture_10) (Stanford CS336 - Lecture 10 Inference) - `paged_attention` (blocks, fragmentation, sharing the system prompt and parallel samples, copy-on-write at block level) and `speculative_sampling` (draft $`p`$ guesses 4 tokens with target $`q`$ verifying in parallel, exact-sample guarantee with the $`\{A,B\}`$ proof, 70B/8B and 8B/1B pairs, Medusa and EAGLE).
+2. [Modern LLM Notebook 21 Section 7: PagedAttention waste](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/21-inference-acceleration.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 7 (contiguous versus paged diagram with fixed-size pages, `simulate_memory` with `block_size` 16 showing paged waste 3 to 5 percent versus contiguous 13 to 20 percent).
+3. [Modern LLM Notebook 23 Sections 2 and 3: acceptance and exactness](https://github.com/walkinglabs/modern-llm-notebook/blob/main/notebooks-en/part3-inference/23-speculative-decoding.ipynb) (Modern LLM Notebook - KV cache and inference acceleration) - Section 2 (draft guesses $`K`$ tokens, target verifies in one pass) and Section 3 (`accept_prob` as $`\min(1, p_{\text{target}}/p_{\text{draft}})`$) with Exercise 1 (0.5 versus 0.8 giving 1.0). Depth: Do Sections 2 and 3 and Exercise 1 only. Skip Exercises 2 and 3: their expected-token formula drops the extra token the target always contributes, so their numbers disagree with the $`K+1`$ ceiling. Skip draft-model training and variants; they belong to later tracks.
 
 **Focus**
 
@@ -2327,7 +2327,7 @@ Single-request caching stops at the serving door. Shared prefixes, paged blocks 
 - Forks share prefix pages and copy on write. Only the diverged block is copied, not the whole prefix.
 - Speculation is exact: the acceptance ratio plus the residual correction reproduce target-only sampling. Speed depends on draft quality, not on luck.
 
-**Reproduce:** Draw the shared-prefix block table for two requests over an 8-token prefix with block_size 4, show the copy-on-write step on divergence, and state the speculative exactness contract with the acceptance formula.
+**Reproduce:** Draw the shared-prefix block table for two requests over an 8-token prefix with `block_size` 4, show the copy-on-write step on divergence, and state the speculative exactness contract with the acceptance formula.
 
 **Traps**
 
@@ -2344,7 +2344,7 @@ Single-request caching stops at the serving door. Shared prefixes, paged blocks 
 <details>
 <summary>Self-test</summary>
 
-1. Two requests share an 8-token system prefix with block_size 4. How many physical prefix blocks with sharing versus without?
+1. Two requests share an 8-token system prefix with `block_size` 4. How many physical prefix blocks with sharing versus without?
    - 2 shared blocks versus 4 (2 per request). Sharing saves half the prefix memory, and a divergence copies only the affected block.
 2. Draft assigns token $`A`$ 0.5 and target assigns 0.8. What is the acceptance probability?
    - $`\min(1, 0.8/0.5)=1.0`$, so always accept.
@@ -2378,7 +2378,7 @@ Single-request caching stops at the serving door. Shared prefixes, paged blocks 
 
 | Criterion | Pass | Strong |
 | --- | --- | --- |
-| Equivalence | Cached and uncached greedy tokens match on every case in your equivalence tests. | Per-step logits also match within 1e-5 on your own adversarial cases, and a deliberately wrong RoPE offset makes your tests fail. |
+| Equivalence | Cached and uncached greedy tokens match on every case in your equivalence tests. | Per-step logits also match within `1e-5` on your own adversarial cases, and a deliberately wrong RoPE offset makes your tests fail. |
 | Memory | The KV formula matches the measured cache size. | The sheet scales the formula to a published model at long context and large batch, and names what dominates memory there. |
 | Timing method | Prefill and decode are timed separately with warm-up and repeated trials. | The report gives medians with spread, synchronizes the device and states what the timings exclude. |
 | Explanation | Each trend is explained in a sentence. | The explanation uses arithmetic intensity from section 4 and predicts one result before measuring it. |

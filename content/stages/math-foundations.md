@@ -69,13 +69,13 @@ A correct calculation can still answer the wrong quantified question. Proof habi
 - For $`A`$ of shape $`(m,n)`$, write $`(Ax)_i=\sum_j A_{ij}x_j`$ with $`x`$ in $`\mathbb{R}^n`$. Distinguish a scalar, a vector, a column matrix and an array with extra axes.
 - An induction proof needs a starting case and a step for every permitted index. An invariant needs initialization and preservation.
 
-**Reproduce:** Closed-book, prove that the columns $`a_1,\ldots,a_n`$ of a real $`m`$ by $`n`$ matrix $`A`$ are independent iff $`Ax=0`$ has only $`x=0`$, using $`Ax=\sum_j x_j a_j`$ in both directions. Then prove $`(A^k)^\top=(A^\top)^k`$ for square $`A`$ and all integers $`k\ge 0`$, starting with $`A^0=I`$ and using the transpose-of-product rule in the step. As one NumPy check, create A=np.array([[1,2],[2,4]],dtype=np.float64) and z=np.array([-2,1],dtype=np.float64), with no random draws. Compute np.linalg.norm(A@z,2): the reference run gives 0.0, below 1e-12. The nonzero witness $`z`$ refutes independence for this $`A`$; the numerical check does not prove the general iff.
+**Reproduce:** Closed-book, prove that the columns $`a_1,\ldots,a_n`$ of a real $`m`$ by $`n`$ matrix $`A`$ are independent iff $`Ax=0`$ has only $`x=0`$, using $`Ax=\sum_j x_j a_j`$ in both directions. Then prove $`(A^k)^\top=(A^\top)^k`$ for square $`A`$ and all integers $`k\ge 0`$, starting with $`A^0=I`$ and using the transpose-of-product rule in the step. As one NumPy check, create `A=np.array([[1,2],[2,4]],dtype=np.float64)` and `z=np.array([-2,1],dtype=np.float64)`, with no random draws. Compute `np.linalg.norm(A@z,2)`: the reference run gives 0.0, below 1e-12. The nonzero witness $`z`$ refutes independence for this $`A`$; the numerical check does not prove the general iff.
 
 **Traps**
 
 - Checking several vectors cannot establish a claim about all real vectors. One exact counterexample can refute it.
 - Swapping 'for every $`b`$ there exists $`x`$' with 'there exists $`x`$ for every $`b`$' changes solvability into a much stronger claim.
-- A vector of mathematical shape $`n`$ is not automatically a NumPy (n,1) column. Write the storage shape separately.
+- A vector of mathematical shape $`n`$ is not automatically a NumPy `(n,1)` column. Write the storage shape separately.
 
 **Practice**
 
@@ -122,7 +122,7 @@ Coordinates describe a vector; they are not the vector itself. Keeping that dist
 - Column $`j`$ is the output coordinate vector of the image of input basis vector $`j`$. Composition acts right to left on column vectors.
 - If $`x_{\text{old}}=Sx_{\text{new}}`$ and $`y_{\text{old}}=Ty_{\text{new}}`$, then the new representation is $`T^{-1}AS`$. Only an endomorphism with the same basis change at both ends gives $`S^{-1}AS`$.
 
-**Reproduce:** Derive $`T^{-1}AS`$ by following coordinates through three maps. By hand take $`A=\operatorname{diag}(2,1)`$, $`S=\left[\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\right]`$, $`T=\left[\begin{smallmatrix}1&0\\1&1\end{smallmatrix}\right]`$ and obtain $`C=\left[\begin{smallmatrix}2&2\\-2&-1\end{smallmatrix}\right]`$. For new input $`z=(1,2)`$, compute old input $`(3,2)`$, old output $`(6,2)`$, and new output $`(6,-4)`$. Check once in NumPy: create these arrays with dtype=np.float64, without random draws; compute C=np.linalg.solve(T,A@S) and np.linalg.norm(T@(C@z)-A@(S@z),2). The reference difference is 0.0; require it below 1e-12 rather than asserting floating-point equality.
+**Reproduce:** Derive $`T^{-1}AS`$ by following coordinates through three maps. By hand take $`A=\operatorname{diag}(2,1)`$, $`S=\left[\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\right]`$, $`T=\left[\begin{smallmatrix}1&0\\1&1\end{smallmatrix}\right]`$ and obtain $`C=\left[\begin{smallmatrix}2&2\\-2&-1\end{smallmatrix}\right]`$. For new input $`z=(1,2)`$, compute old input $`(3,2)`$, old output $`(6,2)`$, and new output $`(6,-4)`$. Check once in NumPy: create these arrays with `dtype=np.float64`, without random draws; compute `C=np.linalg.solve(T,A@S)` and `np.linalg.norm(T@(C@z)-A@(S@z),2)`. The reference difference is 0.0; require it below 1e-12 rather than asserting floating-point equality.
 
 **Traps**
 
@@ -174,7 +174,7 @@ Rank tells you which outputs are reachable and which parameter changes leave out
 - Each row dotted with $`x`$ is a component of $`Ax`$. This gives $`\ker(A)=\operatorname{row}(A)^\perp`$; apply the same argument to $`A^\top`$ for the other pair.
 - $`Ax=b`$ is solvable iff $`b`$ lies in $`\operatorname{col}(A)`$. When solvable, its full solution set is $`x_p+\ker(A)`$, so unique coefficients require full column rank.
 
-**Reproduce:** By hand use $`A=\left[\begin{smallmatrix}1&2&0\\0&0&1\\1&2&1\end{smallmatrix}\right]`$. Find column basis $`\{(1,0,1),(0,1,1)\}`$, row basis $`\{(1,2,0),(0,0,1)\}`$, null basis $`\{(-2,1,0)\}`$, and left-null basis $`\{(-1,-1,1)\}`$. For $`b=(3,4,7)`$, obtain all solutions $`(3,0,4)+t(-2,1,0)`$. Changing $`b`$ to $`(3,4,8)`$ makes the system inconsistent. Write the basis-extension proof of rank-nullity. Check once in NumPy with all arrays dtype=np.float64 and no random draws: matrix_rank(A) gives 2; the vector 2-norms of A@(-2,1,0), A.T@(-1,-1,1), and A@(3,0,4)-b each give 0.0, below 1e-12. The left-null vector dotted with $`(3,4,8)`$ gives approximately 1, certifying the hand inconsistency argument.
+**Reproduce:** By hand use $`A=\left[\begin{smallmatrix}1&2&0\\0&0&1\\1&2&1\end{smallmatrix}\right]`$. Find column basis $`\{(1,0,1),(0,1,1)\}`$, row basis $`\{(1,2,0),(0,0,1)\}`$, null basis $`\{(-2,1,0)\}`$, and left-null basis $`\{(-1,-1,1)\}`$. For $`b=(3,4,7)`$, obtain all solutions $`(3,0,4)+t(-2,1,0)`$. Changing $`b`$ to $`(3,4,8)`$ makes the system inconsistent. Write the basis-extension proof of rank-nullity. Check once in NumPy with all arrays `dtype=np.float64` and no random draws: `matrix_rank(A)` gives 2; the vector 2-norms of `A@(-2,1,0)`, `A.T@(-1,-1,1)`, and `A@(3,0,4)-b` each give 0.0, below 1e-12. The left-null vector dotted with $`(3,4,8)`$ gives approximately 1, certifying the hand inconsistency argument.
 
 **Traps**
 
@@ -228,7 +228,7 @@ Orthonormal coordinates separate directions without mixing their lengths. They a
 - Gram-Schmidt subtracts components in previously accepted directions and then normalizes. Independence is what prevents a zero residual in exact arithmetic.
 - For tall $`Q`$ with $`Q^\top Q=I`$, lengths are preserved in the coordinate-to-vector map. $`QQ^\top`$ need not be the identity.
 
-**Reproduce:** Derive Cauchy-Schwarz from the nonnegative squared norm, then work MML Exercise 3.8 by hand: $`b_1=(1,1,1)`$, $`b_2=(-1,2,0)`$ give $`q_1=(1,1,1)/\sqrt{3}`$, $`q_2=(-4,5,-1)/\sqrt{42}`$. Implement modified Gram-Schmidt for A=np.array([[1,-1],[1,2],[1,0]],dtype=np.float64), with no random draws: for each column v, sequentially set R[i,j]=Q[:,i]@v and v-=R[i,j]*Q[:,i], then R[j,j]=norm(v,2) and Q[:,j]=v/R[j,j]. Reject a residual norm $`\le 10^{-12}`$ on this small scale. Check the Frobenius norms of Q.T@Q-I and A-Q@R; the reference run gives 3.6e-16 and 2.2e-16. Against Qref=np.linalg.qr(A,mode='reduced')[0], the projector difference norm(Q@Q.T-Qref@Qref.T,'fro') is 5.1e-16. Require all three below 1e-12. Replacing $`b_2`$ by $`2b_1`$ must trigger the dependence guard.
+**Reproduce:** Derive Cauchy-Schwarz from the nonnegative squared norm, then work MML Exercise 3.8 by hand: $`b_1=(1,1,1)`$, $`b_2=(-1,2,0)`$ give $`q_1=(1,1,1)/\sqrt{3}`$, $`q_2=(-4,5,-1)/\sqrt{42}`$. Implement modified Gram-Schmidt for `A=np.array([[1,-1],[1,2],[1,0]],dtype=np.float64)`, with no random draws: for each column `v`, sequentially set `R[i,j]=Q[:,i]@v` and `v-=R[i,j]*Q[:,i]`, then `R[j,j]=norm(v,2)` and `Q[:,j]=v/R[j,j]`. Reject a residual norm $`\le 10^{-12}`$ on this small scale. Check the Frobenius norms of `Q.T@Q-I` and `A-Q@R`; the reference run gives 3.6e-16 and 2.2e-16. Against `Qref=np.linalg.qr(A,mode='reduced')[0]`, the projector difference `norm(Q@Q.T-Qref@Qref.T,'fro')` is 5.1e-16. Require all three below 1e-12. Replacing $`b_2`$ by $`2b_1`$ must trigger the dependence guard.
 
 **Traps**
 
@@ -283,7 +283,7 @@ Least squares is a geometric approximation before it is a statistical estimator.
 - $`P=A(A^\top A)^{-1}A^\top`$ is a derivation formula. With an orthonormal column basis $`Q`$, compute $`P=QQ^\top`$ and solve $`Rx=Q^\top b`$.
 - $`P^2=P`$ expresses projecting twice; $`P^\top=P`$ expresses orthogonality. Idempotence alone allows oblique projections.
 
-**Reproduce:** Closed-book, derive the Pythagorean minimization argument, normal equations, $`P^\top=P`$ and $`P^2=P`$. For $`A=\left[\begin{smallmatrix}1&0\\1&1\\0&1\end{smallmatrix}\right]`$ and $`b=(1,0,0)`$, work by hand to get $`x=(2/3,-1/3)`$, residual $`(1/3,-1/3,1/3)`$, and $`P=\frac{1}{3}\left[\begin{smallmatrix}2&1&-1\\1&2&1\\-1&1&2\end{smallmatrix}\right]`$. Implement the NumPy check with A and b as float64 arrays, no random draws: Q,R=np.linalg.qr(A,mode='reduced'); x=np.linalg.solve(R,Q.T@b); P=Q@Q.T. Measure norm(P-P_hand,'fro'), norm(P@P-P,'fro'), norm(P.T-P,'fro'), and norm(A.T@(b-A@x),2). The reference values are 5.7e-16, 5.7e-16, 0.0 and 5.5e-16; require each below 1e-12. The squared residual norm is approximately 0.3333333333333334, within 1e-12 of 1/3.
+**Reproduce:** Closed-book, derive the Pythagorean minimization argument, normal equations, $`P^\top=P`$ and $`P^2=P`$. For $`A=\left[\begin{smallmatrix}1&0\\1&1\\0&1\end{smallmatrix}\right]`$ and $`b=(1,0,0)`$, work by hand to get $`x=(2/3,-1/3)`$, residual $`(1/3,-1/3,1/3)`$, and $`P=\frac{1}{3}\left[\begin{smallmatrix}2&1&-1\\1&2&1\\-1&1&2\end{smallmatrix}\right]`$. Implement the NumPy check with `A` and `b` as `float64` arrays, no random draws: `Q,R=np.linalg.qr(A,mode='reduced')`; `x=np.linalg.solve(R,Q.T@b)`; `P=Q@Q.T`. Measure `norm(P-P_hand,'fro')`, `norm(P@P-P,'fro')`, `norm(P.T-P,'fro')`, and `norm(A.T@(b-A@x),2)`. The reference values are 5.7e-16, 5.7e-16, 0.0 and 5.5e-16; require each below 1e-12. The squared residual norm is approximately 0.3333333333333334, within 1e-12 of 1/3.
 
 **Traps**
 
@@ -338,13 +338,13 @@ Symmetry turns a matrix into independent orthogonal directions. The signs of its
 - For symmetric $`A=Q\Lambda Q^\top`$, $`x^\top Ax=\sum_i \lambda_i (q_i^\top x)^2`$. PSD means every eigenvalue is nonnegative; positive definite means every eigenvalue is positive.
 - $`A^\top A`$ is PSD since $`x^\top A^\top Ax=\|Ax\|_2^2`$. It is singular exactly when $`A`$ has a nontrivial kernel.
 
-**Reproduce:** Give the spectral-theorem induction proof using the steps in self-test, then derive the PSD eigenvalue test and the Gram singularity criterion. By hand diagonalize $`S=\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]`$: eigenvalues 1 and 3, with unit eigenvectors $`(1,-1)/\sqrt{2}`$ and $`(1,1)/\sqrt{2}`$. Contrast it with $`J=\left[\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\right]`$, which has only a one-dimensional eigenspace. Check S once in NumPy: S=np.array([[2,1],[1,2]],dtype=np.float64); lam,Q=np.linalg.eigh(S), with no random draws. Compute norm(S-(Q*lam)@Q.T,'fro') and norm(Q.T@Q-I,'fro'). The reference values are 6.5e-16 and 3.2e-16; require both below 1e-12, and lam within vector 2-norm 1e-12 of (1,3).
+**Reproduce:** Give the spectral-theorem induction proof using the steps in self-test, then derive the PSD eigenvalue test and the Gram singularity criterion. By hand diagonalize $`S=\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]`$: eigenvalues 1 and 3, with unit eigenvectors $`(1,-1)/\sqrt{2}`$ and $`(1,1)/\sqrt{2}`$. Contrast it with $`J=\left[\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\right]`$, which has only a one-dimensional eigenspace. Check `S` once in NumPy: `S=np.array([[2,1],[1,2]],dtype=np.float64)`; `lam,Q=np.linalg.eigh(S)`, with no random draws. Compute `norm(S-(Q*lam)@Q.T,'fro')` and `norm(Q.T@Q-I,'fro')`. The reference values are 6.5e-16 and 3.2e-16; require both below 1e-12, and `lam` within vector 2-norm 1e-12 of `(1,3)`.
 
 **Traps**
 
 - A positive diagonal does not imply PSD: $`\left[\begin{smallmatrix}1&2\\2&1\end{smallmatrix}\right]`$ has eigenvalue -1 and its quadratic form at $`(1,-1)`$ is -2.
 - Invertibility does not imply diagonalizability. The worked $`J`$ is invertible but defective.
-- The PSD eigenvalue test assumes symmetry. Do not classify a nonsymmetric matrix using only signs of its eigenvalues, or silently pass it to eigh.
+- The PSD eigenvalue test assumes symmetry. Do not classify a nonsymmetric matrix using only signs of its eigenvalues, or silently pass it to `eigh`.
 
 **Practice**
 
@@ -396,7 +396,7 @@ SVD describes every real linear map, including rectangular and rank-deficient on
 - For rank at most $`k`$, Eckart-Young gives minimum spectral error $`\sigma_{k+1}`$. The truncated SVD also has squared Frobenius error $`\sum_{i>k}\sigma_i^2`$. State which norm you measure.
 - For centered row-sample $`X`$ with $`n>1`$, sample covariance is $`X^\top X/(n-1)`$. A unit direction's variance is its Rayleigh quotient; right singular vectors maximize it, and retained variance is sum of retained $`\sigma_i^2/(n-1)`$.
 
-**Reproduce:** Construct the SVD and pseudoinverse by hand for MML Exercise 4.8's $`A=\left[\begin{smallmatrix}3&2&2\\2&3&-2\end{smallmatrix}\right]`$. Singular values are 5 and 3; its rank-1 truncation is $`\left[\begin{smallmatrix}5/2&5/2&0\\5/2&5/2&0\end{smallmatrix}\right]`$, and $`A^+=\frac{1}{45}\left[\begin{smallmatrix}7&2\\2&7\\10&-10\end{smallmatrix}\right]`$. Give the spectral-norm Eckart-Young proof from self-test. As one NumPy check, use float64 A, no random draws, and U,s,Vt=np.linalg.svd(A,full_matrices=False). Implement A1=(U[:,:1]*s[:1])@Vt[:1] and Ap=(Vt.T/s)@U.T. The reconstruction Frobenius norm is 1.2e-15; spectral and Frobenius truncation errors are approximately 3; norm(A@Ap@A-A,'fro') is 2.9e-15. Require identity residuals below 1e-12 and scalar errors within 1e-12 of 3. In the same check use centered float64 X=[[3,0],[-3,0],[0,1],[0,-1]], take its first right singular vector v, and reconstruct (X@v[:,None])@v[None,:]. Verify sample variances (6,2/3) and squared Frobenius reconstruction error 2 within 1e-12. Explain both results from the spectrum, rather than treating this as a fitted ML evaluation.
+**Reproduce:** Construct the SVD and pseudoinverse by hand for MML Exercise 4.8's $`A=\left[\begin{smallmatrix}3&2&2\\2&3&-2\end{smallmatrix}\right]`$. Singular values are 5 and 3; its rank-1 truncation is $`\left[\begin{smallmatrix}5/2&5/2&0\\5/2&5/2&0\end{smallmatrix}\right]`$, and $`A^+=\frac{1}{45}\left[\begin{smallmatrix}7&2\\2&7\\10&-10\end{smallmatrix}\right]`$. Give the spectral-norm Eckart-Young proof from self-test. As one NumPy check, use `float64` `A`, no random draws, and `U,s,Vt=np.linalg.svd(A,full_matrices=False)`. Implement `A1=(U[:,:1]*s[:1])@Vt[:1]` and `Ap=(Vt.T/s)@U.T`. The reconstruction Frobenius norm is 1.2e-15; spectral and Frobenius truncation errors are approximately 3; `norm(A@Ap@A-A,'fro')` is 2.9e-15. Require identity residuals below 1e-12 and scalar errors within 1e-12 of 3. In the same check use centered `float64` `X=[[3,0],[-3,0],[0,1],[0,-1]]`, take its first right singular vector `v`, and reconstruct `(X@v[:,None])@v[None,:]`. Verify sample variances `(6,2/3)` and squared Frobenius reconstruction error 2 within 1e-12. Explain both results from the spectrum, rather than treating this as a fitted ML evaluation.
 
 **Traps**
 
@@ -443,7 +443,7 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 **Study**
 
 1. [Broadcast-compatible axes](https://numpy.org/doc/stable/user/basics.broadcasting.html#general-broadcasting-rules) (NumPy broadcasting and matmul shape rules) - General broadcasting rules and Broadcastable arrays. Depth: Stop before the vector-quantization application.
-2. [Batched matrix products](https://numpy.org/doc/stable/reference/generated/numpy.matmul.html#numpy.matmul) (NumPy broadcasting and matmul shape rules) - Notes: two-dimensional multiplication, stacked matrices, one-dimensional promotion, and the comparison with dot.
+2. [Batched matrix products](https://numpy.org/doc/stable/reference/generated/numpy.matmul.html#numpy.matmul) (NumPy broadcasting and matmul shape rules) - Notes: two-dimensional multiplication, stacked matrices, one-dimensional promotion, and the comparison with `dot`.
 3. [Count products and QR work](https://web.stanford.edu/~boyd/vmls/vmls.pdf) (Introduction to Applied Linear Algebra) - Chapter 10, section 10.1, Complexity of matrix multiplication and Complexity of matrix triple product, printed pp. 182 to 183; Chapter 12, section 12.3, Complexity, p. 232. Depth: Use dense arithmetic counts. Leave specialized sparse products and do not interpret these counts as measured runtimes.
 4. [Factor once, solve repeatedly](https://fncbook.com/python/efficiency/#solution-of-linear-systems) (Fundamentals of Numerical Computation: conditioning and operation counts) - Python edition, section 2.5.3, Solution of linear systems: Lemma 2.5.1, equations (2.5.7) to (2.5.8), and Theorem 2.5.1. Depth: Derive the loop sums for triangular solves and LU. Skip the unseeded timing demonstrations and leave general asymptotic-definition proofs to Algorithms.
 5. [Condition number and the residual-error gap](https://fncbook.com/python/condition-number/) (Fundamentals of Numerical Computation: conditioning and operation counts) - Python edition, section 2.8, equations (2.8.1) to (2.8.6), Definition 2.8.1, then section 2.8.2, equations (2.8.9) to (2.8.11). Depth: Prove the finite bound for perturbing b with A fixed. Skip the unseeded Hilbert example and the first-order matrix-perturbation formula (2.8.7); a finite bound for simultaneous perturbations is outside this unit.
@@ -456,12 +456,12 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 - For invertible square $`A`$, $`\kappa_2(A)=\sigma_{\max}/\sigma_{\min}`$. From $`\Delta x=A^{-1}\Delta b`$ and $`\|b\|\le\|A\|\|x\|`$ derive $`\|\Delta x\|/\|x\|\le\kappa(A)\|\Delta b\|/\|b\|`$ for nonzero $`b`$, using compatible induced norms.
 - For full-column-rank rectangular $`A`$, define $`\kappa_2(A)=\sigma_{\max}/\sigma_{\min}`$ over its $`n`$ positive singular values. The SVD gives eigenvalues $`\sigma_i^2`$ for $`A^\top A`$, hence $`\kappa_2(A^\top A)=\kappa_2(A)^2`$. Rank deficiency makes the Gram matrix singular.
 
-**Reproduce:** Closed-book, derive the product count, triangular/LU loop sums, the fixed-$`A`$ perturbation bound, and condition-number squaring from $`A=U\Sigma V^\top`$. For a deterministic NumPy check, use float64 X=np.arange(24,dtype=np.float64).reshape(2,3,4), W=np.arange(20,dtype=np.float64).reshape(4,5), bias=np.arange(5,dtype=np.float64), with no random draws. Predict Y=X@W+bias has shape (2,3,5), Y[1,2,4] approximately 1018, and Y.sum(axis=1,keepdims=True) shape (2,1,5). The standard product count is 2*3*5*(2*4-1)=210 scalar operations, plus 30 bias additions, with 25 shared parameters. Then use A=diag(1,1e-6), b=(1,0), db=(0,1e-8), all float64; x=solve(A,b), xp=solve(A,b+db). Measure $`\kappa_2`$ approximately 1e6, relative solution change norm(xp-x,2)/norm(x,2) approximately 0.01, and original-system relative residual norm(b-A@xp,2)/norm(b,2) approximately 1e-8. These attain the bound by design; use absolute tolerance 1e-12 for the two ratios and entry, and relative tolerance 1e-12 for $`\kappa`$. This changes the right-hand side, not the solver.
+**Reproduce:** Closed-book, derive the product count, triangular/LU loop sums, the fixed-$`A`$ perturbation bound, and condition-number squaring from $`A=U\Sigma V^\top`$. For a deterministic NumPy check, use `float64` `X=np.arange(24,dtype=np.float64).reshape(2,3,4)`, `W=np.arange(20,dtype=np.float64).reshape(4,5)`, `bias=np.arange(5,dtype=np.float64)`, with no random draws. Predict `Y=X@W+bias` has shape `(2,3,5)`, `Y[1,2,4]` approximately 1018, and `Y.sum(axis=1,keepdims=True)` shape `(2,1,5)`. The standard product count is `2*3*5*(2*4-1)`=210 scalar operations, plus 30 bias additions, with 25 shared parameters. Then use `A=diag(1,1e-6)`, `b=(1,0)`, `db=(0,1e-8)`, all `float64`; `x=solve(A,b)`, `xp=solve(A,b+db)`. Measure $`\kappa_2`$ approximately 1e6, relative solution change `norm(xp-x,2)/norm(x,2)` approximately 0.01, and original-system relative residual `norm(b-A@xp,2)/norm(b,2)` approximately 1e-8. These attain the bound by design; use absolute tolerance 1e-12 for the two ratios and entry, and relative tolerance 1e-12 for $`\kappa`$. This changes the right-hand side, not the solver.
 
 **Traps**
 
-- A successful broadcast can be wrong: subtracting a (3,) target from a (3,1) prediction produces (3,3), not three residuals. Assert shapes before arithmetic.
-- Array .T reverses all axes. For batched matrix transpose use swapaxes(-1,-2); transpose only the two matrix axes.
+- A successful broadcast can be wrong: subtracting a `(3,)` target from a `(3,1)` prediction produces `(3,3)`, not three residuals. Assert shapes before arithmetic.
+- Array `.T` reverses all axes. For batched matrix transpose use `swapaxes(-1,-2)`; transpose only the two matrix axes.
 - A small residual is backward-error evidence, not a guarantee of accurate $`x`$. Conditioning belongs to the mathematical problem; stability belongs to the algorithm.
 
 **Practice**
@@ -474,8 +474,8 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 <details>
 <summary>Self-test</summary>
 
-1. What shapes result from (2,1,3,4) @ (1,5,4,6), and from swapping only the last two axes of the result?
-   - The matrix product is (2,5,3,6): 4 contracts and batch shapes (2,1) and (1,5) broadcast to (2,5). Swapping the matrix axes gives (2,5,6,3). Reversing every axis with .T would instead give (6,3,5,2).
+1. What shapes result from `(2,1,3,4)` @ `(1,5,4,6)`, and from swapping only the last two axes of the result?
+   - The matrix product is `(2,5,3,6)`: 4 contracts and batch shapes `(2,1)` and `(1,5)` broadcast to `(2,5)`. Swapping the matrix axes gives `(2,5,6,3)`. Reversing every axis with `.T` would instead give `(6,3,5,2)`.
 2. Why does forming $`A^\top A`$ square the 2-norm condition number, and which rank assumption is needed?
    - The SVD gives $`A^\top A=V\operatorname{diag}(\sigma_i^2)V^\top`$. With full column rank all $`n`$ eigenvalues are positive, so their extreme ratio is $`(\sigma_{\max}/\sigma_{\min})^2`$. A wide full-row-rank matrix still has a singular Gram matrix, so the finite full-column-rank formula cannot be used there.
 3. Where is invertibility used in the perturbation proof, and why does a residual give the same bound?
@@ -487,20 +487,20 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 
 ### Mini-project: Least squares and PCA from a blank file, with rank and conditioning failures
 
-**About 10 to 14 hours.** Start the one repository the whole stage builds on, numlab/, with its linear-algebra package: a QR least-squares solver, power iteration, a cutoff-aware pseudoinverse and PCA, each checked against an independent NumPy oracle and each shown failing on a case you construct. The solver and the conditioning table carry into the capstone.
+**About 10 to 14 hours.** Start the one repository the whole stage builds on, `numlab/`, with its linear-algebra package: a QR least-squares solver, power iteration, a cutoff-aware pseudoinverse and PCA, each checked against an independent NumPy oracle and each shown failing on a case you construct. The solver and the conditioning table carry into the capstone.
 
-1. Create numlab/ with linalg/, autodiff/, prob/, stats/, optim/ and notes/ directories and one pytest suite. Every test fixes its dtype (float64 unless it says otherwise) and its seed, and states its tolerance and why. Before coding, write notes/linalg.md: the normal equations, why the least-squares projector is symmetric and idempotent, and PCA as both maximum variance and best rank-k approximation.
-2. Implement thin QR by modified Gram-Schmidt or Householder reflections and solve least squares by back substitution on $`Rx=Q^\top b`$. On a new full-rank tall matrix, match numpy.linalg.lstsq and check $`A^\top r=0`$, $`P^2=P`$ and $`P^\top=P`$ within stated tolerances. Then make one column a combination of the others: show the tiny diagonal entry of $`R`$ and the exploding solution, detect it with a relative threshold on $`|r_{jj}|`$ that you justify, and either raise an error that names the rank deficiency or fall back to the minimum-norm solution.
-3. Add power iteration for a symmetric matrix that reports the Rayleigh quotient and the eigen-residual $`\|Av-\rho v\|`$ at every step. On a matrix with a separated dominant eigenvalue, match numpy.linalg.eigh. Then run $`\operatorname{diag}(2,-2,1)`$ from $`(1,0.5,1)`$: the iterate alternates sign in its second entry, the Rayleigh quotient settles at 1.2, which is not an eigenvalue, and the residual stays at 1.6. Make the stopping rule use the residual, so this case is reported as a failure instead of a converged 1.2.
-4. Build a pseudoinverse from numpy.linalg.svd with a cutoff relative to the largest singular value, and test it on a new matrix with an exact zero singular value against numpy.linalg.pinv and the four Penrose conditions. Show what the version without a cutoff returns. Implement PCA on centered data: the explained variances, and a reconstruction error equal to the sum of the discarded squared singular values. Compare components through projectors or reconstructions, never raw vectors, so that a sign flip cannot fail a correct answer.
-5. Add shape assertions to every function, including a batched (B, m, n) @ (B, n, k) case, and count the flops of the normal equations against QR. Then write the conditioning table: for a family of matrices with growing condition number, such as Vandermonde matrices of rising degree, solve with a known $`x^*`$ and report $`\kappa`$, relative residual and relative error for QR and for the normal equations. Explain from the residual bound why the residual stays near roundoff while the error grows, and why the normal equations lose about twice as many digits.
-6. Write notes/linalg-defense.md: why QR rather than the normal equations, how you chose the rank and pseudoinverse cutoffs, and what each tolerance in the tests protects against.
+1. Create `numlab/` with `linalg/`, `autodiff/`, `prob/`, `stats/`, `optim/` and `notes/` directories and one pytest suite. Every test fixes its `dtype` (`float64` unless it says otherwise) and its seed, and states its tolerance and why. Before coding, write `notes/linalg.md`: the normal equations, why the least-squares projector is symmetric and idempotent, and PCA as both maximum variance and best rank-k approximation.
+2. Implement thin QR by modified Gram-Schmidt or Householder reflections and solve least squares by back substitution on $`Rx=Q^\top b`$. On a new full-rank tall matrix, match `numpy.linalg.lstsq` and check $`A^\top r=0`$, $`P^2=P`$ and $`P^\top=P`$ within stated tolerances. Then make one column a combination of the others: show the tiny diagonal entry of $`R`$ and the exploding solution, detect it with a relative threshold on $`|r_{jj}|`$ that you justify, and either raise an error that names the rank deficiency or fall back to the minimum-norm solution.
+3. Add power iteration for a symmetric matrix that reports the Rayleigh quotient and the eigen-residual $`\|Av-\rho v\|`$ at every step. On a matrix with a separated dominant eigenvalue, match `numpy.linalg.eigh`. Then run $`\operatorname{diag}(2,-2,1)`$ from $`(1,0.5,1)`$: the iterate alternates sign in its second entry, the Rayleigh quotient settles at 1.2, which is not an eigenvalue, and the residual stays at 1.6. Make the stopping rule use the residual, so this case is reported as a failure instead of a converged 1.2.
+4. Build a pseudoinverse from `numpy.linalg.svd` with a cutoff relative to the largest singular value, and test it on a new matrix with an exact zero singular value against `numpy.linalg.pinv` and the four Penrose conditions. Show what the version without a cutoff returns. Implement PCA on centered data: the explained variances, and a reconstruction error equal to the sum of the discarded squared singular values. Compare components through projectors or reconstructions, never raw vectors, so that a sign flip cannot fail a correct answer.
+5. Add shape assertions to every function, including a batched `(B, m, n)` @ `(B, n, k)` case, and count the flops of the normal equations against QR. Then write the conditioning table: for a family of matrices with growing condition number, such as Vandermonde matrices of rising degree, solve with a known $`x^*`$ and report $`\kappa`$, relative residual and relative error for QR and for the normal equations. Explain from the residual bound why the residual stays near roundoff while the error grows, and why the normal equations lose about twice as many digits.
+6. Write `notes/linalg-defense.md`: why QR rather than the normal equations, how you chose the rank and pseudoinverse cutoffs, and what each tolerance in the tests protects against.
 
 **Deliverables**
 
-- numlab/linalg/: QR least squares with rank detection, power iteration, the cutoff pseudoinverse and PCA.
+- `numlab/linalg/`: QR least squares with rank detection, power iteration, the cutoff pseudoinverse and PCA.
 - The tests: NumPy oracles, projector and Penrose checks, the rank-deficient and tied-magnitude failures, the sign-invariant PCA comparison and the shape assertions.
-- notes/linalg.md with the derivations and notes/linalg-defense.md with the conditioning table and its raw output.
+- `notes/linalg.md` with the derivations and `notes/linalg-defense.md` with the conditioning table and its raw output.
 
 **Checks**
 
@@ -509,8 +509,8 @@ Shapes determine what is computed and how much work it takes. Conditioning deter
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Derivations | The normal equations, projector properties and both PCA characterizations are derived in the notes without copying. | Each derivation names the assumption it uses, such as full column rank, at the step that needs it. |
-| Least squares | QR least squares matches numpy.linalg.lstsq on a full-rank matrix, and the rank-deficient case is detected rather than returned as a huge solution. | The rank threshold is justified from the scale of $`R`$ and machine epsilon, and the fallback returns the minimum-norm solution checked against the pseudoinverse. |
-| Spectral methods | Power iteration matches eigh on the separated case and reports failure on the tied-magnitude case. | The note explains the 1.2 Rayleigh quotient from the two tied components, and the stopping rule uses the eigen-residual. |
+| Least squares | QR least squares matches `numpy.linalg.lstsq` on a full-rank matrix, and the rank-deficient case is detected rather than returned as a huge solution. | The rank threshold is justified from the scale of $`R`$ and machine epsilon, and the fallback returns the minimum-norm solution checked against the pseudoinverse. |
+| Spectral methods | Power iteration matches `eigh` on the separated case and reports failure on the tied-magnitude case. | The note explains the 1.2 Rayleigh quotient from the two tied components, and the stopping rule uses the eigen-residual. |
 | SVD and PCA | The pseudoinverse passes the Penrose conditions on the zero-singular-value matrix, and PCA reconstruction error equals the discarded squared singular values. | Every comparison is sign-invariant, and the no-cutoff failure is shown with its output. |
 | Conditioning evidence | The table reports $`\kappa`$, residual and error for both solvers on at least four matrices. | The observed digit loss is compared with the residual bound and with the squared condition number of the normal equations. |
 
@@ -524,7 +524,7 @@ Feeds into: Capstone component 1, least squares and PCA: the QR solver with its 
 - **Reference - Theory:** [Mathematics for Machine Learning](https://mml-book.github.io/) - Use Chapters 2-4 and §10.2 to check notation or re-derive a result. Do not treat it as a second course.
 - **Support - Practice:** [Introduction to Applied Linear Algebra](https://web.stanford.edu/~boyd/vmls/) - Sample Chapters 1-13 and the extra exercises for computational practice in fitting, least squares and pseudoinverses.
 - **Optional - Intuition:** [Essence of Linear Algebra](https://www.3blue1brown.com/topics/linear-algebra) - Open only when a geometric picture is missing; it does not replace derivation or problem solving.
-- **Reference - Documentation:** [NumPy broadcasting and matmul shape rules](https://numpy.org/doc/stable/user/basics.broadcasting.html) - Read General broadcasting rules and Broadcastable arrays, then matmul Notes for stacked matrices and one-dimensional promotion. These close the pool's array-semantics gap.
+- **Reference - Documentation:** [NumPy broadcasting and matmul shape rules](https://numpy.org/doc/stable/user/basics.broadcasting.html) - Read General broadcasting rules and Broadcastable arrays, then `matmul` Notes for stacked matrices and one-dimensional promotion. These close the pool's array-semantics gap.
 - **Reference - Theory:** [Fundamentals of Numerical Computation: conditioning and operation counts](https://fncbook.com/python/condition-number/) - Python edition, section 2.8 through Residual and backward error for the fixed-matrix perturbation bound; section 2.5.3 for triangular-solve and LU flop counts. Use Exercise 2.8.7 for a condition-number proof, not the unseeded Hilbert experiment.
 
 ### Exit checkpoint
@@ -590,7 +590,7 @@ Every later gradient is a stack of directional derivatives. If you cannot comput
 - MML writes gradients as row vectors and 18.S096 as column vectors; the two differ by a transpose and the chain rule changes shape with the choice.
 - Existing partials do not imply differentiability; continuous partials do.
 
-**Reproduce:** Closed-book, differentiate $`f(x_1, x_2) = x_1^2 x_2 + x_1 x_2^3`$ at (1, 2) to get $`\operatorname{grad} f = (12, 13)`$, then the directional derivative along $`u = (1, 1)/\sqrt{2}`$, which is $`25/\sqrt{2}`$ = 17.67766953. Check with float64 NumPy centered differences at $`h = 10^{-5}`$: both components agree within 3e-10 absolute (measured 1.0e-11 and 2.2e-10).
+**Reproduce:** Closed-book, differentiate $`f(x_1, x_2) = x_1^2 x_2 + x_1 x_2^3`$ at (1, 2) to get $`\operatorname{grad} f = (12, 13)`$, then the directional derivative along $`u = (1, 1)/\sqrt{2}`$, which is $`25/\sqrt{2}`$ = 17.67766953. Check with `float64` NumPy centered differences at $`h = 10^{-5}`$: both components agree within 3e-10 absolute (measured 1.0e-11 and 2.2e-10).
 
 **Traps**
 
@@ -601,9 +601,9 @@ Every later gradient is a stack of directional derivatives. If you cannot comput
 **Practice**
 
 - [MML Chapter 5, Exercise 5.5 (partial derivatives and Jacobians)](https://mml-book.github.io/book/mml-book.pdf) - Exercises (pp. 170-171), Exercise 5.5: dimensions of each partial derivative in part (a), then the Jacobians in part (b). Do part (a) before part (b); the predicted dimensions fix the Jacobian shapes.
-- [TrenTorch: Directional derivatives](https://trentorch.com/ide/math-directional-derivatives) - Implement directional_derivative(f, x, direction) as a centered difference along the normalized direction, and steepest_ascent_direction(f, x) as the unit gradient. Then run both on the Reproduce cubic at (1, 2): the derivative along (1, 1) must land within 1e-9 of 17.67766953, and the steepest-ascent value must equal $`\|\operatorname{grad} f\| = \sqrt{313}`$ = 17.69180601.
+- [TrenTorch: Directional derivatives](https://trentorch.com/ide/math-directional-derivatives) - Implement `directional_derivative(f, x, direction)` as a centered difference along the normalized direction, and `steepest_ascent_direction(f, x)` as the unit gradient. Then run both on the Reproduce cubic at (1, 2): the derivative along (1, 1) must land within 1e-9 of 17.67766953, and the steepest-ascent value must equal $`\|\operatorname{grad} f\| = \sqrt{313}`$ = 17.69180601.
 
-**Stop when:** You compute $`\operatorname{grad} f`$ and any $`D_u f`$ for a new quadratic or cubic by hand, and a float64 centered-difference check at $`h = 10^{-5}`$ agrees to 1e-9 absolute.
+**Stop when:** You compute $`\operatorname{grad} f`$ and any $`D_u f`$ for a new quadratic or cubic by hand, and a `float64` centered-difference check at $`h = 10^{-5}`$ agrees to 1e-9 absolute.
 
 <details>
 <summary>Self-test</summary>
@@ -646,7 +646,7 @@ Jacobians say how outputs move; Hessians say how gradients move. Taylor turns bo
 - The first-order remainder scales with the squared step times the Hessian size; the second-order remainder with the cubed step.
 - Eigenvalue signs classify: all positive is a strict local minimum, mixed signs a saddle, a zero eigenvalue leaves the test silent.
 
-**Reproduce:** Closed-book, give the Hessian $`H = \left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]`$ of $`f(x_1, x_2) = x_1^2 + x_1 x_2 + x_2^2`$, its eigenvalues 1 and 3 from numpy.linalg.eigvalsh, and classify the origin as a strict local minimum since $`H`$ is positive definite. Verify the second-order Taylor model is exact: $`f(0.3, -0.2) = 0.07`$, and $`0.5 d^\top H d`$ in float64 gives 0.06999999999999999, one ulp (1.4e-17) below.
+**Reproduce:** Closed-book, give the Hessian $`H = \left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]`$ of $`f(x_1, x_2) = x_1^2 + x_1 x_2 + x_2^2`$, its eigenvalues 1 and 3 from `numpy.linalg.eigvalsh`, and classify the origin as a strict local minimum since $`H`$ is positive definite. Verify the second-order Taylor model is exact: $`f(0.3, -0.2) = 0.07`$, and $`0.5 d^\top H d`$ in `float64` gives 0.06999999999999999, one ulp (1.4e-17) below.
 
 **Traps**
 
@@ -656,10 +656,10 @@ Jacobians say how outputs move; Hessians say how gradients move. Taylor turns bo
 
 **Practice**
 
-- [TrenTorch: Hessian](https://trentorch.com/ide/math-hessian) - Implement hessian(f, x) as the centered-difference Jacobian of the provided gradient, and classify_critical_point(H) from eigvalsh signs with a tolerance. Its tests call diag(1e-9, 2) a saddle, but a near-zero eigenvalue leaves the second-derivative test silent: $`x^4 + y^2`$ has Hessian diag(0, 2) at its minimum. Pass the tests, then return a fourth label for that case in your own copy.
+- [TrenTorch: Hessian](https://trentorch.com/ide/math-hessian) - Implement `hessian(f, x)` as the centered-difference Jacobian of the provided gradient, and `classify_critical_point(H)` from `eigvalsh` signs with a tolerance. Its tests call `diag(1e-9, 2)` a saddle, but a near-zero eigenvalue leaves the second-derivative test silent: $`x^4 + y^2`$ has Hessian `diag(0, 2)` at its minimum. Pass the tests, then return a fourth label for that case in your own copy.
 - [MIT 18.S096 Problem Set 1, Problem 0 ($`2 \times 2`$ Jacobian matrices)](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_pset1_pdf/) - Problem 0, parts (a) to (d): Jacobian matrices of the rotate, hyperbolic rotate, nonlinear shear and warp maps. Official solutions exist; attempt before reading them. Do the hyperbolic rotation by hand; its Jacobian determinant returns in Problem Set 2, Problem 4(a), which calls it Problem 1b.
 
-**Stop when:** You write the Jacobian and second-order Taylor of a new $`\mathbb{R}^2`$ map by hand, classify its stationary point, and NumPy eigvalsh plus a remainder evaluation agree.
+**Stop when:** You write the Jacobian and second-order Taylor of a new $`\mathbb{R}^2`$ map by hand, classify its stationary point, and NumPy `eigvalsh` plus a remainder evaluation agree.
 
 <details>
 <summary>Self-test</summary>
@@ -704,7 +704,7 @@ Matrix backprop is the chain rule with shapes. Differentials keep the product or
 - Read gradients off differentials with the Frobenius product: $`df = \operatorname{tr}(G^\top dX)`$ means $`\operatorname{grad} f = G`$.
 - For three or more composed maps, accumulate Jacobians from the small side. Scalar-output chains go left to right.
 
-**Reproduce:** Closed-book, derive $`d(X^{-1}) = -X^{-1} dX X^{-1}`$ from $`d(XX^{-1}) = 0`$. Check in float64 NumPy with $`X = \left[\begin{smallmatrix}3&1\\1&2\end{smallmatrix}\right], V = \left[\begin{smallmatrix}0.5&-0.25\\0.25&0.5\end{smallmatrix}\right], h = 10^{-5}`$: $`\|(X + hV)^{-1} - (X^{-1} - h X^{-1} V X^{-1})\|_F`$ = 9.3e-12, a scaled residual of 0.093, consistent with an $`O(h^2)`$ remainder.
+**Reproduce:** Closed-book, derive $`d(X^{-1}) = -X^{-1} dX X^{-1}`$ from $`d(XX^{-1}) = 0`$. Check in `float64` NumPy with $`X = \left[\begin{smallmatrix}3&1\\1&2\end{smallmatrix}\right], V = \left[\begin{smallmatrix}0.5&-0.25\\0.25&0.5\end{smallmatrix}\right], h = 10^{-5}`$: $`\|(X + hV)^{-1} - (X^{-1} - h X^{-1} V X^{-1})\|_F`$ = 9.3e-12, a scaled residual of 0.093, consistent with an $`O(h^2)`$ remainder.
 
 **Traps**
 
@@ -749,7 +749,7 @@ These three gradients are the output layer of almost every classifier you will t
 **Study**
 
 1. [Sigmoid, quadratic and regularizer gradients](https://mml-book.github.io/book/mml-book.pdf) (Mathematics for Machine Learning - Ch. 5) - Exercise 5.2 setup (p. 170): derivative of the logistic sigmoid $`1/(1 + \exp(-x))`$. Identities (5.103)-(5.108) (p. 158): $`a^\top X^{-1} b`$, $`a^\top Xb`$, $`x^\top Bx`$ and the weighted least-squares gradient (5.108). Least-squares linear-model pattern (5.75)-(5.78) (p. 154).
-2. [Softmax classifier and numeric stability](https://cs231n.github.io/linear-classify/#softmax-classifier) (CS231n - Linear Classification) - Softmax classifier section: cross-entropy loss $`L_i = -f_{y_i} + \log \sum_j e^{f_j}`$ with the information-theory and MLE views. Practical issues: Numeric stability: max-subtraction trick with the [123, 456, 789] overflow example. Depth: Read the loss formula and the stability trick only. Derive the gradient yourself in Reproduce; skip the SVM sections and the interactive demo.
+2. [Softmax classifier and numeric stability](https://cs231n.github.io/linear-classify/#softmax-classifier) (CS231n - Linear Classification) - Softmax classifier section: cross-entropy loss $`L_i = -f_{y_i} + \log \sum_j e^{f_j}`$ with the information-theory and MLE views. Practical issues: Numeric stability: max-subtraction trick with the `[123, 456, 789]` overflow example. Depth: Read the loss formula and the stability trick only. Derive the gradient yourself in Reproduce; skip the SVM sections and the interactive demo.
 
 **Focus**
 
@@ -758,7 +758,7 @@ These three gradients are the output layer of almost every classifier you will t
 - $`L_2`$ adds $`\lambda w`$ under the $`(\lambda/2)\|w\|^2`$ convention and $`2 \lambda w`$ under $`\lambda\|w\|^2`$. State the convention before comparing numbers.
 - Max-subtraction is exact in real arithmetic since it multiplies top and bottom by one constant; it only changes float rounding, which the check measures.
 
-**Reproduce:** Closed-book, derive $`\operatorname{sigmoid}' = \operatorname{sigmoid}(1 - \operatorname{sigmoid})`$, the binary-cross-entropy-with-logits gradient $`(p - y)x`$, and the softmax cross-entropy gradient $`p - e_y`$. Check in float64 NumPy: $`z = [2.0, 1.0, 0.1]`$ with $`y = 0`$ gives $`p = [0.659001, 0.242433, 0.098566]`$, loss 0.417030, grad [-0.340999, 0.242433, 0.098566]; max-subtracted softmax agrees with naive to 2.8e-17. A single logistic example ($`w = [1, 2]`$, $`x = [0.5, -1]`$, $`b = 0.5`$, $`y = 1`$) gives $`p = 0.268941`$ and $`dL/dw = [-0.365529, 0.731059]`$.
+**Reproduce:** Closed-book, derive $`\operatorname{sigmoid}' = \operatorname{sigmoid}(1 - \operatorname{sigmoid})`$, the binary-cross-entropy-with-logits gradient $`(p - y)x`$, and the softmax cross-entropy gradient $`p - e_y`$. Check in `float64` NumPy: $`z = [2.0, 1.0, 0.1]`$ with $`y = 0`$ gives $`p = [0.659001, 0.242433, 0.098566]`$, loss 0.417030, `grad` `[-0.340999, 0.242433, 0.098566]`; max-subtracted softmax agrees with naive to 2.8e-17. A single logistic example ($`w = [1, 2]`$, $`x = [0.5, -1]`$, $`b = 0.5`$, $`y = 1`$) gives $`p = 0.268941`$ and $`dL/dw = [-0.365529, 0.731059]`$.
 
 **Traps**
 
@@ -803,9 +803,9 @@ One reverse pass costs about one forward pass while forward mode costs one pass 
 **Study**
 
 1. [Forward and reverse-mode automatic differentiation](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_lec08_pdf/) (MIT 18.S096 - Matrix Calculus for ML) - Lecture 5, Part 3 notes (course notes Chapter 8, Sections 8.1 and 8.4): forward mode via dual numbers with the Babylonian square-root example, the cost rule (forward scales with inputs, reverse with outputs) and forward-over-reverse Hessian-vector products (Section 8.4.1).
-2. [Dual numbers and both AD engines](https://github.com/ageron/handson-mlp/blob/main/Appendix_A_autodiff.ipynb) (Hands-On ML - Autodiff notebook) - Cells Forward mode autodiff using dual numbers (DualNumber class; seeding x gives 24.0 and seeding y gives 10.0 for f at (3, 4)), Reverse mode autodiff (toy engine with backpropagate on the same f), Reverse mode autodiff using PyTorch (torch.autograd.grad with create_graph=True for second order). Depth: Rebuild the dual-number and reverse engines independently in your own file; do not copy the notebook cells.
+2. [Dual numbers and both AD engines](https://github.com/ageron/handson-mlp/blob/main/Appendix_A_autodiff.ipynb) (Hands-On ML - Autodiff notebook) - Cells Forward mode autodiff using dual numbers (`DualNumber` class; seeding `x` gives 24.0 and seeding `y` gives 10.0 for `f` at (3, 4)), Reverse mode autodiff (toy engine with `backpropagate` on the same `f`), Reverse mode autodiff using PyTorch (`torch.autograd.grad` with `create_graph=True` for second order). Depth: Rebuild the dual-number and reverse engines independently in your own file; do not copy the notebook cells.
 3. [Backpropagation cost and graph equations](https://mml-book.github.io/book/mml-book.pdf) (Mathematics for Machine Learning - Ch. 5) - Section 5.6 (pp. 159-164): explicit gradient (5.109)-(5.110) motivating the cost worry, forward and backward graph computation with accumulation over parents (5.135)-(5.145), reverse mode cheaper when inputs outnumber labels.
-4. [Reverse-mode graph, accumulation and grad modes](https://docs.pytorch.org/docs/stable/notes/autograd) (PyTorch Autograd mechanics) - How autograd encodes the history (reverse-mode graph recording); accumulation into .grad and torch.autograd.grad as a vector-Jacobian product; Grad Modes with Default, No-grad and Inference behavior. Depth: Consult after your handwritten engine. Skip multithreading and in-place correctness checks.
+4. [Reverse-mode graph, accumulation and grad modes](https://docs.pytorch.org/docs/stable/notes/autograd) (PyTorch Autograd mechanics) - How autograd encodes the history (reverse-mode graph recording); accumulation into `.grad` and `torch.autograd.grad` as a vector-Jacobian product; Grad Modes with Default, No-grad and Inference behavior. Depth: Consult after your handwritten engine. Skip multithreading and in-place correctness checks.
 
 **Focus**
 
@@ -814,27 +814,27 @@ One reverse pass costs about one forward pass while forward mode costs one pass 
 - Dual numbers evaluate $`f(x + \epsilon) = f(x) + f'(x) \epsilon`$ exactly since $`\epsilon^2 = 0`$; seeding each input in turn gives one gradient column per pass.
 - An HVP is the JVP of the gradient. It needs $`C^2`$ so the differentiation order does not matter.
 
-**Reproduce:** Closed-book, implement a minimal DualNumber type ($`\epsilon^2 = 0`$) and recover $`df/dx = 24.0`$ and $`df/dy = 10.0`$ for $`f(x, y) = x^2 y + y + 2`$ at (3, 4), matching the notebook analytic values. State the cost rule: $`n`$ inputs with 1 output take 1 reverse pass versus $`n`$ forward passes. Verify an HVP without forming $`H`$ on $`f(x) = 0.5 x^\top Ax + b^\top x`$ in $`\mathbb{R}^3`$ with $`A = M + M^\top + 3I`$, drawing $`M`$ ($`3 \times 3`$), $`b`$, $`x`$ and $`v`$ in that order with standard_normal from numpy.random.default_rng(11) in float64: the centered difference $`(\operatorname{grad} f(x + hv) - \operatorname{grad} f(x - hv))/(2h)`$ at $`h = 10^{-5}`$ misses $`Av`$ by 2.2e-11 in the 2-norm. The gradient is linear, so that gap is rounding alone.
+**Reproduce:** Closed-book, implement a minimal `DualNumber` type ($`\epsilon^2 = 0`$) and recover $`df/dx = 24.0`$ and $`df/dy = 10.0`$ for $`f(x, y) = x^2 y + y + 2`$ at (3, 4), matching the notebook analytic values. State the cost rule: $`n`$ inputs with 1 output take 1 reverse pass versus $`n`$ forward passes. Verify an HVP without forming $`H`$ on $`f(x) = 0.5 x^\top Ax + b^\top x`$ in $`\mathbb{R}^3`$ with $`A = M + M^\top + 3I`$, drawing $`M`$ ($`3 \times 3`$), $`b`$, $`x`$ and $`v`$ in that order with `standard_normal` from `numpy.random.default_rng(11)` in `float64`: the centered difference $`(\operatorname{grad} f(x + hv) - \operatorname{grad} f(x - hv))/(2h)`$ at $`h = 10^{-5}`$ misses $`Av`$ by 2.2e-11 in the 2-norm. The gradient is linear, so that gap is rounding alone.
 
 **Traps**
 
 - Building the full Jacobian to get one JVP or VJP. Propagate the vector instead; the matrix is never needed.
-- Calling torch.autograd.functional.jacobian for a check on wide maps. It materializes the matrix; use grad (a VJP) or directional differences.
+- Calling `torch.autograd.functional.jacobian` for a check on wide maps. It materializes the matrix; use `grad` (a VJP) or directional differences.
 - Assuming reverse mode always wins. For $`\mathbb{R}^1 \to \mathbb{R}^N`$, one forward pass beats $`N`$ reverse passes, so count outputs before choosing.
 
 **Practice**
 
-- [MIT 18.S096 Problem Set 2, Problem 1(c) (adjoint gradient plus finite-difference test)](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_pset2_pdf/) - Problem 1(c): implement the two-solve adjoint gradient procedure and test $`\operatorname{grad} f \cdot dp`$ against $`f(p + dp) - f(p)`$ on random $`a`$, $`b`$, $`c`$, $`p`$. Official solutions exist; attempt before reading them. Parts (a) and (b) derive the adjoint form; part (c) is the implementation. Record the generator, seed and dtype.
+- [MIT 18.S096 Problem Set 2, Problem 1(c) (adjoint gradient plus finite-difference test)](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_pset2_pdf/) - Problem 1(c): implement the two-solve adjoint gradient procedure and test $`\operatorname{grad} f \cdot dp`$ against $`f(p + dp) - f(p)`$ on random $`a`$, $`b`$, $`c`$, $`p`$. Official solutions exist; attempt before reading them. Parts (a) and (b) derive the adjoint form; part (c) is the implementation. Record the generator, seed and `dtype`.
 
-**Stop when:** Your dual-number gradient matches (24.0, 10.0), your HVP matches a finite difference of gradients to 1e-9, and you pick the AD mode from $`(n, m)`$ without notes.
+**Stop when:** Your dual-number gradient matches `(24.0, 10.0)`, your HVP matches a finite difference of gradients to 1e-9, and you pick the AD mode from $`(n, m)`$ without notes.
 
 <details>
 <summary>Self-test</summary>
 
 1. Compare forward and reverse cost for $`f: \mathbb{R}^{1000} \to \mathbb{R}`$.
    - Reverse costs about one forward pass; forward costs about 1000 passes, one per input. Uses: each primitive JVP or VJP costs $`O(1)`$ forward equivalents.
-2. What do a JVP and a VJP compute, and which one does torch.autograd.grad perform?
-   - JVP computes $`Jv`$ (pushforward of a tangent); VJP computes $`v^\top J`$ (pullback of a cotangent). torch.autograd.grad performs a VJP.
+2. What do a JVP and a VJP compute, and which one does `torch.autograd.grad` perform?
+   - JVP computes $`Jv`$ (pushforward of a tangent); VJP computes $`v^\top J`$ (pullback of a cotangent). `torch.autograd.grad` performs a VJP.
 3. Give the two HVP routes and the assumption each needs.
    - Forward-over-reverse (JVP of the gradient) or double backward (VJP of the gradient). Both need $`C^2`$ so mixed partials agree and the order is irrelevant.
 4. Why does reverse mode store forward values?
@@ -859,28 +859,28 @@ Backprop hides a sign, transpose or accumulation bug in every new layer. A two-e
 **Study**
 
 1. [Finite-difference approximations and their errors](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_lec04_pdf/) (MIT 18.S096 - Matrix Calculus for ML) - Lecture 3, Part 2 notes (course notes Chapter 4): forward differences and first-order truncation error (Sections 4.2-4.5), roundoff and the step-size rule of thumb (Section 4.6), centered differences and Richardson extrapolation (Section 4.7).
-2. [Numeric differentiation and the reverse engine](https://github.com/ageron/handson-mlp/blob/main/Appendix_A_autodiff.ipynb) (Hands-On ML - Autodiff notebook) - Cells Numeric differentiation (gradients() takes one-sided differences with eps = 1e-4 and n + 1 calls; nesting it gives a Hessian whose exact 0 entry prints as -1.4e-6) and Reverse mode autodiff (hand engine with backpropagate, the artifact to test against differences).
+2. [Numeric differentiation and the reverse engine](https://github.com/ageron/handson-mlp/blob/main/Appendix_A_autodiff.ipynb) (Hands-On ML - Autodiff notebook) - Cells Numeric differentiation (`gradients()` takes one-sided differences with `eps = 1e-4` and $`n + 1`$ calls; nesting it gives a Hessian whose exact 0 entry prints as -1.4e-6) and Reverse mode autodiff (hand engine with `backpropagate`, the artifact to test against differences).
 3. [Backprop equations with parent accumulation](https://mml-book.github.io/book/mml-book.pdf) (Mathematics for Machine Learning - Ch. 5) - Section 5.6 (pp. 160-164): backward computation working from the output with accumulation over parent nodes (5.135)-(5.145); the dense-layer backward pattern.
 4. [Reverse mode on computational graphs](https://ocw.mit.edu/courses/18-s096-matrix-calculus-for-machine-learning-and-beyond-january-iap-2023/resources/mit18_s096iap23_lec08_pdf/) (MIT 18.S096 - Matrix Calculus for ML) - Lecture 5, Part 3 notes (course notes Chapter 8, Section 8.3): computational graphs, summing products along every input-to-output path, and reverse mode on graphs (Section 8.3.1).
 
 **Focus**
 
-- Centered differences carry $`O(h^2)`$ error until rounding at about $`\epsilon/h`$ takes over; $`h = 10^{-5}`$ in float64 sits near the bottom of that U-curve.
+- Centered differences carry $`O(h^2)`$ error until rounding at about $`\epsilon/h`$ takes over; $`h = 10^{-5}`$ in `float64` sits near the bottom of that U-curve.
 - The random-direction test $`\langle G, V \rangle`$ against the directional difference needs 2 evaluations for any shape and catches transpose and scale bugs. Use several seeded $`V`$.
 - Backprop through a branch sums cotangents from every downstream use. A missing accumulation is the classic silent bug.
 - Relative error needs a scale: use $`\|\text{num} - \text{ana}\| / (\|\text{num}\| + \|\text{ana}\|)`$ so near-zero gradients do not explode the ratio.
 
-**Reproduce:** Closed-book, backpropagate $`L = 0.5\|\tanh(Wx + b) - t\|^2`$ with $`W`$ ($`2 \times 3`$), $`b`$ ($`2`$), $`x`$ ($`3`$), $`t`$ ($`2`$) and direction $`V`$ ($`2 \times 3`$) drawn in that order with standard_normal from numpy.random.default_rng(5) in float64: $`\delta = (a - t) \odot (1 - a^2)`$, $`dL/dW = \delta x^\top`$. Measured: $`L`$ = 1.73395370, centered differences ($`h = 10^{-5}`$) give relative error $`\|\text{num} - \text{ana}\|/(\|\text{num}\| + \|\text{ana}\|)`$ = 3.4e-11, and the direction test $`|\langle dW, V \rangle - (L(W + hV) - L(W - hV))/(2h)|`$ = 1.4e-10. Repeat at $`h = 0.1`$ to get relative error 4.3e-3, consistent with $`O(h^2)`$ truncation.
+**Reproduce:** Closed-book, backpropagate $`L = 0.5\|\tanh(Wx + b) - t\|^2`$ with $`W`$ ($`2 \times 3`$), $`b`$ ($`2`$), $`x`$ ($`3`$), $`t`$ ($`2`$) and direction $`V`$ ($`2 \times 3`$) drawn in that order with `standard_normal` from `numpy.random.default_rng(5)` in `float64`: $`\delta = (a - t) \odot (1 - a^2)`$, $`dL/dW = \delta x^\top`$. Measured: $`L`$ = 1.73395370, centered differences ($`h = 10^{-5}`$) give relative error $`\|\text{num} - \text{ana}\|/(\|\text{num}\| + \|\text{ana}\|)`$ = 3.4e-11, and the direction test $`|\langle dW, V \rangle - (L(W + hV) - L(W - hV))/(2h)|`$ = 1.4e-10. Repeat at $`h = 0.1`$ to get relative error 4.3e-3, consistent with $`O(h^2)`$ truncation.
 
 **Traps**
 
-- Checking at one $`h`$ far from $`10^{-5}`$ without a sweep. For the tanh layer in Reproduce, $`h = 0.1`$ leaves 4.3e-3 relative error and hides real bugs above the truncation floor, while $`h = 10^{-12}`$ drowns in cancellation.
+- Checking at one $`h`$ far from $`10^{-5}`$ without a sweep. For the `tanh` layer in Reproduce, $`h = 0.1`$ leaves 4.3e-3 relative error and hides real bugs above the truncation floor, while $`h = 10^{-12}`$ drowns in cancellation.
 - Gradchecking through a kink or a stochastic op and reading the mismatch as a backprop bug. Freeze stochasticity and keep nondifferentiable points out of the check.
-- Comparing with == or to too many digits. State the norm and tolerance; for the tanh layer, float64 centered differences bottom out near 1e-10, not 1e-16.
+- Comparing with `==` or to too many digits. State the norm and tolerance; for the `tanh` layer, `float64` centered differences bottom out near 1e-10, not 1e-16.
 
 **Practice**
 
-- [Deep-ML 313: Numerical Gradient Checking](https://www.deep-ml.com/problems/313) - Implement numerical_gradient_check(f, x, analytical_grad, epsilon) with centered differences; tests check quadratics against rel_err < 1e-5. The signature defaults epsilon to 1e-7. Sweep $`h`$, explain why 1e-5 is safer in float64, then keep your dense-layer check from Reproduce as the oracle the section mini-project extends with a seeded gradient error.
+- [Deep-ML 313: Numerical Gradient Checking](https://www.deep-ml.com/problems/313) - Implement `numerical_gradient_check(f, x, analytical_grad, epsilon)` with centered differences; tests check quadratics against `rel_err < 1e-5`. The signature defaults `epsilon` to 1e-7. Sweep $`h`$, explain why 1e-5 is safer in `float64`, then keep your dense-layer check from Reproduce as the oracle the section mini-project extends with a seeded gradient error.
 
 **Stop when:** Your dense-layer backward matches centered differences to 1e-8 relative and a directional test to 1e-9 absolute, and you can move the error up and down the U-curve by changing $`h`$.
 
@@ -892,7 +892,7 @@ Backprop hides a sign, transpose or accumulation bug in every new layer. A two-e
 2. Why is centered $`O(h^2)`$ while one-sided is $`O(h)`$?
    - Taylor expansion: the forward difference leaves a first-order term $`f''h/2`$, while centering cancels all odd powers of $`h`$, leaving $`O(h^2)`$. The remainder form needs $`C^3`$.
 3. $`W`$ has 6 entries. Compare per-coordinate and directional check cost.
-   - Per-coordinate costs 12 evaluations; one direction costs 2. Run 3 to 5 random directions from a seeded generator and record the seed, dtype and norm.
+   - Per-coordinate costs 12 evaluations; one direction costs 2. Run 3 to 5 random directions from a seeded generator and record the seed, `dtype` and norm.
 4. The check disagrees only at entries whose pre-activation sits near zero under ReLU. Is backprop wrong?
    - Probably not. Centered differences average left and right slopes at a nondifferentiable kink. Move the check point or use a smooth activation for the check.
 
@@ -900,20 +900,20 @@ Backprop hides a sign, transpose or accumulation bug in every new layer. A two-e
 
 ### Mini-project: A small reverse-mode engine and a matrix-calculus gradient-check harness
 
-**About 8 to 12 hours.** Add autodiff/ to numlab: a scalar reverse-mode engine, forward-mode duals, and a harness that checks closed-form matrix gradients with seeded directional finite differences. Derive a branched matrix computation by hand, then plant a gradient bug and show the harness isolating it.
+**About 8 to 12 hours.** Add `autodiff/` to `numlab`: a scalar reverse-mode engine, forward-mode duals, and a harness that checks closed-form matrix gradients with seeded directional finite differences. Derive a branched matrix computation by hand, then plant a gradient bug and show the harness isolating it.
 
-1. Write a scalar Value class with +, -, *, /, a constant power, exp, log and tanh, each with its local derivative, and a backward() that visits a topological order and adds into .grad. Test a graph in which one node reaches the output through three paths against a hand derivative and central differences.
+1. Write a scalar `Value` class with `+`, `-`, `*`, `/`, a constant power, `exp`, `log` and `tanh`, each with its local derivative, and a `backward()` that visits a topological order and adds into `.grad`. Test a graph in which one node reaches the output through three paths against a hand derivative and central differences.
 2. Add forward mode with dual numbers. For a function from $`\mathbb{R}^3 \to \mathbb{R}^2`$, check that your Jacobian-vector and vector-Jacobian products agree through $`u^\top(Jv) = (J^\top u)^\top v`$ for seeded random $`u`$ and $`v`$.
-3. Build the matrix harness: a function check(f, grad, X, V, h) that compares $`\langle \operatorname{grad}(X), V \rangle`$ with $`(f(X + hV) - f(X - hV))/(2h)`$. Derive and check $`\operatorname{tr}(AXB)`$, $`\log \det X`$ on a symmetric positive definite $`X`$, softmax cross-entropy and the $`\tanh`$ layer from the backprop unit, then the matrix differential $`d(X^{-1}) = -X^{-1} V X^{-1}`$ against centered differences of the inverse, each in float64 with seeded directions.
-4. Sweep $`h`$ over powers of ten from 1e-1 to 1e-12 for two of these checks and keep the raw table. In float64 the error falls as $`h^2`$ down to about $`h = 10^{-5}`$ and then rises again as cancellation takes over. Explain both arms of the curve and choose the $`h`$ and the tolerance your harness uses from it.
+3. Build the matrix harness: a function `check(f, grad, X, V, h)` that compares $`\langle \operatorname{grad}(X), V \rangle`$ with $`(f(X + hV) - f(X - hV))/(2h)`$. Derive and check $`\operatorname{tr}(AXB)`$, $`\log \det X`$ on a symmetric positive definite $`X`$, softmax cross-entropy and the $`\tanh`$ layer from the backprop unit, then the matrix differential $`d(X^{-1}) = -X^{-1} V X^{-1}`$ against centered differences of the inverse, each in `float64` with seeded directions.
+4. Sweep $`h`$ over powers of ten from 1e-1 to 1e-12 for two of these checks and keep the raw table. In `float64` the error falls as $`h^2`$ down to about $`h = 10^{-5}`$ and then rises again as cancellation takes over. Explain both arms of the curve and choose the $`h`$ and the tolerance your harness uses from it.
 5. Derive by hand the gradient of a branched matrix computation in which one matrix is used twice, for example $`L = 0.5\|\tanh(WX + b) - T\|_F^2 + \lambda \operatorname{tr}(W^\top W)`$, writing each local vector-Jacobian product and the accumulation. Implement it in NumPy and check it with the harness. Add a Hessian-vector product by centered differences of your analytic gradient and compare it with the exact Hessian of a quadratic.
-6. Plant one gradient bug: a missing transpose, an overwrite instead of an accumulation on the shared matrix, or a wrong sign in the tanh derivative. Show the directional check failing, then localize the bug by checking each local vector-Jacobian product on its own. Keep the planted bug as a test that must fail.
+6. Plant one gradient bug: a missing transpose, an overwrite instead of an accumulation on the shared matrix, or a wrong sign in the `tanh` derivative. Show the directional check failing, then localize the bug by checking each local vector-Jacobian product on its own. Keep the planted bug as a test that must fail.
 
 **Deliverables**
 
-- numlab/autodiff/: the scalar reverse-mode engine, forward-mode duals and the gradient-check harness.
+- `numlab/autodiff/`: the scalar reverse-mode engine, forward-mode duals and the gradient-check harness.
 - The tests: shared-path accumulation, the JVP-VJP identity, five closed-form matrix gradients, the branched derivation, the Hessian-vector product and the planted-bug test.
-- notes/calculus.md: the branched derivation and the h-sweep table with the chosen step and tolerance.
+- `notes/calculus.md`: the branched derivation and the h-sweep table with the chosen step and tolerance.
 
 **Checks**
 
@@ -922,7 +922,7 @@ Backprop hides a sign, transpose or accumulation bug in every new layer. A two-e
 | Criterion | Pass | Strong |
 | --- | --- | --- |
 | Engine correctness | Every operation matches central differences within a stated tolerance, including a node reached through three paths. | Forward and reverse mode agree through the dot-product identity on seeded random vectors. |
-| Matrix gradients | The five closed forms pass the directional check in float64. | Each closed form is derived in the notes from differentials, with the assumption it needs, such as an invertible or positive definite X. |
+| Matrix gradients | The five closed forms pass the directional check in `float64`. | Each closed form is derived in the notes from differentials, with the assumption it needs, such as an invertible or positive definite X. |
 | Step size | The $`h`$ sweep is kept as raw output and the chosen $`h`$ sits near its minimum. | The note explains the truncation and cancellation arms and derives the tolerance from them. |
 | Fault isolation | The planted bug fails the directional check and stays in the suite as a failing case. | The localization procedure checks local products one at a time and names the faulty operation. |
 
@@ -1003,7 +1003,7 @@ Every later loss, sampler and posterior conditions on an event. A vague sample s
 - The CDF $`F(x)=P(X \le x)`$ works for every variable type and determines the distribution.
 - Universality: for continuous $`X`$ with CDF $`F`$, $`F(X)`$ is $`\operatorname{Uniform}(0,1)`$. This is the seed of inverse-CDF sampling in the transforms unit.
 
-**Reproduce:** Closed-book, count $`P(\text{sum of two fair dice}=9)=4/36=1/9`$ from the 36 ordered pairs. Then check with NumPy in float64: numpy.random.default_rng(7), a (200000, 2) int64 array from integers(1, 7); the fraction of sums equal to 9 is 0.11259 with standard error 0.00071, within about 2 standard errors of 1/9.
+**Reproduce:** Closed-book, count $`P(\text{sum of two fair dice}=9)=4/36=1/9`$ from the 36 ordered pairs. Then check with NumPy in `float64`: `numpy.random.default_rng(7)`, a `(200000, 2)` `int64` array from `integers(1, 7)`; the fraction of sums equal to 9 is 0.11259 with standard error 0.00071, within about 2 standard errors of 1/9.
 
 **Traps**
 
@@ -1059,7 +1059,7 @@ Conditioning is the operation behind every Bayes update, every missing-data marg
 - Conditioning can reverse a comparison, as Simpson examples show. Report the conditioning set with every rate.
 - Monty Hall rewards writing the host protocol as a conditional distribution, not as unconditional door odds.
 
-**Reproduce:** Closed-book, derive $`P(\text{both boys} \mid \text{at least one boy})=1/3`$: the reduced space {BB, BG, GB} is equally likely and one outcome in three is BB. Check with NumPy in float64: numpy.random.default_rng(11), a (300000, 2) array from integers(0, 2) with 1 coding a boy; the conditional fraction is 0.33357 over 225364 conditioned pairs, with standard error 0.00099.
+**Reproduce:** Closed-book, derive $`P(\text{both boys} \mid \text{at least one boy})=1/3`$: the reduced space {BB, BG, GB} is equally likely and one outcome in three is BB. Check with NumPy in `float64`: `numpy.random.default_rng(11)`, a `(300000, 2)` array from `integers(0, 2)` with 1 coding a boy; the conditional fraction is 0.33357 over 225364 conditioned pairs, with standard error 0.00099.
 
 **Traps**
 
@@ -1116,7 +1116,7 @@ Mixture models, hierarchical models and unbiased estimators all rest on iteratin
 - Taking out what is known, $`\mathbb{E}[g(X)Y \mid X]=g(X)\mathbb{E}[Y \mid X]`$, needs $`g(X)`$ fixed given $`X`$. Conditioning on the wrong variable breaks it.
 - Zero correlation with clear dependence is one construction away: take $`X \sim \operatorname{Normal}(0, 1)`$ and $`Y=X^2`$, then $`\operatorname{Cov}(X, Y)=\mathbb{E}[X^3]=0`$ by symmetry.
 
-**Reproduce:** Closed-book, derive Eve's law on a two-stage model: with probability 1/2 roll a fair die (mean 3.5, variance 35/12) and otherwise take 10. Then $`\mathbb{E}[X]=6.75`$ and $`\operatorname{Var}(X)=35/24+(10-3.5)^2/4=12.0208`$: the first term uses LOTUS on the die branch and the second uses $`\operatorname{Var}`$ of $`\{3.5, 10\}`$. Check with NumPy in float64: numpy.random.default_rng(21), n = 400000, branch I from integers(0, 2) and then the die from integers(1, 7), with I = 0 taking the die value and I = 1 taking 10; sample mean 6.7493 and variance 12.023 with standard error of the mean 0.00548.
+**Reproduce:** Closed-book, derive Eve's law on a two-stage model: with probability 1/2 roll a fair die (mean 3.5, variance 35/12) and otherwise take 10. Then $`\mathbb{E}[X]=6.75`$ and $`\operatorname{Var}(X)=35/24+(10-3.5)^2/4=12.0208`$: the first term uses LOTUS on the die branch and the second uses $`\operatorname{Var}`$ of $`\{3.5, 10\}`$. Check with NumPy in `float64`: `numpy.random.default_rng(21)`, `n = 400000`, branch `I` from `integers(0, 2)` and then the die from `integers(1, 7)`, with `I = 0` taking the die value and `I = 1` taking 10; sample mean 6.7493 and variance 12.023 with standard error of the mean 0.00548.
 
 **Traps**
 
@@ -1173,7 +1173,7 @@ Likelihoods, priors, noise models and initializations are all named distribution
 - Sums of independent variables convolve densities; MGFs turn convolution into multiplication where the MGF exists near zero.
 - Parametrization traps: Exponential and Gamma rate versus scale, Normal variance versus standard deviation. State yours in every signature.
 
-**Reproduce:** Closed-book, derive by the CDF method that $`U \sim \operatorname{Uniform}(0,1)`$ gives $`X=-\log(U) \sim \operatorname{Expo}(1)`$: $`P(X \le x)=P(U \ge e^{-x})=1-e^{-x}`$ for $`x \ge 0`$, using continuity of $`U`$ for the strict-inequality step. Then check with NumPy in float64: numpy.random.default_rng(31), 300000 draws via random() then -log; sample mean 0.9983 and variance 1.0024 against exact 1 and 1, and $`P(X>2)=0.1341`$ against exact $`e^{-2}=0.1353`$ with standard error 0.00062.
+**Reproduce:** Closed-book, derive by the CDF method that $`U \sim \operatorname{Uniform}(0,1)`$ gives $`X=-\log(U) \sim \operatorname{Expo}(1)`$: $`P(X \le x)=P(U \ge e^{-x})=1-e^{-x}`$ for $`x \ge 0`$, using continuity of $`U`$ for the strict-inequality step. Then check with NumPy in `float64`: `numpy.random.default_rng(31)`, 300000 draws via `random()` then -log; sample mean 0.9983 and variance 1.0024 against exact 1 and 1, and $`P(X>2)=0.1341`$ against exact $`e^{-2}=0.1353`$ with standard error 0.00062.
 
 **Traps**
 
@@ -1196,8 +1196,8 @@ Likelihoods, priors, noise models and initializations are all named distribution
    - The polar map $`(U_1, U_2) \to (R\cos, R\sin)`$ with $`R^2=-2\log U_1`$ has Jacobian factor that splits the joint density into a product of two standard Normal densities. Independence is read off the factored form.
 3. $`X \sim \operatorname{Pois}(2)`$ counts arrivals per hour and $`T \sim \operatorname{Expo}(2)`$ is the wait for the next arrival. Are $`X`$ and $`T`$ the same object?
    - No. $`X`$ is discrete with mean 2; $`T`$ is continuous with mean 1/2 hour. Same rate parameter, different sample spaces and different questions.
-4. In Reproduce, why is random() with -log enough, and what would break with integers(0, 2)?
-   - Inverse-CDF needs a continuous $`\operatorname{Uniform}(0,1)`$ input so that $`P(U \ge u)=1-u`$; the proof step uses continuity. A discrete input would quantize $`X`$ and the CDF derivation would fail. random() can also return exactly 0.0 (probability $`2^{-53}`$ per draw), so library samplers use -log1p(-U) on the same input.
+4. In Reproduce, why is `random()` with -log enough, and what would break with `integers(0, 2)`?
+   - Inverse-CDF needs a continuous $`\operatorname{Uniform}(0,1)`$ input so that $`P(U \ge u)=1-u`$; the proof step uses continuity. A discrete input would quantize $`X`$ and the CDF derivation would fail. `random()` can also return exactly 0.0 (probability $`2^{-53}`$ per draw), so library samplers use `-log1p(-U)` on the same input.
 
 </details>
 
@@ -1229,7 +1229,7 @@ Posterior prediction is the honest form of a probabilistic forecast: it carries 
 - The evidence normalizes the posterior for fixed data and compares models across hypotheses. It never rescales a single posterior's shape.
 - A graphical factorization is a chain-rule product with dropped conditioning bars. Each dropped bar is a conditional-independence claim to defend.
 
-**Reproduce:** Closed-book, derive the Beta-Binomial update for a $`\operatorname{Beta}(2, 2)`$ prior with 7 heads in 10 flips: posterior $`\operatorname{Beta}(9, 5)`$, mean $`9/14=0.6429`$, MAP $`8/12=0.6667`$, posterior predictive $`P(\text{next head})=9/14`$. Check with NumPy in float64: numpy.random.default_rng(41), 300000 beta(9, 5) draws; posterior mean 0.6430 with standard error 0.00023, one binomial(1, theta) flip per draw from the same generator gives predictive fraction 0.6439, and the 2.5 and 97.5 percent sample quantiles give the 95 percent credible interval [0.385, 0.862] (exact $`\operatorname{Beta}(9, 5)`$ quantiles 0.386 and 0.861).
+**Reproduce:** Closed-book, derive the Beta-Binomial update for a $`\operatorname{Beta}(2, 2)`$ prior with 7 heads in 10 flips: posterior $`\operatorname{Beta}(9, 5)`$, mean $`9/14=0.6429`$, MAP $`8/12=0.6667`$, posterior predictive $`P(\text{next head})=9/14`$. Check with NumPy in `float64`: `numpy.random.default_rng(41)`, 300000 `beta(9, 5)` draws; posterior mean 0.6430 with standard error 0.00023, one `binomial(1, theta)` flip per draw from the same generator gives predictive fraction 0.6439, and the 2.5 and 97.5 percent sample quantiles give the 95 percent credible interval `[0.385, 0.862]` (exact $`\operatorname{Beta}(9, 5)`$ quantiles 0.386 and 0.861).
 
 **Traps**
 
@@ -1240,7 +1240,7 @@ Posterior prediction is the honest form of a probabilistic forecast: it carries 
 **Practice**
 
 - [MIT 18.05 Problem Set 7: Problems 2 and 6](https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/resources/mit18_05_s22_pset07_pdf/) - Problem 2 (Prediction: prior, posterior and posterior predictive) and Problem 6 (Normal-Normal conjugate updating); official solutions are linked beside the set with the same problem numbers. Attempt both before opening the solutions. Problem 2 is the closest match to this unit's implement target.
-- [Deep-ML 336: Compute Posterior Probability using Bayes Theorem](https://www.deep-ml.com/problems/336) - Implement bayes_theorem(priors, likelihoods); the two tests check the normalized prior-times-likelihood posterior to 4 decimals. The function is a discrete Bayes table. Check it against your hand table for Problem Set 7, Problem 2(a), then contrast it with the conjugate update, which needs no table.
+- [Deep-ML 336: Compute Posterior Probability using Bayes Theorem](https://www.deep-ml.com/problems/336) - Implement `bayes_theorem(priors, likelihoods)`; the two tests check the normalized prior-times-likelihood posterior to 4 decimals. The function is a discrete Bayes table. Check it against your hand table for Problem Set 7, Problem 2(a), then contrast it with the conjugate update, which needs no table.
 
 **Stop when:** You derive the $`\operatorname{Beta}(9, 5)`$ posterior, its mean, MAP and predictive without notes, your rerun of the seed-41 check matches the posterior mean to 3 decimals, and you can show how a stronger prior moves the predictive.
 
@@ -1286,7 +1286,7 @@ Every simulation check in this stage, and every bootstrap and permutation test l
 - Monte Carlo error scales as $`1/\sqrt{n}`$: one more decimal digit costs 100 times the samples. Quote every estimate with its standard error.
 - Dependence and heavy tails break the standard bars. An MCMC-style correlated stream or a Cauchy average needs its own analysis.
 
-**Reproduce:** Closed-book, compute exact $`P(|Z|>2)=2(1-\Phi(2))=0.045500`$ for $`Z \sim \operatorname{Normal}(0, 1)`$ via the error function, then check three claims with NumPy in float64: numpy.random.default_rng(51), 400000 standard_normal draws give tail fraction 0.04596 with standard error 0.00033; Chebyshev allows $`P(|Z|>2) \le 1/4=0.25`$, loose but valid since $`\operatorname{Var}(Z)=1`$; Hoeffding gives $`P(|\hat{p}-p| \ge 0.05) \le 2\exp(-10)=9.08 \times 10^{-5}`$ for 2000 independent fair-coin flips.
+**Reproduce:** Closed-book, compute exact $`P(|Z|>2)=2(1-\Phi(2))=0.045500`$ for $`Z \sim \operatorname{Normal}(0, 1)`$ via the error function, then check three claims with NumPy in `float64`: `numpy.random.default_rng(51)`, 400000 `standard_normal` draws give tail fraction 0.04596 with standard error 0.00033; Chebyshev allows $`P(|Z|>2) \le 1/4=0.25`$, loose but valid since $`\operatorname{Var}(Z)=1`$; Hoeffding gives $`P(|\hat{p}-p| \ge 0.05) \le 2\exp(-10)=9.08 \times 10^{-5}`$ for 2000 independent fair-coin flips.
 
 **Traps**
 
@@ -1332,7 +1332,7 @@ Classification losses, perplexity and variational objectives are cross-entropies
 **Study**
 
 1. [Self-information, entropy and mutual information](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/information-theory.html) (D2L - Information Theory) - Sections 22.11.1-22.11.3 with the PyTorch tab: card-deck bits, entropy, joint and conditional entropy, mutual information.
-2. [KL divergence and cross-entropy as a loss](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/information-theory.html) (D2L - Information Theory) - Sections 22.11.4-22.11.5 with the PyTorch tab: KL definition and properties, cross-entropy identity $`\mathrm{CE}=H+\mathrm{KL}`$, binary and multiclass loss. Depth: Run the PyTorch tab, not the MXNet or TensorFlow tab: the TensorFlow conditional-entropy and joint-entropy cells return a vector instead of a scalar, because its nansum reduces over the last axis only. Treat Section 22.11.4.3 as a symmetry demo only: sorting two sample vectors and scoring them as distributions is not a valid KL estimate.
+2. [KL divergence and cross-entropy as a loss](https://d2l.ai/chapter_appendix-mathematics-for-deep-learning/information-theory.html) (D2L - Information Theory) - Sections 22.11.4-22.11.5 with the PyTorch tab: KL definition and properties, cross-entropy identity $`\mathrm{CE}=H+\mathrm{KL}`$, binary and multiclass loss. Depth: Run the PyTorch tab, not the MXNet or TensorFlow tab: the TensorFlow conditional-entropy and joint-entropy cells return a vector instead of a scalar, because its `nansum` reduces over the last axis only. Treat Section 22.11.4.3 as a symmetry demo only: sorting two sample vectors and scoring them as distributions is not a valid KL estimate.
 3. [Entropy, KL non-negativity and mutual information](https://probml.github.io/book1) (Probabilistic Machine Learning: An Introduction) - Chapter 6, Sections 6.1-6.2 and 6.3.1-6.3.4 (pp. 207-220): entropy and chain rules, Theorem 6.2.1 ($`\mathrm{KL} \ge 0`$ by Jensen), KL versus maximum likelihood, mutual information identities.
 
 **Focus**
@@ -1342,12 +1342,12 @@ Classification losses, perplexity and variational objectives are cross-entropies
 - Log base sets the units: base 2 gives bits, base e gives nats, and 1 nat = 1.4427 bits. ProbML Chapter 6 and the D2L entropy helpers use base 2; the D2L cross-entropy loss and PyTorch losses use base e. Convert before comparing.
 - Mutual information $`I(X;Y)=H(X)-H(X \mid Y)`$ is zero exactly under independence. Correlation only sees linear dependence; MI sees any.
 
-**Reproduce:** Closed-book, compute in bits for $`P=(0.5, 0.25, 0.25)`$ against uniform $`Q`$ over 3 outcomes: $`H(P)=1.5`$, $`\mathrm{KL}(P\|Q)=0.0850`$, $`\mathrm{CE}(P, Q)=1.5850`$, and $`\mathrm{CE}=H+\mathrm{KL}`$ term by term. Check with NumPy in float64 using log2: $`H=1.5000`$, $`\mathrm{KL}=0.0850`$, $`\mathrm{CE}=1.5850`$, with agreement of $`\mathrm{CE}`$ and $`H+\mathrm{KL}`$ to 1e-12 in absolute value.
+**Reproduce:** Closed-book, compute in bits for $`P=(0.5, 0.25, 0.25)`$ against uniform $`Q`$ over 3 outcomes: $`H(P)=1.5`$, $`\mathrm{KL}(P\|Q)=0.0850`$, $`\mathrm{CE}(P, Q)=1.5850`$, and $`\mathrm{CE}=H+\mathrm{KL}`$ term by term. Check with NumPy in `float64` using `log2`: $`H=1.5000`$, $`\mathrm{KL}=0.0850`$, $`\mathrm{CE}=1.5850`$, with agreement of $`\mathrm{CE}`$ and $`H+\mathrm{KL}`$ to 1e-12 in absolute value.
 
 **Traps**
 
 - Calling KL a distance. It is asymmetric and violates the triangle inequality: for the Reproduce pair, $`\mathrm{KL}(P\|Q)=0.0850`$ bits but $`\mathrm{KL}(Q\|P)=0.0817`$ bits.
-- Taking abs() around a KL implementation, as the D2L helper does. A negative KL signals a bug (unnormalized inputs or swapped logs); abs hides it.
+- Taking `abs()` around a KL implementation, as the D2L helper does. A negative KL signals a bug (unnormalized inputs or swapped logs); `abs` hides it.
 - Assuming differential entropy is non-negative. Continuous entropy can be negative; only the discrete form $`H \ge 0`$ holds.
 
 **Practice**
@@ -1373,20 +1373,20 @@ Classification losses, perplexity and variational objectives are cross-entropies
 
 ### Mini-project: A Monte Carlo verifier for conditional probability, posterior predictives and information
 
-**About 8 to 12 hours.** Add prob/ to numlab: exact enumeration on finite spaces, a seeded Monte Carlo estimator that reports its standard error, a Beta-Binomial posterior predictive and the discrete information measures. Solve new conditioning problems exactly, confirm them by simulation with an error-aware rule, and show where a wrong model or a heavy tail breaks the check.
+**About 8 to 12 hours.** Add `prob/` to `numlab`: exact enumeration on finite spaces, a seeded Monte Carlo estimator that reports its standard error, a Beta-Binomial posterior predictive and the discrete information measures. Solve new conditioning problems exactly, confirm them by simulation with an error-aware rule, and show where a wrong model or a heavy tail breaks the check.
 
-1. Write an exact-enumeration helper over finite sample spaces with fractions.Fraction, and a Monte Carlo estimator that takes a seeded numpy Generator and returns the estimate, its standard error and $`n`$. A simulation check passes when the exact answer lies within four standard errors; say why four.
+1. Write an exact-enumeration helper over finite sample spaces with `fractions.Fraction`, and a Monte Carlo estimator that takes a seeded numpy `Generator` and returns the estimate, its standard error and $`n`$. A simulation check passes when the exact answer lies within four standard errors; say why four.
 2. Solve two conditioning problems the units did not work: Stat 110 Homework 2 Problem 6 (two children and a girl born in March) and 18.05 Problem Set 7 Problem 1 (sober and drunk Monty). Get each exactly by enumeration, then by simulating the story, including how the information was revealed. Encode one tempting wrong answer as well, such as ignoring the March condition or treating drunk Monty like sober Monty, and show the simulation rejecting it.
 3. Check the law of total variance on a two-stage model of your own, comparing the exact decomposition with a simulation of both stages.
-4. Derive the Beta-Binomial posterior predictive for the number of successes in the next $`m`$ trials, naming each assumption: a Beta prior, independent trials given $`p`$, and a $`p`$ that does not change. Match scipy.stats.betabinom and a two-stage simulation that draws $`p`$ from the posterior. Then generate data whose $`p`$ drifts halfway through and show that the predictive intervals undercover on later batches.
+4. Derive the Beta-Binomial posterior predictive for the number of successes in the next $`m`$ trials, naming each assumption: a Beta prior, independent trials given $`p`$, and a $`p`$ that does not change. Match `scipy.stats.betabinom` and a two-stage simulation that draws $`p`$ from the posterior. Then generate data whose $`p`$ drifts halfway through and show that the predictive intervals undercover on later batches.
 5. Compare Chebyshev and Hoeffding bounds with simulated tail probabilities for a bounded variable. Then simulate a Pareto variable with tail index 1.5, which has a mean but no variance, and show that standard-error intervals for its mean miss far more often than they claim.
-6. Implement entropy, cross-entropy and KL divergence in bits and nats with $`0\log 0=0`$ and an infinite KL when $`q`$ is zero where $`p`$ is not. Match scipy.stats.entropy, including its inf, and check $`H(p, q)=H(p)+\mathrm{KL}(p\|q)`$ and the asymmetry of KL on a pair of your own.
+6. Implement entropy, cross-entropy and KL divergence in bits and nats with $`0\log 0=0`$ and an infinite KL when $`q`$ is zero where $`p`$ is not. Match `scipy.stats.entropy`, including its `inf`, and check $`H(p, q)=H(p)+\mathrm{KL}(p\|q)`$ and the asymmetry of KL on a pair of your own.
 
 **Deliverables**
 
-- numlab/prob/: enumeration, the Monte Carlo estimator, the posterior predictive and the information measures.
+- `numlab/prob/`: enumeration, the Monte Carlo estimator, the posterior predictive and the information measures.
 - The tests: exact and simulated answers for both problems with the rejected wrong answer, the total-variance check, the predictive oracle, the drift and heavy-tail failures, and the information identities.
-- notes/probability.md: the derivations, each with its assumptions, and the acceptance rule for simulations.
+- `notes/probability.md`: the derivations, each with its assumptions, and the acceptance rule for simulations.
 
 **Checks**
 
@@ -1396,7 +1396,7 @@ Classification losses, perplexity and variational objectives are cross-entropies
 | --- | --- | --- |
 | Exact answers | Both conditioning problems are solved exactly by enumeration and match the official solutions. | The notes say which event was conditioned on in each version and why the tempting answer conditions on the wrong one. |
 | Simulation discipline | Every simulation is seeded and reports n and a standard error, and acceptance uses the stated rule. | The wrong answer is rejected by the same rule that accepts the right one. |
-| Posterior predictive | The Beta-Binomial predictive is derived, matches scipy.stats.betabinom and the two-stage simulation. | The drift experiment shows which assumption failed and how the predictive intervals undercover. |
+| Posterior predictive | The Beta-Binomial predictive is derived, matches `scipy.stats.betabinom` and the two-stage simulation. | The drift experiment shows which assumption failed and how the predictive intervals undercover. |
 | Limits and information | The bounds are compared with simulated tails, the heavy-tail failure is shown, and the information measures match SciPy with zeros handled. | The heavy-tail note explains the failure through the missing variance, not through too few samples. |
 
 Feeds into: Capstone component 3, Monte Carlo uncertainty: the estimator with standard errors and its heavy-tail failure. The statistics section reuses the estimator for every simulation check.
@@ -1475,7 +1475,7 @@ Uncertainty belongs to a sampling procedure, not just to a reported number. This
 - MSE = variance + squared bias. Unbiasedness need not minimize MSE; efficiency comparisons here are between unbiased estimators at the same sample size.
 - Consistency is convergence in probability. Chebyshev gives $`P(|\bar{X} - \mu| \ge \epsilon) \le \sigma^2/(n\epsilon^2)`$, which tends to zero. The CLT concerns a scaled sampling distribution, not convergence of individual observations.
 
-**Reproduce:** Closed-book, derive the variance identity and MSE decomposition. For data [1, 2, 3], compute $`\bar{X} = 2`$, variance with $`n = 2/3`$ and with $`n - 1 = 1`$ by hand. Then use NumPy float64: rng = numpy.random.default_rng(41); draw x = rng.normal(2, 3, size=(100000, 5)) once, with samples as rows. Compute x.mean(axis=1).var(ddof=0), then v0 = x.var(axis=1, ddof=0) and v1 = x.var(axis=1, ddof=1). The sample-mean variance is 1.789 against theory 1.8. The means of v0 and v1 are 7.216 and 9.020 against 7.2 and 9.0; their variances (ddof=0) are 25.867 and 40.418 against 25.92 and 40.5. Their empirical MSEs relative to 9 are 29.050 and 40.418 against 29.16 and 40.5. Require maximum absolute error below 0.2 over these seven moment checks; this is a Monte Carlo tolerance, not a floating-point identity. Seeded values came from NumPy 2.5.4.
+**Reproduce:** Closed-book, derive the variance identity and MSE decomposition. For data `[1, 2, 3]`, compute $`\bar{X} = 2`$, variance with $`n = 2/3`$ and with $`n - 1 = 1`$ by hand. Then use NumPy `float64`: `rng = numpy.random.default_rng(41)`; draw `x = rng.normal(2, 3, size=(100000, 5))` once, with samples as rows. Compute `x.mean(axis=1).var(ddof=0)`, then `v0 = x.var(axis=1, ddof=0)` and `v1 = x.var(axis=1, ddof=1)`. The sample-mean variance is 1.789 against theory 1.8. The means of `v0` and `v1` are 7.216 and 9.020 against 7.2 and 9.0; their variances (`ddof=0`) are 25.867 and 40.418 against 25.92 and 40.5. Their empirical MSEs relative to 9 are 29.050 and 40.418 against 29.16 and 40.5. Require maximum absolute error below 0.2 over these seven moment checks; this is a Monte Carlo tolerance, not a floating-point identity. Seeded values came from NumPy 2.5.4.
 
 **Traps**
 
@@ -1527,7 +1527,7 @@ Likelihood connects probability models to fitting objectives. MAP adds a prior, 
 - For iid Gaussian data, differentiate in $`\mu`$ and $`v = \sigma^2 > 0`$ to get $`\mu = \bar{X}`$ and $`v = \sum (X_i - \bar{X})^2/n`$. A zero residual sum of squares has no finite maximum with positive variance.
 - A $`\operatorname{Beta}(a, b)`$ prior adds $`a - 1`$ and $`b - 1`$ to the log-likelihood exponents. The interior MAP formula needs both posterior shape parameters greater than one. Gaussian-mean MAP combines prior precision $`1/\tau^2`$ and data precision $`n/\sigma^2`$; that posterior is Gaussian, so its mode equals its mean, unlike the $`\operatorname{Beta}(5, 3)`$ example (2/3 versus 5/8).
 
-**Reproduce:** From blank paper, derive the Bernoulli MLE and $`\operatorname{Beta}(a, b)`$ MAP, and complete the square for Gaussian-mean MAP. With Bernoulli data [1, 0, 1, 1] and $`\operatorname{Beta}(2, 2)`$, obtain MLE 3/4, posterior $`\operatorname{Beta}(5, 3)`$, MAP 2/3 and posterior mean 5/8. With Gaussian data [1, 2, 3], obtain joint MLE $`\mu = 2`$, $`v = 2/3`$. In a separate known-variance model with $`\sigma^2 = 1`$ and prior $`\mu \sim \mathcal{N}(0, 1)`$, obtain MAP 1.5. Check in NumPy float64 without random draws: g = numpy.linspace(0.0001, 0.9999, 9999); maximize 3*log(g) + log1p(-g), then 4*log(g) + 2*log1p(-g). Next h = numpy.linspace(-1, 4, 5001); maximize -0.5*sum((y - h)^2) over each grid value, then subtract 0.5*h^2 for MAP. Grid optima are 0.7500, 0.6667, 2.000 and 1.500. The infinity-norm difference from the four analytic optima is 3.34e-5 or less; accept below 1e-4. Widen the Gaussian prior variance and verify that its MAP approaches 2.
+**Reproduce:** From blank paper, derive the Bernoulli MLE and $`\operatorname{Beta}(a, b)`$ MAP, and complete the square for Gaussian-mean MAP. With Bernoulli data `[1, 0, 1, 1]` and $`\operatorname{Beta}(2, 2)`$, obtain MLE 3/4, posterior $`\operatorname{Beta}(5, 3)`$, MAP 2/3 and posterior mean 5/8. With Gaussian data `[1, 2, 3]`, obtain joint MLE $`\mu = 2`$, $`v = 2/3`$. In a separate known-variance model with $`\sigma^2 = 1`$ and prior $`\mu \sim \mathcal{N}(0, 1)`$, obtain MAP 1.5. Check in NumPy `float64` without random draws: `g = numpy.linspace(0.0001, 0.9999, 9999)`; maximize `3*log(g) + log1p(-g)`, then `4*log(g) + 2*log1p(-g)`. Next `h = numpy.linspace(-1, 4, 5001)`; maximize `-0.5*sum((y - h)**2)` over each grid value, then subtract `0.5*h**2` for MAP. Grid optima are 0.7500, 0.6667, 2.000 and 1.500. The infinity-norm difference from the four analytic optima is 3.34e-5 or less; accept below 1e-4. Widen the Gaussian prior variance and verify that its MAP approaches 2.
 
 **Traps**
 
@@ -1581,7 +1581,7 @@ Intervals and tests are statements about a model and a procedure. Checking cover
 - For a continuous exact null statistic with CDF $`F`$, $`F(T)`$ is uniform under the null. For a two-sided normal test, $`p = 2[1 - \Phi(|Z|)]`$ is also uniform. Discrete valid p-values can be conservative rather than uniform.
 - Power is $`P_\delta(\text{reject})`$ for a specified alternative $`\delta`$; Type II error is its complement. Report $`\delta`$ in outcome units and a practical threshold, not only whether $`p`$ crosses $`\alpha`$.
 
-**Reproduce:** Derive the known-$`\sigma`$ mean interval by pivoting, and derive the future-observation interval from $`\operatorname{Var}(Y_{\text{new}} - \bar{X}) = \sigma^2(1 + 1/n)`$, using independence of $`Y_{\text{new}}`$ and the sample. By hand, for $`\bar{X} = 2`$, $`\sigma = 3`$ and $`n = 25`$, the 95% mean interval is approximately [0.824, 3.176]; the prediction interval is [-3.996, 7.996]. Check in NumPy float64 with SciPy normal/t quantiles: rng = numpy.random.default_rng(43); first draw x = rng.normal(2, 3, size=(20000, 25)), then future = rng.normal(2, 3, size=20000). Use means by row, c = scipy.stats.norm.ppf(0.975), Z = (means - 2)/0.6 and p = 2*norm.sf(abs(Z)). Mean-interval coverage is 0.9503, prediction-interval coverage 0.95015, $`P(p \le 0.05)`$ is 0.0497 and $`P(p \le 0.5)`$ is 0.49905. Unknown-$`\sigma`$ $`t`$ intervals using x.std(axis=1, ddof=1)/5 and scipy.stats.t.ppf(0.975, 24) cover 0.95165. Require maximum absolute deviation below 0.01 from the five theoretical rates [0.95, 0.95, 0.05, 0.5, 0.95]. This is simulation error, not exact equality. Seeded values came from NumPy 2.5.4 with SciPy 1.18.1.
+**Reproduce:** Derive the known-$`\sigma`$ mean interval by pivoting, and derive the future-observation interval from $`\operatorname{Var}(Y_{\text{new}} - \bar{X}) = \sigma^2(1 + 1/n)`$, using independence of $`Y_{\text{new}}`$ and the sample. By hand, for $`\bar{X} = 2`$, $`\sigma = 3`$ and $`n = 25`$, the 95% mean interval is approximately [0.824, 3.176]; the prediction interval is [-3.996, 7.996]. Check in NumPy `float64` with SciPy normal/t quantiles: `rng = numpy.random.default_rng(43)`; first draw `x = rng.normal(2, 3, size=(20000, 25))`, then `future = rng.normal(2, 3, size=20000)`. Use `means` by row, `c = scipy.stats.norm.ppf(0.975)`, `Z = (means - 2)/0.6` and `p = 2*norm.sf(abs(Z))`. Mean-interval coverage is 0.9503, prediction-interval coverage 0.95015, $`P(p \le 0.05)`$ is 0.0497 and $`P(p \le 0.5)`$ is 0.49905. Unknown-$`\sigma`$ $`t`$ intervals using `x.std(axis=1, ddof=1)/5` and `scipy.stats.t.ppf(0.975, 24)` cover 0.95165. Require maximum absolute deviation below 0.01 from the five theoretical rates `[0.95, 0.95, 0.05, 0.5, 0.95]`. This is simulation error, not exact equality. Seeded values came from NumPy 2.5.4 with SciPy 1.18.1.
 
 **Traps**
 
@@ -1626,7 +1626,7 @@ Repeating an analysis changes the procedure being evaluated. Resampling, metric 
 **Study**
 
 1. [18.05 Class 24 reading: the empirical bootstrap](https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/mit18_05_s22_class24-prep.pdf) (MIT 18.05 - Inference practice) - Sections 4 to 7: empirical distribution, resampling, bootstrap principle, percentile and basic intervals. Depth: Derive the conditional distribution for a three-point empirical population. Do not repeat the later paired-bootstrap implementation.
-2. [SciPy: the unpaired permutation null](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html) (Permutation nulls and false discovery control) - Notes, Unpaired statistics (permutation_type='independent'); alternative parameter's exact and randomized p-value definitions. Depth: Read the null it states, one common distribution with labels assigned at random, and the exact-partition counting. Skip paired APIs and the numerical examples; do not reuse their randomly generated samples.
+2. [SciPy: the unpaired permutation null](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html) (Permutation nulls and false discovery control) - Notes, Unpaired statistics (`permutation_type='independent'`); `alternative` parameter's exact and randomized p-value definitions. Depth: Read the null it states, one common distribution with labels assigned at random, and the exact-partition counting. Skip paired APIs and the numerical examples; do not reuse their randomly generated samples.
 3. [SciPy: false discovery control](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.false_discovery_control.html) (Permutation nulls and false discovery control) - Notes on independence and positive regression dependence; Examples, the 15-hypothesis thrombolysis comparison of Bonferroni and Benjamini-Hochberg. Depth: Use the example to distinguish error criteria. Do not infer that FWER is the false-positive rate of one individual test.
 4. [Johari, Pekelis and Walsh: why monitoring changes inference](https://arxiv.org/abs/1512.04922v3) (Always Valid Inference) - Version 3, July 16, 2019: Section 1, Introduction, pp. 1 to 3, especially Figure 1 and the continuous-monitoring motivation. Depth: Stop before the technical construction of always-valid tests. Understand the failure and the need for a predeclared fixed horizon or a valid sequential procedure.
 
@@ -1637,7 +1637,7 @@ Repeating an analysis changes the procedure being evaluated. Resampling, metric 
 - Bonferroni rejects at $`\alpha/m`$ and controls $`\text{FWER} = P(V \ge 1)`$ by the union bound for valid marginal p-values, without independence. BH sorts p-values, finds the largest $`k`$ with $`p(k) \le kq/m`$, and rejects ranks 1 to $`k`$. It controls $`\text{FDR} = \mathbb{E}[V/\max(R, 1)]`$ under independence or suitable positive dependence, not arbitrary dependence.
 - The maximum of noisy estimates is selected for positive noise as well as signal. Its original pointwise interval is not automatically a post-selection interval. Repeated looks also select noise, even though successive cumulative tests are dependent.
 
-**Reproduce:** By hand derive the conditional bootstrap-mean variance for data [0, 1, 2]: 2/9. Enumerate all 27 ordered length-three resamples in NumPy float64 with itertools.product(range(3), repeat=3), index the data array and take each row mean. Their mean is 1 and variance with ddof=0 is 0.222222; absolute difference from 2/9 was below 1e-15. Separately implement Bonferroni and the BH step-up rule for $`p`$ = [0.001, 0.012, 0.020, 0.080, 0.200], $`\alpha`$ = $`q`$ = 0.05. Bonferroni rejects only rank 1; BH rejects ranks 1 to 3. Compute BH adjusted values by reverse cumulative minima of $`m p(i)/i`$, capped at 1: displayed to six decimals they are [0.005, 0.030, 0.033333, 0.100, 0.200]. Compare the unrounded values with scipy.stats.false_discovery_control(p, method='bh'), requiring infinity-norm difference below 1e-12. Finally use rng = numpy.random.default_rng(44); draw rng.normal(0, 1, size=(10000, 200)) once in float64. Compute cumulative row sums at $`n = 10, 20, \ldots, 200`$ divided by $`\sqrt{n}`$; reject when abs(Z) > scipy.stats.norm.ppf(0.975). Rejection at the final look is 0.0516, versus 0.2495 for any look. Against the fixed-horizon target 0.05, allow absolute Monte Carlo error 0.01. Do not compare the any-look rate to $`1 - 0.95^{20}`$: these looks are dependent. Seeded values came from NumPy 2.5.4 with SciPy 1.18.1.
+**Reproduce:** By hand derive the conditional bootstrap-mean variance for data `[0, 1, 2]`: 2/9. Enumerate all 27 ordered length-three resamples in NumPy `float64` with `itertools.product(range(3), repeat=3)`, index the data array and take each row mean. Their mean is 1 and variance with `ddof=0` is 0.222222; absolute difference from 2/9 was below 1e-15. Separately implement Bonferroni and the BH step-up rule for $`p`$ = `[0.001, 0.012, 0.020, 0.080, 0.200]`, $`\alpha`$ = $`q`$ = 0.05. Bonferroni rejects only rank 1; BH rejects ranks 1 to 3. Compute BH adjusted values by reverse cumulative minima of $`m p(i)/i`$, capped at 1: displayed to six decimals they are `[0.005, 0.030, 0.033333, 0.100, 0.200]`. Compare the unrounded values with `scipy.stats.false_discovery_control(p, method='bh')`, requiring infinity-norm difference below 1e-12. Finally use `rng = numpy.random.default_rng(44)`; draw `rng.normal(0, 1, size=(10000, 200))` once in `float64`. Compute cumulative row sums at $`n = 10, 20, \ldots, 200`$ divided by $`\sqrt{n}`$; reject when `abs(Z) > scipy.stats.norm.ppf(0.975)`. Rejection at the final look is 0.0516, versus 0.2495 for any look. Against the fixed-horizon target 0.05, allow absolute Monte Carlo error 0.01. Do not compare the any-look rate to $`1 - 0.95^{20}`$: these looks are dependent. Seeded values came from NumPy 2.5.4 with SciPy 1.18.1.
 
 **Traps**
 
@@ -1693,7 +1693,7 @@ A small residual sum of squares is not an assumption check, and a low prediction
 - Binary probability calibration is $`\mathbb{E}[Y \mid P] = P`$ under the evaluation population. If $`q(P) = \mathbb{E}[Y \mid P]`$ and $`\pi = \mathbb{E}[Y]`$, expected Brier loss is $`\mathbb{E}[(P - q)^2] - \operatorname{Var}(q) + \pi(1 - \pi)`$. Reliability, resolution and outcome uncertainty are distinct; binning can hide within-bin failures.
 - The law of total variance separates $`\mathbb{E}[\operatorname{Var}(Y \mid \theta, D)]`$ from $`\operatorname{Var}(\mathbb{E}[Y \mid \theta, D])`$. These are conditional outcome noise and posterior parameter uncertainty within the assumed model. Sampling variability of an estimator is a repeated-data property, and misspecification is not automatically represented by either variance term.
 
-**Reproduce:** Derive $`X^\top r = 0`$ and the Brier decomposition by adding and subtracting $`q(P)`$, conditioning on $`P`$ to cancel the cross term. Work two small cases by hand, then check in NumPy float64 without random draws. Fit $`y = x^2`$ at $`x = [-2, -1, 0, 1, 2]`$ with X = column_stack([ones(5), x]) and numpy.linalg.lstsq(X, y, rcond=None). The intercept/slope are approximately [2, 0], residuals [2, -1, -2, -1, 2], and the infinity norm of X.T @ residuals was 2.67e-15 or less; accept below 1e-12. On independent evaluation locations [-1.5, -0.5, 0.5, 1.5] with $`y = x^2`$, residuals are [0.25, -1.75, -1.75, 0.25], so orthogonality did not fix curvature. Separately freeze probability predictions [0.2]*10 + [0.8]*10, then evaluate labels [1] + [0]*9 + [1]*9 + [0]. The two group frequencies are 0.1 and 0.9. Brier loss is 0.10 = reliability 0.01 - resolution 0.16 + uncertainty 0.25. Forecasts fixed at the group frequencies give 0.09; the calibrated but uninformative forecast 0.5 gives 0.25. Require absolute error below 1e-12 for these three Brier identities. This is a constructed population check, not a recalibrator fitted and scored on the same labels.
+**Reproduce:** Derive $`X^\top r = 0`$ and the Brier decomposition by adding and subtracting $`q(P)`$, conditioning on $`P`$ to cancel the cross term. Work two small cases by hand, then check in NumPy `float64` without random draws. Fit $`y = x^2`$ at $`x = [-2, -1, 0, 1, 2]`$ with `X = column_stack([ones(5), x])` and `numpy.linalg.lstsq(X, y, rcond=None)`. The intercept/slope are approximately `[2, 0]`, residuals `[2, -1, -2, -1, 2]`, and the infinity norm of `X.T @ residuals` was 2.67e-15 or less; accept below 1e-12. On independent evaluation locations `[-1.5, -0.5, 0.5, 1.5]` with $`y = x^2`$, residuals are `[0.25, -1.75, -1.75, 0.25]`, so orthogonality did not fix curvature. Separately freeze probability predictions `[0.2]*10 + [0.8]*10`, then evaluate labels `[1] + [0]*9 + [1]*9 + [0]`. The two group frequencies are 0.1 and 0.9. Brier loss is 0.10 = reliability 0.01 - resolution 0.16 + uncertainty 0.25. Forecasts fixed at the group frequencies give 0.09; the calibrated but uninformative forecast 0.5 gives 0.25. Require absolute error below 1e-12 for these three Brier identities. This is a constructed population check, not a recalibrator fitted and scored on the same labels.
 
 **Traps**
 
@@ -1747,7 +1747,7 @@ A carefully analyzed observed sample can still answer the wrong population quest
 - If $`p(X) = P(R = 1 \mid X) > 0`$ and MAR holds, $`\mathbb{E}[RY/p(X) \mid X] = \mathbb{E}[Y \mid X]`$. Integrability and the correct observation probabilities give an unbiased Horvitz-Thompson mean; normalized weights are a different finite-sample estimator. Small probabilities can create large variance.
 - Selection on a common effect can associate otherwise independent variables. Randomization before selection does not guarantee exchangeability after treatment-dependent attrition. MAR and adequate adjustment require substantive assumptions, not just a successful regression fit.
 
-**Reproduce:** By hand let $`X \sim \operatorname{Bernoulli}(0.5)`$, $`P(Y = 1 \mid X) = 0.2 + 0.6X`$ and observation probability $`p(X) = 0.8 - 0.6X`$. Derive $`\mathbb{E}[Y] = 0.5`$ and $`\mathbb{E}[Y \mid R = 1] = 0.32`$ under MAR. If instead observation probability is $`0.8 - 0.6Y`$, the MNAR complete-case mean is 0.2. Check in NumPy float64: rng = numpy.random.default_rng(46); N = 100000; first X = (rng.random(N) < 0.5).astype(numpy.float64), next Y = (rng.random(N) < 0.2 + 0.6*X).astype(numpy.float64), then U = rng.random((3, N)). Define R0 = U[0] < 0.5, R1 = U[1] < 0.8 - 0.6*X, R2 = U[2] < 0.8 - 0.6*Y. Full, MCAR, MAR and MNAR means are 0.4983, 0.4977, 0.3171 and 0.1971. The MAR weighted mean numpy.mean(R1*Y/(0.8 - 0.6*X)) is 0.4922. Require maximum absolute deviation below 0.01 from [0.5, 0.5, 0.32, 0.2, 0.5]. Finally enumerate independent fair bits $`A`$ and $`U`$ with $`Y = U`$ and selection $`S = (A \text{ or } U)`$: among selected cases the $`A = 1`$ mean is 1/2 and the $`A = 0`$ mean is 1, despite zero causal effect. No random draw is needed for this four-row counterexample. Seeded values came from NumPy 2.5.4.
+**Reproduce:** By hand let $`X \sim \operatorname{Bernoulli}(0.5)`$, $`P(Y = 1 \mid X) = 0.2 + 0.6X`$ and observation probability $`p(X) = 0.8 - 0.6X`$. Derive $`\mathbb{E}[Y] = 0.5`$ and $`\mathbb{E}[Y \mid R = 1] = 0.32`$ under MAR. If instead observation probability is $`0.8 - 0.6Y`$, the MNAR complete-case mean is 0.2. Check in NumPy `float64`: `rng = numpy.random.default_rng(46)`; `N = 100000`; first `X = (rng.random(N) < 0.5).astype(numpy.float64)`, next `Y = (rng.random(N) < 0.2 + 0.6*X).astype(numpy.float64)`, then `U = rng.random((3, N))`. Define `R0 = U[0] < 0.5`, `R1 = U[1] < 0.8 - 0.6*X`, `R2 = U[2] < 0.8 - 0.6*Y`. Full, MCAR, MAR and MNAR means are 0.4983, 0.4977, 0.3171 and 0.1971. The MAR weighted mean `numpy.mean(R1*Y/(0.8 - 0.6*X))` is 0.4922. Require maximum absolute deviation below 0.01 from `[0.5, 0.5, 0.32, 0.2, 0.5]`. Finally enumerate independent fair bits $`A`$ and $`U`$ with $`Y = U`$ and selection $`S = (A \text{ or } U)`$: among selected cases the $`A = 1`$ mean is 1/2 and the $`A = 0`$ mean is 1, despite zero causal effect. No random draw is needed for this four-row counterexample. Seeded values came from NumPy 2.5.4.
 
 **Traps**
 
@@ -1801,7 +1801,7 @@ The design determines which uncertainty calculation is valid. Sample size follow
 - For positive $`\delta`$ and a negligible lower tail, $`n`$ per arm is approximately $`2\sigma^2[z(1 - \alpha/2) + z(1 - \beta)]^2/\delta^2`$. MDE reverses this equation. Distinguish per-arm $`n`$ from total $`2n`$ and absolute outcome change from relative percentage change.
 - Predeclare one primary metric and how guardrail decisions and multiple metrics will be handled. Test observed assignment counts against the configured allocation, not an assumed 50/50 split. Investigate SRM rather than treating balanced counts as proof that logging is unbiased.
 
-**Reproduce:** Derive the difference-of-means variance by adding independent arm variances, then derive the two-tail power expression and the approximate per-arm sample size. By hand set $`\alpha = 0.05`$, target power = 0.8, $`\sigma = 1`$ and $`\delta = 0.2`$: the shortcut rounds up to $`n = 393`$ per arm, total 786. Use NumPy float64 and scipy.stats.norm to compute c = norm.ppf(0.975), SE = sqrt(2/393), approximate MDE = (c + norm.ppf(0.8))*SE, and exact normal-model two-sided power = norm.sf(c - delta/SE) + norm.cdf(-c - delta/SE). Rounded values are SE 0.07134, MDE 0.1999 and power 0.8006. Check by sampling sufficient statistics, not individual rows: rng = numpy.random.default_rng(47); first control = rng.normal(0, 1/sqrt(393), size=20000), then treatment = rng.normal(0.2, 1/sqrt(393), size=20000). Reject when abs((treatment - control)/SE) > c. Power is 0.7988; its absolute difference from exact power is 0.0018 or less, with a Monte Carlo acceptance tolerance of 0.01. Explain why the same calculation does not apply to 393 observations that come from only a few independent clusters. Seeded values came from NumPy 2.5.4 with SciPy 1.18.1.
+**Reproduce:** Derive the difference-of-means variance by adding independent arm variances, then derive the two-tail power expression and the approximate per-arm sample size. By hand set $`\alpha = 0.05`$, target power = 0.8, $`\sigma = 1`$ and $`\delta = 0.2`$: the shortcut rounds up to $`n = 393`$ per arm, total 786. Use NumPy `float64` and `scipy.stats.norm` to compute `c = norm.ppf(0.975)`, `SE = sqrt(2/393)`, approximate `MDE = (c + norm.ppf(0.8))*SE`, and exact normal-model two-sided power = `norm.sf(c - delta/SE) + norm.cdf(-c - delta/SE)`. Rounded values are `SE` 0.07134, `MDE` 0.1999 and power 0.8006. Check by sampling sufficient statistics, not individual rows: `rng = numpy.random.default_rng(47)`; first `control = rng.normal(0, 1/sqrt(393), size=20000)`, then `treatment = rng.normal(0.2, 1/sqrt(393), size=20000)`. Reject when `abs((treatment - control)/SE) > c`. Power is 0.7988; its absolute difference from exact power is 0.0018 or less, with a Monte Carlo acceptance tolerance of 0.01. Explain why the same calculation does not apply to 393 observations that come from only a few independent clusters. Seeded values came from NumPy 2.5.4 with SciPy 1.18.1.
 
 **Traps**
 
@@ -1858,7 +1858,7 @@ Prediction describes observations; causal identification asks what would happen 
 - A backdoor adjustment set contains no descendants of $`A`$ and blocks every path from $`A`$ to $`Y`$ that starts with an arrow into $`A`$. Conditioning blocks noncollider paths but can open a collider or a collider's descendant. For the total effect, conditioning on a mediator generally removes part of the effect rather than repairing confounding.
 - Under consistency, $`Y(a)`$ independent of $`A`$ given $`L`$, and $`P(A = a \mid L) > 0`$ on the target population's support, $`\mathbb{E}[Y(a)] = \sum_l \mathbb{E}[Y \mid A = a, L = l] P(L = l)`$. Graphical blocking supports exchangeability only if the assumed causal graph is appropriate. Optional subgroup effects also require adequate adjustment and overlap within the subgroup.
 
-**Reproduce:** Derive the adjustment formula line by line, naming where exchangeability, positivity and consistency enter. Work a four-cell population: $`L`$ is a fair bit; $`P(A = 1 \mid L = 0) = 0.2`$ and $`P(A = 1 \mid L = 1) = 0.8`$; $`Y = 2A + L`$, with potential outcomes $`Y(0) = L`$ and $`Y(1) = 2 + L`$. Draw $`L \to A`$, $`L \to Y`$, $`A \to Y`$. The observed means are 0.2 for $`A = 0`$ and 2.8 for $`A = 1`$, giving an associational difference 2.6; intervention means are 0.5 and 2.5, giving $`\text{ATE}`$ 2. Check in NumPy float64 without random draws: P = numpy.array([[0.4, 0.1], [0.1, 0.4]], dtype=numpy.float64), rows L = 0, 1 and columns A = 0, 1; Y = numpy.array([[0, 2], [1, 3]], dtype=numpy.float64). Compute observed = (P*Y).sum(axis=0)/P.sum(axis=0) and intervention = P.sum(axis=1) @ Y. Compare with [0.2, 2.8] and [0.5, 2.5]; require maximum absolute error below 1e-12. These are population identities, not fitted in-sample scores. Explain why adjusting for $`L`$ closes the backdoor path, while making $`A`$ deterministic given $`L`$ would destroy the observational overlap needed for this formula.
+**Reproduce:** Derive the adjustment formula line by line, naming where exchangeability, positivity and consistency enter. Work a four-cell population: $`L`$ is a fair bit; $`P(A = 1 \mid L = 0) = 0.2`$ and $`P(A = 1 \mid L = 1) = 0.8`$; $`Y = 2A + L`$, with potential outcomes $`Y(0) = L`$ and $`Y(1) = 2 + L`$. Draw $`L \to A`$, $`L \to Y`$, $`A \to Y`$. The observed means are 0.2 for $`A = 0`$ and 2.8 for $`A = 1`$, giving an associational difference 2.6; intervention means are 0.5 and 2.5, giving $`\text{ATE}`$ 2. Check in NumPy `float64` without random draws: `P = numpy.array([[0.4, 0.1], [0.1, 0.4]], dtype=numpy.float64)`, rows L = 0, 1 and columns A = 0, 1; `Y = numpy.array([[0, 2], [1, 3]], dtype=numpy.float64)`. Compute `observed = (P*Y).sum(axis=0)/P.sum(axis=0)` and `intervention = P.sum(axis=1) @ Y`. Compare with `[0.2, 2.8]` and `[0.5, 2.5]`; require maximum absolute error below 1e-12. These are population identities, not fitted in-sample scores. Explain why adjusting for $`L`$ closes the backdoor path, while making $`A`$ deterministic given $`L`$ would destroy the observational overlap needed for this formula.
 
 **Traps**
 
@@ -1890,7 +1890,7 @@ Prediction describes observations; causal identification asks what would happen 
 
 ### Mini-project: A statistical audit harness and the memo for a flattering experiment
 
-**About 14 to 18 hours.** Add stats/ to numlab: a simulation harness with a known truth that tests estimators, intervals, multiplicity, regression assumptions, calibration, missingness and causal adjustment, each against an oracle and each with a failure case. Then audit an experiment that looks too good, rerun it under a plan written first, and write the decision memo.
+**About 14 to 18 hours.** Add `stats/` to `numlab`: a simulation harness with a known truth that tests estimators, intervals, multiplicity, regression assumptions, calibration, missingness and causal adjustment, each against an oracle and each with a failure case. Then audit an experiment that looks too good, rerun it under a plan written first, and write the decision memo.
 
 1. Build the harness on the Monte Carlo estimator from the probability section: each check names its known truth, runs seeded repetitions and reports a Monte Carlo standard error. Compare the $`n`$ and $`n - 1`$ variance estimators for $`n`$ = 2, 5, 10 and 50 under normal sampling against the analytic bias, variance and MSE. Repeat under a $`t`$ distribution with 3 degrees of freedom, which has variance 3 but no fourth moment, and show the normal-theory variance formula failing.
 2. Measure percentile-bootstrap coverage for an exponential mean at $`n = 10`$ and $`n = 100`$; expect clear undercoverage at $`n = 10`$. Simulate $`m`$ hypotheses with $`m_0`$ true nulls and compare the realized FWER and FDR of Bonferroni and Benjamini-Hochberg. Then report the largest of $`k`$ noisy metric estimates whose true effects are equal, and measure the bias and the coverage of its naive interval.
@@ -1902,9 +1902,9 @@ Prediction describes observations; causal identification asks what would happen 
 
 **Deliverables**
 
-- numlab/stats/: the harness and every check, each with its oracle and its failure case.
+- `numlab/stats/`: the harness and every check, each with its oracle and its failure case.
 - The audit: the pre-analysis plan, the list of validity failures with their checks, the rerun and its output.
-- The decision memo, the two DAGs and notes/statistics.md with the derivations behind each check.
+- The decision memo, the two DAGs and `notes/statistics.md` with the derivations behind each check.
 
 **Checks**
 
@@ -1928,7 +1928,7 @@ Feeds into: Capstone component 4, experiment analysis: the harness, the audit wi
 - **Required - Application:** [Patterns of trustworthy experimentation](https://www.microsoft.com/en-us/research/group/experimentation-platform-exp/articles/patterns-of-trustworthy-experimentation-during-experiment-stage/) - Read after the course to connect health checks, guardrails and statistical interpretation to production launch decisions.
 - **Depth - Depth:** [Always Valid Inference](https://arxiv.org/abs/1512.04922) - Use the introduction and worked motivation to understand optional-stopping failure. Reproducing the theory is outside this gate.
 - **Reference - Theory:** [Probabilistic Machine Learning: An Introduction](https://probml.github.io/pml-book/book1.html) - Use the April 18, 2025 online edition: Sections 4.2.3 to 4.2.5, 4.5.1 and 4.6.4.1 for Bernoulli and Gaussian MLE/MAP; the definition and central intervals in 4.6.6; 2.1.2 and 11.7.4 for predictive uncertainty. Exercises 4.1 and 4.2 supply derivation practice.
-- **Reference - Reference:** [Permutation nulls and false discovery control](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.false_discovery_control.html) - Read permutation_test Notes, Unpaired statistics, for exchangeability and exact partitions; false_discovery_control Notes and the named thrombolysis example for Bonferroni and Benjamini-Hochberg. Use as an independent implementation oracle, not as a substitute for stating assumptions.
+- **Reference - Reference:** [Permutation nulls and false discovery control](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.false_discovery_control.html) - Read `permutation_test` Notes, Unpaired statistics, for exchangeability and exact partitions; `false_discovery_control` Notes and the named thrombolysis example for Bonferroni and Benjamini-Hochberg. Use as an independent implementation oracle, not as a substitute for stating assumptions.
 - **Reference - Reference:** [Probability calibration: the statistical property](https://scikit-learn.org/stable/modules/calibration.html#calibration-curves) - Read the opening calibration definition, the proper-scoring-rule note, and Section 1.16.1, Calibration curves. Stop before recalibration methods; the later Classical ML unit implements them.
 
 ### Exit checkpoint
@@ -1996,7 +1996,7 @@ An optimizer's behavior starts with the objective's geometry. These conditions t
 - For $`C^2`$ functions on an open convex domain, a PSD Hessian everywhere characterizes convexity. At one stationary point, a PSD Hessian is only a necessary local-minimum condition; a PD Hessian is sufficient.
 - For $`f(x)=x^\top Qx/2`$ with symmetric positive definite $`Q`$, $`\mu=\lambda_{\min}(Q)`$, $`L=\lambda_{\max}(Q)`$, and $`\kappa=L/\mu`$. The gradient is $`L`$-Lipschitz and the lower quadratic model uses $`\mu/2`$.
 
-**Reproduce:** Closed-book, prove the first-order inequality in both directions, then prove the Hessian test by restricting to a segment. By hand use $`Q=\operatorname{diag}(1,9)`$: find $`\operatorname{grad} f`$, $`\mu=1`$, $`L=9`$, $`\kappa=9`$ and $`f(1,1)=5`$. Check with NumPy float64 arrays, np.linalg.eigvalsh(Q) and np.linalg.cond(Q); scalar absolute differences from [1,9], 9 and 5 must be below 1e-12. No random draws are needed.
+**Reproduce:** Closed-book, prove the first-order inequality in both directions, then prove the Hessian test by restricting to a segment. By hand use $`Q=\operatorname{diag}(1,9)`$: find $`\operatorname{grad} f`$, $`\mu=1`$, $`L=9`$, $`\kappa=9`$ and $`f(1,1)=5`$. Check with NumPy `float64` arrays, `np.linalg.eigvalsh(Q)` and `np.linalg.cond(Q)`; scalar absolute differences from `[1,9]`, 9 and 5 must be below 1e-12. No random draws are needed.
 
 **Traps**
 
@@ -2043,7 +2043,7 @@ A controlled quadratic separates curvature-driven instability from gradient nois
 1. [EE364a: descent and line search](https://see.stanford.edu/materials/lsocoee364a/10UnconstrainedMin.pdf) (Stanford EE364a - Convex Optimization) - Lectures 15 and 16 notes: Descent methods (slide 10-5), Line search types (10-6), and Gradient descent method (10-7). Depth: Stop before steepest descent and Newton's method.
 2. [Descent on smooth objectives](https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) (Convex Optimization) - Sections 9.2 and 9.3.1 (pp. 463 to 469). Depth: Use the upper quadratic model to derive $`f(x-\eta g)\le f(x)-\eta(1-L\eta/2)\|g\|_2^2`$. Distinguish this descent guarantee from the exact quadratic contraction below.
 3. [GD, stochastic updates and minibatch noise](https://d2l.ai/chapter_optimization/sgd.html) (D2L - Optimization Algorithms) - Sections 12.3.1 to 12.3.2 (Gradient Descent), 12.4.1 to 12.4.2 and 12.4.4 (Stochastic Gradient Descent; 12.4.4 compares sampling with and without replacement), and 12.5.2 (Minibatches). Depth: Follow the adjacent GD and minibatch pages. Use the PyTorch tab for update cells only; skip datasets, training loops and timing claims.
-4. [Heavy-ball dynamics on quadratics](https://d2l.ai/chapter_optimization/momentum.html) (D2L - Optimization Algorithms) - Sections 12.6.1.2 to 12.6.1.4 and 12.6.3.1 to 12.6.3.2; PyTorch momentum_2d cell.
+4. [Heavy-ball dynamics on quadratics](https://d2l.ai/chapter_optimization/momentum.html) (D2L - Optimization Algorithms) - Sections 12.6.1.2 to 12.6.1.4 and 12.6.3.1 to 12.6.3.2; PyTorch `momentum_2d` cell.
 
 **Focus**
 
@@ -2052,7 +2052,7 @@ A controlled quadratic separates curvature-driven instability from gradient nois
 - For $`f=(1/n)\sum f_i`$ and independent uniform indices, the minibatch average gradient is unbiased and has covariance $`\Sigma/B`$. Sampling without replacement has a finite-population correction; reshuffling is not independent sampling.
 - On a general $`L`$-smooth lower-bounded objective, the descent lemma controls objective decrease, not global optimality. Report full-objective residuals separately from noisy minibatch gradients.
 
-**Reproduce:** By hand derive the GD eigenmode recurrence and heavy-ball polynomial. In NumPy float64 use $`Q=\operatorname{diag}(1,9)`$, $`x_0=(1,1)`$, $`x_{-1}=x_0`$. After ten updates, GD with $`\eta=0.2`$ has $`\|x_{10}\|_2=0.151850025`$ and $`\|x_{10}\|_2/\|x_0\|_2=0.1073741824=0.8^{10}`$ in exact arithmetic (measured absolute discrepancy 1.4e-17, allow 1e-12). Heavy-ball with $`\eta=0.25`$ and $`\beta=0.25`$ has $`\|x_{10}\|_2=0.0166875073`$. At $`\eta=2/9`$ GD's second coordinate alternates without shrinking; at $`\eta=0.23`$ its magnitude after ten steps is 1.96715136. Then create rng=np.random.default_rng(5); make its only draw noise=rng.standard_normal((10000,4),dtype=np.float64), in array row order. np.var(noise[:,0],ddof=1) is 0.984311 and np.var(noise.mean(axis=1),ddof=1) is 0.251557. Derive the theoretical variances 1 and 1/4; these measured values are not exact theoretical equalities. Allow absolute 1e-6 for the displayed simulation values.
+**Reproduce:** By hand derive the GD eigenmode recurrence and heavy-ball polynomial. In NumPy `float64` use $`Q=\operatorname{diag}(1,9)`$, $`x_0=(1,1)`$, $`x_{-1}=x_0`$. After ten updates, GD with $`\eta=0.2`$ has $`\|x_{10}\|_2=0.151850025`$ and $`\|x_{10}\|_2/\|x_0\|_2=0.1073741824=0.8^{10}`$ in exact arithmetic (measured absolute discrepancy 1.4e-17, allow 1e-12). Heavy-ball with $`\eta=0.25`$ and $`\beta=0.25`$ has $`\|x_{10}\|_2=0.0166875073`$. At $`\eta=2/9`$ GD's second coordinate alternates without shrinking; at $`\eta=0.23`$ its magnitude after ten steps is 1.96715136. Then create `rng=np.random.default_rng(5)`; make its only draw `noise=rng.standard_normal((10000,4),dtype=np.float64)`, in array row order. `np.var(noise[:,0],ddof=1)` is 0.984311 and `np.var(noise.mean(axis=1),ddof=1)` is 0.251557. Derive the theoretical variances 1 and 1/4; these measured values are not exact theoretical equalities. Allow absolute 1e-6 for the displayed simulation values.
 
 **Traps**
 
@@ -2096,10 +2096,10 @@ Adaptive methods carry history as well as parameters. A derivation of that histo
 
 **Study**
 
-1. [Adaptive preconditioners and bias correction](https://d2l.ai/chapter_optimization/adam.html#the-algorithm) (D2L - Optimization Algorithms) - Sections 12.7.2 to 12.7.3 (Adagrad), 12.8.1 (RMSProp), and 12.10.1 to 12.10.2 (Adam), equations 12.10.1 to 12.10.4 and the PyTorch adam cell. Depth: Follow the adjacent Adagrad and RMSProp pages for their algorithms. Skip dataset training and Yogi; second moments are not centered variances.
+1. [Adaptive preconditioners and bias correction](https://d2l.ai/chapter_optimization/adam.html#the-algorithm) (D2L - Optimization Algorithms) - Sections 12.7.2 to 12.7.3 (Adagrad), 12.8.1 (RMSProp), and 12.10.1 to 12.10.2 (Adam), equations 12.10.1 to 12.10.4 and the PyTorch `adam` cell. Depth: Follow the adjacent Adagrad and RMSProp pages for their algorithms. Skip dataset training and Yogi; second moments are not centered variances.
 2. [Schedule definitions](https://d2l.ai/chapter_optimization/lr-scheduler.html#policies) (D2L - Optimization Algorithms) - Sections 12.11.2 and 12.11.3.1 to 12.11.3.4: Schedulers, Factor, Multi Factor, Cosine and Warmup. Depth: Read the schedule formulas and run the PyTorch learning-rate assignment and scheduler definitions only. Skip Fashion-MNIST training. Define whether your clock counts updates or epochs.
-3. [Decoupled decay and optimizer state](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) (PyTorch optimizer and gradient-clipping contracts) - AdamW algorithm box, eps and weight_decay parameters, state_dict and load_state_dict.
-4. [Gradient-norm clipping contract](https://docs.pytorch.org/docs/2.14/generated/torch.nn.utils.clip_grad_norm_.html) (PyTorch optimizer and gradient-clipping contracts) - clip_grad_norm_: concatenated-gradient norm, in-place modification, max_norm, norm_type and error_if_nonfinite.
+3. [Decoupled decay and optimizer state](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) (PyTorch optimizer and gradient-clipping contracts) - AdamW algorithm box, `eps` and `weight_decay` parameters, `state_dict` and `load_state_dict`.
+4. [Gradient-norm clipping contract](https://docs.pytorch.org/docs/2.14/generated/torch.nn.utils.clip_grad_norm_.html) (PyTorch optimizer and gradient-clipping contracts) - `clip_grad_norm_`: concatenated-gradient norm, in-place modification, `max_norm`, `norm_type` and `error_if_nonfinite`.
 
 **Focus**
 
@@ -2108,7 +2108,7 @@ Adaptive methods carry history as well as parameters. A derivation of that histo
 - Clipping projects $`g`$ onto a Euclidean ball: $`g\min(1,c/\|g\|_2)`$, with zero mapped to zero. Clip before updating moments. AdamW shrinks parameters separately; adding $`\lambda\theta`$ to $`g`$ changes both moments instead.
 - A schedule needs a clock and restart state. A small step caused by a tiny learning rate is not evidence of stationarity; check the un-clipped full-objective gradient and use the residual unit's stopping contract.
 
-**Reproduce:** Derive the finite-sum correction by induction, checking $`t=1`$. For constant $`g=(2,-1)`$, $`\beta_1=0.9`$ and $`\beta_2=0.999`$, hand-compute $`m_3=(0.542,-0.271)`$ and $`v_3=(0.011988004,0.002997001)`$; corrected moments are (2,-1) and (4,1) in exact arithmetic. Check in NumPy float64 with infinity-norm tolerance 1e-12. Then run ten float64 updates on $`f(\theta)=(\theta_1^2+9\theta_2^2)/2`$ from (1,-2), $`m_0=v_0=0`$, $`\epsilon=10^{-6}`$, decay=0.1, $`\mathit{lr}_t=0.01/(1+0.1(t-1))`$, $`t=1,\ldots,10`$. Clip $`g`$ to Euclidean norm 1 using the exact formula above; update moments, then $`\theta=(1-\mathit{lr}_t\cdot 0.1)\theta-\mathit{lr}_t\hat{m}/(\sqrt{\hat{v}}+\epsilon)`$. Result: (0.92127176,-1.91402438), allowing 1e-8 in infinity norm for the displayed rounding. Compare torch.optim.AdamW on CPU with float64, the same clipped gradients, betas=(0.9,0.999), eps=1e-6, weight_decay=0.1, foreach=False and the same per-update lr. On PyTorch 2.14.1 the measured infinity-norm difference is 2.22e-16; allow 1e-12. Do not substitute clip_grad_norm_ in this oracle comparison, because its stabilizing denominator changes the mathematical projection slightly. Save $`\theta`$,$`m`$,$`v`$,$`t`$ and the schedule clock after step five and check resumed versus uninterrupted final states within 1e-12. No random draws are needed.
+**Reproduce:** Derive the finite-sum correction by induction, checking $`t=1`$. For constant $`g=(2,-1)`$, $`\beta_1=0.9`$ and $`\beta_2=0.999`$, hand-compute $`m_3=(0.542,-0.271)`$ and $`v_3=(0.011988004,0.002997001)`$; corrected moments are `(2,-1)` and `(4,1)` in exact arithmetic. Check in NumPy `float64` with infinity-norm tolerance 1e-12. Then run ten `float64` updates on $`f(\theta)=(\theta_1^2+9\theta_2^2)/2`$ from `(1,-2)`, $`m_0=v_0=0`$, $`\epsilon=10^{-6}`$, `decay=0.1`, $`\mathit{lr}_t=0.01/(1+0.1(t-1))`$, $`t=1,\ldots,10`$. Clip $`g`$ to Euclidean norm 1 using the exact formula above; update moments, then $`\theta=(1-\mathit{lr}_t\cdot 0.1)\theta-\mathit{lr}_t\hat{m}/(\sqrt{\hat{v}}+\epsilon)`$. Result: `(0.92127176,-1.91402438)`, allowing 1e-8 in infinity norm for the displayed rounding. Compare `torch.optim.AdamW` on CPU with `float64`, the same clipped gradients, `betas=(0.9,0.999)`, `eps=1e-6`, `weight_decay=0.1`, `foreach=False` and the same per-update `lr`. On PyTorch 2.14.1 the measured infinity-norm difference is 2.22e-16; allow 1e-12. Do not substitute `clip_grad_norm_` in this oracle comparison, because its stabilizing denominator changes the mathematical projection slightly. Save $`\theta`$,$`m`$,$`v`$,$`t`$ and the schedule clock after step five and check resumed versus uninterrupted final states within 1e-12. No random draws are needed.
 
 **Traps**
 
@@ -2127,12 +2127,12 @@ Adaptive methods carry history as well as parameters. A derivation of that histo
 
 1. What assumptions does the bias-correction derivation actually use?
    - Zero initial moments remove a $`\beta^tm_0`$ term. Constant $`\beta`$ in $`[0,1)`$ supplies the finite geometric sum and a nonzero denominator for $`t\ge 1`$. Equal first or second moments of the gradient sequence let expectation factor out of the weighted sum. Independence is not required.
-2. Why is Adam's vhat not the gradient variance?
-   - It estimates an uncentered second moment. Variance subtracts the square of the mean; vhat does not.
+2. Why is Adam's `vhat` not the gradient variance?
+   - It estimates an uncentered second moment. Variance subtracts the square of the mean; `vhat` does not.
 3. When does coupled $`L_2`$ match decoupled decay?
    - For plain SGD with no momentum or preconditioner, $`\theta-\eta(g+\lambda\theta)`$ equals $`(1-\eta\lambda)\theta-\eta g`$ in exact arithmetic. Adaptive scaling or momentum generally destroys this equivalence.
 4. What is the norm-clipping solution for $`g=(3,4)`$ and $`c=2`$?
-   - Its norm is 5, so the projection is (1.2,1.6). Clamping each coordinate to [-2,2] gives (2,2), which is a different projection and exceeds norm 2.
+   - Its norm is 5, so the projection is `(1.2,1.6)`. Clamping each coordinate to `[-2,2]` gives `(2,2)`, which is a different projection and exceeds norm 2.
 
 </details>
 
@@ -2153,8 +2153,8 @@ Constraints and nonsmooth penalties need more than a zero ordinary gradient. KKT
 **Study**
 
 1. [Lagrangian lower bounds and KKT certificates](https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) (Convex Optimization) - Sections 5.1.1 to 5.1.3 (pp. 215 to 216), 5.2.2 to 5.2.3 (pp. 225 to 227), and 5.5.1 to 5.5.3 (pp. 241 to 245). Depth: Stop 5.5.3 after Example 5.1 on p. 244. Keep only the duality needed to explain weak duality, Slater's condition and the small QP; leave broader duality theory aside.
-2. [Solver status and dual values](https://www.cvxpy.org/tutorial/intro/index.html) (CVXPY basic and DCP tutorials) - Changing the problem, Infeasible and unbounded problems, and Other problem statuses. Depth: Use the solver only after deriving the analytic solution. Accept neither optimal_inaccurate nor an iteration cap as an unchecked certificate.
-3. [Read multipliers from the solver answer](https://www.cvxpy.org/tutorial/advanced/index.html#dual-variables) (CVXPY basic and DCP tutorials) - Dual variables: constraint.dual_value and the two-scalar example. Depth: Read this heading only; none of the other advanced features are assigned.
+2. [Solver status and dual values](https://www.cvxpy.org/tutorial/intro/index.html) (CVXPY basic and DCP tutorials) - Changing the problem, Infeasible and unbounded problems, and Other problem statuses. Depth: Use the solver only after deriving the analytic solution. Accept neither `optimal_inaccurate` nor an iteration cap as an unchecked certificate.
+3. [Read multipliers from the solver answer](https://www.cvxpy.org/tutorial/advanced/index.html#dual-variables) (CVXPY basic and DCP tutorials) - Dual variables: `constraint.dual_value` and the two-scalar example. Depth: Read this heading only; none of the other advanced features are assigned.
 4. [Proximal maps, soft thresholding and lasso](https://web.stanford.edu/~boyd/papers/pdf/prox_algs.pdf) (Proximal Algorithms) - Sections 1.1 (p. 124), 4.2 (pp. 148 to 151), 6.5.2 (p. 188, equation 6.9), and 7.1's lasso formulation (p. 196). Depth: In 4.2 read the basic update and quadratic upper-model interpretation. Skip accelerated methods and ADMM. In 6.5.2 stop before projection onto the $`\ell_1`$ ball. Skip 7.1.1 on p. 197: it prints $`\operatorname{prox}_{\gamma g}=S_\gamma`$ although $`g=\gamma\|x\|_1`$; the correct general scaling is $`\operatorname{prox}_{\eta g}=S_{\eta\gamma}`$. Its Gram rewrite with $`\tilde{b}=A^\top b`$ also fails to preserve the linear term, already for $`A=[2]`$, $`b=[1]`$. Derive lasso's update from 4.2 and 6.5.2 instead.
 
 **Focus**
@@ -2164,7 +2164,7 @@ Constraints and nonsmooth penalties need more than a zero ordinary gradient. KKT
 - For $`0.5\|Aw-b\|_2^2+\lambda\|w\|_1`$, proximal gradient takes $`u=w-\eta A^\top(Aw-b)`$, then $`w+=\operatorname{sign}(u)\max(|u|-\eta\lambda,0)`$. The threshold scales with $`\eta`$, not just $`\lambda`$.
 - At zero, the $`\ell_1`$ subgradient is the interval $`[-1,1]`$. Derive the three scalar cases instead of pretending $`\operatorname{abs}`$ has a unique derivative there. For the smooth part, $`\eta\le 1/\|A\|_2^2`$ gives the quadratic upper-model descent argument.
 
-**Reproduce:** By hand minimize $`0.5\|x-a\|_2^2`$ with $`a=(2,-1)`$, $`x\ge 0`$ and $`x_1+x_2=1`$. Use $`L=0.5\|x-a\|_2^2-\lambda^\top x+\nu(\operatorname{sum}(x)-1)`$. Obtain $`x^*=(1,0)`$, $`\lambda^*=(0,2)`$, $`\nu^*=1`$ and primal value 1. Derive $`g(\lambda,\nu)=0.5\|a\|_2^2-0.5\|a+\lambda-\nu\mathbf{1}\|_2^2-\nu`$; its value at the certificate is 1. In CVXPY 1.9.3 use float64 a, z=cp.Variable(2), constraints=[z>=0,cp.sum(z)==1], objective=cp.Minimize(0.5*cp.sum_squares(z-a)); form prob=cp.Problem(objective,constraints) and call prob.solve(solver='CLARABEL',tol_gap_abs=1e-10,tol_gap_rel=1e-10,tol_feas=1e-10,max_iter=100). Read lam=constraints[0].dual_value and nu=constraints[1].dual_value; lam represents the mathematical $`\lambda`$, and use z.value for numerical checks. Status is optimal. Measured residuals: max(0,max(-z.value))=8.08e-13, abs(sum(z.value)-1)=1.11e-16, max(0,max(-lam))=0, ||z.value-a-lam+nu||_inf=1.22e-11 and ||lam*z.value||_inf=4.56e-11. ||z.value-(1,0)||_inf=8.08e-13. Require every residual and the solution difference $`\le 10^{-9}`$, rather than exact feasibility. Then derive the scalar soft-threshold map and work $`A=I_2`$, $`b=(2,-0.25)`$, $`\lambda=0.5`$ by hand: $`w^*=(1.5,0)`$. From $`w_0=(0,0)`$, take 30 NumPy float64 proximal steps with $`\eta=0.5`$; the infinity-norm error against this closed form is 1.40e-9, allowed $`\le 2\times 10^{-9}`$. No random draws are needed.
+**Reproduce:** By hand minimize $`0.5\|x-a\|_2^2`$ with $`a=(2,-1)`$, $`x\ge 0`$ and $`x_1+x_2=1`$. Use $`L=0.5\|x-a\|_2^2-\lambda^\top x+\nu(\operatorname{sum}(x)-1)`$. Obtain $`x^*=(1,0)`$, $`\lambda^*=(0,2)`$, $`\nu^*=1`$ and primal value 1. Derive $`g(\lambda,\nu)=0.5\|a\|_2^2-0.5\|a+\lambda-\nu\mathbf{1}\|_2^2-\nu`$; its value at the certificate is 1. In CVXPY 1.9.3 use `float64` `a`, `z=cp.Variable(2)`, `constraints=[z>=0,cp.sum(z)==1]`, `objective=cp.Minimize(0.5*cp.sum_squares(z-a))`; form `prob=cp.Problem(objective,constraints)` and call `prob.solve(solver='CLARABEL',tol_gap_abs=1e-10,tol_gap_rel=1e-10,tol_feas=1e-10,max_iter=100)`. Read `lam=constraints[0].dual_value` and `nu=constraints[1].dual_value`; `lam` represents the mathematical $`\lambda`$, and use `z.value` for numerical checks. Status is `optimal`. Measured residuals: `max(0,max(-z.value))`=8.08e-13, `abs(sum(z.value)-1)`=1.11e-16, `max(0,max(-lam))`=0, `np.linalg.norm(z.value-a-lam+nu, np.inf)`=1.22e-11 and `np.linalg.norm(lam*z.value, np.inf)`=4.56e-11. `np.linalg.norm(z.value-(1,0), np.inf)`=8.08e-13. Require every residual and the solution difference $`\le 10^{-9}`$, rather than exact feasibility. Then derive the scalar soft-threshold map and work $`A=I_2`$, $`b=(2,-0.25)`$, $`\lambda=0.5`$ by hand: $`w^*=(1.5,0)`$. From $`w_0=(0,0)`$, take 30 NumPy `float64` proximal steps with $`\eta=0.5`$; the infinity-norm error against this closed form is 1.40e-9, allowed $`\le 2\times 10^{-9}`$. No random draws are needed.
 
 **Traps**
 
@@ -2209,8 +2209,8 @@ Second-order methods show what curvature information can buy and what it costs. 
 **Study**
 
 1. [Newton's model, line search and convergence](https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) (Convex Optimization) - Sections 9.5.1 to 9.5.3 (pp. 484 to 491), and the Summary on p. 496. Depth: Read the step, decrement and proof assumptions; follow the quadratically convergent phase argument on pp. 490 to 491. Skip 9.5.4's large numerical examples and 9.6.
-2. [Newton as rootfinding](https://fncbook.com/python/newton/) (Fundamentals of Numerical Computation) - Section 4.3.1, equations 4.3.3 to 4.3.8, and Section 4.3.2's newton algorithm. Depth: Apply the rootfinding argument to the objective's derivative. Inspect the stopping conditions rather than treating small successive steps as a certificate.
-3. [A quasi-Newton comparison with an analytic gradient](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html) (SciPy minimize: BFGS) - BFGS method; options gtol, maxiter, c1, c2 and hess_inv0; Notes on precision loss. Depth: Use the default line-search parameters and initial inverse-Hessian approximation. Do not study or implement a full BFGS convergence proof here.
+2. [Newton as rootfinding](https://fncbook.com/python/newton/) (Fundamentals of Numerical Computation) - Section 4.3.1, equations 4.3.3 to 4.3.8, and Section 4.3.2's `newton` algorithm. Depth: Apply the rootfinding argument to the objective's derivative. Inspect the stopping conditions rather than treating small successive steps as a certificate.
+3. [A quasi-Newton comparison with an analytic gradient](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html) (SciPy minimize: BFGS) - BFGS method; options `gtol`, `maxiter`, `c1`, `c2` and `hess_inv0`; Notes on precision loss. Depth: Use the default line-search parameters and initial inverse-Hessian approximation. Do not study or implement a full BFGS convergence proof here.
 
 **Focus**
 
@@ -2218,7 +2218,7 @@ Second-order methods show what curvature information can buy and what it costs. 
 - A Lipschitz Hessian and a uniformly bounded inverse Hessian near a nondegenerate minimizer give a quadratic error bound for full Newton steps, once the starting point is close enough. Backtracking handles the approach to that neighborhood.
 - Quasi-Newton methods replace freshly evaluated curvature with an approximation informed by gradient changes. Their iteration count alone hides line-search evaluations; BFGS is an oracle here, not a second implementation assignment.
 
-**Reproduce:** By hand minimize $`\phi(x)=x^4/4+x^2/2-2x`$ on $`\mathbb{R}`$. Its gradient is $`x^3+x-2`$, Hessian $`3x^2+1`$, and unique minimizer $`x^*=1`$. Derive Newton's update and the exact recurrence $`e_{\text{next}}=e^2(2x+1)/(3x^2+1)`$, where $`e=x-1`$. Starting at $`x_0=1.5`$, use NumPy float64 for four updates: absolute errors after each are 0.1290322581, 0.01124439868, 9.394478985e-5 and 6.618699366e-9. Compare each displayed error with absolute tolerance 1e-10. The first four ratios $`|e_{\text{next}}|/e^2`$ are 0.516129, 0.675367, 0.743020 and 0.749941, approaching 3/4; stop the rate measurement before rounding dominates. With SciPy 1.18.1, call minimize on the same scalar objective with x0=np.array([1.5],dtype=np.float64), jac returning np.array([x[0]**3+x[0]-2],dtype=np.float64), method='BFGS', options={'gtol':1e-10,'maxiter':100}. It reports success, eight iterations, nine function and nine gradient evaluations, and gradient infinity norm 1.32e-13. Require $`|x-1|\le 10^{-9}`$ and $`\|\operatorname{grad}\|_\infty \le 10^{-10}`$; compare work at that residual, counting Newton's derivative and Hessian calls too. Do not infer a timing advantage. No random draws are needed.
+**Reproduce:** By hand minimize $`\phi(x)=x^4/4+x^2/2-2x`$ on $`\mathbb{R}`$. Its gradient is $`x^3+x-2`$, Hessian $`3x^2+1`$, and unique minimizer $`x^*=1`$. Derive Newton's update and the exact recurrence $`e_{\text{next}}=e^2(2x+1)/(3x^2+1)`$, where $`e=x-1`$. Starting at $`x_0=1.5`$, use NumPy `float64` for four updates: absolute errors after each are 0.1290322581, 0.01124439868, 9.394478985e-5 and 6.618699366e-9. Compare each displayed error with absolute tolerance 1e-10. The first four ratios $`|e_{\text{next}}|/e^2`$ are 0.516129, 0.675367, 0.743020 and 0.749941, approaching 3/4; stop the rate measurement before rounding dominates. With SciPy 1.18.1, call `minimize` on the same scalar objective with `x0=np.array([1.5],dtype=np.float64)`, `jac` returning `np.array([x[0]**3+x[0]-2],dtype=np.float64)`, `method='BFGS'`, `options={'gtol':1e-10,'maxiter':100}`. It reports success, eight iterations, nine function and nine gradient evaluations, and gradient infinity norm 1.32e-13. Require $`|x-1|\le 10^{-9}`$ and $`\|\operatorname{grad}\|_\infty \le 10^{-10}`$; compare work at that residual, counting Newton's derivative and Hessian calls too. Do not infer a timing advantage. No random draws are needed.
 
 **Traps**
 
@@ -2228,7 +2228,7 @@ Second-order methods show what curvature information can buy and what it costs. 
 
 **Practice**
 
-- [FNC Python: multiple-root Newton convergence](https://fncbook.com/python/newton/#problem-newton-multiple) - Exercise 4.3.7, parts (a) and (b). Attempt the repeated-root derivation before reading the nearby convergence discussion. For part (b), use float64 and separate errors from residuals; do not fit a convergence rate to the final roundoff plateau.
+- [FNC Python: multiple-root Newton convergence](https://fncbook.com/python/newton/#problem-newton-multiple) - Exercise 4.3.7, parts (a) and (b). Attempt the repeated-root derivation before reading the nearby convergence discussion. For part (b), use `float64` and separate errors from residuals; do not fit a convergence rate to the final roundoff plateau.
 
 **Stop when:** You can derive the error recurrence, name every local assumption, and explain the Newton/BFGS comparison without treating iteration count or a roundoff plateau as a speed or rate proof.
 
@@ -2252,38 +2252,38 @@ Second-order methods show what curvature information can buy and what it costs. 
 
 Topics: Floating-point representation, rounding and machine precision; Overflow, underflow and catastrophic cancellation
 
-Mathematical real arithmetic is not a machine's arithmetic. A dtype's range and spacing predict different failures, and rewriting a formula can matter more than increasing precision.
+Mathematical real arithmetic is not a machine's arithmetic. A `dtype`'s range and spacing predict different failures, and rewriting a formula can matter more than increasing precision.
 
 **You can now**
 
 - Derive spacing and unit roundoff from a binary significand and distinguish precision from exponent range.
-- Compare float64, float32, float16 and bfloat16, including normal and subnormal values.
+- Compare `float64`, `float32`, `float16` and `bfloat16`, including normal and subnormal values.
 - Construct overflow, underflow and cancellation failures and check an algebraically stable alternative.
 
 **Study**
 
-1. [Binary representation and rounding](https://fncbook.com/python/floating-point/) (Fundamentals of Numerical Computation) - Section 1.1: Definitions 1.1.1 to 1.1.2, equations 1.1.1 to 1.1.6, and Sections 1.1.2 to 1.1.3. Depth: Use the Python examples. The main-text minimum-range discussion concerns normal values; read footnote 2 and the dtype reference below before treating $`\mathit{tiny}`$ as the smallest positive representable value. Skip the Julia-specific Exercise 1.1.5.
+1. [Binary representation and rounding](https://fncbook.com/python/floating-point/) (Fundamentals of Numerical Computation) - Section 1.1: Definitions 1.1.1 to 1.1.2, equations 1.1.1 to 1.1.6, and Sections 1.1.2 to 1.1.3. Depth: Use the Python examples. The main-text minimum-range discussion concerns normal values; read footnote 2 and the `dtype` reference below before treating $`\mathit{tiny}`$ as the smallest positive representable value. Skip the Julia-specific Exercise 1.1.5.
 2. [Conditioning and unstable cancellation](https://fncbook.com/python/stability/) (Fundamentals of Numerical Computation) - Sections 1.2.1 to 1.2.2, condition numbers and error estimates, on the preceding Problems and conditioning page; Section 1.4.1 and Examples 1.4.1 to 1.4.2 on Stability. Depth: Focus on subtractive cancellation and the stable quadratic-root rewrite; skip the later polynomial-root perturbation demo.
-3. [Inspect low-precision formats](https://docs.pytorch.org/docs/2.14/type_info.html) (PyTorch numerical type information) - torch.finfo: bits, eps, max, tiny, smallest_normal and the note about subnormal numbers.
+3. [Inspect low-precision formats](https://docs.pytorch.org/docs/2.14/type_info.html) (PyTorch numerical type information) - `torch.finfo`: `bits`, `eps`, `max`, `tiny`, `smallest_normal` and the note about subnormal numbers.
 
 **Focus**
 
 - With $`p`$ total significand bits including the hidden leading one, spacing in $`[2^e,2^{e+1})`$ is $`2^{e-(p-1)}`$. $`\mathit{eps}`$ is the gap above 1; unit roundoff for round-to-nearest is $`\mathit{eps}/2`$. The relative bound needs normal-range results and no overflow.
-- float64, float32, float16 and bfloat16 have $`p=53,24,11,8`$ and exponent fields of 11,8,5,8 bits respectively. bfloat16 has wide range but coarser spacing than float16.
+- `float64`, `float32`, `float16` and `bfloat16` have $`p=53,24,11,8`$ and exponent fields of 11,8,5,8 bits respectively. bfloat16 has wide range but coarser spacing than float16.
 - Overflow produces infinities; gradual underflow first reaches subnormals with reduced relative precision. $`\mathit{tiny}`$ is the smallest positive normal, not the smallest positive representable value.
 - Subtracting nearby rounded operands can destroy relative accuracy even when the subtraction itself is exact. Separate conditioning of the requested difference from avoidable instability in how its operands were formed.
 
-**Reproduce:** By hand enumerate the $`d=4`$ fractional-bit system in FNC Exercise 1.1.1 and derive its spacing. Then use np.finfo for np.float64, np.float32 and np.float16, and torch.finfo(torch.bfloat16) on CPU for bfloat16. Print eps, tiny and max to three significant digits: float64 (2.22e-16,2.23e-308,1.80e308), float32 (1.19e-7,1.18e-38,3.40e38), float16 (9.77e-4,6.10e-5,6.55e4), bfloat16 (7.81e-3,1.18e-38,3.39e38). Derive $`\mathit{eps}=2^{-(p-1)}`$ and check each $`\mathit{eps}`$ within relative scalar tolerance 1e-6. Inspect np.nextafter(dtype(0),dtype(1)), and torch.nextafter on CPU bfloat16 scalars, to see values below $`\mathit{tiny}`$. In NumPy float64 set x=np.float64(1e8): $`\sqrt{x^2+1}-x`$ returns 0, while $`1/(\sqrt{x^2+1}+x)`$ returns about 5.00e-9. Rationalize the expression by hand and bound the exact result's difference from $`1/(2x)`$ by $`1/(8x^3)`$; allow absolute 1e-20 for the stable scalar. Finally evaluate np.exp(np.float64(1000)) and np.exp(np.float64(-1000)) inside np.errstate(over='ignore',under='ignore'): outputs are inf and 0. These are range failures, not exact evaluations of $`\exp`$. No random draws are needed.
+**Reproduce:** By hand enumerate the $`d=4`$ fractional-bit system in FNC Exercise 1.1.1 and derive its spacing. Then use `np.finfo` for `np.float64`, `np.float32` and `np.float16`, and `torch.finfo(torch.bfloat16)` on CPU for `bfloat16`. Print `eps`, `tiny` and `max` to three significant digits: `float64` `(2.22e-16,2.23e-308,1.80e308)`, `float32` `(1.19e-7,1.18e-38,3.40e38)`, `float16` `(9.77e-4,6.10e-5,6.55e4)`, `bfloat16` `(7.81e-3,1.18e-38,3.39e38)`. Derive $`\mathit{eps}=2^{-(p-1)}`$ and check each $`\mathit{eps}`$ within relative scalar tolerance 1e-6. Inspect `np.nextafter(dtype(0),dtype(1))`, and `torch.nextafter` on CPU `bfloat16` scalars, to see values below $`\mathit{tiny}`$. In NumPy `float64` set `x=np.float64(1e8)`: $`\sqrt{x^2+1}-x`$ returns 0, while $`1/(\sqrt{x^2+1}+x)`$ returns about 5.00e-9. Rationalize the expression by hand and bound the exact result's difference from $`1/(2x)`$ by $`1/(8x^3)`$; allow absolute 1e-20 for the stable scalar. Finally evaluate `np.exp(np.float64(1000))` and `np.exp(np.float64(-1000))` inside `np.errstate(over='ignore',under='ignore')`: outputs are `inf` and 0. These are range failures, not exact evaluations of $`\exp`$. No random draws are needed.
 
 **Traps**
 
-- Calling $`\mathit{eps}`$ the smallest representable number, or calling finfo.tiny the smallest subnormal.
+- Calling $`\mathit{eps}`$ the smallest representable number, or calling `finfo.tiny` the smallest subnormal.
 - Assuming bfloat16 is more precise because its exponent range is larger.
 - Applying a relative error tolerance at a true zero, or claiming that a stable rewrite recovers information already rounded out of its inputs.
 
 **Practice**
 
-- [FNC Python: enumerate a toy format and derive single precision](https://fncbook.com/python/floating-point/#exercises) - Exercises 1.1.1 (a) to (c) and 1.1.4 (a) to (b). Attempt by hand before using finfo or nextafter. Translate the single-precision checks to NumPy float32 rather than the exercise's Julia type name.
+- [FNC Python: enumerate a toy format and derive single precision](https://fncbook.com/python/floating-point/#exercises) - Exercises 1.1.1 (a) to (c) and 1.1.4 (a) to (b). Attempt by hand before using `finfo` or `nextafter`. Translate the single-precision checks to NumPy `float32` rather than the exercise's Julia type name.
 
 **Stop when:** You can derive each format's spacing, distinguish $`\mathit{eps}`$ from normal and subnormal limits, and explain why the stable cancellation rewrite passes its absolute-error check while the naive formula fails.
 
@@ -2293,10 +2293,10 @@ Mathematical real arithmetic is not a machine's arithmetic. A dtype's range and 
 1. Why is round-to-nearest error bounded by eps/2 in the normal range?
    - In each binade the absolute error is at most half its spacing. Dividing by $`|x|\ge 2^e`$ bounds relative error by $`2^{-(p-1)}/2`$. The lower bound on $`|x|`$ uses normal binade representation; subnormals instead have fixed absolute spacing. Overflow is excluded.
 2. What is lost in $`\sqrt{x^2+1}-x`$ at $`x=10^8`$?
-   - $`x^2`$ is about $`10^{16}`$, where float64 spacing is 2, so adding 1 rounds away under ties-to-even. The square root returns $`x`$ and subtraction gives zero. Rationalization avoids subtracting nearly equal operands; it does not make $`x^2+1`$ exact.
+   - $`x^2`$ is about $`10^{16}`$, where `float64` spacing is 2, so adding 1 rounds away under ties-to-even. The square root returns $`x`$ and subtraction gives zero. Rationalization avoids subtracting nearly equal operands; it does not make $`x^2+1`$ exact.
 3. Is the computed zero an underflow of the true answer?
-   - No. The true answer is about 5e-9, well within the normal float64 range. It is cancellation after an earlier rounding loss.
-4. Can $`(1+\mathit{eps}/2)-1`$ and $`1+(\mathit{eps}/2-1)`$ differ in float64?
+   - No. The true answer is about 5e-9, well within the normal `float64` range. It is cancellation after an earlier rounding loss.
+4. Can $`(1+\mathit{eps}/2)-1`$ and $`1+(\mathit{eps}/2-1)`$ differ in `float64`?
    - Yes. Under round-to-nearest ties-to-even, the first evaluates to zero and the second to about 1.11e-16. The real-arithmetic associative law does not transfer to rounded operations.
 
 </details>
@@ -2319,8 +2319,8 @@ Long reductions can fail even when each individual input is representable. Stabl
 
 1. [Log-sum-exp as a smooth convex maximum](https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) (Convex Optimization) - Section 3.1.5: Log-sum-exp bounds on p. 72 and the Hessian/Cauchy-Schwarz proof on p. 74. Depth: Read only the log-sum-exp passages. Derive the max-shift identity yourself; leave gradients of a classification loss to the linked later unit.
 2. [Summation trees and compensation](https://nhigham.com/wp-content/uploads/2023/10/high93s.pdf) (The Accuracy of Floating Point Summation) - Section 2 (pp. 784 to 786), especially equations 2.1 to 2.6; Section 3's general error expression and pairwise summation (pp. 787 to 788) and Kahan's compensated summation (pp. 790 to 791, equation 3.10 on p. 791). Depth: Skip Section 2's sorting examples and Section 3's insertion and +/- methods. Derive the basic recursive bound, then inspect the balanced-tree and compensated algorithms; no probabilistic rounding model is assigned.
-3. [Online mean and centered second moment](https://www.johndcook.com/blog/standard_deviation/) (Accurately computing running variance) - Opening cancellation example and recurrence formulas for $`M_k`$, $`S_k`$ and sample variance $`S_k/(k-1)`$. Depth: Stop before the C++ RunningStat class. Prove the invariant in exact arithmetic before translating it to NumPy. A variance can be zero, and overflow can still occur.
-4. [Precision budget for inputs and accumulators](https://docs.pytorch.org/docs/2.14/type_info.html) (PyTorch numerical type information) - torch.finfo: eps, max and smallest_normal for float16, bfloat16, float32 and float64.
+3. [Online mean and centered second moment](https://www.johndcook.com/blog/standard_deviation/) (Accurately computing running variance) - Opening cancellation example and recurrence formulas for $`M_k`$, $`S_k`$ and sample variance $`S_k/(k-1)`$. Depth: Stop before the C++ `RunningStat` class. Prove the invariant in exact arithmetic before translating it to NumPy. A variance can be zero, and overflow can still occur.
+4. [Precision budget for inputs and accumulators](https://docs.pytorch.org/docs/2.14/type_info.html) (PyTorch numerical type information) - `torch.finfo`: `eps`, `max` and `smallest_normal` for `float16`, `bfloat16`, `float32` and `float64`.
 
 **Focus**
 
@@ -2329,11 +2329,11 @@ Long reductions can fail even when each individual input is representable. Stabl
 - Online mean uses $`\delta=x_n-\mathit{mean}_{\text{old}}`$ and $`\mathit{mean}_{\text{new}}=\mathit{mean}_{\text{old}}+\delta/n`$. The centered sum updates $`M2_{\text{new}}=M2_{\text{old}}+\delta(x_n-\mathit{mean}_{\text{new}})`$. Check $`M2_n=\sum(x_i-\mathit{mean}_n)^2`$ with base case $`n=1`$, and divide by $`n-1`$ only for sample variance with $`n\ge 2`$.
 - Higher-precision accumulation can prevent repeated rounding of the running total. It cannot restore detail lost when input values were quantized; distinguish operand, product and accumulator precision.
 
-**Reproduce:** Derive the $`\operatorname{LSE}`$ max bounds and Hessian PSD proof, and prove the online centered-sum invariant by induction. Hand-check data [1,2,3]: mean=2, M2=2, sample variance=1. In NumPy float64 use x=[1000,1001,999]; the shifted formula gives 1001.4076059644, allowing 1e-10 absolute error for this displayed rounding. Compare the unrounded result with scipy.special.logsumexp on SciPy 1.18.1: measured absolute difference is 0; require $`\le 10^{-12}`$, not exact equality. Implement a left-to-right sum with float64 accumulator zero, a balanced sum splitting each array at len(a)//2 recursively (empty sum zero, singleton returns its value), and Kahan with s=c=0; for each v use y=v-c, t=s+y, c=(t-s)-y, s=t. On np.concatenate((np.array([1e16],dtype=np.float64),np.ones(1024,dtype=np.float64),np.array([-1e16],dtype=np.float64))), the outputs are 0, 1022 and 1024. Against math.fsum's 1024 the measured absolute errors are 1024, 2 and 0; allow 1e-12 for these displayed checks. Run the online recurrence on [1e8+1,1e8+2,1e8+3] in that order in float64: sample variance is 1, while $`(\operatorname{sum}(x^2)-3\operatorname{mean}(x)^2)/2`$ gives 0. The absolute difference from np.var(x,ddof=1) for the online result is 0, allowed $`\le 10^{-12}`$. Finally sum 4096 float16 ones left-to-right, explicitly casting every updated accumulator to np.float16: the total stalls at 2048. np.sum on those same inputs with dtype=np.float32 gives 4096; measured absolute errors against the integer count are 2048 and 0. No random draws are needed. These examples do not establish that Kahan or an online variance algorithm wins for every input.
+**Reproduce:** Derive the $`\operatorname{LSE}`$ max bounds and Hessian PSD proof, and prove the online centered-sum invariant by induction. Hand-check data `[1,2,3]`: `mean=2`, `M2=2`, sample variance=1. In NumPy `float64` use `x=[1000,1001,999]`; the shifted formula gives 1001.4076059644, allowing 1e-10 absolute error for this displayed rounding. Compare the unrounded result with `scipy.special.logsumexp` on SciPy 1.18.1: measured absolute difference is 0; require $`\le 10^{-12}`$, not exact equality. Implement a left-to-right sum with `float64` accumulator zero, a balanced sum splitting each array at `len(a)//2` recursively (empty sum zero, singleton returns its value), and Kahan with `s=c=0`; for each `v` use `y=v-c`, `t=s+y`, `c=(t-s)-y`, `s=t`. On `np.concatenate((np.array([1e16],dtype=np.float64),np.ones(1024,dtype=np.float64),np.array([-1e16],dtype=np.float64)))`, the outputs are 0, 1022 and 1024. Against `math.fsum`'s 1024 the measured absolute errors are 1024, 2 and 0; allow 1e-12 for these displayed checks. Run the online recurrence on `[1e8+1,1e8+2,1e8+3]` in that order in `float64`: sample variance is 1, while $`(\operatorname{sum}(x^2)-3\operatorname{mean}(x)^2)/2`$ gives 0. The absolute difference from `np.var(x,ddof=1)` for the online result is 0, allowed $`\le 10^{-12}`$. Finally sum 4096 `float16` ones left-to-right, explicitly casting every updated accumulator to `np.float16`: the total stalls at 2048. `np.sum` on those same inputs with `dtype=np.float32` gives 4096; measured absolute errors against the integer count are 2048 and 0. No random draws are needed. These examples do not establish that Kahan or an online variance algorithm wins for every input.
 
 **Traps**
 
-- Using np.sum as a claimed naive left-to-right baseline. Its reduction strategy depends on axis and layout; implement the order you claim to test.
+- Using `np.sum` as a claimed naive left-to-right baseline. Its reduction strategy depends on `axis` and layout; implement the order you claim to test.
 - Rearranging Kahan's compensation into algebraically equivalent operations. Reassociation changes the rounding errors the correction is meant to retain.
 - Ignoring empty inputs, infinities or the $`n=1`$ sample-variance denominator. The finite nonempty $`\operatorname{LSE}`$ contract and $`n\ge 2`$ variance contract need explicit checks.
 
@@ -2352,8 +2352,8 @@ Long reductions can fail even when each individual input is representable. Stabl
    - At $`n=1`$, $`\mathit{mean}=x_1`$ and $`M2=0`$. For $`n\ge 2`$, the old centered deviations sum to zero, so recentering the first $`n-1`$ values adds $`(n-1)(\delta/n)^2`$ with no cross term. The new deviation is $`\delta(n-1)/n`$; adding its square gives $`\delta^2(n-1)/n=\delta(x_n-\mathit{mean}_{\text{new}})`$. Division uses $`n>0`$; the algebra assumes exact arithmetic, not an exact floating-point invariant.
 3. Why can a small absolute summation error be a large relative one?
    - Cancellation can make $`|\sum x_i|`$ tiny while $`\sum|x_i|`$ is large. The relative error bound contains their ratio, the summation condition number. At a zero exact sum use an absolute criterion instead.
-4. Does float32 accumulation make float16 inputs equivalent to original float32 inputs?
-   - No. It improves the accumulation of already rounded inputs. Any distinction erased by conversion to float16 is still gone, even if every later addition were exact.
+4. Does `float32` accumulation make `float16` inputs equivalent to original `float32` inputs?
+   - No. It improves the accumulation of already rounded inputs. Any distinction erased by conversion to `float16` is still gone, even if every later addition were exact.
 
 </details>
 
@@ -2374,7 +2374,7 @@ A solver stops because of a rule, not because mathematics declares the answer co
 **Study**
 
 1. [Linear residuals and conditioning](https://fncbook.com/python/condition-number/) (Fundamentals of Numerical Computation) - Section 2.8.1, Theorem 2.8.1; Section 2.8.2, Residual and backward error, Definition 2.8.2 and equation 2.8.11. Depth: Keep the normwise residual/error relationship. Do not reproduce the later least-squares solver comparison.
-2. [Fixed-point errors versus iteration stopping](https://fncbook.com/python/fixed-point/) (Fundamentals of Numerical Computation) - Sections 4.2.1 to 4.2.3, equations 4.2.2 to 4.2.7, Theorem 4.2.1 and Corollary 4.2.1; then Section 4.3.2's newton stopping implementation. Depth: Observation 4.2.1 says the iteration diverges for all initial values when $`|g'(p)|>1`$; read that as a local statement, since starting at $`p`$ stays at $`p`$. Theorem 4.2.1 as printed allows any invariant interval, but existence needs completeness: $`x/2`$ maps $`(0,1)`$ into itself with no fixed point there. Read it with $`S`$ a closed interval, then finish the existence step yourself in the self-test. Read the scalar stopping loop on the Newton page, not its graphical demos.
+2. [Fixed-point errors versus iteration stopping](https://fncbook.com/python/fixed-point/) (Fundamentals of Numerical Computation) - Sections 4.2.1 to 4.2.3, equations 4.2.2 to 4.2.7, Theorem 4.2.1 and Corollary 4.2.1; then Section 4.3.2's `newton` stopping implementation. Depth: Observation 4.2.1 says the iteration diverges for all initial values when $`|g'(p)|>1`$; read that as a local statement, since starting at $`p`$ stays at $`p`$. Theorem 4.2.1 as printed allows any invariant interval, but existence needs completeness: $`x/2`$ maps $`(0,1)`$ into itself with no fixed point there. Read it with $`S`$ a closed interval, then finish the existence step yourself in the self-test. Read the scalar stopping loop on the Newton page, not its graphical demos.
 3. [Objective certificates rather than tiny steps](https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) (Convex Optimization) - Section 5.5.1 (pp. 241 to 242) and Section 9.1.2, equations 9.9 to 9.10 (p. 460) and the strong convexity constants paragraph (p. 463). Depth: Read only primal-dual gap stopping and the strong-convexity gradient-to-suboptimality bound, including why an unknown m makes that bound a conceptual rather than practical stopping rule.
 
 **Focus**
@@ -2384,13 +2384,13 @@ A solver stops because of a rule, not because mathematics declares the answer co
 - For a $`\mu`$-strongly-convex differentiable unconstrained objective, $`\|\operatorname{grad} f(x)\|_2^2/(2\mu)`$ bounds the objective gap. Constraints and nonsmooth penalties need KKT or proximal residuals instead; noisy gradients are not exact stationarity residuals.
 - Check finite values first, then residual convergence, then stagnation and the iteration limit. Small successive steps can reflect poor scaling or rounding. Report the reason for exit rather than labeling every exit converged.
 
-**Reproduce:** Derive the residual-to-error bound by hand. In NumPy float64 set A=diag(1,1e-8), xstar=np.ones(2,dtype=np.float64), b=A@xstar and xhat=np.array([1,0],dtype=np.float64). Compute r=b-A@xhat: $`\|r\|_2=10^{-8}`$, relative residual=1e-8, relative solution error=0.7071067812, $`\kappa_2(A)=10^8`$, and normalized residual=5e-9 using the denominator $`\|A\|_2\|\hat{x}\|_2+\|b\|_2`$. Allow relative scalar tolerance 1e-9 for these displayed nonzero quantities. The relative-error bound is 1, so the large observed error does not contradict it. An absolute-only threshold 1e-7 accepts this poor answer. With $`\mathit{atol}=10^{-12}`$ and $`\mathit{rtol}=10^{-10}`$, the Euclidean residual test rejects it. Multiply both $`A`$ and $`b`$ by $`10^8`$: the residual becomes 1 and the relative residual remains about 1e-8; the same combined test rejects it again. Take one correction xhat+=np.linalg.solve(A,r) using the original A and r. The measured final Euclidean error and residual are both 0; require $`\le 10^{-12}`$ rather than exact equality. Finally work the harmonic partial sums $`H_n`$ by hand: successive increments tend to zero although $`H_n`$ diverges. Use this to justify a stagnation status separate from residual convergence. No random draws are needed.
+**Reproduce:** Derive the residual-to-error bound by hand. In NumPy `float64` set `A=diag(1,1e-8)`, `xstar=np.ones(2,dtype=np.float64)`, `b=A@xstar` and `xhat=np.array([1,0],dtype=np.float64)`. Compute `r=b-A@xhat`: $`\|r\|_2=10^{-8}`$, relative residual=1e-8, relative solution error=0.7071067812, $`\kappa_2(A)=10^8`$, and normalized residual=5e-9 using the denominator $`\|A\|_2\|\hat{x}\|_2+\|b\|_2`$. Allow relative scalar tolerance 1e-9 for these displayed nonzero quantities. The relative-error bound is 1, so the large observed error does not contradict it. An absolute-only threshold 1e-7 accepts this poor answer. With $`\mathit{atol}=10^{-12}`$ and $`\mathit{rtol}=10^{-10}`$, the Euclidean residual test rejects it. Multiply both $`A`$ and $`b`$ by $`10^8`$: the residual becomes 1 and the relative residual remains about 1e-8; the same combined test rejects it again. Take one correction `xhat+=np.linalg.solve(A,r)` using the original `A` and `r`. The measured final Euclidean error and residual are both 0; require $`\le 10^{-12}`$ rather than exact equality. Finally work the harmonic partial sums $`H_n`$ by hand: successive increments tend to zero although $`H_n`$ diverges. Use this to justify a stagnation status separate from residual convergence. No random draws are needed.
 
 **Traps**
 
 - Treating a tiny residual as a tiny solution error without checking the inverse sensitivity or condition number.
-- Using a relative-only tolerance when the target scale is zero, or comparing residuals in different units without rescaling atol.
-- Declaring convergence at maxiter or after a small update even though the residual test failed.
+- Using a relative-only tolerance when the target scale is zero, or comparing residuals in different units without rescaling `atol`.
+- Declaring convergence at `maxiter` or after a small update even though the residual test failed.
 
 **Practice**
 
@@ -2416,20 +2416,20 @@ A solver stops because of a rule, not because mathematics declares the answer co
 
 ### Mini-project: An optimizer and numerics test bench
 
-**About 12 to 16 hours.** Add optim/ to numlab: gradient descent, heavy-ball and AdamW with clipping, schedules and restartable state; a KKT and proximal-gradient pair checked against a solver; and the stable reductions. Compare the optimizers on changed geometry against eigenvalue predictions, then diagnose one divergence and one finite-precision failure.
+**About 12 to 16 hours.** Add `optim/` to `numlab`: gradient descent, heavy-ball and AdamW with clipping, schedules and restartable state; a KKT and proximal-gradient pair checked against a solver; and the stable reductions. Compare the optimizers on changed geometry against eigenvalue predictions, then diagnose one divergence and one finite-precision failure.
 
 1. Implement gradient descent, heavy-ball and AdamW with norm clipping (the exact projection), an update-indexed schedule and a state object holding parameters, moments, step count and schedule clock. Every loop exits with one status: residual converged, stagnated, non-finite or iteration cap, and a test forces each one.
 2. Run all three on quadratics with condition numbers 10, 100 and 1000, once diagonal and once rotated by a random orthogonal matrix. Before running, predict the gradient-descent rate from the eigenvalues; report the full gradient norm and objective gap against gradient evaluations, and compare with the prediction.
 3. Diagnose one divergence: take a step slightly above $`2/L`$, project the iterates onto the eigenvectors and show that only the top mode grows, at the predicted factor $`|1-\eta L|`$ per step. Then add minibatch noise to a finite-sum least-squares problem: check the with-replacement gradient covariance $`\Sigma/B`$ empirically and the constant-step plateau variance against $`\eta\sigma^2/(\lambda(2-\eta\lambda))`$ on a scalar model.
-4. Feed a constant gradient $`g`$ and check the moments against the finite geometric sums $`(1-\beta_1^t)g`$ and $`(1-\beta_2^t)g^2`$. Then, on one deterministic quadratic, match torch.optim.AdamW in float64 on the same clipped gradients and per-step learning rates, as in the adaptive unit. Save the state halfway, resume and check the final state against an uninterrupted run within 1e-12, and use the unclipped full gradient as the stationarity residual.
+4. Feed a constant gradient $`g`$ and check the moments against the finite geometric sums $`(1-\beta_1^t)g`$ and $`(1-\beta_2^t)g^2`$. Then, on one deterministic quadratic, match `torch.optim.AdamW` in `float64` on the same clipped gradients and per-step learning rates, as in the adaptive unit. Save the state halfway, resume and check the final state against an uninterrupted run within 1e-12, and use the unclipped full gradient as the stationarity residual.
 5. Change the two-coordinate QP from the KKT unit, solve it by hand and with CVXPY and Clarabel, and record every KKT residual and the solver status. Derive soft thresholding, then run proximal gradient on a lasso with a non-identity $`A`$ and step $`1/\|A\|_2^2`$; check it against a closed form on a diagonal $`A`$ and against CVXPY and the lasso optimality residual on the general $`A`$.
-6. Build the reductions: a log-sum-exp for finite nonempty inputs, left-to-right, balanced and Kahan sums, and online mean and variance, tested on cancellation, large offsets and float16 storage with float32 accumulation against math.fsum and float64 oracles. Diagnose one finite-precision failure end to end, such as the float16 running sum that stalls or the one-pass variance that returns zero, and show the repair.
+6. Build the reductions: a log-sum-exp for finite nonempty inputs, left-to-right, balanced and Kahan sums, and online mean and variance, tested on cancellation, large offsets and `float16` storage with `float32` accumulation against `math.fsum` and `float64` oracles. Diagnose one finite-precision failure end to end, such as the `float16` running sum that stalls or the one-pass variance that returns zero, and show the repair.
 
 **Deliverables**
 
-- numlab/optim/: the optimizers with exit statuses and restartable state, the KKT and proximal code, and the reductions.
+- `numlab/optim/`: the optimizers with exit statuses and restartable state, the KKT and proximal code, and the reductions.
 - The tests: rate predictions, the divergence projection, the noise checks, the AdamW oracle and resume, the KKT residual table, the lasso checks and the reduction oracles.
-- notes/optimization.md: the predictions beside the measurements and both failure diagnoses.
+- `notes/optimization.md`: the predictions beside the measurements and both failure diagnoses.
 
 **Checks**
 
@@ -2453,9 +2453,9 @@ Feeds into: Capstone component 5, optimizer stability: the comparison, the diver
 - **Required - Numerics:** [Fundamentals of Numerical Computation](https://fncbook.com/python/) - Study §§1.1-1.4, 2.7-2.8, 3.2-3.4 and 4.2-4.3 for floating point, conditioning, stability, least squares and iteration error, in the Python edition.
 - **Support - Reference:** [CVXPY basic and DCP tutorials](https://www.cvxpy.org/tutorial/intro/index.html) - Use as the solver oracle after deriving a constrained problem and its KKT conditions by hand.
 - **Reference - Theory:** [Proximal Algorithms](https://web.stanford.edu/~boyd/papers/pdf/prox_algs.pdf) - Read Sections 1.1, 4.2 and the elementwise soft-thresholding formula in 6.5.2, then the lasso formulation on p. 196. Skip 7.1.1's penalty-scaling and Gram-rewrite errors on p. 197; derive the update from 4.2 and 6.5.2.
-- **Reference - Reference:** [PyTorch optimizer and gradient-clipping contracts](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) - Use AdamW's algorithm and clip_grad_norm_'s parameters to locate weight decay and clipping precisely. Inspect state_dict for optimizer restart; no network training is assigned.
-- **Reference - Reference:** [SciPy minimize: BFGS](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html) - Read the BFGS method description and gtol, maxiter, c1 and c2 options. Supply an analytic gradient and compare residuals and evaluation counts, not just iterations.
-- **Reference - Reference:** [PyTorch numerical type information](https://docs.pytorch.org/docs/2.14/type_info.html) - Read torch.finfo's eps, max and smallest_normal fields and its subnormal note; inspect float64, float32, float16 and bfloat16 on CPU.
+- **Reference - Reference:** [PyTorch optimizer and gradient-clipping contracts](https://docs.pytorch.org/docs/2.14/generated/torch.optim.AdamW.html) - Use AdamW's algorithm and `clip_grad_norm_`'s parameters to locate weight decay and clipping precisely. Inspect `state_dict` for optimizer restart; no network training is assigned.
+- **Reference - Reference:** [SciPy minimize: BFGS](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html) - Read the BFGS method description and `gtol`, `maxiter`, `c1` and `c2` options. Supply an analytic gradient and compare residuals and evaluation counts, not just iterations.
+- **Reference - Reference:** [PyTorch numerical type information](https://docs.pytorch.org/docs/2.14/type_info.html) - Read `torch.finfo`'s `eps`, `max` and `smallest_normal` fields and its subnormal note; inspect `float64`, `float32`, `float16` and `bfloat16` on CPU.
 - **Reference - Theory:** [The Accuracy of Floating Point Summation](https://nhigham.com/wp-content/uploads/2023/10/high93s.pdf) - Read Section 2's recursive-sum error bound and Section 3's pairwise and compensated summation algorithms. Leave the statistical error models and historical machine details aside.
 - **Support - Implementation:** [Accurately computing running variance](https://www.johndcook.com/blog/standard_deviation/) - Read the Welford mean and centered-sum recurrences. Prove the centered-sum invariant and translate the recurrence to NumPy; skip the C++ class.
 
