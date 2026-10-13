@@ -20,6 +20,16 @@
       "access": "Free",
       "use": "Sections 1.1 to 1.2, 2.1.1 to 2.1.3, 3.1.1 and 3.1.4 for cubin extraction, resource reports and line-correlated SASS. The existing compiler and PTX references lack a worked binary-tool workflow.",
       "url": "https://docs.nvidia.com/cuda/cuda-binary-utilities/index.html"
+    },
+    {
+      "id": "pytorch-native-boundaries-gpu2",
+      "role": "tutorial",
+      "priority": "required",
+      "name": "PyTorch custom C++/CUDA operators and CUDA semantics",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Custom C++ and CUDA Operators: build system, backend registration, Testing an operator and mutable schema; CUDA semantics 2.14: CUDA streams. These fill the native tensor-boundary gap in the CUDA-only pool. Stop before fake-kernel and autograd implementation; harden the tutorial's CUDA example for empty inputs, same-device checks, device guards, indexing width and launch errors.",
+      "url": "https://docs.pytorch.org/tutorials/advanced/cpp_custom_ops.html"
     }
   ],
   "units": [
@@ -680,7 +690,7 @@
     {
       "id": "native-extension-contracts",
       "title": "Native extension contracts: shapes, strides, aliasing and layout",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -689,53 +699,83 @@
         "alignment-aliasing-layout"
       ],
       "outcomes": [
-        "TODO"
+        "Specify and enforce shape, dtype, device, stride, alignment and aliasing preconditions at a native tensor boundary.",
+        "Launch on the input device's current framework stream while preserving tensor ownership and lifetime.",
+        "Test valid views, empty inputs and rejected inputs against an independent framework reference."
       ],
-      "why": "TODO",
+      "why": "A correct standalone kernel can become incorrect when passed a tensor view or launched on the wrong stream. The wrapper is part of the algorithm's correctness contract.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-execution-memory-codegen/capability-detection-fallback",
+          "note": "Select an optimized implementation only after its boundary and device preconditions hold."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-native-boundaries-gpu2",
+          "title": "PyTorch: custom C++ and CUDA operators, January 20, 2026",
+          "url": "https://docs.pytorch.org/tutorials/advanced/cpp_custom_ops.html",
+          "locator": "Setting up the Build System; Defining the custom op and adding backend implementations through the CUDA registration; Testing an operator; Creating mutable operators, schema discussion only",
+          "depth": "Choose one API tab compatible with your installation; the non-ABI-stable ATen path is sufficient here. Do not copy the CUDA sample unchanged: it lacks empty-input handling, same-device validation, a device guard and launch-error checks, and narrows the element count to `int`. Skip fake-kernel, autograd and wheel-packaging implementation. Full `opcheck` integration follows after those registrations; it is not a numerical oracle."
+        },
+        {
+          "resource": "pytorch-native-boundaries-gpu2",
+          "title": "PyTorch 2.14: CUDA stream order and allocation lifetime",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/cuda.html#cuda-streams",
+          "locator": "CUDA streams, including the `wait_stream` and `record_stream` examples"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: restricted pointers and access alignment",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/cpp-language-extensions.html#restrict-pointers",
+          "locator": "Section 5.4.1.4, `__restrict__`"
+        },
+        {
+          "resource": "nvidia-cuda-kernel-patterns-gpu2",
+          "title": "NVIDIA: vector-load alignment",
+          "url": "https://developer.nvidia.com/blog/cuda-pro-tip-increase-performance-with-vectorized-memory-access/",
+          "locator": "Vector-type alignment discussion through the aligned `int2` pointer-offset example",
+          "depth": "Skip the complete vector-copy kernels with faulty remainder ownership."
         }
       ],
       "focus": [
-        "TODO"
+        "Choose a layout policy: reject unsupported strides, index actual strides, or explicitly normalize inputs with `contiguous()`. Include normalization cost in end-to-end measurements.",
+        "For a simple out-of-place map, accept same-shape float32 CUDA inputs on the same device, allocate a fresh output, and define whether gradients are supported. Do not promise broadcasting or mutation accidentally.",
+        "A view's data pointer includes its storage offset but says nothing about subsequent strides or vector alignment. Validate vector alignment independently and provide a scalar tail or fallback.",
+        "Guard the input device and use its current framework stream, not an assumed default stream. If work crosses streams, execution dependencies and caching-allocator lifetime need separate handling."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Build an inference-only out-of-place float32 vector-add extension. Require equal shapes and one CUDA device, explicitly normalize noncontiguous inputs, guard that device, use its current stream and wide grid-stride indices, return an empty output without a zero-block launch, and check launch errors. Compare with `a + b` on lengths 0, 1, 31, 32, 33 and 1003, a transposed two-dimensional view and a contiguous view offset by one element. Reject mismatched shapes, dtypes, devices and gradient-requiring inputs under the stated inference contract. Confirm fresh output storage, unchanged inputs and non-default-stream execution with an explicit dependency before host validation.",
       "traps": [
-        "TODO"
+        "Using `numel()` and a raw pointer as proof of contiguous layout. A transposed tensor has the same element count but different strides.",
+        "Adding `__restrict__` while permitting output-input overlap. The promise must match the actual access and aliasing contract; two read-only inputs aliasing each other is a different case.",
+        "Synchronizing the whole device on every call to hide stream bugs. Preserve asynchronous behavior and synchronize only at the test or measurement boundary."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A float32 allocation is aligned to 16 bytes. Is its view starting one element later safe for an `int4` load?",
+          "a": "No. The four-byte offset breaks 16-byte alignment. Use an aligned path or scalar accesses instead."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does `record_stream` make a consuming stream wait for a producer?",
+          "a": "No. It tells the allocator about use on another stream. A stream wait or event establishes execution order; lifetime tracking is separate."
+        },
+        {
+          "q": "Does passing `opcheck` prove the arithmetic and gradients are correct?",
+          "a": "No. It checks registration behavior. Use an independent numerical reference and, when gradients are supported later, separate gradient tests."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` native vector-add wrapper, explicit inference contract, view/alignment tests, rejection matrix and non-default-stream lifetime checks. Fake-tensor and autograd integration remain later work.",
+      "stopWhen": "Your wrapper passes the valid-input reference matrix and rejects unsupported inputs before launch, with documented layout, aliasing, stream and lifetime policies.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The CUDA-only pool has no framework tensor-boundary or allocator-lifetime locator; official PyTorch custom-operator and CUDA-stream documentation fills the coverage and currency gaps."
       }
     },
     {
       "id": "capability-detection-fallback",
       "title": "Compute capability, feature detection and fallback paths",
-      "hours": 2,
+      "hours": 3,
       "target": [
         "implement"
       ],
@@ -744,47 +784,76 @@
         "capability-fallback"
       ],
       "outcomes": [
-        "TODO"
+        "Query device and kernel limits and distinguish feature support from launch legality and binary compatibility.",
+        "Implement a deterministic dispatch decision with a validated baseline fallback and an explicit unsupported reason.",
+        "Exercise both dispatch branches without claiming that an unavailable hardware feature was executed."
       ],
-      "why": "TODO",
+      "why": "Compilation for a new target does not make a feature available on an older device. A portable library needs an observable decision and a baseline whose correctness does not depend on the optimization.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/transpose-tiling-banks",
+          "note": "Keep a validated ordinary-kernel path while introducing tiled and architecture-specific variants."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cuda-best-practices-gpu2",
+          "title": "CUDA C++ Best Practices Guide 13.4: availability, errors and compatible builds",
+          "url": "https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#testing-for-cuda-availability",
+          "locator": "Sections 17.1 to 17.3"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: queried resource limits",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/writing-cuda-kernels.html#kernel-launch-and-occupancy",
+          "locator": "Section 2.3.7, device properties, kernel attributes and occupancy APIs"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: cubin and PTX compatibility",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/nvcc.html",
+          "locator": "Section 2.7.3.1"
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: an architecture-gated feature",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html#thread-block-clusters",
+          "locator": "Section 1.2.2.1.1, Thread Block Clusters",
+          "depth": "Explain eligibility only. Do not implement a cluster kernel in this unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Check device availability and every query's return status before reading fields. Record compute capability, SM count, thread limits, shared-memory limits and compiled-kernel attributes.",
+        "A capability predicate, per-launch resource check and compatible code image are separate requirements. Device names and toolkit versions are not substitutes for those checks.",
+        "Build dispatch as a pure decision over queried facts and boundary facts, then launch only the selected legal path. Include an override that forces the baseline for differential testing.",
+        "Do not treat all CUDA errors as permission to retry another kernel. Invalid input or a failed execution can require reporting the error rather than continuing in a damaged context."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Query `cudaGetDeviceProperties`, `cudaFuncGetAttributes` and the occupancy API for the baseline. Record `clusterLaunch` from the device properties as a feature-eligibility observation, not a cluster execution test. Implement a vector-copy selector requiring 16-byte-aligned pointers, compatible element type, a correctly handled tail and legal launch resources; otherwise choose the scalar grid-stride copy. Unit-test synthetic dispatch facts on the CPU, but launch only paths actually supported by the current device. Compare automatic dispatch and forced baseline on lengths 0, 1, 31, 32, 33 and 1025 and on offset views. Log the selected path and failed precondition. An unavailable device produces an explicit unsupported result, not a fabricated successful GPU run.",
       "traps": [
-        "TODO"
+        "Hard-coding a product-name whitelist. Similar names can have different limits and future devices are unknown to the list.",
+        "Forcing a synthetic supported capability into a real launch. Mocking tests the decision function, not hardware execution.",
+        "Equating PTX forward compatibility with unrestricted driver compatibility. The installed driver must understand the shipped PTX version and support the device."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does a legal thread count prove a kernel launch is legal?",
+          "a": "No. Registers, static plus dynamic shared memory, kernel-specific limits and other launch requirements also matter."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "How do you test an unavailable optimized branch honestly?",
+          "a": "Test its decision logic with synthetic facts and report execution as untested on this device. Run the baseline and any genuinely supported optimized paths against the reference."
+        },
+        {
+          "q": "Does a feature-support query prove that the optimized path is faster?",
+          "a": "No. It proves eligibility for that feature, not performance. Choose a default only after representative correctness-checked measurements."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` queried capability manifest, pure dispatch tests, automatic-versus-forced-baseline comparisons and explicit unsupported-feature report. Cluster execution is not required on unsupported hardware.",
+      "stopWhen": "Your dispatch report explains every tested selection, both supported copy paths match the reference, and unavailable hardware paths are clearly separated from mocked decision tests.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's current CUDA availability, compatibility and resource-query locators cover the unit; the section mini-project supplies dispatch and fallback practice."
       }
     }
   ]
