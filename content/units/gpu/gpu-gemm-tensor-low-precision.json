@@ -8,7 +8,7 @@
       "name": "CUDA 13.0 matrix programming and PTX references",
       "provider": "NVIDIA",
       "access": "Free",
-      "use": "Coverage and correctness gap: the pool lacks a precise WMMA contract and Lab 6 misstates TF32 conversion and register types. Use Programming Guide 10.24 and PTX ISA 9.0 `mma.m16n8k8` fragments, `mma` and `cvt`, archived with CUDA 13.0.0; also consult `cp.async` completion semantics.",
+      "use": "Coverage and correctness gap: the pool lacks a precise WMMA contract, and Lab 6 relies on TF32 conversion and register behavior the PTX ISA leaves unspecified. Use Programming Guide 10.24 and PTX ISA 9.0 `mma.m16n8k8` fragments, `mma` and `cvt`, archived with CUDA 13.0.0; also consult `cp.async` completion semantics.",
       "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html#warp-matrix-functions"
     },
     {
@@ -298,7 +298,7 @@
           "resource": "cute-gemm-gpu5",
           "title": "A concrete swizzled Ampere layout",
           "url": "https://github.com/NVIDIA/cutlass/blob/v4.2.1/examples/cute/tutorial/sgemm_sm80.cu",
-          "locator": "`gemm_tn`: `sA`, `sB` and `Swizzle<3,3,3>`; `gemm_device`: `partition_A`, `partition_B` and `partition_C`, CUTLASS v4.2.1",
+          "locator": "`gemm_tn`: `sA`, `sB` and `Swizzle<3,3,3>`; `gemm_device`: `partition_S` and `partition_D` for the copies, `partition_C` and `partition_fragment_A`/`partition_fragment_B` for the MMA, CUTLASS v4.2.1",
           "depth": "Read the half specialization's 128 by 128 by 64 block tile and three shared stages. Its default accumulator is half, not FP32; do not use its timing harness as a correctness oracle."
         }
       ],
@@ -315,7 +315,7 @@
       ],
       "selfTest": [
         {
-          "q": "Why need copy and compute ownership not match?",
+          "q": "Why may copy and compute ownership differ?",
           "a": "Copies should follow global-memory and copy-instruction constraints; computation should follow MMA operand ownership. Shared memory connects the two partitions."
         },
         {
@@ -337,7 +337,7 @@
     },
     {
       "id": "tensor-core-mma",
-      "title": "Tensor-core MMA: WMMA, mma.sync fragments and CuTe atoms",
+      "title": "Tensor-core MMA: WMMA, `mma.sync` fragments and CuTe atoms",
       "hours": 5,
       "target": [
         "implement"
@@ -365,7 +365,7 @@
           "title": "Tensor-core model and one-instruction exercise",
           "url": "https://accelerated-computing.academy/fall25/labs/lab6",
           "locator": "Fall 2025 Lab 6 Part 0: Tensor Cores and `exercise_mma.cu`",
-          "depth": "Stop before full-matrix optimization. Correct two handout claims: multiplicands use bit registers, accumulators use float registers, and FP32 inputs need explicit TF32 conversion rather than implicit truncation."
+          "depth": "Stop before full-matrix optimization. The handout passes raw FP32 bits through integer registers for every operand and relies on implicit truncation. That passes the lab tests on Ampere, but the PTX ISA leaves the TF32 layout implementation-defined and types multiplicands as `.b32` and accumulators as `.f32`, so convert explicitly and use float registers for the accumulators."
         },
         {
           "resource": "cuda-matrix-reference-gpu5",
@@ -395,9 +395,9 @@
         "For `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`, each lane supplies four TF32 bit-pattern values for the first operand, two for the second, and four FP32 accumulator values. Use inline-assembly `r` constraints for multiplicands and `f` constraints for accumulators.",
         "MMA shape, input representation, accumulator type and output storage are separate parts of the numerical contract. One collective instruction performs 2048 useful FLOPs for this shape."
       ],
-      "reproduce": "Implement the one-warp 16 by 8 by 8 TF32 product in Lab 6 `exercise_mma.cu`. Explicitly convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, then issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`. Run its permutations, basis products, decimal inputs and zero/nonzero accumulator cases against the bundled absolute-error threshold 0.005. Inspect generated PTX and SASS for conversion and tensor instructions; explain each lane's loaded and stored coordinates.",
+      "reproduce": "Implement the one-warp 16 by 8 by 8 TF32 product in Lab 6 `exercise_mma.cu`. Explicitly convert each multiplicand with Ampere-compatible `cvt.rna.tf32.f32`, then issue `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`. Run its permutations, basis products, decimal inputs and zero/nonzero accumulator cases against the bundled absolute-error threshold 0.005. Inspect the generated PTX and SASS: on an RTX 3050 with CUDA 13.4, each conversion appears as an `FSETP` finite check plus an integer add of `0x1000` rather than a named convert instruction, and the product as one `HMMA.1688.F32.TF32`; explain each lane's loaded and stored coordinates.",
       "traps": [
-        "Passing arbitrary FP32 bit patterns as TF32 operands and expecting the MMA to convert them.",
+        "Passing raw FP32 bit patterns as TF32 operands because the lab tests pass. The PTX ISA leaves the TF32 layout implementation-defined; convert with `cvt.rna.tf32.f32` so the rounding is the one you state.",
         "Executing a collective MMA or WMMA call in only some lanes, including at an output boundary.",
         "Using a WMMA fragment's array index as a portable row or column index."
       ],
@@ -419,13 +419,14 @@
         {
           "name": "MIT 6.S894 Lab 6 Part 0 - `exercise_mma`",
           "url": "https://accelerated-computing.academy/fall25/labs/lab6",
-          "locator": "Implement `exercise_mma.cu` for `sm_80` or newer; retain the supplied fragment and numerical tests."
+          "locator": "Implement `exercise_mma.cu` for `sm_80` or newer; retain the supplied fragment and numerical tests.",
+          "note": "Clone the public `accelerated-computing-class/lab6` repository and build locally with `nvcc -O3 -arch=sm_86 exercise_mma.cu -o exercise_mma` instead of the course runner; a correct kernel prints `mma_16x8x8 tests passed`."
         }
       ],
       "stopWhen": "The one-warp exercise passes every supplied case, and you can distinguish PTX ownership from opaque WMMA fragments and identify the emitted tensor instruction.",
       "fit": {
         "verdict": "added",
-        "note": "Coverage and correctness failed for the WMMA contract and Lab 6's conversion/register claims. The archived official CUDA family fills that gap while retaining MIT practice and CuTe atoms."
+        "note": "Coverage failed for the WMMA contract, and Lab 6 relies on register and conversion behavior the PTX ISA leaves unspecified. The archived official CUDA family fills that gap while retaining MIT practice and CuTe atoms."
       }
     },
     {
@@ -488,7 +489,7 @@
         "Two stages double the one-stage shared allocation before padding. Additional stages consume resources and do not guarantee faster execution.",
         "Warp specialization assigns copy and compute roles to different warps. Separate role-specific readiness and release signals from a barrier requiring all block threads."
       ],
-      "reproduce": "Draw and implement a two-buffer schedule for zero, one, two and five reduction tiles: prefetch tile zero when present, complete the current stage, issue the next tile into the free stage, compute, synchronize before reuse, and drain outstanding copies. Use 4-byte Ampere `cp.async` copies with zero source size for masked FP32 inputs. Test shapes (17,19,1), (17,19,16), (17,19,17) and (17,19,65) with reduction tile 16 against CPU double products of integers cycling -2 to 2. Run memory, race and synchronization sanitizers, then compare synchronous and pipelined event intervals without assuming a speedup.",
+      "reproduce": "Draw and implement a two-buffer schedule for zero, one, two and five reduction tiles: prefetch tile zero when present, complete the current stage, issue the next tile into the free stage, compute, synchronize before reuse, and drain outstanding copies. Use 4-byte Ampere `cp.async.ca` copies (`.cg` takes only 16 bytes) with zero source size for masked FP32 inputs. Test shapes (17,19,0), (17,19,1), (17,19,16), (17,19,17) and (17,19,65) with reduction tile 16 against CPU double products of integers cycling -2 to 2. Run memory, race and synchronization sanitizers, then compare synchronous and pipelined event intervals without assuming a speedup.",
       "traps": [
         "Waiting on the wrong group count in the final iteration and consuming an unfinished stage.",
         "Reusing a buffer after copy completion but before all computation using it has finished.",
