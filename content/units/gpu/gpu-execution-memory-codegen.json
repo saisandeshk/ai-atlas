@@ -10,6 +10,16 @@
       "access": "Free",
       "use": "Read the grid-stride SAXPY loop and its scalability and debugging discussion (April 22, 2013), plus the scalar-copy SASS and vector-type alignment discussion in Increase Performance with Vectorized Memory Access (August 4, 2025). Skip the latter article's full vector-copy kernels: their tail-thread condition can omit remainders. These fill the pool's grid-stride and vector-width coverage gaps.",
       "url": "https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/"
+    },
+    {
+      "id": "cuda-binary-utilities-gpu2",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "CUDA Binary Utilities 13.4",
+      "provider": "NVIDIA",
+      "access": "Free",
+      "use": "Sections 1.1 to 1.2, 2.1.1 to 2.1.3, 3.1.1 and 3.1.4 for cubin extraction, resource reports and line-correlated SASS. The existing compiler and PTX references lack a worked binary-tool workflow.",
+      "url": "https://docs.nvidia.com/cuda/cuda-binary-utilities/index.html"
     }
   ],
   "units": [
@@ -524,47 +534,72 @@
         "atomics-memory-visibility"
       ],
       "outcomes": [
-        "TODO"
+        "Choose warp, block, cluster or device coordination from the communicating participants.",
+        "Distinguish atomicity, memory ordering and barriers, and derive a release/acquire publication relation.",
+        "Identify a synchronization hazard caused by divergent participation or inter-block scheduling."
       ],
-      "why": "TODO",
+      "why": "An atomic flag is not automatically a publication protocol. Correct coordination needs both a matching scope and an ordering relation for the payload.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-cuda-primitives-async/transpose-tiling-banks",
+          "note": "Place block barriers around a shared-memory tile's producer and consumer phases."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: scope and atomic order",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/advanced-kernel-programming.html",
+          "locator": "Section 3.2.3 scope table and Section 3.2.4.1.1",
+          "depth": "Read the scoped atomic definitions, not the full producer-consumer sample: its shared flag is not initialized. Cluster and grid cooperative programming are later implementation work."
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: barriers and participating lanes",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/cpp-language-extensions.html",
+          "locator": "Sections 5.4.4.1 and 5.4.4.2, `__syncthreads` and `__syncwarp` definitions",
+          "depth": "Skip the Section 5.4.4.1 example labelled valid behavior: `shared_data[128 - threadIdx.x]` addresses index 128 for thread 0 in a 128-element array."
+        },
+        {
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: memory model and publication",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/cuda-cpp-memory-model.html",
+          "locator": "Sections 5.7.1, 5.7.3 to 5.7.5",
+          "depth": "Trace the message-passing ordering, but do not use an inter-block spin wait as a general grid barrier: waiting resident blocks can prevent a producer block from being scheduled."
         }
       ],
       "focus": [
-        "TODO"
+        "Scope identifies which threads an atomic operation can coordinate. Device scope does not turn the operation into a device-wide barrier; system scope has additional type, alignment and platform prerequisites.",
+        "A release store publishes earlier payload writes to a consumer whose acquire load reads that store, provided both operations have sufficient scope. A relaxed atomic update alone orders no unrelated payload.",
+        "A block barrier requires block-uniform participation and orders participating threads' relevant prior accesses. A warp barrier requires a correct participant mask; implicit lockstep is not a synchronization contract.",
+        "Initialization must happen before flag use. Separate correctness of memory ordering from forward progress: an ordered spin loop can still deadlock under an unsuitable launch."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw and then implement a two-warp, one-block publication test. Thread 0 initializes a shared integer flag to zero; all 64 threads execute a block barrier. Thread 0 writes payload 42 and uses `cuda::atomic_ref<int, cuda::thread_scope_block>` to release-store flag 1. Thread 32 acquire-loads until it sees 1, then writes the payload to an output slot. The host must observe 42 after checked completion. Explain the initialization barrier and release/acquire happens-before path separately; do not move this protocol to arbitrary blocks without a forward-progress argument.",
       "traps": [
-        "TODO"
+        "Putting a block barrier inside a lane-dependent bounds condition. Guard memory operations while keeping required barrier participation uniform.",
+        "Using `volatile` or a memory fence as a substitute for an atomic flag and a matching acquire operation.",
+        "Calling a successful stress test proof of a racy protocol. A missing ordering relation can remain invisible on a particular run."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does a relaxed atomic increment publish an unrelated ordinary write?",
+          "a": "No. It makes the increment atomic at its scope, but supplies no release/acquire relation for the unrelated payload."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can a device-scoped flag safely coordinate host reads on every platform?",
+          "a": "No. Host coordination needs a supported system-scoped mechanism and compatible memory, or explicit stream completion and transfer."
+        },
+        {
+          "q": "Why can a correctly ordered inter-block spin protocol hang?",
+          "a": "Waiting blocks can occupy the available residency slots while the producer remains unscheduled. Memory ordering does not guarantee block scheduling or a global barrier."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` initialized block-local publication test, shared-memory producer/consumer barriers and a written scope-and-progress audit. Deliberately racy variants are analyzed, not treated as valid timed kernels.",
+      "stopWhen": "Your publication test returns 42, and you can trace its initialization, synchronization scope and happens-before relation without relying on observed lockstep.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The current CUDA guide supplies precise scope, barrier and ordering locators; defective examples are excluded and the mini-project provides bounded implementation practice."
       }
     },
     {
@@ -582,47 +617,64 @@
         "sass-binary-inspection"
       ],
       "outcomes": [
-        "TODO"
+        "Explain host compilation, PTX generation, offline assembly and driver JIT without calling PTX the final machine code.",
+        "Build and inspect explicit virtual and real architecture targets, recording toolchain and resource use.",
+        "Connect a source-level hypothesis to retained SASS instructions and a correctness-checked timing comparison."
       ],
-      "why": "TODO",
+      "why": "The compiler can remove, fuse, predicate or scalarize the code you intended to measure. Binary inspection makes the experiment about the instructions that actually execute.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-execution-memory-codegen/capability-detection-fallback",
+          "note": "Package compatible code images and select only supported features at runtime."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cuda-guide-gpu2",
+          "title": "CUDA Programming Guide 13.4.2: compiler trajectory and targets",
+          "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/02-basics/nvcc.html",
+          "locator": "Sections 2.7.2, 2.7.3.1, 2.7.4.2 and 2.7.4.3"
+        },
+        {
+          "resource": "cuda-binary-utilities-gpu2",
+          "title": "CUDA Binary Utilities 13.4: resource reports and disassembly",
+          "url": "https://docs.nvidia.com/cuda/cuda-binary-utilities/index.html",
+          "locator": "Sections 1.1 to 1.2, 2.1.1 to 2.1.3, 3.1.1 and 3.1.4",
+          "depth": "Use command examples and line correlation only; skip control-flow graph tooling and instruction tables for architectures other than your target."
         }
       ],
       "focus": [
-        "TODO"
+        "A virtual `compute_86` target defines the PTX feature set; real `sm_86` code is assembled machine code. A fat binary can carry several cubins and PTX for eligible JIT fallback.",
+        "Save compiler version, flags, PTX, cubin resource reports and SASS together. `-lineinfo` aids correlation without the optimization changes caused by device debugging with `-G`.",
+        "PTX registers are virtual and do not equal allocated hardware registers. Use `ptxas` reports, kernel attributes and final binary resource information.",
+        "Annotate global loads/stores, bounds handling, FMA instructions and any local loads/stores in the final code. A source expression is not a guaranteed instruction sequence."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For the bounded grid-stride map, run `nvcc -O3 -lineinfo -arch=sm_86 -Xptxas=-v map.cu -o map`, `nvcc -O3 -arch=compute_86 -ptx map.cu -o map.ptx`, and `nvcc -O3 -lineinfo -arch=sm_86 -cubin map.cu -o map.cubin`. Inspect with `cuobjdump --dump-sass --dump-resource-usage map` and `nvdisasm --print-line-info map.cubin`. These are the local RTX 3050 targets; choose matching targets on another device. Locate the retained index calculation, tail handling and stores, then validate and event-time the executable. Report actual registers and spills without assuming a fixed allocation or speedup.",
       "traps": [
-        "TODO"
+        "Counting PTX instructions as hardware issue cost. Assembly and JIT can transform them.",
+        "Benchmarking a `-G` build and generalizing its register use or time to the optimized build.",
+        "Inspecting a different architecture image or stale executable from the one measured. Keep artifact identities and commands in the evidence manifest."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does shipping only an `sm_86` cubin guarantee execution on every later GPU?",
+          "a": "No. Cubin compatibility is constrained; a different major architecture generally needs its own compatible image or eligible PTX fallback."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why might source multiplication plus addition appear as one instruction?",
+          "a": "The compiler can contract it to an FMA, subject to compilation rules. Inspect SASS and account for the changed rounding when comparing references."
+        },
+        {
+          "q": "Can a kernel with many PTX register names use few physical registers?",
+          "a": "Yes. Virtual-register lifetimes can share physical registers after optimization and allocation. The final resource report is the relevant count."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` source/PTX/cubin/SASS evidence bundle, compiler resource table and one disassembly-backed paired timing hypothesis.",
+      "stopWhen": "Your evidence bundle ties the validated executable to its targets, resource report and annotated final instructions, and distinguishes offline cubin execution from possible PTX JIT.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The pool explains compilation and PTX but lacks binary-tool command and line-correlation locators; official CUDA Binary Utilities supplies that reference gap."
       }
     },
     {
