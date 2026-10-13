@@ -2,7 +2,7 @@
   "miniProject": {
     "title": "Execution and memory mapping with a PTX and SASS evidence bundle",
     "hours": "12 to 16",
-    "brief": "Build the execution model inside kernellab: an explicit-memory vector-add baseline, grid-stride tails, a block-local publication test, a source to PTX to SASS bundle with a resource table, a native extension with an explicit contract, and a capability manifest with dispatch and fallback. Hopper and Blackwell features are reading and static audit only on the available hardware.",
+    "brief": "Build the execution model in kernellab on your GPU: an explicit-memory baseline, grid-stride tails, a block-local publication test, a source to SASS bundle, a native extension and a capability manifest. Predictions precede profiles throughout, and unsupported features are audited statically. The baseline, manifest and selector carry into later timing work.",
     "units": [
       "cuda-programming-model",
       "warps-sms-latency-hiding",
@@ -16,18 +16,18 @@
       "capability-detection-fallback"
     ],
     "steps": [
-      "Write `kernels/cuda/map.cu` as an explicit-memory single-precision vector add for 1003 elements with inputs `a[i] = float(i)` and `b[i] = 1.0f`, four blocks of 256 threads, explicit allocation and copies, a bounds check and a checked launch. All 1003 results must equal `float(i + 1)` exactly against an independent host reference, 21 launched threads must do no memory access, every CUDA return value is checked and all allocations are freed. Cover the two-dimensional index map with a kernel that writes each thread linear index, warp index and lane index for `dim3 block(16, 3, 1)`: warp 0 holds rows 0 and 1, warp 1 holds row 2 with 16 unused positions, and two such blocks allocate four warps.",
-      "Derive before running: sector counts 4, 5 and 32 with useful fractions 100 percent, 80 percent and 12.5 percent for the three 32-lane four-byte patterns from a 32-byte aligned base; bank degrees 1, 2, 1, 32 and 1 for strides 1, 2, 3, 32 and 33 with degree 1 on broadcast; and the simplified occupancy example with 100 threads per block, 64 registers per effective thread and 2048 shared bytes per block giving four warps and 128 effective threads per block, four resident blocks, 16 resident warps and 50 percent occupancy. Check the arithmetic with a byte-interval union counter and a bank enumerator, then on the GPU: time paired coalesced (`4l`), shifted (`4l+4`) and strided (`32l`) copies and a conflicting (stride 32) against padded (stride 33) shared-memory kernel with interleaved events; sweep the compiled vector-add at 128, 256 and 512 threads with 0, 16384 and 32768 dynamic shared bytes through `cudaOccupancyMaxActiveBlocksPerMultiprocessor` (12, 5 and 3 blocks per SM at 128 threads on an RTX 3050 with CUDA 13.4) with `cuobjdump -res-usage` kept; force one spill with `-maxrregcount` and show it in `-Xptxas=-v`; and show a block above `maxThreadsPerBlock` failing with a checked launch error.",
-      "Convert the baseline to a grid-stride loop. For 1003 elements with one block of 128 threads, thread 0 handles indices 0, 128, 256, 384, 512, 640, 768 and 896 and thread 127 handles seven indices ending at 895; validate every result against the host reference, then repeat with a one-thread launch at lengths 0, 1, 31, 32 and 33. Pair a uniform control kernel with a divergent one, annotate the retained branch, predication and reconvergence in PTX and SASS, and state which timing difference the annotation explains.",
-      "Draw then implement a two-warp one-block publication test: thread 0 initializes a shared integer flag to zero, all 64 threads reach a block barrier, thread 0 writes payload 42 then release-stores flag 1 with `cuda::atomic_ref<int, cuda::thread_scope_block>`, and thread 32 acquire-loads until it sees 1 then writes the payload to an output slot that the host checks equals 42 after checked completion. Write the scope-and-progress audit separately for the initialization barrier and the release and acquire path. Keep deliberately racy variants as analyzed cases with the missing ordering named, never as timed kernels.",
-      "Bundle source, PTX, cubin and SASS for the bounded grid-stride map with `nvcc -O3 -lineinfo -arch=sm_86 -Xptxas=-v map.cu -o map`, `nvcc -O3 -arch=compute_86 -ptx map.cu -o map.ptx` and `nvcc -O3 -lineinfo -arch=sm_86 -cubin map.cu -o map.cubin`, inspected with `cuobjdump --dump-sass --dump-resource-usage map` and `nvdisasm --print-line-info map.cubin`. Keep the compiler resource table and test one disassembly-backed paired timing hypothesis with event timing, for example aligned vector copies against scalar tails on odd shapes.",
-      "Build an inference-only out-of-place float32 vector-add extension that requires equal shapes on one CUDA device, normalizes noncontiguous inputs explicitly, guards the device, uses its current stream with wide grid-stride indices, returns an empty output without a zero-block launch and checks launch errors. Compare with `a + b` at lengths 0, 1, 31, 32, 33 and 1003, a transposed two-dimensional view and a contiguous view offset by one element; reject mismatched shapes, dtypes, devices and gradient-requiring inputs in a rejection matrix, and check lifetime on a non-default stream. Record TMA, cluster and tensor-memory paths as a static audit only.",
-      "Query `cudaGetDeviceProperties`, `cudaFuncGetAttributes` and the occupancy API into a capability manifest, recording `clusterLaunch` as a feature-eligibility observation without claiming cluster execution. Implement a vector-copy selector that takes a 16-byte aligned path only with compatible type, handled tail and legal launch resources and otherwise takes the scalar grid-stride copy. Test synthetic dispatch facts on the CPU and all three launch branches on the RTX 3050, compare automatic against forced-baseline timing with events, and file an explicit unsupported-feature report for paths the hardware cannot run."
+      "Write an explicit-memory single-precision vector add in `kernels/cuda/map.cu` on your GPU. Build with `-arch=native`, size work to fit your GPU's memory, check every result against an independent host reference, and keep the tests.",
+      "Predict sector, bank and occupancy behavior before running, using TensorTonic Occupancy Calculator, Coalescing Counter and Bank Conflict Analyzer. Check predictions with event timings and compiler resource reports, and keep the derivation sheet.",
+      "Convert the baseline to a grid-stride loop with checked tails, including empty inputs. Pair uniform and divergent kernels, annotate the retained branch and reconvergence in PTX and SASS, and keep the annotated bundle.",
+      "Build a two-warp block-local publication test with a barrier, release store and acquire load. Check the payload on the host, write the scope and progress audit, and keep racy variants as analyzed cases only.",
+      "Bundle source, PTX, cubin and SASS for the bounded kernel with compiler resource tables. Test one disassembly-backed paired timing hypothesis with event timing, and keep the bundle with the hypothesis report.",
+      "Build an inference-only vector-add extension with an explicit shape and device contract. Test views, alignment and rejections plus lifetime on a non-default stream, and keep the rejection matrix.",
+      "Query a capability manifest with dispatch tests and automatic against forced-baseline timing; run it if your GPU supports it; otherwise read the code and audit it statically. Hopper or newer for TMA, clusters and `wgmma`, and Blackwell for `tcgen05`."
     ],
     "deliverables": [
-      "`kernels/cuda/map.cu` with the 1003-element baseline, the two-dimensional index map, grid-stride tails and the host reference tests.",
-      "The derivation sheet with sector, bank and occupancy predictions beside the measured counters, union outputs and `cuobjdump -res-usage` reports.",
-      "The publication test with its audit, the source to SASS bundle with the resource table and one paired timing hypothesis, the native extension with its rejection matrix, and the capability manifest with dispatch tests and the unsupported-feature report."
+      "`kernels/cuda/map.cu` with the baseline, index map, grid-stride tails and host reference tests.",
+      "The derivation sheet with sector, bank and occupancy predictions beside measured evidence and resource reports.",
+      "The publication test with audit, SASS bundle with hypothesis, extension with rejection matrix, and capability manifest."
     ],
     "checks": [
       {
@@ -38,18 +38,18 @@
     "rubric": [
       {
         "criterion": "Mapping correctness",
-        "pass": "The 1003-element baseline matches the host reference exactly, the warp map is verified by per-thread outputs, and lengths 0, 1, 31, 32 and 33 pass with the empty path avoiding an invalid launch.",
-        "strong": "A seeded bounds or index defect is kept as a regression that the reference catches."
+        "pass": "The baseline matches the host reference, the index map is verified, and tails pass with an empty path.",
+        "strong": "An injected defect is kept as a regression that the reference catches."
       },
       {
         "criterion": "Prediction before measurement",
-        "pass": "Sector, bank and occupancy derivations are written before the runs and reconciled with measured evidence, with the simplified-model limits stated.",
-        "strong": "The paired timing hypothesis names the SASS lines it depends on and a signal that would falsify it."
+        "pass": "Sector, bank and occupancy derivations precede runs and are reconciled with measured evidence.",
+        "strong": "The paired hypothesis names the disassembly lines it depends on and a falsifying signal."
       },
       {
         "criterion": "Synchronization and dispatch",
-        "pass": "The publication test shows 42 through the release and acquire path, racy variants name the missing ordering, and the selector tests cover native, forced fallback and forced-below-minimum branches.",
-        "strong": "The audit separates initialization from publication, and the report marks cluster paths as static audit."
+        "pass": "Your publication test passes through release and acquire, and dispatch tests cover fallback branches.",
+        "strong": "The audit separates initialization from publication, and unsupported paths are marked as static audit."
       }
     ],
     "feedsInto": "Capstone laboratory: the baseline, tails, publication test, SASS bundle, extension contract and capability manifest. Later sections time and profile these kernels and reuse the selector."
