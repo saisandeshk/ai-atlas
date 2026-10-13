@@ -493,7 +493,7 @@
     {
       "id": "kv-cache-write-kernels",
       "title": "Key-value append, gather, layout conversion and quantized loads",
-      "hours": 3,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -502,47 +502,65 @@
         "kv-quant-attention"
       ],
       "outcomes": [
-        "TODO"
+        "Implement KV append, gather and layout conversion with explicit slot ownership.",
+        "Validate cache writes across page boundaries and preserve untouched entries.",
+        "Explain the optional quantized-load contract and check reconstruction error separately from indexing correctness."
       ],
-      "why": "TODO",
+      "why": "Attention can be correct while reading the wrong generation of a cache slot. Cache updates need position, allocation, stream and scale contracts of their own.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-attention-transformer-fusion/norm-rope-fusion",
+          "note": "Keep position-dependent key rotation consistent with cache writes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer page append and logical positions",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/page.py",
+          "locator": "Commit f2794d5: `get_batch_indices_positions`, `get_seq_lens` and `append_paged_kv_cache`, including its Example and Note",
+          "depth": "Trace the ordinary append operation. Skip MLA and NVFP4 append paths. The caller allocates pages and updates final lengths before append; the append function is not an allocator."
+        },
+        {
+          "resource": "flashinfer-gpu6",
+          "title": "FlashInfer layouts and optional quantized decode scales",
+          "url": "https://github.com/flashinfer-ai/flashinfer/blob/f2794d5890121e23c032520b57c50f9ea145437d/flashinfer/decode.py",
+          "locator": "Commit f2794d5: `single_decode_with_kv_cache`, `kv_layout`, `q_scale`, `k_scale`, `v_scale` docstrings and the scale applications in its implementation",
+          "depth": "Inspect FP8 scale semantics, not a promise of FP8 acceleration on your GPU. Use a small software dequantization reference for the optional path; no Blackwell-only packed format is required."
         }
       ],
       "focus": [
-        "TODO"
+        "Append maps each new row to a request and absolute token position. Check allocation, page capacity and bounds before launch. Two writers must not own the same destination slot.",
+        "For each separate cache tensor, `NHD` orders page, token, head, channel; `HND` orders page, head, token, channel. A changed view of strides is not a physical layout conversion. Test gather before and after the actual conversion.",
+        "Initialize unused slots to sentinels, append known rows, gather valid tokens and check that all other slots remain unchanged. Preserve stream ordering and keep storage alive until consumers finish.",
+        "Optional quantized loads must specify format, reconstruction scale and granularity for keys and values. Per-tensor key scale can enter score scaling and per-tensor value scale can enter output scaling; token- or group-varying scales cannot generally be moved outside those reductions."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement a small append/gather round trip with separate key/value caches, page size 4, two heads of width 3, and a seven-token request on physical pages `[3, 1]`. Fill unused storage with `-99.0`; append increasing integer-valued rows and verify exact gathered values and untouched slots. Convert `NHD` storage to `HND` and repeat. For optional symmetric integer quantization, reconstruct finite unclipped values as \\(\\hat{x} = s\\operatorname{round}(x/s)\\) with positive scale \\(s\\), and check the bound \\(\\lvert\\hat{x}-x\\rvert \\le s/2\\) up to rounding tolerance.",
       "traps": [
-        "TODO"
+        "Appending with old last-page lengths or unallocated next pages. The final page metadata must already describe the destination capacity and length.",
+        "Overwriting shared prefix pages. A serving allocator needs copy-on-write or an ownership rule before mutable append; the kernel cannot infer that from addresses.",
+        "Applying the quantization error bound to clipped outliers. Saturation introduces additional error, and small reconstruction error does not by itself bound attention-output or task-quality error."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "How can an append test detect a write that does not affect today's output?",
+          "a": "Check sentinels in every unowned slot. Otherwise a stray write can remain invisible until that slot is reused or read later."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can one output scale represent independently scaled value tokens?",
+          "a": "Not in general. Each token contributes with its own scale inside the weighted sum. Only a common value scale can be factored out."
+        },
+        {
+          "q": "Does changing the layout label move the cache data?",
+          "a": "No. The label tells the consumer how to interpret storage. A physical conversion must rearrange data or produce correctly strided storage that the consumer supports."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `kernellab` KV append/gather and layout-conversion kernels, boundary and sentinel tests, stream-order checks and optional dequantized loads against an independent reference.",
+      "stopWhen": "Append, gather and conversion preserve token identity across partial and full pages, with untouched-slot and bounds checks; any optional quantized path reports clipping and output error separately.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pinned FlashInfer append and decode sources expose position, layout and scale contracts. The mini-project supplies the required write/gather kernels and optional software quantization tests."
       }
     },
     {
