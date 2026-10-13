@@ -93,47 +93,71 @@
         "edge-predication"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a shared-memory GEMM with arbitrary rectangular dimensions and zero-filled reduction tails.",
+        "Prove tile ownership and the barriers needed before consumption and before overwrite.",
+        "Derive per-tile input reuse and distinguish useful work from padded work."
       ],
-      "why": "TODO",
+      "why": "Shared memory turns repeated global loads into block-local reuse. Boundary handling is part of the algorithm, not a cleanup after tuning.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-gemm-tensor-low-precision/register-tiled-gemm",
+          "note": "Reuse shared-memory operands inside each thread."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "boehm-sgemm-gpu5",
+          "title": "Shared-memory cache blocking",
+          "url": "https://siboehm.com/articles/22/CUDA-MMM#kernel-3-shared-memory-cache-blocking",
+          "locator": "Kernel 3: Shared Memory Cache-Blocking, through its two-barrier tile loop",
+          "depth": "Stop before Occupancy Calculation for Kernel 3. The example omits arbitrary-size checks; add masks rather than copying that restriction into your kernel."
+        },
+        {
+          "resource": "aisys-code-gemm-gpu5",
+          "title": "Predicated tile loads",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch09/optimized_micro_tiling_matmul.cu",
+          "locator": "`matmul_tiled`, at commit `b57e4c6`",
+          "depth": "This is a shared-memory tiled kernel with one output per thread, despite the file's register-tiled description. Extend its square-only interface to rectangular shapes."
+        },
+        {
+          "resource": "cute-gemm-gpu5",
+          "title": "Coordinates for edge predicates",
+          "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/0y_predication.html",
+          "locator": "Predication: What to do when tiling isn't perfect; identity-tensor procedure, GEMM epilogue example and input-load predicates, documentation dated September 21, 2026",
+          "depth": "The final input-copy example handles the output dimensions only. Add reduction-tail handling and initialize masked shared-memory slots before using this pattern for arbitrary GEMM."
         }
       ],
       "focus": [
-        "TODO"
+        "For an interior output tile \\(B_M\\times B_N\\) and reduction tile \\(B_K\\), load \\(B_K(B_M+B_N)\\) input elements for \\(2B_MB_NB_K\\) useful FLOPs. Output traffic is separate.",
+        "Every participating thread reaches `__syncthreads()`, even if its output lies outside the matrix. Predicate loads and stores, not the block's synchronization.",
+        "A masked load must write zero into its shared-memory slot. Leaving a previous tile's value there adds a stale contribution to the reduction."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without copying the source, write a 16 by 16 shared-memory overwrite GEMM. Compare finite integer-valued FP32 inputs against a CPU double-precision product for shapes \\((M,N,K)=(1,1,1),(17,19,23),(32,16,17)\\), using values cycling through -2 to 2. These small integer products are exactly representable. Check every output and run Compute Sanitizer memory, race and synchronization checks.",
       "traps": [
-        "TODO"
+        "Returning an edge thread before a block barrier. It may still own an input needed by an interior output.",
+        "Using just an output mask. Input loads need separate bounds on their row, column and reduction coordinates.",
+        "Removing the second barrier because the output accumulator is private. The shared input buffers are not private."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "How often is one interior tile element of \\(A\\) reused?",
+          "a": "Across \\(B_N\\) output columns in that block. One tile element of \\(B\\) is reused across \\(B_M\\) output rows."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is a barrier needed after computation as well as after loading?",
+          "a": "It prevents fast threads from overwriting shared inputs for the next tile while slower threads still consume the current tile."
+        },
+        {
+          "q": "What should an overwrite-only product do when the reduction dimension is zero?",
+          "a": "Write zero to every valid output. Empty output dimensions require no launch. General GEMM must instead honor its epilogue contract."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `kernellab` shared-memory GEMM, independent edge and empty-dimension tests, and sanitizer regressions for tile races.",
+      "stopWhen": "Your rectangular kernel passes interior, reduction-tail and output-tail tests, and you can explain both barriers from buffer ownership.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Boehm supplies the tile loop, the companion supplies zero-filled loads, and CuTe supplies coordinate predication; the mini-project tests the missing rectangular and empty cases."
       }
     },
     {
