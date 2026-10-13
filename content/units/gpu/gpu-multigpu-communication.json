@@ -420,47 +420,82 @@
         "stream-event-ordering"
       ],
       "outcomes": [
-        "TODO"
+        "Diagnose serialized or non-overlapping communication from a timeline, naming the dependency that serializes it.",
+        "Measure exposed communication with streams and events, and attribute the remaining tail to bucketing, ordering or hardware."
       ],
-      "why": "TODO",
+      "why": "Overlap is where data-parallel scaling comes from: buckets reduce while later layers still compute. A missing dependency or a stray sync turns it back into serial time.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-multigpu-communication/rank-timelines-interference",
+          "note": "Attribute exposed communication to stragglers or congestion."
+        },
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/chunked-prefill-long-context",
+          "note": "Contrast gradient overlap with prefill-decode interference trade-offs."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-multigpu-gpu9",
+          "title": "Overlap, streams and bucket tuning",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4, Overlapping Communication and Computation (Pipelining); Asynchronous Execution with Streams; Reducing Communication Frequency and Volume; Achieving Maximal Overlap in Practice"
+        },
+        {
+          "resource": "nccl-gpu9",
+          "title": "Stream semantics and grouped launches",
+          "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/streams.html",
+          "locator": "CUDA Stream Semantics: collectives enqueue asynchronously to the calling stream; order across streams needs events; group calls under ncclGroupStart and ncclGroupEnd"
+        },
+        {
+          "resource": "aisys-code-multigpu-gpu9",
+          "title": "Overlapped versus serial data-parallel paths",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch04/ddp_overlap.py",
+          "locator": "ddp_overlap.py against ddp_no_overlap.py: bucketed reduction while compute continues, with the exposed tail isolated"
         }
       ],
       "focus": [
-        "TODO"
+        "Overlap needs two things: a dedicated communication stream with correct event dependencies, and ready compute to cover each bucket. Streams alone create no parallelism; backprop order supplies the covering work as each bucket fills.",
+        "Bucket size trades launch count against exposure. The default 25 MB bucket launches reductions as soon as buckets fill, and only the tail (roughly the last bucket) stays exposed when compute covers the rest.",
+        "Larger buckets delay the first launch and enlarge the exposed tail; smaller buckets add launch overhead. Gradient accumulation divides all-reduce frequency by the accumulation count before any overlap tuning matters.",
+        "Host-side sync on the critical path (value reads, prints, logging, device synchronize) forces the very serialization overlap removes. Profile first, then delete the sync, then retune buckets."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive exposed time for \\(B = 4\\) equal buckets with per-bucket communication \\(c\\) and covering compute \\(t\\) where \\(t \\ge c\\): total exposed time is about \\(c\\) (the last bucket), not \\(4c\\). State which dependency the proof assumes.",
       "traps": [
-        "TODO"
+        "Launching communication and compute on two streams with no dependency and calling it overlap. Without event ordering the consumer can read a buffer the collective has not finished, and without covering work the timeline just shows two serial kernels.",
+        "Tuning bucket size while a logging `.item()` sits in the loop. The sync dominates the exposed time, so every bucket measurement is really a measurement of the logging.",
+        "Expecting overlap to help when communication dwarfs compute. Overlap hides the smaller side; a bandwidth-bound collective with tiny covering compute stays exposed almost in full."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which stream runs an NCCL collective, and how do other streams wait for it?",
+          "a": "The calling stream the collective was enqueued to. Other streams wait through recorded events, not through host synchronization."
+        },
+        {
+          "q": "Why does only the last bucket stay exposed when compute covers communication?",
+          "a": "Each earlier bucket reduces while later layers still compute. The last bucket has no later compute left to hide behind, so its communication time remains."
+        },
+        {
+          "q": "What timeline pattern proves overlap rather than fast kernels?",
+          "a": "Communication and compute ranges concurrent on different streams with end-to-end time below their sum, plus identical outputs to the serial run."
+        },
+        {
+          "q": "Gradient accumulation over 4 minibatches changes what before overlap is tuned?",
+          "a": "It cuts all-reduce frequency by 4x, shrinking total communication first. Overlap tuning then applies to a smaller remaining cost."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems companion code ch04: overlapped versus non-overlapped DDP",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch04/ddp_overlap.py",
+          "locator": "Run ddp_overlap.py against ddp_no_overlap.py with torchrun on the two-GPU workstation and attribute the delta with a rank timeline",
+          "note": "Targets that fail fast with SKIPPED: on unsupported hosts are blockers, not results; record the topology dump with the run."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your timeline shows concurrent communication and compute with matching outputs, and you can name the bucket or dependency behind every exposed millisecond.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Chapter 4 overlap sections, NCCL stream semantics and the ch04 overlap pair cover streams, events and exposed communication at measure depth."
       }
     },
     {
