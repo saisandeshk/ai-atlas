@@ -20,6 +20,16 @@
       "access": "Free",
       "use": "Motivations and `_layer_norm_fwd_fused` in tutorial 05, pinned to v3.8.0. Study centered variance, float32 reductions, valid-column masks and the forward wrapper's supported-width guard. Defer backward and the benchmark sweep.",
       "url": "https://github.com/triton-lang/triton/blob/v3.8.0/python/tutorials/05-layer-norm.py"
+    },
+    {
+      "id": "vllm-serving-metrics-gpu6",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "vLLM serving latency and goodput definitions",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Documentation read 2026-10-13: Benchmark CLI, Understanding the Latency Metrics and Load Pattern Configuration; bench serve CLI, --goodput. Use definitions to translate kernel evidence into request metrics, not as a required serving-engine installation.",
+      "url": "https://docs.vllm.ai/en/latest/benchmarking/cli/#understanding-the-latency-metrics"
     }
   ],
   "units": [
@@ -739,7 +749,7 @@
     {
       "id": "attention-baselines-regimes",
       "title": "Attention baselines, shape matrices, end-to-end translation and losing regimes",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "measure"
       ],
@@ -750,47 +760,93 @@
         "attention-negative-regimes"
       ],
       "outcomes": [
-        "TODO"
+        "Benchmark prefill and decode separately against eager, compiled and supported production attention baselines.",
+        "Explain residuals across a shape/dtype/mask/layout matrix and preserve losing or unsupported regimes.",
+        "Translate a local change into full-block and request-level latency, memory and goodput evidence without confusing those boundaries."
       ],
-      "why": "TODO",
+      "why": "Beating materialized attention does not establish a useful optimization. A change must survive strong fused baselines and retain correctness at the full workload boundary.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "gpu/gpu-kernel-inference-integration/engine-kernel-integration",
+          "note": "Integrate a bounded, validated path with an inference engine."
+        },
+        {
+          "unit": "gpu/gpu-kernel-inference-integration/endpoint-measurement-attribution",
+          "note": "Extend the bounded runner's evidence to an actual serving endpoint."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a2-flashattention-gpu6",
+          "title": "CS336 compiled and custom attention benchmarks",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Problems `pytorch_attention` (p. 16), `torch_compile` (pp. 16 to 17), and `flash_benchmarking` (p. 28)",
+          "depth": "Replace the B200 sweep with batch size 1, widths 32 and 64, and sequence lengths 128, 256, 512 and 1024 on a 6 GB GPU. On a 24 GB GPU, grow the sequence range only after budgeting reference intermediates and backward workspace. Keep allocation failures in the report rather than forcing them."
+        },
+        {
+          "resource": "pytorch-sdpa-contract-gpu6",
+          "title": "PyTorch SDPA dispatch and full-module comparison",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/scaled_dot_product_attention_tutorial.html",
+          "locator": "Documentation read 2026-10-13: Explicit Dispatcher Control, Hardware dependence, Causal Self Attention and Using SDPA with `torch.compile`",
+          "depth": "Shrink the tutorial's large tensors before running. Correct `CausalSelfAttention.forward`: evaluation disables dropout, not causality. Preserve `self.is_causal` in evaluation for full-sequence causal attention. Use PyTorch 2.14's API contract rather than treating the tutorial's backend list as exhaustive. Skip NestedTensor."
+        },
+        {
+          "resource": "vllm-serving-metrics-gpu6",
+          "title": "Request latency boundaries and load patterns",
+          "url": "https://docs.vllm.ai/en/latest/benchmarking/cli/#understanding-the-latency-metrics",
+          "locator": "Documentation read 2026-10-13: Understanding the Latency Metrics and Load Pattern Configuration",
+          "depth": "Read the metric and workload definitions only. Do not run the large-model serving examples in this unit."
+        },
+        {
+          "resource": "vllm-serving-metrics-gpu6",
+          "title": "Goodput service-level objectives",
+          "url": "https://docs.vllm.ai/en/latest/cli/bench/serve/",
+          "locator": "Documentation read 2026-10-13: Arguments, `--goodput`, `--request-rate` and `--max-concurrency`",
+          "depth": "Use the definitions, not a required CLI run. Full production-engine integration belongs to the next section."
         }
       ],
       "focus": [
-        "TODO"
+        "Compare the dense correctness oracle, eager SDPA, compiled full block and a supported pinned FlashInfer path separately. Record the actual selected backend, its workspace and any fallback. Failure to support a case is not a zero-latency result.",
+        "Start with prefill and one-row decode, then vary batch, sequence, head width, GQA ratio, causal/padding/custom masks, dtype, strides and tile alignment. Include tiny, odd-length and irregular cases; hold some shapes out from tuning.",
+        "Warm up compilation and allocator state outside steady-state trials. Interleave variants, retain raw samples and report medians with uncertainty. Profile separate runs; use timelines and compiled resource reports to explain losses rather than infer a bottleneck from achieved bandwidth alone.",
+        "Translate local latency using the changed critical-path share. Request TTFT includes more than prefill attention; TPOT excludes the first token and averages remaining request time. Define goodput as successful requests meeting predeclared latency objectives per unit observation time, with the same tokenizer, outputs and arrival workload."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the serial fixed-workload bound \\(S_{\\text{end}} = 1/(1-f+f/r)\\), where \\(f\\) is the baseline time share of the replaced operation and \\(r\\) its local speedup, with all other work unchanged. A hypothetical 20% share and twofold local speedup give \\(S_{\\text{end}} = 1/0.9\\), approximately 1.111, not twofold. Then substitute measured full-block shares and compare the prediction with your bounded prefill/decode runner. Label runner TTFT/TPOT separately from HTTP endpoint metrics.",
       "traps": [
-        "TODO"
+        "Benchmarking against only an unfused dense reference. It is an oracle and explanatory baseline, not the strongest performance competitor.",
+        "Calling a block's event duration TTFT or goodput. Request metrics need request boundaries, output validation, a workload and service-level objectives.",
+        "Improving tokens per second by changing output length, prefix-cache state or quality. Keep those controls fixed, report cache state, and count only validated requests as successful."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Can reducing peak attention workspace increase serving capacity without reducing one request's latency?",
+          "a": "Yes. It can allow a larger batch or more cached requests. That is a separate capacity experiment; it does not establish lower latency at the original fixed workload."
+        },
+        {
+          "q": "Why can mean inter-token latency differ from mean request TPOT?",
+          "a": "They weight observations differently, and one streamed output can bundle several tokens. TPOT amortizes each request's post-first-token duration over its remaining tokens; inter-output gaps are separate observations."
+        },
+        {
+          "q": "A custom kernel loses on tiny decode. Is that evidence the implementation is wrong?",
+          "a": "Not by itself. Launch, merge or dispatch overhead may exceed useful work. First validate correctness, then keep the losing case and choose a measured fallback."
+        },
+        {
+          "q": "What should you do if a strong baseline wins every tested regime?",
+          "a": "Report the negative result and keep that baseline as dispatch. Do not claim the section's end-to-end gain gate passed; identify a narrower measured bottleneck or leave that gate outstanding."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `flash_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Problem `flash_benchmarking` (p. 28), using the reduced sweep above",
+          "note": "Gate each variant on the public attention tests and your own edge tests before timing. Use only forward timings if you skipped the optional backward unit, and say so. Add eager SDPA and the compiled full-block baseline rather than only the handout's materialized PyTorch baseline. The section mini-project covers the expanded shape matrix, supported FlashInfer comparison or documented compatibility blocker, full-runner integration, request-metric translation and a retained losing regime."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your report links correctness tests, raw trials, selected backends and profiles to one full-runner comparison and one losing regime, with TTFT/TPOT and goodput boundaries stated. If no end-to-end gain survives strong baselines, mark that section gate outstanding instead of inventing a gain.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Currency and coverage failed for current SDPA dispatch and request-level latency/goodput definitions. The opened PyTorch tutorial/API and dated vLLM documentation fill those gaps; CS336 remains the named benchmark practice."
       }
     }
   ]
