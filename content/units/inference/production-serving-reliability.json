@@ -9,7 +9,7 @@
       "provider": "OpenAI",
       "access": "Free",
       "use": "Read the chat streaming event shape with the `[DONE]` terminator, bearer auth, rate-limit headers, and `x-request-id` with caller-supplied `X-Client-Request-Id`. vLLM is the implementation under test; use this only for the contract it claims compatibility with.",
-      "url": "https://platform.openai.com/docs/api-reference/chat/streaming"
+      "url": "https://developers.openai.com/api/reference/overview"
     },
     {
       "id": "vllm-multimodal-inputs",
@@ -73,28 +73,28 @@
         },
         {
           "resource": "openai-api-reference",
-          "title": "OpenAI streaming events and request IDs",
-          "url": "https://platform.openai.com/docs/api-reference/chat/streaming",
-          "locator": "Streaming event lines and the `[DONE]` terminator; Debugging requests: `x-request-id`, `X-Client-Request-Id` and the rate-limit headers",
-          "depth": "Read only the streaming-event shape and the debugging-requests headers. vLLM on your GPU is the implementation under test, not the hosted service."
+          "title": "OpenAI chat streaming contract",
+          "url": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+          "locator": "Create chat completion: the `stream` and `stream_options.include_usage` parameters (the usage chunk arrives before `data: [DONE]`) and the streaming example ending in `data: [DONE]`; the linked Streaming events page for the `chat.completion.chunk` fields `delta` and `finish_reason` (page read 2026-10-14)",
+          "depth": "Read only the streaming contract. vLLM on your GPU is the implementation under test, not the hosted service."
         }
       ],
       "focus": [
         "The typed contract is `model`, `messages`, sampling fields such as `temperature`, `top_k` and `seed`, plus vLLM extras (`structured_outputs`, `request_id`, `session_id`, `cache_salt`, `priority`) passed through `extra_body`. `suffix` is unsupported and `user` is ignored.",
-        "Each SSE chunk is one `data` line carrying a JSON `delta` object; the stream ends with a bare `[DONE]` data line, not with connection close. With \\(N\\) output tokens and `stream_interval` \\(= k\\), expect about \\(\\lceil N/k \\rceil\\) data chunks plus `[DONE]`, since the first and last chunks are always sent immediately.",
+        "Each SSE chunk is one `data` line carrying a JSON `delta` object; the stream ends with a bare `[DONE]` data line, not with connection close. With \\(N\\) output tokens and `stream_interval` \\(= k\\), expect an initial role-only chunk, then about \\(1 + \\lceil (N - 1)/k \\rceil\\) token-bearing chunks plus `[DONE]`, since the first and last tokens are always sent immediately.",
         "Backpressure lives in per-request queues between the decode loop and the HTTP connection. A slow reader grows queueing and connection time; it does not pause generation or reduce billed tokens.",
         "A structured-output grammar is compiled per distinct schema and reused on repeat. Rotating schemas per request turns every call into a cold compile; keep a small fixed schema set."
       ],
       "reproduce": "Against a local vLLM server, send one chat request with `stream=True` and `max_tokens=8`. Save the raw bytes, list every `data` line, point at the `[DONE]` terminator, and reassemble the assistant text from the `delta` fields only.",
       "traps": [
         "`temperature=0` does not silence reasoning models. A local Qwen3-0.6B with `temperature=0` and `seed=1` still opens with `<think>`; temperature controls sampling, not the thinking trace.",
-        "The server applies the model's `generation_config.json` from its Hugging Face repository over your defaults. Pass `--generation-config vllm` when you want explicit control of sampling.",
-        "`guided_json`, `guided_regex`, `guided_choice` and `guided_grammar` were removed in v0.12.0. Requests using them fail; use `structured_outputs` with `json`, `regex`, `choice` or `grammar`."
+        "The server takes default sampling values from the model's `generation_config.json` in its Hugging Face repository. Fields your request sets still win; omitted ones inherit the model creator's values. Pass `--generation-config vllm` to fall back to vLLM's own defaults.",
+        "`guided_json`, `guided_regex`, `guided_choice` and `guided_grammar` were removed in v0.12.0. In v0.31.0 they do not fail: the server ignores them, returns HTTP 200 with unconstrained output and logs a one-time warning. Use `structured_outputs` with `json`, `regex`, `choice` or `grammar`."
       ],
       "selfTest": [
         {
           "q": "Which endpoints does vLLM's `--api-key` protect?",
-          "a": "Only paths under `/v1`, `/v2` and `/inference`. `/health`, `/metrics` and `/invocations` stay unauthenticated, so put the server behind a reverse proxy that enforces auth."
+          "a": "Only paths under `/v1`, `/v2` and `/inference` as documented (the v0.31.0 source also guards `/cohere`). `/health`, `/metrics` and `/invocations` stay unauthenticated, so put the server behind a reverse proxy that enforces auth."
         },
         {
           "q": "How does a client know a stream is finished?",
@@ -102,7 +102,7 @@
         },
         {
           "q": "With 8 output tokens and `stream_interval=3`, about how many data chunks arrive?",
-          "a": "About \\(\\lceil 8/3 \\rceil = 3\\) data chunks plus `[DONE]`, since the first and last chunks go out immediately regardless of batching."
+          "a": "About \\(1 + \\lceil 7/3 \\rceil = 4\\) token-bearing chunks (tokens 1, 2 to 4, 5 to 7, then 8) after the role-only chunk, then `[DONE]`. The first token and the final chunk go out immediately; the middle ones wait for three new tokens."
         },
         {
           "q": "Why does minting a fresh JSON schema per request hurt structured-output latency?",
@@ -114,7 +114,7 @@
           "name": "llm-model-inference ch03: streaming API tests",
           "url": "https://github.com/orca3/llm-model-inference/blob/main/ch03/single_model_llm_serving/tests/test_api.py",
           "locator": "`test_generate_stream` and `test_generate_stream_concurrent` against `/generate_stream`; `test_stream.sh` for the live-server variant",
-          "note": "Run with a tiny CPU model. Assert the `[DONE]` terminator and concurrent-stream isolation, then repeat the same assertions against a local vLLM server stream of `/v1/chat/completions`."
+          "note": "Run with a tiny CPU model. Assert close-terminated JSON `data` lines and concurrent-stream isolation on `/generate_stream`, which sends no `[DONE]` line. Then assert the `[DONE]` terminator on a local vLLM stream of `/v1/chat/completions`."
         }
       ],
       "stopWhen": "Your saved stream parses to `[DONE]`, the deltas reassemble to the full text, and you can name which sampling knobs came from the model repository and which from your request.",
@@ -175,8 +175,8 @@
         {
           "resource": "openai-api-reference",
           "title": "OpenAI auth, rate limits and client request IDs",
-          "url": "https://platform.openai.com/docs/api-reference/chat/streaming",
-          "locator": "Authentication: bearer scheme and secret handling; Debugging requests: `x-request-id`, caller `X-Client-Request-Id` format limits, and the `x-ratelimit-*` headers",
+          "url": "https://developers.openai.com/api/reference/overview",
+          "locator": "API Overview: Authentication with bearer credentials and server-side key handling; Debugging requests: `x-request-id` and the `x-ratelimit-*` headers; Supplying your own request ID with `X-Client-Request-Id` (ASCII, at most 512 characters, else 400) (page read 2026-10-14)",
           "depth": "Use the header and ID contract only. Quota numbers and hosted rate limits do not transfer to a self-hosted engine."
         },
         {
@@ -188,12 +188,12 @@
         }
       ],
       "focus": [
-        "vLLM's `--api-key` covers only `/v1`, `/v2` and `/inference`. Quotas, validation, deadlines and idempotency are gateway work: check them before the request enters the scheduler.",
-        "A deadline has three legs: client timeout, gateway timeout, and engine cancellation (`/v1/responses/{response_id}/cancel`, `/abort_requests` with `--tokens-only`). A leg without cancellation leaks the KV slot until `max_tokens`.",
+        "vLLM's `--api-key` covers only `/v1`, `/v2` and `/inference` (plus `/cohere` in the v0.31.0 source). Quotas, validation, deadlines and idempotency are gateway work: check them before the request enters the scheduler.",
+        "A deadline has three legs: client timeout, gateway timeout and engine cancellation. vLLM aborts a chat or completion request when its HTTP connection closes; background Responses use `/v1/responses/{response_id}/cancel`, and `--tokens-only` or development-mode servers expose `/abort_requests`. A gateway that times out its client but keeps the upstream connection open leaks the KV slot until `max_tokens`.",
         "Retries are safe only inside an idempotency boundary: caller-supplied `x-request-id` mapped to one engine `request_id`, with a dedupe table that returns the first result. Retry without that key executes twice.",
         "Media is untrusted input: restrict fetch domains, cap count and size per prompt with `--limit-mm-per-prompt`, enforce fetch timeouts, and give cacheable media stable UUIDs so identical bytes share encoder work."
       ],
-      "reproduce": "From a blank file, implement a token-bucket limiter keyed by API key (`requests_per_minute=60`, `burst_size=10`) that returns 429 with `Retry-After: 60` and `X-RateLimit-Remaining: 0`. Show two sequential calls from one key: the first passes, the over-limit call is rejected without reaching the engine.",
+      "reproduce": "From a blank file, implement a token-bucket limiter keyed by API key (`requests_per_minute=60`, `burst_size=10`) that returns 429 with `Retry-After: 60` and `X-RateLimit-Remaining: 0`. Drain the bucket with 10 quick calls from one key, then show the 11th call rejected without reaching the engine.",
       "traps": [
         "Trusting `--api-key` as full auth. It leaves `/health`, `/metrics` and `/invocations` open; the security note in the server docs says to deploy behind a reverse proxy.",
         "Retrying a timed-out stream as a new request. The first attempt may still be decoding; without a shared `request_id` the retry doubles cost and can double side effects.",
@@ -201,8 +201,8 @@
       ],
       "selfTest": [
         {
-          "q": "A client times out after 10s but the engine keeps decoding to `max_tokens=512`. What leaked, and which call stops it?",
-          "a": "The KV-cache slot and the scheduler slot leak until generation ends. Cancelling through `/v1/responses/{response_id}/cancel` (or `/abort_requests` in tokens-only mode) frees them; a client-side timeout alone does not."
+          "q": "A gateway times out its client after 10s, but the engine keeps decoding to `max_tokens=512`. What leaked, and what stops it?",
+          "a": "The KV-cache and scheduler slots stay held until generation ends. vLLM aborts a request when its HTTP connection closes, so the gateway must close or cancel its upstream call on every timeout (`/v1/responses/{response_id}/cancel` for a background Response)."
         },
         {
           "q": "Two identical chat requests arrive with the same caller `x-request-id`. How many engine executions should happen?",
@@ -214,7 +214,7 @@
         },
         {
           "q": "A video request stalls for 40s before the first token on a healthy GPU. Which serving knob do you check first?",
-          "a": "The media fetch timeout path: remote video fetch defaults to a 30s timeout, so a slow host looks like slow inference. Check fetch timing before blaming prefill."
+          "a": "The media fetch path: a remote video fetch can run up to its 30s default timeout before prefill starts, so a slow media host looks like slow inference. Check fetch timing before blaming prefill."
         }
       ],
       "practice": [
@@ -265,26 +265,26 @@
           "resource": "mlsys-inference-inf8",
           "title": "Load balancing and request routing",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 10.6: power of two choices with Algorithm 10.2 and Eq 10.13, weighted and adaptive routing, least-connections, consistent hashing with Example 10.15, and Section 10.6.8 health checking with the liveness, readiness and deep levels plus Table 10.31 cadences"
+          "locator": "Section 10.6: power of two choices with Algorithm 10.2 and Eq 10.13, weighted and adaptive routing, least-connections, consistent hashing with Example 10.15, and Section 10.6.8 health checking with the liveness, readiness and deep levels plus Table 10.31 cadences (page read 2026-10-05)"
         },
         {
           "resource": "gateway-inference-inf8",
           "title": "Gateway API Inference Extension routing",
           "url": "https://gateway-api-inference-extension.sigs.k8s.io/",
-          "locator": "Introduction: Key Features (model-aware and smart load balancing), API Resources, Request Flow five steps; InferencePool page at /api-types/inferencepool: `vllm-qwen3-32b` example with `endpointPickerRef` and `failureMode: FailOpen`; Implementer's Guide at /guides/implementers: EPP callout with `x-gateway-destination-endpoint` headers and FailOpen versus FailClose"
+          "locator": "Introduction: Key Features (model-aware and smart load balancing), API Resources, Request Flow five steps; InferencePool page at /api-types/inferencepool: `vllm-qwen3-32b` example with `endpointPickerRef` and `failureMode: FailOpen`; API Reference at /reference/spec: `EndpointPickerFailureMode` (FailOpen forwards, FailClose drops, default FailClose); Implementer's Guide at /guides/implementers: the EPP callout with the `x-gateway-destination-endpoint` header (page read 2026-10-14)"
         },
         {
           "resource": "hundred-days-prod-inf8",
           "title": "Day 24 routing, load balancing and queueing notebook",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
-          "locator": "Part 1 token-aware routing (load CV 0.066 to 0.005 over 1000 requests on 4 replicas), Part 2 cache-aware routing (hit rate 8.8% to 30.7%), Part 3 LoRA-aware routing (swaps 804 to 280 at 200ms each), Part 5 Little's law table and the 80% utilization rule",
+          "locator": "Part 1 token-aware routing (load CV 0.066 to 0.005 over 1000 requests on 4 replicas), Part 2 cache-aware routing (hit rate 8.8% to 30.7%), Part 3 LoRA-aware routing (804 round-robin swaps against 280 LoRA-aware in the stored run, at 200ms each; the LoRA-aware count shifts by a few tens on rerun because NumPy is not reseeded), Part 5 Little's law table and the 80% utilization rule",
           "depth": "Use the simulator cells as runnable claims, not as production code. Replace the fixed 200ms swap and 90% sharing with your own workload numbers."
         },
         {
           "resource": "vllm-production-inf8",
           "title": "vLLM LoRA serving and adapter accounting",
           "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
-          "locator": "Instrumentator APIs: LoRA dynamic loading endpoints (`/v1/load_lora_adapter`, `/v1/unload_lora_adapter`, local development only); serve with `--enable-lora --max-loras` and watch `vllm:lora_requests_info` in /metrics",
+          "locator": "Instrumentator APIs, LoRA dynamic loading: `/v1/load_lora_adapter` and `/v1/unload_lora_adapter`, local development only; Metrics APIs: `/metrics`, where the Production Metrics page lists `vllm:lora_requests_info`",
           "depth": "Do not use the dynamic load endpoints outside local development. Production adapter placement belongs in the router."
         },
         {
@@ -303,7 +303,7 @@
       "reproduce": "Rerun the day24 Part 1 simulation: 1000 requests with clipped-exponential prompt lengths over 4 replicas. Show round-robin load CV near 0.07, then add token-aware placement and show CV near 0.005 with the same mean.",
       "traps": [
         "Calling round-robin fair on 10-token and 100000-token requests. Equal counts are unequal load; the long request pins its replica while short ones queue elsewhere.",
-        "Leaving the default `FailClose` on the endpoint picker. A picker bug then becomes a full outage instead of a routing degradation.",
+        "Leaving the default `FailClose` unexamined. A picker bug then becomes a full outage for that pool; `FailOpen` trades it for unplanned placement.",
         "Using `/v1/load_lora_adapter` in production. The docs mark it local-development only; live adapter swaps belong in deployment and router affinity, not in request-time calls."
       ],
       "selfTest": [
@@ -313,23 +313,23 @@
         },
         {
           "q": "The endpoint picker crashes under `FailClose`. What do clients see, and what changes under `FailOpen`?",
-          "a": "Under `FailClose` the gateway drops requests (503) even though replicas are healthy. Under `FailOpen` it forwards to a gateway-picked endpoint, trading smart placement for availability."
+          "a": "Under `FailClose` the gateway drops requests even though replicas are healthy. Under `FailOpen` it forwards to a gateway-picked endpoint, trading smart placement for availability."
         },
         {
           "q": "Two tenants share a system prompt. Why must the prefix-hash key include tenant scope?",
           "a": "Otherwise tenant B hits tenant A's cached prefix, leaking prompt bytes through timing and breaking isolation. Salt or scope the key per tenant."
         },
         {
-          "q": "LoRA-aware routing cut swaps from 804 to 280 in the simulation. What does each avoided swap save?",
+          "q": "LoRA-aware routing cut swaps from 804 to about 280 in the stored run. What does each avoided swap save?",
           "a": "One 200ms adapter load off the request path, plus the KV and batch disruption around it. Affinity keeps hot adapters resident instead of churning them."
         }
       ],
       "practice": [
         {
-          "name": "100 Days day24: routing experiments 1 to 3",
+          "name": "100 Days day24: routing experiments 1 and 3",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
           "locator": "Try These Experiments: 1, consistent-hash ring under rolling restart with 1/N movement; 3, LIFO versus FIFO tails under a 10x burst",
-          "note": "Run all three in the notebook, then port the hashing ring to your own gateway sketch with model version and tenant in the key."
+          "note": "Run experiments 1 and 3 in the notebook (experiment 2 is the overload unit's breaker drill), then port the hashing ring to your own gateway sketch with model version and tenant in the key."
         }
       ],
       "stopWhen": "Your simulation shows the CV drop, your hash key names version and tenant, and you can defend FailOpen versus FailClose for one pool.",
@@ -372,7 +372,7 @@
           "resource": "mlsys-inference-inf8",
           "title": "Cold starts and health checking",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 10.8.2 with Eq 10.14, Table 10.39 load bandwidths (SSD versus S3) and Example 10.21 (Llama-70B totaling 420s with a 300s S3 download); Section 10.6.8 with the liveness, readiness and deep probe levels, Table 10.31 cadences and the warmup startup check"
+          "locator": "Section 10.8.2 with Eq 10.14, Table 10.39 load bandwidths (SSD versus S3) and Example 10.21 (Llama-70B totaling 420s with a 300s S3 download); Section 10.6.8 with the liveness, readiness and deep probe levels, Table 10.31 cadences and the warmup startup check (page read 2026-10-05)"
         },
         {
           "resource": "inference-engineering-inf8",
@@ -385,7 +385,7 @@
           "resource": "hundred-days-prod-inf8",
           "title": "Day 23 cold-start stages and frontier",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day23/autoscaling-concurrency-cold-starts.ipynb",
-          "locator": "Part 2 `cold_start_stages` table (baseline 927s versus optimized 102s for 70B FP16) and the scale-to-zero frontier table; Try These Experiments 6: time `vllm serve` startup on a small model against the theory"
+          "locator": "Part 2 `cold_start_stages` table for 70B FP16 (its printed 927s and 102s totals add both the vLLM and the TRT-LLM engine rows, which are alternatives; the vLLM path is 627s versus 72s) and the scale-to-zero frontier table; Try These Experiments 6: time `vllm serve` startup on a small model against the theory"
         },
         {
           "resource": "infra-llm-project-inf8",
@@ -397,18 +397,25 @@
           "resource": "vllm-production-inf8",
           "title": "vLLM health endpoint",
           "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
-          "locator": "Instrumentator APIs, Basic APIs: `/health` health check, which returns 200 while the engine answers and 503 once it is dead"
+          "locator": "Instrumentator APIs, Basic APIs: `/health` health check (the v0.31.0 handler returns 200 while the engine answers and 503 once it is dead)"
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 26 graceful drain",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
+          "locator": "Part 4 `GracefulShutdown` with `drain_timeout=60` over 25 active requests, and its lifecycle line: preStop hook, deregister from the load balancer, drain, SIGTERM, then SIGKILL after the grace period",
+          "depth": "The class only counts requests. Port the order, not the timings, onto your own server."
         }
       ],
       "focus": [
         "Cold start is \\(T_{\\text{cold}} = T_{\\text{provision}} + T_{\\text{load}} + T_{\\text{warmup}}\\). For large models \\(T_{\\text{load}}\\) dominates: 140GB at S3 rates is minutes, and no scheduler tuning removes it.",
-        "Three probe levels answer different questions: liveness (is the process alive), readiness (weights loaded, GPU initialized, warmup done, dependencies up), deep inference health (a known input returns sane output). `/health` 200 answers only the first.",
+        "Three probe levels answer different questions: liveness (is the process alive), readiness (weights loaded, GPU initialized, warmup done, dependencies up), deep inference health (a known input returns sane output). vLLM serves HTTP only after engine startup, so its `/health` 200 means started and not dead; it checks neither output nor your other dependencies.",
         "Warmup is real work: dummy generations that compile graphs and fill pools before the first billed request. First-request latency without warmup measures compilation, not serving.",
-        "Drain order matters: stop admission, finish in-flight within the timeout, persist what must survive, deregister, then terminate. SIGKILL skips every step and strands billed work."
+        "Drain order matters: fail readiness and deregister so no new traffic arrives, stop admission, finish in-flight work within the timeout, persist what must survive, then terminate. SIGKILL skips every step and strands billed work."
       ],
-      "reproduce": "Time your local server from process start to the first successful deep inference-health probe. Split the total into container, weight-load and warmup phases, and show `/health` turning 200 strictly before inference readiness.",
+      "reproduce": "Time your local server from process start to its first `/health` 200 and to the first successful deep inference-health probe. Split the total into container, weight-load and warmup phases from the server log, and note that the HTTP port does not answer until engine startup ends.",
       "traps": [
-        "Reading `/health` 200 as ready for traffic. vLLM's check answers engine-alive; weights, warmup and dependencies need their own readiness gates.",
+        "Reading `/health` 200 as proof of correct serving. vLLM's check means the engine started and has not died; a deep inference probe and your own dependency checks gate traffic beyond that.",
         "Copying the Project 103 troubleshooting doc probe path without reading the manifest. The doc text names `/ready` while the deployment YAML probes `/health`; the manifest wins.",
         "Baking large weights into the container image. That path is obsolete past small models; load hundred-gigabyte weights from near-GPU storage at startup instead."
       ],
@@ -427,7 +434,7 @@
         },
         {
           "q": "A deploy sends SIGKILL to a server with 25 queued requests. What breaks that graceful drain would have saved?",
-          "a": "In-flight generations lose their KV state and billed tokens, queued requests get no retryable rejection, and the load balancer keeps routing until its own health check notices. Drain stops admission first, finishes in-flight, then terminates."
+          "a": "In-flight generations lose their KV state and billed tokens, queued requests get no retryable rejection, and the load balancer keeps routing until its own health check notices. Drain deregisters and stops admission first, finishes in-flight work, then terminates."
         }
       ],
       "practice": [
@@ -435,7 +442,7 @@
           "name": "100 Days day23: startup timing experiment",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day23/autoscaling-concurrency-cold-starts.ipynb",
           "locator": "Try These Experiments 6: time `vllm serve` startup on a small model and reconcile each phase with the `cold_start_stages` table",
-          "note": "Record provision, image, weight-load and warmup separately. Then add a deep inference-health probe beside `/health` and show the gap between them."
+          "note": "Record provision, image, weight-load and warmup separately. Then add a deep inference-health probe beside `/health` and state what each one proves."
         }
       ],
       "stopWhen": "Your phase-split timing reconciles with the cold-start equation, and your probes distinguish alive, ready and correctly-inferring states.",
@@ -477,13 +484,13 @@
           "resource": "inference-engineering-inf8",
           "title": "Zero-downtime deployment",
           "url": "https://www.baseten.co/inference-engineering/",
-          "locator": "Section 7.4.1 (printed p. 200): blue-green with full cutover and its 2x cost, the four-step canary (build, small live slice, monitor or revert, ramp), and the minimum-replica queue warning for the new pool"
+          "locator": "Section 7.4.1 (printed pp. 200 to 201): blue-green with full cutover and its 2x cost, the four-step canary (build, small live slice, monitor or revert, ramp), and the minimum-replica queue warning for the new pool"
         },
         {
           "resource": "hundred-days-prod-inf8",
           "title": "Day 26 blue-green, canary and drain notebook",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
-          "locator": "Part 1 `BlueGreenDeployment` shifting 10% to 50% to 100%; Part 2 `CanaryDeployment` over `[0.01, 0.05, 0.10, 0.25, 0.50, 1.00]` with gates error below twice 0.005 and p99 below 1.5 times 500ms, Scenario A advancing and Scenario B rolling back at 5%; Part 4 `GracefulShutdown` drain demo"
+          "locator": "Part 1 `BlueGreenDeployment` shifting 10% to 50% to 100%; Part 2 `CanaryDeployment` over `[0.01, 0.05, 0.10, 0.25, 0.50, 1.00]` with gates error below twice 0.005 and p99 below 1.5 times 500ms, Scenario A advancing and Scenario B rolling back at 5% (Scenario B adds Gaussian noise to its nominal p99s, so the stored run prints 397, 417 and 815ms); Part 4 `GracefulShutdown` drain demo"
         },
         {
           "resource": "vllm-production-inf8",
@@ -495,7 +502,7 @@
           "resource": "mlsys-inference-inf8",
           "title": "Version synchronization during rollouts",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 10.8.8 version discussion: push versus pull propagation, the brief inconsistency window during rolling updates, and the invariant that no region proceeds until the prior one holds healthy",
+          "locator": "Section 10.8.8 version discussion: push versus pull propagation, the brief inconsistency window during rolling updates, and the invariant that no region proceeds until the prior one holds healthy (page read 2026-10-05)",
           "depth": "Read the version-sync paragraphs only. Multi-region failover design belongs to the distributed section."
         }
       ],
@@ -503,9 +510,9 @@
         "Compatibility is a tuple: weights, tokenizer, chat template, sampling defaults and engine version. Changing one element without the rest is a new system, and the canary must compare full tuples.",
         "Canary gates need both errors and tails: the day26 gates (error below twice baseline, p99 below 1.5 times baseline) catch the regression scenario that pure error rates miss.",
         "The new pool needs real capacity from step one. A canary sized at default minimum replicas queues immediately, and the queue looks like a model regression.",
-        "Blue-green buys instant rollback with a full duplicate fleet for 15 to 30 minutes. Canary buys cheap gradual proof over 30 to 60 minutes. Pick by blast radius, not by fashion."
+        "Blue-green buys instant rollback with a full duplicate fleet held for the overlap window. Canary buys cheap gradual proof across small traffic steps. Pick by blast radius, not by fashion."
       ],
-      "reproduce": "Rerun the day26 canary scenarios from a blank notebook: the healthy build advances 1% to 100%, while the p99 regression (820ms against a 500ms baseline at the 5% step) rolls back to 0%. Write out both gate evaluations by hand.",
+      "reproduce": "Rerun the day26 canary scenarios from a blank notebook: the healthy build advances 1% to 100%, while the p99 regression (nominal 820ms, printed 815ms, against a 500ms baseline at the 5% step) rolls back to 0%. Write out both gate evaluations by hand.",
       "traps": [
         "Rolling back weights but not the template. A chat-template change alters every prompt rendering; rollback must restore the full tuple.",
         "Judging a canary on error rate alone. The day26 Scenario B keeps errors flat while p99 nearly doubles; without the tail gate it promotes.",
@@ -518,7 +525,7 @@
         },
         {
           "q": "Why is blue-green called unsuited for large inference despite its instant rollback?",
-          "a": "It needs a full duplicate fleet (2x GPUs for 15 to 30 minutes). At 100-GPU scale that is 100 idle GPUs; canary plus autoscaling proves the same build far cheaper."
+          "a": "It needs a full duplicate fleet before traffic cuts over: at 100-GPU scale, another 100 GPUs. Canary plus autoscaling proves the same build with far less extra capacity."
         },
         {
           "q": "A rollout keeps weights fixed but updates the chat template. Which compatibility check fires first?",
@@ -575,7 +582,7 @@
           "resource": "mlsys-inference-inf8",
           "title": "Autoscaling, warm pools and availability",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Sections 10.8.1 to 10.8.6: Table 10.38 scaling dimensions, reactive Listing 10.3 with the queue-depth and P99-ratio desired-replica rules, predictive Listings 10.4 and 10.5 with `Target = max(Predicted, Reactive) + Buffer`, Table 10.43 warm tiers, Eq 10.15 with Table 10.44; Section 7.9.2.1 availability Eq 7.11 with the 99% to 99.99% worked example"
+          "locator": "Sections 10.8.1 to 10.8.6: Table 10.38 scaling dimensions, reactive Listing 10.3 with the queue-depth and P99-ratio desired-replica rules, predictive Listings 10.4 and 10.5 with `Target = max(Predicted, Reactive) + Buffer`, Table 10.43 warm tiers, Eq 10.15 with Table 10.44; Section 7.9.2.1 availability Eq 7.11 with the 99% to 99.99% worked example (page read 2026-10-05)"
         },
         {
           "resource": "inference-engineering-inf8",
@@ -600,10 +607,10 @@
       "focus": [
         "Three replica rules must agree: Little's law \\(L = \\lambda W\\) for the workload, queue-depth \\(\\text{Desired} = \\lceil \\text{Queue}/\\text{target} \\times \\text{Current} \\rceil\\) for the backlog, and the P99-ratio rule for SLO defense. When they disagree, the pool is either cold or saturated.",
         "Response time is \\(T_{\\text{response}} = T_{\\text{detect}} + T_{\\text{decide}} + T_{\\text{provision}} + T_{\\text{warmup}}\\), and provisioning dominates by an order of magnitude. Warm pools buy down the dominant term; faster metrics never will.",
-        "CPU at 70% is the wrong signal for decode-bound serving: a few long prefills saturate HBM while CPUs idle. Scale on `vllm:num_requests_waiting`, queue depth and TTFT, not on CPU.",
+        "CPU at 70% is the wrong signal for decode-bound serving: a few long prompts fill the KV cache and the GPU while host CPUs idle. Scale on `vllm:num_requests_waiting`, queue depth and TTFT, not on CPU.",
         "Availability \\(A_{\\text{system}} = 1 - (1 - A_{\\text{single}})^k\\) assumes independent failures. Shared power, networking or a fleet-wide bad config removes the exponent, so failure reserve also needs failure diversity."
       ],
-      "reproduce": "For arrivals \\(\\lambda = 30\\) requests/s and service time \\(W = 3\\)s, Little's law gives \\(L = 90\\) in flight. At 5 concurrent requests per replica that is 18 replicas at full load, or 23 under the 80% headroom rule. Recompute with the queue-depth rule for a backlog of 60 against a target of 10 per replica and explain the gap.",
+      "reproduce": "For arrivals \\(\\lambda = 30\\) requests/s and service time \\(W = 3\\)s, Little's law gives \\(L = 90\\) in flight. At 5 concurrent requests per replica that is 18 replicas at full load, or 23 under the 80% headroom rule. Then apply the queue-depth rule on 18 current replicas with a mean queue depth of 12 per replica against a target of 10: \\(\\lceil 12/10 \\times 18 \\rceil = 22\\). Explain why it differs from 23.",
       "traps": [
         "Shipping the Project 103 default HPA unchanged. CPU and memory signals miss GPU-bound decode pressure; add the waiting-requests custom metric before trusting it.",
         "Setting a short scale-down delay to save money. It oscillates: replicas leave, the queue rebuilds, cold replicas return. The 300s stabilization window exists for this cycle.",
@@ -616,7 +623,7 @@
         },
         {
           "q": "Latency is fine at 70% utilization but p99 explodes at 95%. Why is the ratio not 95/70?",
-          "a": "Queueing is nonlinear near saturation: at 95% there is almost no idle time to absorb variance, so tails grow 5 to 10 times while the mean barely moves. Size to 70 to 80% headroom."
+          "a": "Queueing delay grows like \\(1/(1 - \\rho)\\), not in proportion to \\(\\rho\\). In an M/M/1 model, mean and p99 response time both rise about sixfold from \\(\\rho = 0.7\\) to \\(\\rho = 0.95\\) (\\(0.3/0.05 = 6\\)), and burstier real arrivals make the tail worse. Size to 70 to 80% utilization."
         },
         {
           "q": "One replica is 99% available (3.65 days down per year). What do two give, and when does the math lie?",
@@ -674,7 +681,7 @@
           "resource": "mlsys-inference-inf8",
           "title": "Load shedding, circuit breakers and backpressure",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 7.10.2.3 with priority shedding, admission control at entry and the closed, open, half-open breaker (Fig 7.30 with 5 failures in 30s and 60s timeout); Section 10.6.10 with backpressure 503s and the three KV-pressure reliefs; Listing 7.1 trigger rules"
+          "locator": "Section 7.10.2.3 with priority shedding, admission control at entry and the closed, open, half-open breaker (Fig 7.30 with 5 failures in 30s and 60s timeout); Section 10.6.10 with backpressure 503s and the three KV-pressure reliefs; Listing 7.1 trigger rules (page read 2026-10-05)"
         },
         {
           "resource": "hundred-days-prod-inf8",
@@ -771,7 +778,7 @@
           "resource": "mlsys-inference-inf8",
           "title": "Multi-tenancy and isolation",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 10.7: the noisy-neighbor Example 10.18 with Table 10.35 (all tenants violated at 22 to 45ms) versus quotas in Example 10.19 with Table 10.36 (only the burster throttled); Listing 10.1 quota admission (`max_concurrent`, `max_kv_cache_mb`, `max_qps`, `max_batch_tokens`); max-min fairness in token rate; Table 10.37 priority tiers; the bulkhead Fig 10.20 with Example 10.20; Listing 10.2 model-load eviction guard"
+          "locator": "Section 10.7: the noisy-neighbor Example 10.18 with Table 10.35 (all tenants violated at 22 to 45ms) versus quotas in Example 10.19 with Table 10.36 (only the burster throttled); Listing 10.1 quota admission (`max_concurrent_requests`, `max_kv_cache_mb`, `max_qps`, `max_batch_tokens`; its own check reads `quota.max_concurrent`, a mismatch to fix in your port); max-min fairness in token rate; Table 10.37 priority tiers; the bulkhead Fig 10.20 with Example 10.20; Listing 10.2 model-load eviction guard (page read 2026-10-05)"
         },
         {
           "resource": "hands-serving-ch34-inf8",
@@ -864,7 +871,7 @@
           "resource": "vllm-metrics-inf8",
           "title": "vLLM production metrics",
           "url": "https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
-          "locator": "General Metrics table (`vllm:num_requests_waiting`, `vllm:num_requests_running`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_hits`, `vllm:request_success`, `vllm:time_to_first_token_seconds`, `vllm:request_queue_time_seconds`, `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds`, `vllm:e2e_request_latency_seconds`); Custom Histogram Buckets section with per-family bucket overrides; MFU counters behind `--enable-mfu-metrics`; Deprecation Policy"
+          "locator": "General Metrics table (`vllm:num_requests_waiting`, `vllm:num_requests_running`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_hits`, `vllm:request_success`, `vllm:time_to_first_token_seconds`, `vllm:request_queue_time_seconds`, `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds`, `vllm:e2e_request_latency_seconds`); MFU counters behind `--enable-mfu-metrics`; Deprecation Policy"
         },
         {
           "resource": "vllm-production-inf8",
@@ -876,7 +883,7 @@
           "resource": "sglang-observability-inf8",
           "title": "SGLang production metrics",
           "url": "https://docs.sglang.io/docs/references/production_metrics",
-          "locator": "TTFT definition (streaming ends at first output after detokenization, which may hold no printable text; non-streaming ends at first scheduler token); request TPOT as `(finished_time - first_token_time) / (completion_tokens - 1)` with its four exclusions; the p95 TPOT PromQL example"
+          "locator": "TTFT definition (streaming ends at first output after detokenization, which may hold no printable text; non-streaming ends at first scheduler token); request TPOT as `(finished_time - first_token_time) / (completion_tokens - 1)` with its four exclusions; the p95 TPOT PromQL example (page read 2026-10-14)"
         },
         {
           "resource": "aisys-code-prod-inf8",
@@ -918,8 +925,8 @@
           "a": "Requests with fewer than two output tokens, streaming requests finishing in their first output, aborted requests and disaggregated prefill workers."
         },
         {
-          "q": "KV usage sits at 0.97 with rising queue time. Which two alerts fire in the ch16 bundle, and what do they mean?",
-          "a": "The KV warn alert (usage 0.97 exceeds the 90% warn threshold; the 98% crit has not fired) and the TTFT p99 alert. Together they mean the engine is memory-full, not compute-slow: shed, evict or add capacity."
+          "q": "KV usage sits at 0.97 while TTFT p99 reaches 2s. Which ch16 alerts fire, and what do they mean together?",
+          "a": "The KV warn alert (0.97 is above the 90% warn and below the 98% crit) and the TTFT p99 critical alert (2s against 1.5s). Together they point at memory pressure turning into queueing, not slow compute: shed, evict or add capacity."
         }
       ],
       "practice": [
@@ -974,7 +981,7 @@
           "resource": "mlsys-inference-inf8",
           "title": "Degradation monitoring and deployment health",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 7.10.3 Table 7.17 Action Map (fallback share above 5 minutes warns, default-feature share above 50% is critical, shed-rate growth triggers capacity review, primary-versus-fallback gap past 1 hour escalates); Section 10.8.8 Table 10.48 Global Deployment Health (error below 0.1%, P99 within target and below twice single-region, quality within bounds across regions)"
+          "locator": "Section 7.10.3 Table 7.17 Action Map (fallback share above 5 minutes warns, default-feature share above 50% is critical, shed-rate growth triggers capacity review, primary-versus-fallback gap past 1 hour escalates); Section 10.8.8 Table 10.48 Global Deployment Health (error below 0.1%, P99 within target and below twice single-region, quality within bounds across regions) (page read 2026-10-05)"
         },
         {
           "resource": "aisys-code-prod-inf8",
@@ -998,7 +1005,7 @@
       ],
       "reproduce": "From one load-test trace with raw per-request records, compute TTFT p50 and p99, mean TPOT, error rate and goodput at declared SLOs (for example TTFT p99 under 1.5s with under 0.1% errors). Show goodput below throughput by exactly the over-SLO plus error plus rejected-quality share.",
       "traps": [
-        "SLOing the mean. Means hide the p99 that users feel; the MLSys queueing analysis shows tails growing 5 to 10 times while means barely move near saturation.",
+        "SLOing the mean. Means hide the p99 that users feel, and near saturation queueing delay grows like \\(1/(1 - \\rho)\\) with bursts landing in the tail first.",
         "Counting aborted and preempted requests as successes. `vllm:request_success` splits by `finished_reason`; aborts are cancellations and preemptions are scheduler work, and both leave goodput.",
         "Treating quality as latency's afterthought. NaN logits, template skew and quantization drift all pass latency SLOs while failing users; sample outputs against acceptance checks as a first-class SLI."
       ],
@@ -1068,19 +1075,19 @@
           "resource": "mlsys-inference-inf8",
           "title": "Serving fault tolerance",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 7.9: stateless versus stateful serving with Table 7.12, health checking with liveness plus readiness plus inference correctness, Table 7.13 state-recovery options, Table 7.14 model-specific policies with the KV box (70B, 80 layers, 8 KV heads, 128K context at 128 dim BF16 near 43GB per conversation)"
+          "locator": "Section 7.9: stateless versus stateful serving with Table 7.12, health checking with liveness plus readiness plus inference correctness, Table 7.13 state-recovery options, Table 7.14 model-specific policies with the KV box (70B, 80 layers, 8 KV heads, 128K context at 128 dim BF16 near 43GB per conversation) (page read 2026-10-05)"
         },
         {
           "resource": "mlsys-inference-inf8",
           "title": "Graceful degradation",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 7.10: Definition 7.4 with the pre-engineered fallback requirement, Table 7.15 degradation dimensions, the model-fallback cascade (307M at 88% down to 5.4M at 75% then cached), Table 7.16 feature ladder, and Listing 7.1 trigger rules"
+          "locator": "Section 7.10: Definition 7.4 with the pre-engineered fallback requirement, Table 7.15 degradation dimensions, the model-fallback cascade (307M at 88% down to 5.4M at 75% then cached), Table 7.16 feature ladder, and Listing 7.1 trigger rules (page read 2026-10-05)"
         },
         {
           "resource": "vllm-production-inf8",
           "title": "vLLM disruption and corruption surfaces",
           "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
-          "locator": "Server in development mode: Cache Management APIs (`/reset_prefix_cache`, `/reset_mm_cache`, `/reset_encoder_cache`) marked as service-disrupting and never for production; `/abort_requests` for in-flight abort; `/metrics` carries `vllm:corrupted_requests` for NaN-logit generations"
+          "locator": "Server in development mode (`VLLM_SERVER_DEV_MODE=1`, never for production): Cache Management APIs (`/reset_prefix_cache`, `/reset_mm_cache`, `/reset_encoder_cache`) marked as able to disrupt service, and `/abort_requests` under Weight Transfer APIs for in-flight abort; the Production Metrics page lists `vllm:corrupted_requests` for NaN-logit requests"
         },
         {
           "resource": "hundred-days-prod-inf8",
@@ -1094,9 +1101,9 @@
         "A kill proves nothing without traffic: the drill must exercise detection (probe thresholds), action (routing away) and state (session and KV fate). Stateless workers rejoin in milliseconds; stateful LLM sessions regenerate over seconds to minutes.",
         "A 43GB conversation KV cannot fail over in milliseconds. Budget the loss honestly: accept regeneration, checkpoint high-value sessions, replicate only what the product contract demands, and keep shared prefixes separate from session state.",
         "Degradation is a ladder built before the incident: smaller model, default features, cached content, then shed load. Each rung needs a measured quality cost and a trigger rule, or operators will not pull it.",
-        "The NaN-logit counter only exists when the build enables it, and the cache-reset endpoints disrupt service by design. Silent GPU degradation is caught by the deep inference-health probe, not by process liveness."
+        "The NaN-logit counter only exists when `VLLM_COMPUTE_NANS_IN_LOGITS` is set, and the cache-reset endpoints disrupt service by design. Silent GPU degradation is caught by the deep inference-health probe, not by process liveness."
       ],
-      "reproduce": "With two local engine processes behind your router and a steady burst running, SIGKILL one engine mid-burst. Show the health check marking it unhealthy within its thresholds, traffic moving to the survivor, in-flight requests on the dead worker reported failed rather than hung, and clean rejoin after restart.",
+      "reproduce": "With two local engine processes behind your router (size each with a small `gpu_memory_utilization` so both fit on your GPU, or run the survivor as a stub) and a steady burst running, SIGKILL one engine mid-burst. Show the health check marking it unhealthy within its thresholds, traffic moving to the survivor, in-flight requests on the dead worker reported failed rather than hung, and clean rejoin after restart.",
       "traps": [
         "Testing failover with an idle standby and no load. Detection latency, queue transfer and KV rebuild only appear under traffic; idle drills certify the easy half.",
         "Reaching for `/reset_prefix_cache` to simulate degradation in a shared server. It disrupts every tenant's cache by design; scope cache drills to a sacrificial instance.",
@@ -1161,14 +1168,14 @@
           "resource": "hundred-days-prod-inf8",
           "title": "Day 26 seeded regression and drain",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
-          "locator": "Part 2 Scenario B as the seeded performance incident (p99 380, 420, 820 against the 500ms baseline with flat errors, rollback at 5%); Part 4 `GracefulShutdown` drain as the recovery procedure; Part 3 cost-per-million-tokens table for the recovery capacity plan",
+          "locator": "Part 2 Scenario B as the seeded performance incident (nominal p99 380, 420 and 820ms plus Gaussian noise, printed as 397, 417 and 815ms against the 500ms baseline with flat errors, rollback at 5%); Part 4 `GracefulShutdown` drain as the recovery procedure; Part 3 cost-per-million-tokens table for the recovery capacity plan",
           "depth": "Treat the notebook outputs as stored evidence for timeline practice. Derive your own gate numbers from your workload; the 500ms baseline is the notebook's, not yours."
         },
         {
           "resource": "mlsys-inference-inf8",
           "title": "Degradation monitoring and cross-user failure",
           "url": "https://mlsysbook.ai/vol2/inference/inference.html",
-          "locator": "Section 7.10.3 Table 7.17 Action Map with its four post-incident questions (root cause, fallback effectiveness, user impact, improvements); Section 10.8.8 Table 10.48 Global Deployment Health; War Story 10.1 in Section 10.6.6 (shared client state leaking responses across users, March 2023) as the security-timeline example"
+          "locator": "Section 7.10.3 Table 7.17 Action Map with its four post-incident questions (root cause, fallback effectiveness, user impact, improvements); Section 10.8.8 Table 10.48 Global Deployment Health; War Story 10.1 in Section 10.6.6 (shared client state leaking responses across users, March 2023) as the security-timeline example (page read 2026-10-05)"
         },
         {
           "resource": "infra-llm-project-inf8",
@@ -1198,7 +1205,7 @@
       "selfTest": [
         {
           "q": "Scenario B's errors stay flat while p99 breaches at the 5% step. What is the first cause, and what remains unknown?",
-          "a": "First cause: version-correlated tail regression in the new build at 5% traffic, evidenced by p99 820ms against the 750ms gate with flat errors. Unknown: the mechanism (decode path, template, config) until a profile separates them."
+          "a": "First cause: version-correlated tail regression in the new build at 5% traffic, evidenced by the printed p99 of 815ms (nominal 820ms) against the 750ms gate with flat errors. Unknown: the mechanism (decode path, template, config) until a profile separates them."
         },
         {
           "q": "What declares the recovery load test passed?",
