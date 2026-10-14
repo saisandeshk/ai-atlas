@@ -104,47 +104,75 @@
         "loss-parallel-apis-in-current-pytorch"
       ],
       "outcomes": [
-        "TODO"
+        "Derive stable vocabulary-parallel cross-entropy and its local logit gradients without gathering full logits.",
+        "Implement vocabulary-range embedding ownership and preserve tied embedding/output weights.",
+        "Compare a CPU sharded loss with ordinary cross-entropy, then map it to PyTorch 2.14 loss parallelism."
       ],
-      "why": "TODO",
+      "why": "Vocabulary logits can be much larger than the residual stream. Reducing per-token statistics avoids gathering them, but only if target ownership and the loss denominator remain correct.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-memory-communication-volume",
+          "note": "Account separately for vocabulary logits and per-token reductions."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-divisibility-oracles",
+          "note": "Test range boundaries, invalid targets and tied weights."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "megatron-paper-dt5",
+          "title": "Sharded input and output embeddings",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, paragraphs beginning 'The transformer language model has an output embedding' through the fused cross-entropy discussion"
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Vocabulary ranges and masked lookup",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py",
+          "locator": "`VocabParallelEmbedding`, especially `_vocab_range_from_global_vocab_size` and `forward`; `apply_tensor_parallel` final-projection replacement",
+          "depth": "Use default dense lookup without padding or renormalization. Picotron gathers the final logits; use the loss-parallel route below to avoid that gather."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Loss-parallel layouts and current contract",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/TP_tutorial.html#apply-loss-parallel",
+          "locator": "Apply Loss Parallel, Figure 2 and final-projection plan (page read 2026-10-14)",
+          "depth": "Open https://docs.pytorch.org/docs/2.14/distributed.tensor.parallel.html#torch.distributed.tensor.parallel.loss_parallel for the 2.14 contract. Keep the first implementation on a one-dimensional CPU mesh with class-index targets and no label smoothing."
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Stable softmax, cross-entropy and loss reductions. For a token, reduce local maxima to \(m=\max_j z_j\), then sum local exponentials into \(s=\sum_j\exp(z_j-m)\). Reduce the target logit from its unique owner; loss is \(m+\log s-z_y\).",
+        "Each vocabulary shard computes its part of \(\operatorname{softmax}(z)-\operatorname{onehot}(y)\). Only the target owner subtracts one. Apply the same valid-token denominator as the unsharded loss.",
+        "Embedding ranks own disjoint vocabulary ranges. Nonowners contribute zero; summation reconstructs each lookup. Tied embeddings and output projections must share the same trainable shard, accumulating both gradient contributions once.",
+        "`loss_parallel()` requires class-sharded DTensor logits and backward inside the context. PyTorch 2.14 supports mean reduction only on a one-dimensional mesh; multi-dimensional token sharding needs sums or unreduced losses and an explicit global denominator."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, split `torch.tensor([[1000., 1001., -1000., 999.], [2., -1., 0., 3.]], dtype=torch.float64)` into two class shards and use targets `[1, 3]`. Compute the max, exponential-sum and target-owner reductions, then the mean loss and analytic logit gradients. Match ordinary `torch.nn.functional.cross_entropy`. Repeat with class-sharded DTensors on two CPU processes using Gloo and `loss_parallel()`, comparing loss and reconstructed gradients.",
       "traps": [
-        "TODO"
+        "Normalizing each vocabulary shard separately. That produces multiple distributions rather than one distribution over the full vocabulary.",
+        "Treating every nonlocal token as an invalid global token. Validate the global ID first, then mask nonownership before lookup.",
+        "Padding the vocabulary and leaving padded logits in the softmax. Those classes change the denominator unless explicitly excluded."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why must the maximum be global before summing exponentials?",
+          "a": "All shard sums must use the same exponential scale. Independent local maxima require additional rescaling before their sums can be combined."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does averaging local vocabulary losses recover cross-entropy?",
+          "a": "No. Vocabulary shards partition classes for the same tokens. Combine their normalization statistics first; average only over the declared valid tokens."
+        },
+        {
+          "q": "What gradient reaches a tied vocabulary shard?",
+          "a": "The sum of its input-embedding and output-projection contributions. Two independently updated copies are not weight tying."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: vocabulary-range lookup, stable sharded loss, tied-weight accumulation and loss/gradient comparisons in `trainlab`.",
+      "stopWhen": "Your sharded loss and logit gradients match the ordinary oracle, lookup ownership passes at both ends of each range, and a tied-weight test accumulates both uses into one shard.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Megatron v4 and Picotron cover embedding ownership; the tutorial's reduction diagram and 2.14 API cover loss parallelism, with the mini-project supplying tied-weight and gradient practice."
       }
     },
     {
