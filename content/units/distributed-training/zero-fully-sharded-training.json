@@ -814,47 +814,64 @@
         "checkpoint-consolidation-and-world-size-resharding"
       ],
       "outcomes": [
-        "TODO"
+        "Consolidate a small sharded checkpoint into full logical tensors while accounting for the host-memory requirement.",
+        "Restore parameter and optimizer shards onto a different world size and prove the next global-batch update.",
+        "Explain which metadata makes repartitioning possible and which semantic changes resharding cannot repair."
       ],
-      "why": "TODO",
+      "why": "A checkpoint should describe the logical model, not depend on yesterday's rank numbers. World-size changes test whether that contract covers both weights and optimizer history.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Extend the tiny reshard test to recovery and mesh changes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "DCP load-time resharding and format conversion",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html#loading",
+          "locator": "How DCP works; Loading, including different world size; Formats (page read 2026-10-14)",
+          "depth": "Use the matching `AppState` structure for save and load. The later unwrapped example uses a top-level `model` key while the preceding save used `app.model`; preserve the saved nesting instead of copying that example unchanged."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Destination layouts and state-dict options",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.checkpoint.html#torch.distributed.checkpoint.state_dict_loader.load",
+          "locator": "`state_dict_loader.load`; `state_dict.StateDictOptions`, especially `full_state_dict`, `cpu_offload` and `broadcast_from_rank0`"
         }
       ],
       "focus": [
-        "TODO"
+        "Load into an allocated destination model whose DTensor mesh and placements describe the new partition. The loader reads old chunks intersecting each new local slice; old rank IDs are not new owners.",
+        "Consolidation is representation conversion, not training resume. Full tensors can require enough host memory for the whole model and optimizer state plus temporary copies. Avoid it for routine resharding when DCP can load directly.",
+        "World-size changes must preserve names, global shapes, precision policy, optimizer mapping and the fixed global batch used by your oracle. Resharding does not fix a changed vocabulary or an incompatible optimizer.",
+        "A changed rank count can alter reduction rounding, data partitioning and RNG streams. Check numerical update equivalence with explicit tolerances; bitwise-identical continuation requires a stronger execution contract."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Save a tiny FSDP2 AdamW checkpoint using four CPU Gloo ranks, then rebuild and restore on two ranks. Choose parameter row counts and a global batch divisible by both degrees. Preserve saved dictionary nesting, reconstruct weights and moments, and compare the next update to the same global-batch oracle. Separately use `dcp_to_torch_save` on the tiny checkpoint and confirm that the consolidated model and optimizer entries represent the same logical state; do not use consolidation as the reshard mechanism.",
       "traps": [
-        "TODO"
+        "Renaming shard files by new rank and ignoring tensor offsets. New shards can span several old shards.",
+        "Loading weights successfully but dropping or reassigning optimizer moments after repartitioning.",
+        "Keeping the local batch fixed when world size changes, then attributing the resulting different global update to checkpoint corruption."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What lets a loader restore four saved shards into two destination shards?",
+          "a": "Global tensor names and shapes, old chunk offsets and sizes, and the destination layout. It computes the required intersections rather than assuming rank-to-rank file identity."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Must all old shards be loaded in full on every new rank?",
+          "a": "No. A layout-aware loader can read the parts needed for each destination shard. Full consolidation is a separate, memory-heavier operation."
+        },
+        {
+          "q": "Does loading onto fewer ranks guarantee bitwise-identical future training?",
+          "a": "No. Collective reduction order and data/RNG assignment may change. First prove the same logical state and a fixed-batch update within stated tolerances."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab four-to-two-rank model and optimizer restore, full-format comparison and fixed-global-batch next-update oracle.",
+      "stopWhen": "Both the direct changed-world-size restore and tiny consolidated export reconstruct the same logical state, and the restored optimizer's next update matches the oracle.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The DCP recipe linked from the pooled FSDP2 tutorial locates resharding and conversion; the 2.14 loader contract and trainlab provide checked implementation depth."
       }
     },
     {
