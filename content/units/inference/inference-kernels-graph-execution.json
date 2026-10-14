@@ -1,6 +1,17 @@
 {
   "section": "inference-kernels-graph-execution",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "vllm-structured-inf5",
+      "role": "reference",
+      "priority": "required",
+      "name": "vLLM structured outputs (v0.31.0)",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read Offline Inference and the API-field migration warning; trace grammar bitmask application before sampling in the versioned model-runner API.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/features/structured_outputs/"
+    }
+  ],
   "units": [
     {
       "id": "softmax-norm-residual-paths",
@@ -328,47 +339,71 @@
         "structured-and-guided-decoding-integration"
       ],
       "outcomes": [
-        "TODO"
+        "Implement masked greedy and filtered stochastic selection with a declared filter order and tie policy.",
+        "Preserve per-request grammar and random state through changing batch membership.",
+        "Separate mask construction, transfer and token-selection costs at the serving boundary."
       ],
-      "why": "TODO",
+      "why": "A token-selection kernel is correct only for the distribution after the request's constraints. Faster selection that reads a stale grammar mask changes the output contract even when logits are unchanged.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/launch-streams-async-execution",
+          "note": "Order mask preparation and sampled-token delivery without unnecessary waits."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-docs-inf5",
+          "title": "Fused filtered selection",
+          "url": "https://docs.flashinfer.ai/generated/flashinfer.sampling.top_k_top_p_sampling_from_logits.html",
+          "locator": "FlashInfer 0.7.1 documentation: Parameters `filter_apply_order`, `deterministic`, `generator`, `seed` and `offset`, and the input-dtype Note",
+          "depth": "Use the parameter contract, not the sampled IDs printed in the example as a reproducibility target. Leave speculative sampling to the next section."
+        },
+        {
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "Greedy and stochastic sampler branches",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/engine/sample.py",
+          "locator": "`Sampler.prepare`, `Sampler.sample` and `sample_impl`"
+        },
+        {
+          "resource": "vllm-structured-inf5",
+          "title": "Constraint configuration and sampler integration",
+          "url": "https://docs.vllm.ai/en/v0.31.0/features/structured_outputs/#offline-inference",
+          "locator": "Offline Inference, `StructuredOutputsParams` example, and the opening deprecated-field warning",
+          "depth": "For the kernel boundary, also open https://docs.vllm.ai/en/v0.31.0/api/vllm/v1/worker/gpu_model_runner/ and locate `sample_tokens`: grammar bitmask application precedes `_sample`. Skip online-server setup and reasoning-model examples."
         }
       ],
       "focus": [
-        "TODO"
+        "Mask illegal vocabulary entries before selection; normalize only allowed mass. An all-disallowed state must terminate or error explicitly, never silently sample from an invalid row.",
+        "Greedy selection needs no probability materialization. Use a separate greedy branch, not division by zero temperature; state the tie rule and non-finite policy.",
+        "Top-k then top-p renormalizes before its nucleus threshold, while joint filtering uses a different contract. Pin the order, threshold crossing and tie handling before comparing distributions.",
+        "Grammar state and random state belong to requests, not batch slots. A deterministic kernel or equal seed does not guarantee equal IDs across libraries with different random-number consumption."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a CPU reference for probability vector `[0.6, 0.25, 0.15]` with top-k 2 and top-p 0.7. Top-k-first filtering renormalizes to `[12/17, 5/17, 0]`, so its nucleus retains only token 0; a joint intersection with the original nucleus retains tokens 0 and 1. Then forbid token 0 before filtering and show that no legal selection can emit it. Add an all-disallowed error case and a two-request state test that swaps batch slots after each selected token.",
       "traps": [
-        "TODO"
+        "Treating grammar masking as ordinary token-ID filtering without advancing grammar state after the accepted token.",
+        "Replaying captured sampling with an unchanged explicit random offset. Repeated random draws are not independent sampling.",
+        "Calling schema-conforming output factually correct. Syntax constraints do not establish task quality."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can equal seeds still give different sampled IDs in two implementations?",
+          "a": "The algorithms can consume random draws differently. Test the filtered distribution, and require token identity only when the random mapping is also fixed."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why not apply a grammar mask after top-k?",
+          "a": "Top-k may have discarded all legal alternatives. The engine must define and preserve ordering so selection operates on the legal distribution."
+        },
+        {
+          "q": "What should happen when a grammar row allows no token?",
+          "a": "Handle a declared terminal state or raise an explicit error. Normalizing zero mass or all negative-infinite logits is not a valid sampler."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` masked-selection oracle, request-local grammar/RNG state tests and separate mask/selection timing.",
+      "stopWhen": "You explain the filter-order example, forbid illegal tokens under both selection modes, and preserve each request's constraint state across slot changes and cleanup.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed at guided-decoding integration: added the versioned vLLM structured-output guide and runner boundary; kept FlashInfer and Mini-SGLang for selection semantics."
       }
     },
     {
