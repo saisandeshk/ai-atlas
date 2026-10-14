@@ -526,47 +526,81 @@
         "tensor-parallel-communication-volume-by-layer"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-rank parameter, gradient, optimizer and activation bytes from actual TP/SP ownership and dtypes.",
+        "Count forward and backward collective payloads by layer, separating logical payload from per-rank ring traffic.",
+        "Explain memory-model residuals caused by saved inputs, re-gathers, partial outputs and temporary buffers."
       ],
-      "why": "TODO",
+      "why": "A parameter shard can shrink while activation or communication buffers still dominate the peak. A byte ledger makes the degree choice testable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-degree-choice-async",
+          "note": "Use the ledger to compare feasible degrees and exposed communication."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-activation-memory",
+          "note": "Compose these lifetimes with other dimensions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "sp-recompute-paper-dt5",
+          "title": "Saved activations, not a universal peak formula",
+          "url": "https://arxiv.org/abs/2205.05198v1",
+          "locator": "arXiv:2205.05198v1, Sections 4.1, 4.2.1 and 4.2.2, equations 1, 2 and 4; Section 5 and Table 2",
+          "depth": "Keep the stated two-byte activations, one-byte dropout masks and GPT-style architecture assumptions. Re-derive the ledger for SwiGLU, GQA or memory-efficient attention instead of applying its coefficients unchanged."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "The transformer-block collective count",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, Figure 4 and its four-operation caption"
+        },
+        {
+          "resource": "jax-sharding-dt5",
+          "title": "Communication follows the sharded contraction",
+          "url": "https://jax-ml.github.io/scaling-book/training#tensor-parallelism",
+          "locator": "Chapter 5, Tensor Parallelism: forward/backward algorithm and compute/communication model",
+          "depth": "Stop before Combining FSDP and Tensor Parallelism. Its boundaries shard hidden features, not the SP token layout. Retain the topology and overlap assumptions; its TPU constants are not measurements of your machine."
         }
       ],
       "focus": [
-        "TODO"
+        "For a bias-free SwiGLU with model width \(D\), expanded width \(F\) and TP degree \(p\), sharded weights total \(3DF/p\) elements per rank. Replicated norm gains add \(D\). Count gradients and each optimizer tensor at their own dtype, with no automatic master-weight assumption.",
+        "For batch \(B\), sequence \(S\) and bytes per activation \(q\), a full residual has \(n=qBSD\) bytes. A ring all-reduce sends \(2(p-1)n/p\) bytes per rank; a ring all-gather or reduce-scatter sends \((p-1)n/p\). Receive traffic is equal and is not included in these send counts.",
+        "A plain Megatron attention-plus-MLP block has two forward and two backward activation all-reduces. TP+SP replaces those with four all-gathers and four reduce-scatters across both passes; norm-gradient sums, loss traffic and optional saved-input re-gathers are additional.",
+        "Record unique storage and lifetimes, not just tensor names. Views can share storage; all-gathered inputs, full-shaped partial outputs, receive buffers and allocator reserve can make peak memory exceed saved-activation estimates."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive a byte ledger for TorchFeather's bias-free RMSNorm-SwiGLU at \(B=2\), \(S=4\), \(D=8\), \(F=16\), \(p=2\), with `torch.float32` weights and activations. Each rank's three weight shards plus norm gain occupy 800 bytes; a replicated residual occupies 256 bytes and its sequence shard 128 bytes. Separately derive 1024 sent bytes per rank for the four ring activation all-reduces of a plain attention-plus-MLP training block at those residual dimensions. TP+SP's corresponding eight collectives have the same ideal send volume, excluding the extra operations listed in Focus. Check the storage counts against local tensors and label the ring traffic as analytical, not measured backend traffic.",
       "traps": [
-        "TODO"
+        "Dividing the entire optimizer or activation footprint by TP degree. Replicated gains, temporaries and optional full-precision copies need separate terms.",
+        "Confusing all-reduce payload bytes with sent-plus-received traffic. State the counting convention before comparing formulas.",
+        "Treating a saved-activation equation as a GPU memory-peak prediction, especially after replacing materialized attention with a tiled kernel."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Where do the 800 parameter bytes in Reproduce come from?",
+          "a": "Three \(8\)-by-\(16\) matrices split over two ranks give 192 elements, plus eight replicated gains. At four bytes per element, 200 elements occupy 800 bytes."
+        },
+        {
+          "q": "For two ranks and a 256-byte payload, how much does one ideal ring all-reduce send per rank?",
+          "a": "256 bytes: \(2(2-1)256/2\). It also receives 256 bytes, so sent-plus-received traffic is 512 bytes."
+        },
+        {
+          "q": "Can matching ideal ring bytes establish matching TP and TP+SP runtime?",
+          "a": "No. Startup costs, backend algorithms, re-gathers, kernel shapes and overlap differ. The byte equality covers only the specified collective payloads."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "How to Scale Your Model: Chapter 3, Question 4 [matmul strategies]",
+          "url": "https://jax-ml.github.io/scaling-book/sharding#some-problems-to-work",
+          "locator": "Some Problems to Work: Question 4 [matmul strategies]",
+          "note": "Answer before opening the printed solution. Derive local FLOPs and communication for gather-before-matmul versus partial-matmul-then-reduce. Distinguish the book's bandwidth-dominated TPU model from finite-degree ring send counts and from serial dependency bounds. The section mini-project covers the layer ledger and collective records."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your ledger reconciles local parameter and boundary-activation storage, accounts for both passes and extra collectives, and labels payload, send traffic, saved memory and peak memory separately.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The recomputation paper supplies scoped memory equations, Megatron supplies collective counts, and the JAX named worked problem plus mini-project ledger supply derivation practice."
       }
     },
     {
