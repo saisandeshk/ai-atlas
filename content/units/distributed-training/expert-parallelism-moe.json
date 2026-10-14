@@ -1,6 +1,17 @@
 {
   "section": "expert-parallelism-moe",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-alltoall-docs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch Distributed - all_to_all_single",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read `all_to_all_single` for `input_split_sizes` and `output_split_sizes` on dim 0, including uneven and empty splits. Use it for the dispatch and combine calls in the tiny oracle.",
+      "url": "https://docs.pytorch.org/docs/2.14/distributed.html#torch.distributed.all_to_all_single"
+    }
+  ],
   "units": [
     {
       "id": "moe-layer-router-scores",
@@ -16,47 +27,83 @@
         "shared-experts-and-fine-grained-expert-architectures"
       ],
       "outcomes": [
-        "TODO"
+        "Explain router logits, token-to-expert scores and top-\\(k\\) selection, and compute active expert FLOPs per token versus total expert parameters.",
+        "Implement a router that maps token vectors to scores, selects \\(k\\) experts and combines their outputs with a shared expert.",
+        "Contrast shared experts with routed experts, and fine-grained experts with few large experts."
       ],
-      "why": "TODO",
+      "why": "Every MoE layer replaces a dense feed-forward block with routed experts plus a router. The router decides which parameters run for each token, so sparse parameter count and active compute diverge from here on.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/topk-routing-recombination",
+          "note": "Fix the selection rule, tie handling and weight renormalization."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-balance-z-loss",
+          "note": "Keep the router from collapsing onto a few experts."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hf-moe-dt7",
+          "title": "MoE layers, routers and sparsity",
+          "url": "https://huggingface.co/blog/moe",
+          "locator": "What is a Mixture of Experts (MoE)? and What is Sparsity?, including Noisy Top-k Gating with the KeepTopK and softmax equations"
+        },
+        {
+          "resource": "deepseek-v3-dt7",
+          "title": "DeepSeekMoE with shared and fine-grained experts",
+          "url": "https://arxiv.org/abs/2412.19437",
+          "locator": "Section 2.1.2, Basic Architecture of DeepSeekMoE, Equations 12 to 15 (arXiv:2412.19437v2): shared experts, routed experts, sigmoid affinities and top-k normalization"
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "Router and MoE layer code",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/moe/moe.py",
+          "locator": "`MoEArgs` defaults, `TokenChoiceTopKRouter.forward` and `MoE.forward`, including `score_func`, `route_norm`, `route_scale`, `expert_bias`, `score_before_experts` and the shared expert"
         }
       ],
       "focus": [
-        "TODO"
+        "Router logits are \\(h = W_{r} x\\); scores are \\(\\operatorname{softmax}(h)\\) or \\(\\operatorname{sigmoid}(h)\\). The gate value that multiplies an expert output comes from the scores, not from the ranking.",
+        "With top-\\(k\\) routing each token activates \\(k\\) of \\(E\\) experts. Active expert FLOPs scale with \\(k\\); total expert parameters scale with \\(E\\).",
+        "A shared expert runs for every token and is added outside the top-\\(k\\) weighting. Fine-grained experts split the same capacity into more, smaller experts with larger \\(k\\).",
+        "TorchFeather computes the gate in float32 under autocast, then optionally normalizes (`route_norm`) and scales (`route_scale`) the selected scores. The bias term changes selection only, as in DeepSeek-V3."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute router scores \\(s = x^{\\top} w\\) for \\(x = [1, 0]\\) and \\(w = [[1, 0, 1], [0, 1, 1]]\\), select top-\\(k\\) with \\(k = 2\\) under lower-index ties, renormalize the two weights with softmax, and combine the expert outputs \\([[10, 0], [0, 0], [0, 10]]\\) plus shared output \\([1, 1]\\) to get \\([6, 6]\\). State which parts change when the shared expert is removed.",
       "traps": [
-        "TODO"
+        "`torch.topk` with `sorted=False`, as TorchFeather uses it, does not promise lower-index tie order or descending output. A contract that needs ties and order needs an explicit stable sort.",
+        "Sigmoid scores are independent affinities between 0 and 1; they sum to 1 across experts only after `route_norm`. Do not treat raw sigmoid outputs as a distribution.",
+        "The shared expert is not one of the \\(k\\) routed choices. Counting it inside top-\\(k\\) undercounts routed compute and breaks the load statistics."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "For scores \\([1, 0, 1]\\) and \\(k = 2\\) with lower-index ties, which experts are selected and with what weights?",
+          "a": "Experts 0 and 2 in that order. Selected scores \\([1, 1]\\) give softmax weights \\([0.5, 0.5]\\)."
+        },
+        {
+          "q": "A layer has \\(E = 8\\) experts with \\(k = 2\\) active per token. How do parameters and active compute scale?",
+          "a": "Parameters scale with 8 experts; active expert compute scales with 2. Doubling \\(E\\) at fixed \\(k\\) adds parameters without adding per-token FLOPs."
+        },
+        {
+          "q": "What changes in the routed result if the shared expert output is zero?",
+          "a": "The result is only the weighted routed sum. In the example above it would be \\([5, 5]\\) instead of \\([6, 6]\\)."
+        },
+        {
+          "q": "TorchFeather adds `expert_bias` to scores before `torch.topk` but gathers gate values from the original scores. Why?",
+          "a": "The bias steers selection toward underloaded experts without changing the multiplies. It implements auxiliary-loss-free balancing; gate values still derive from the unaugmented affinities."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deep-ML 125: Implement a Sparse Mixture of Experts Layer",
+          "url": "https://www.deep-ml.com/problems/125",
+          "locator": "Implement `moe(x, We, Wg, n_experts, top_k)`; the tests check the seed-42 forward values with \\(d = 2\\), 4 experts and top-\\(k = 2\\), and the all-zero expert-weight edge case",
+          "note": "Do the closed-book reproduce first. The tests check forward values only, not routing gradients or dispatch."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your router reproduces the \\([6, 6]\\) example by hand, and your MoE layer passes both Deep-ML 125 tests.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The blog, DeepSeek-V3 Section 2.1.2 and the TorchFeather router and layer cover all three topics at explain and implement depth, with Deep-ML 125 as checked practice."
       }
     },
     {
@@ -71,47 +118,84 @@
         "routing-weights-and-output-recombination"
       ],
       "outcomes": [
-        "TODO"
+        "Select top-\\(k\\) experts with a deterministic lower-index tie rule and keep them in descending score order.",
+        "Renormalize weights over the selected experts and recombine expert outputs plus the shared expert without losing token contributions.",
+        "Compute per-expert token fractions \\(f_{e}\\) and mean probabilities \\(m_{e}\\) for a small batch."
       ],
-      "why": "TODO",
+      "why": "Selection and recombination are the only numerics every token passes through. An unstable tie rule or a wrong normalization silently changes which expert runs and how its output is weighted.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-token-packing-dispatch",
+          "note": "Pack the ordered selection into per-expert rows for dispatch."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-correctness-gradient-tests",
+          "note": "Test recombination and router gradients against oracles."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tensortonic-dt7",
+          "title": "Top-k routing contract with load statistics",
+          "url": "https://www.tensortonic.com/problems/cs336-l04-topk-moe-router",
+          "locator": "Statement, function `topk_moe_router(x, w_router, expert_outputs, shared_output, k)` and the three public cases; score equation, lower-index tie rule, weight renormalization and the \\(f_{e}\\) and \\(m_{e}\\) definitions",
+          "depth": "Attempt the public cases by hand before comparing with the worked examples."
+        },
+        {
+          "resource": "hf-moe-dt7",
+          "title": "KeepTopK gating",
+          "url": "https://huggingface.co/blog/moe#what-is-sparsity",
+          "locator": "Noisy Top-k Gating: noise, KeepTopK with negative-infinity masking, then softmax"
+        },
+        {
+          "resource": "moe-paper-dt7",
+          "title": "Simplified top-1 routing",
+          "url": "https://jmlr.org/papers/v23/21-0998.html",
+          "locator": "Section 2.1: routing to a single expert (\\(k = 1\\)), with the three stated effects on router compute, expert batch size and communication"
         }
       ],
       "focus": [
-        "TODO"
+        "Scores are \\(s_{t,e} = x_{t}^{\\top} w_{e}\\); selection sorts them descending with lower-index tie breaks. Keep that order in the outputs.",
+        "Weights renormalize over the selected \\(k\\) only. The full-vocabulary softmax is a separate statistic (\\(m_{e}\\)), not the combine weight.",
+        "The routed result is the shared output plus the weighted routed sum, with weights summing to 1 per token, so token contributions are conserved through combine.",
+        "Switch shows \\(k = 1\\) preserves quality while cutting router compute, expert batch size and communication. The unit default is general \\(k\\); \\(k = 1\\) is the special case."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement the TensorTonic contract and reproduce public case 1 by hand: scores \\([[1, 0, 1], [0, 1, 1]]\\), selected \\([[0, 2], [1, 2]]\\), weights \\([[0.5, 0.5], [0.5, 0.5]]\\), outputs \\([[6, 6], [5, 5]]\\), \\(f = [0.5, 0.5, 1]\\) and \\(m = [0.288841, 0.288841, 0.422319]\\).",
       "traps": [
-        "TODO"
+        "`torch.topk` tie order is implementation-defined and `sorted=False` drops ordering. Use a stable descending sort when the contract needs ties and order.",
+        "Softmax over all \\(E\\) experts (\\(m_{e}\\)) and softmax over the selected \\(k\\) (combine weights) are different objects. Using \\(m_{e}\\) as combine weights leaks unselected experts into the output.",
+        "GShard dispatches the second expert randomly with probability proportional to its weight; Switch and TensorTonic are deterministic. Do not mix the two semantics in one oracle."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Scores \\([2, 1, 0.5, 0.1]\\), \\(k = 2\\). Which experts and weights?",
+          "a": "Experts 0 and 1. Softmax over \\([2, 1]\\) gives \\([0.7311, 0.2689]\\)."
+        },
+        {
+          "q": "Scores \\([1, 1, 0.6, 0.5]\\), \\(k = 2\\). What does the tie rule give?",
+          "a": "Experts 0 and 1 with weights \\([0.5, 0.5]\\); lower index wins the tie and order stays descending."
+        },
+        {
+          "q": "Why is \\(f_{2} = 1\\) while \\(m_{2} = 0.422319\\) in public case 1?",
+          "a": "Both tokens select expert 2, so its token fraction is 1. Its mean probability averages the full softmax rows, which spread mass over all experts."
+        },
+        {
+          "q": "A combine drops the shared expert term. Which public-case outputs change?",
+          "a": "All outputs shift by the shared output: case 1 becomes \\([[5, 5], [3, 3]]\\)."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Top-k MoE Router with Load Statistics",
+          "url": "https://www.tensortonic.com/problems/cs336-l04-topk-moe-router",
+          "locator": "Implement `topk_moe_router`; the three public cases check tied top-two routing, single-expert selection and all-tied selection with exact outputs, indices, weights, token fractions and probability masses",
+          "note": "Solve on paper before running. Use float32 routing, then cast to the input dtype, on the input device."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your implementation matches all three public cases exactly, including order, dtype and device, and you can redo case 1 by hand.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The TensorTonic contract plus the blog and Switch top-1 sections cover selection and recombination at implement depth, with free checked practice."
       }
     },
     {
@@ -126,48 +210,84 @@
         "all-to-all-dispatch-and-inverse-combine"
       ],
       "outcomes": [
-        "TODO"
+        "Pack routed rows by destination expert and rank with a stable permutation, and invert it exactly on combine.",
+        "Exchange variable row counts with `all_to_all_single` using explicit uneven splits, including empty experts.",
+        "Prove token identity through dispatch, expert compute and combine against a single-process oracle."
       ],
-      "why": "TODO",
+      "why": "Dispatch is where routing meets the network. Packing decides the grouped matrix layout, the two all-to-alls move the rows, and the inverse permutation decides whether each output lands back on its token.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/expert-groups-state-ownership",
+          "note": "Learn which ranks own each expert and exchange the rows."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-correctness-gradient-tests",
+          "note": "Turn the oracle into permanent dispatch and combine tests."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gshard-paper-dt7",
+          "title": "Dispatch and combine as linear algebra",
+          "url": "https://arxiv.org/abs/2006.16668",
+          "locator": "Section 3.1, Algorithm 2 (arXiv:2006.16668v1): dispatch einsum, grouped expert einsums and combine einsum; Section 3.3.1 for the AllToAll resharding primitive"
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "All-to-all dispatch and combine walkthrough",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs",
+          "locator": "19:01:56 (all-to-all dispatch and combine): counts all-to-all first, payload all-to-all second, then permute and unpermute"
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "Dispatch, permute and combine code",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/expert_parallel.py",
+          "locator": "`ExpertParallel._token_dispatch` (counts `all_to_all_single`, `input_splits` and `output_splits` from row sums, `all_to_all_single_autograd` payload, `_permute`) and `_token_combine` (`_unpermute`, then swapped splits); `model/moe/utils.py` `_permute` and `_unpermute`"
+        },
+        {
+          "resource": "pytorch-alltoall-docs",
+          "title": "`all_to_all_single` split semantics",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.html#torch.distributed.all_to_all_single",
+          "locator": "`input_split_sizes` and `output_split_sizes` for dim 0, including uneven and empty splits"
         }
       ],
       "focus": [
-        "TODO"
+        "Two all-to-alls: an equal-split exchange of per-expert counts, then an uneven payload exchange with explicit splits. Skipping the counts exchange leaves receive sizes unknown.",
+        "Splits count rows, not bytes. Dispatch sends with the receive counts first and the send counts second; combine swaps them.",
+        "`_permute` converts source-major rows to padded local-expert-major rows for grouped matrix multiply; `_unpermute` inverts it before the combine all-to-all. Padding rows are zeros for compute only and never return to tokens.",
+        "GShard expresses the same path as einsums over dispatch and combine weights. The TorchFeather code is that math with ranks, splits and padding made explicit."
       ],
-      "reproduce": "TODO",
+      "reproduce": "With 6 tokens, 4 experts, top-k of 2 and hidden width 4 on one process, pack rows by expert with a stable sort, record the inverse permutation, run a fixed split table with one empty expert by slicing rows, apply per-expert linear maps, unpermute and combine. Then run the same splits through `torchrun --nproc-per-node 4` on the `gloo` backend with `dist.all_to_all_single` and assert identical outputs and recovered order.",
       "traps": [
-        "TODO"
+        "Passing equal splits to the payload all-to-all when experts are imbalanced corrupts or hangs. Derive splits from exchanged counts every step.",
+        "Padded grouped-MM row counts from `_permute` are multiples of 8 and are not token counts. Using them for load fractions or capacity overstates load.",
+        "CPU `gloo` timings validate byte counts and identity, not GPU interconnect behavior. Do not quote them as NVLink or InfiniBand evidence."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "In the file worked example rank 0 sends \\([8, 8, 10, 6]\\). What do they sum to and why?",
+          "a": "32, which is \\((16 / 2) \\times 4\\): 8 local tokens after the TP split times top-\\(k = 4\\)."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Rank 0 receives 31 rows but sent 32. Is that a bug?",
+          "a": "No. Sends count rows by destination expert; receives count rows for owned experts from all sources. Imbalance makes them differ; the exchanged counts predict both."
+        },
+        {
+          "q": "Combine swaps the split arguments. Why?",
+          "a": "Dispatch moves rows from source layout to owner layout; combine moves results back. Each rank send sizes on dispatch are its receive sizes on combine."
+        },
+        {
+          "q": "An expert gets zero tokens on all ranks. What must still hold?",
+          "a": "Every rank passes matching zero splits for it, the payload all-to-all still runs, and the expert contributes nothing. Empty splits are legal, as the 4-process `gloo` check shows."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "Your oracle round-trips token identity through pack, uneven exchange and combine with an empty expert, and the `gloo` run matches it exactly.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
-      }
+        "verdict": "added",
+        "note": "Coverage failed for uneven and empty split semantics; the PyTorch 2.14 all_to_all_single reference fills that gap beside the TorchFeather code and GShard math."
+      },
+      "practiceNote": "The section mini-project covers this: router-to-dispatch-to-combine oracle with uneven and empty splits, forward and gradient equivalence against a single process, and a 4-process `gloo` identity run."
     },
     {
       "id": "expert-groups-state-ownership",
