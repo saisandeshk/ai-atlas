@@ -213,47 +213,82 @@
         "parameter-name-and-optimizer-state-compatibility"
       ],
       "outcomes": [
-        "TODO"
+        "Write a checkpoint manifest with schema version, topology, config and code identity, and refuse resume on mismatch.",
+        "Handle renamed parameters and missing or extra optimizer keys with explicit strict versus lax loading and a logged decision per key."
       ],
-      "why": "TODO",
+      "why": "Silent name or shape mismatches resume successfully and train the wrong model. The manifest turns that into a loud refusal or a logged remap.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/atomic-publish-checksums",
+          "note": "Publish only complete manifests."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Topology entries make resharding explicit."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nanotron-ckpt-dt9",
+          "title": "Nanotron serialization format and its limits",
+          "url": "https://github.com/huggingface/nanotron/blob/fb0747bac263a4c3a8ff4d724869a533afb561d8/docs/docs.md",
+          "locator": "Distributed serialization mechanism: `checkpoint_metadata.json` with version and topology, per-rank optimizer, scheduler and `random` shards, model `safetensors`; checkpoints are NOT topology agnostic because of `random_states` and sharded tensors, with the `checkpoint_reshape` plan"
+        },
+        {
+          "resource": "torchtitan-ckpt-dt9",
+          "title": "Keys, versions and partial loading",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/docs/checkpoint.md",
+          "locator": "EXCLUDING SPECIFIC KEYS FROM CHECKPOINT LOADING with `exclude_from_loading` for `dataloader`, `lr_scheduler` and `ema` plus the cold-start warning; Creating a seed checkpoint; Conversion support for HuggingFace and Torch formats"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Minimal manifest probe and strictness choices",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`_find_load_step`: `step-*` directories count only with a `.metadata` probe; `ModelWrapper.load_state_dict` uses `StateDictOptions(strict=False)` and rebuilds its cache; `load` with `step == 0` loads model weights only"
         }
       ],
       "focus": [
-        "TODO"
+        "A manifest answers four questions before training resumes: which schema version, which topology produced this, which config and code, and which keys with which shapes. Anything less is directory discovery, not a manifest.",
+        "`strict=False` is a policy, not a default to copy. TorchFeather uses it for model weights so renamed runs still load, but every skipped or remapped key must be logged, and optimizer state needs stricter handling because a dropped moment silently restarts adaptation.",
+        "Seed checkpoints separate initialization from training. TorchTitan builds weights once on one device and DCP-reshards them anywhere, so layout never leaks into the initial weights.",
+        "Nanotron's format shows why manifests must record topology. Per-rank optimizer and RNG shards have no defined meaning under a new TP, DP or PP layout, so the honest manifest refuses rather than guesses."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a three-key manifest (schema version, topology, config hash) for a toy checkpoint, then demonstrate all three refusals: bump the schema, rename one parameter under strict loading, and delete `.metadata`. Each must fail loudly with the cause named.",
       "traps": [
-        "TODO"
+        "Trusting file names as a manifest. `step-12` without a `.metadata` probe is an interrupted write; TorchFeather's loader skips it, and yours must too.",
+        "Excluding a key from loading and forgetting to remove the exclusion. TorchTitan's EMA note shows the failure: every later resume cold-starts the EMA and discards its history.",
+        "Reloading optimizer state whenever shapes match. Changed `betas` or `eps` keep shapes but change the update, so record hyperparameters in the manifest and refuse or warm-start explicitly."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A checkpoint directory contains `step-9` with shards but no `.metadata`, plus a complete `step-8`. Which step loads, and why?",
+          "a": "Step 8. Without the manifest probe the newer directory is an interrupted write, so the loader takes the newest complete checkpoint."
+        },
+        {
+          "q": "After enabling EMA mid-run, resume fails on a missing `ema` key. What is the one-resume fix, and what must happen right after?",
+          "a": "Exclude `ema` from loading once so it cold-starts from the loaded weights, then remove the exclusion so later resumes keep the EMA history."
+        },
+        {
+          "q": "A renamed layer loads with `strict=False` and training continues. What two records make this safe instead of silent?",
+          "a": "The manifest's map from old to new key names, and a load log of every skipped, remapped and shape-changed key. Unlogged lax loading is silent corruption."
+        },
+        {
+          "q": "Why does Nanotron record topology in `checkpoint_metadata.json` instead of attempting cross-topology loads?",
+          "a": "Its per-rank optimizer and RNG shards are only defined under the saving layout. The metadata states that assumption, so a changed mesh fails loudly instead of misassigning state."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TorchTitan CPU checkpoint suite",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/tests/unit_tests/cpu/test_checkpoint.py",
+          "locator": "Run `tests/unit_tests/cpu/test_checkpoint.py`: save, load, `load_step` selection and purge cases on CPU",
+          "note": "Run in the repo's dev environment on CPU; the full trainer needs GPUs. Read the case names as the manifest contract: latest-complete selection, key exclusion, stale cleanup."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your loader refuses a version bump, a renamed parameter under strict mode, and a manifest-less directory, each with a message naming the cause; lax loads log every remapped key.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Nanotron's worked manifest format, TorchTitan's key-exclusion contract and TorchFeather's probe-plus-strictness rules cover both topics at implement depth."
       }
     },
     {
@@ -268,47 +303,88 @@
         "checksums-completeness-validation-and-corruption-detection"
       ],
       "outcomes": [
-        "TODO"
+        "Publish a sharded checkpoint so readers only ever see complete versions: temp directory, barrier, atomic replace, manifest last.",
+        "Detect corruption with per-shard checksums plus a completeness check, and fall back to the last known good."
       ],
-      "why": "TODO",
+      "why": "A crash during a write is normal at scale. Without atomic publish the newest checkpoint is the corrupt one, and without checksums that corruption trains silently.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "Retention keeps the fallback this unit refuses toward."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Killing during publish is one boundary in the campaign."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "olmo-core-checkpointer",
+          "title": "Temporary-directory publish with barriers",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/checkpoint.py",
+          "locator": "`_temporary_wd` with `_get_tmp_dir` (`<name>-tmp`), `_teardown_tmp_dir` (barrier, rank-0 `replace`, visibility `wait_for`), `_prepare_dir` barrier discipline, `_save_metadata` writing rank-0 `.metadata.json` last"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Checksums on every sync",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/storage/README.md",
+          "locator": "Don't forget the checksums: verify MD5 or SHA256 on sync because some tools skip it; slow but safe"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Commit marker on the read path",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`_find_load_step` `.metadata` probe for newest complete step; `_purge_stale_checkpoints` rank-0 only with sorted `step-*` selection"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Check-and-verify against silent corruption",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Check-and-Verify: Defending Against Silent Data Corruption, with Napkin Math 7.2: hash each gradient shard or reduced buffer and block the optimizer step on digest mismatch"
         }
       ],
       "focus": [
-        "TODO"
+        "Publish order is the whole protocol: write shards to a temp directory, barrier, atomically replace onto the final name, then write the manifest. Readers list only final names and require the manifest.",
+        "The manifest is the commit marker. A directory without it is garbage from an interrupted write, however new its shards are.",
+        "Checksums catch bit rot and truncated transfers; completeness (every shard present, sizes matching the manifest) catches interruption. Run both: a complete set of corrupt shards and a pristine subset both refuse.",
+        "Hash in-flight reductions too, not just files at rest. Check-and-verify compares digests across ranks before the optimizer step, because a corrupt buffer poisons weights no disk checksum can see."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Kill a two-process CPU save between the last shard write and the replace, and show the loader ignores the temp directory and loads the previous complete checkpoint. Then flip one byte in a good shard and show the checksum check refuses the checkpoint.",
       "traps": [
-        "TODO"
+        "Writing shards straight into the final directory. A crash mid-write leaves the newest version half complete, and the loader cannot tell it from a good one.",
+        "Checksumming the archive but skipping per-shard hashes. One corrupt shard then invalidates the whole checkpoint with no way to name the bad file.",
+        "Syncing file data but ignoring the directory entry. The earlier unit Files, page cache, fsync, atomic rename and durability covers the full contract: data first, then the rename, with the containing directory made durable."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Ranks finish writing shards at different times and rank 0 replaces the temp directory as soon as its own shard lands. What breaks?",
+          "a": "The replace publishes an incomplete checkpoint. The barrier before teardown exists so every rank's shards are durable before any reader can see the final name."
+        },
+        {
+          "q": "Every shard verifies against its checksum but training still diverges right after resume. Which check is missing?",
+          "a": "Completeness against the manifest: a stale shard from an older step carries a valid checksum. Sizes, versions and the full shard set must match too."
+        },
+        {
+          "q": "Why is the manifest written after the replace rather than before the shards?",
+          "a": "The manifest is the commit marker. Written early it commits shards that do not exist yet; written last it certifies exactly what is durable."
+        },
+        {
+          "q": "A gradient shard's checksum matches on disk but the loss spikes after one AllReduce. Where did verification miss?",
+          "a": "In flight: silent corruption during the reduction never touched the disk copy. Check-and-verify hashes reduced buffers across ranks before the optimizer step."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Atomic publish plus tamper refusal in your own harness",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/test/train/checkpoint_test.py",
+          "locator": "Mirror the `run_checkpointer` assertions (`dir_is_checkpoint`, `find_checkpoints`, `latest_checkpoint`, reload equivalence) for a temp-dir publish with manifest plus per-shard SHA256, and add a one-byte tamper case that refuses the checkpoint",
+          "note": "Implement in your own repository on CPU with small shards. The OLMo suite is the layout contract, not a drop-in dependency."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "An interrupted publish never appears on the load path, a tampered shard is named by its checksum failure, and both cases fall back to the previous complete checkpoint.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for a worked temp-dir publish with barrier discipline; OLMo-core's Checkpointer supplies that pattern and its test assertions beside Stas checksums and TorchFeather's probe."
       }
     },
     {
