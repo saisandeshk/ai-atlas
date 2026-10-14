@@ -1,6 +1,17 @@
 {
   "section": "deep-policy-gradient-actor-critic-ppo",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "rl4-sac-squashed-density",
+      "role": "paper",
+      "priority": "reference",
+      "name": "Soft Actor-Critic: action-bound density correction",
+      "provider": "Haarnoja et al.",
+      "access": "Free",
+      "use": "Appendix C, Enforcing Action Bounds, Equations 20 and 21 in arXiv:1801.01290v2. Supplies the change-of-variables derivation missing from the pool's action-clipping checklist; do not study SAC training here.",
+      "url": "https://arxiv.org/abs/1801.01290v2"
+    }
+  ],
   "units": [
     {
       "id": "trajectory-objective-score-function",
@@ -399,7 +410,7 @@
     {
       "id": "policy-distributions-entropy",
       "title": "Categorical, Gaussian and tanh-squashed policies and entropy regularization",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive",
         "implement"
@@ -410,47 +421,82 @@
         "rl-4-tanh-squashed-actions-and-log-probability-correction"
       ],
       "outcomes": [
-        "TODO"
+        "Implement categorical and diagonal Gaussian policy log probabilities with correct event reductions.",
+        "Derive the tanh-squashed density and explain why clipping samples is not the same distribution.",
+        "Add entropy regularization with the correct loss sign and distinguish base Gaussian from transformed entropy."
       ],
-      "why": "TODO",
+      "why": "The action passed to the environment and the action whose density enters the update must have a declared relationship. A wrong density can leave training apparently functional while the gradient and PPO ratios are wrong.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/ppo-ratios-clipped-surrogate",
+          "note": "Compare old and new densities of the same action."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "rl4-reinforcement-learning-an-introduction-chapter-13",
+          "title": "Sutton and Barto: stochastic policy parameterizations",
+          "url": "https://mitpress.mit.edu/9780262352703/reinforcement-learning/",
+          "locator": "Chapter 13, Section 13.1, Policy Approximation and its Advantages, printed pp. 322 to 324, and Section 13.7, Policy Parameterization for Continuous Actions, pp. 335 to 336",
+          "depth": "The authors post the full text free at incompleteideas.net. Focus on policy parameterization; the underlying distributions and transformations are already covered in Common distribution families and transformations."
+        },
+        {
+          "resource": "rl4-37-implementation-details-of-ppo",
+          "title": "PPO continuous-action distribution audit",
+          "url": "https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/#9-details-for-continuous-action-domains-eg-mujoco",
+          "locator": "9 details for continuous action domains: state-independent log standard deviation, independent action components, and Handling of action clipping to valid range and storage",
+          "depth": "Stop before Normalization of Observation. The checklist uses latent Gaussian samples followed by clipping, not a tanh-transformed density."
+        },
+        {
+          "resource": "rl4-sac-squashed-density",
+          "title": "The tanh change-of-variables correction",
+          "url": "https://arxiv.org/abs/1801.01290v2",
+          "locator": "arXiv:1801.01290v2, Appendix C, Enforcing Action Bounds, Equations 20 and 21"
+        },
+        {
+          "resource": "rl4-proximal-policy-optimization-algorithms",
+          "title": "PPO entropy term",
+          "url": "https://arxiv.org/abs/1707.06347v2",
+          "locator": "arXiv:1707.06347v2, Section 5, Algorithm, Equation 9 and its entropy-bonus explanation",
+          "depth": "Read only the combined objective here; the PPO surrogate comes next."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse the stable log-softmax and loss-gradient results. A categorical policy produces one log probability per sampled action; independent Gaussian components require a sum across action coordinates, not across the batch.",
+        "For \\(a=\\tanh u\\), \\(\\log\\pi(a\\mid s)=\\log\\mu(u\\mid s)-\\sum_i\\log(1-\\tanh^2 u_i)\\). An additional affine scaling of action bounds adds its log-Jacobian correction too.",
+        "Retain the pre-squash action for stable likelihood evaluation near saturation. Clipping is noninvertible and creates boundary masses; do not apply the tanh Jacobian to it.",
+        "Minimizing a loss with \\(-c_H H\\), for positive \\(c_H\\), encourages entropy. Transformed entropy is \\(H(a)=H(u)+\\mathbb{E}[\\log|\\det(da/du)|]\\), not merely the Gaussian's analytic entropy. Entropy alone does not guarantee useful state coverage."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with `float64`, derive the scalar Gaussian log-density derivatives at fixed action \\(u=0.5\\), mean 0 and standard deviation 1: the mean derivative is 0.5 and the log-standard-deviation derivative is -0.75. Squashing gives \\(a=\\tanh(0.5)\\approx0.462117\\) and corrected log density about -0.803710. Implement the correction and match `torch.distributions.TransformedDistribution` with `torch.distributions.TanhTransform(cache_size=1)` to absolute tolerance \\(10^{-10}\\).",
       "traps": [
-        "TODO"
+        "Keeping a reparameterized sample's gradient path while applying a score-function loss. Hold the sampled action fixed when differentiating its log density.",
+        "Evaluating a Gaussian density at the clipped environment action while claiming it is the latent-action score. Store the actual latent sample if using that formulation.",
+        "Assuming larger Gaussian standard deviation always means larger bounded-action entropy. Saturation can concentrate transformed actions near the bounds."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why sum diagonal Gaussian component log probabilities?",
+          "a": "Their joint density is the product of component densities. Taking its log turns the product into a sum and gives one scalar per action vector."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can a continuous action density exceed 1?",
+          "a": "Yes. A density is not a point probability; its integral over the action support must be 1."
+        },
+        {
+          "q": "Can the tanh correction cancel in a PPO ratio?",
+          "a": "Yes, for the same action and the same parameter-independent invertible transform under both policies. It still matters for absolute log densities and transformed entropy."
+        },
+        {
+          "q": "Which entropy sign encourages exploration in a minimized loss?",
+          "a": "Subtract a positive coefficient times entropy. Adding it would encourage lower entropy."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab categorical and continuous-action density, event-shape, entropy-sign and squashing tests.",
+      "stopWhen": "Your fixed-action Gaussian gradients and squashed log density match the analytic checks, and your batched policies return one log probability per action vector.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Depth failed for tanh density: the pool checklist only describes clipping versus squashing. The opened SAC Appendix C supplies the missing derivation without adding SAC training."
       }
     },
     {
