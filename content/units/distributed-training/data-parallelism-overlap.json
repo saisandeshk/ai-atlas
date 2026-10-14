@@ -585,47 +585,82 @@
         "divergent-control-flow-and-collective-mismatch"
       ],
       "outcomes": [
-        "TODO"
+        "Explain `find_unused_parameters` cost and `static_graph` promises, and choose between them for a given model.",
+        "Implement correct handling for frozen and tied params, and diagnose a divergent-control hang from the sync-point rule.",
+        "State why `torch.autograd.grad` does not work with DDP."
       ],
-      "why": "TODO",
+      "why": "One rank taking a different branch turns a collective into a hang. Static versus dynamic is the difference between paying traversal every step and promising stability.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-failure-rank-logs",
+          "note": "Turns the hang described here into attributed first-cause lines."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/rank-consistent-metrics-batchnorm",
+          "note": "Keeps reported numbers consistent once control flow is uniform."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-ddp-dt3",
+          "title": "DDP sync points and stragglers",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/ddp_tutorial.html",
+          "locator": "Skewed Processing Speeds: constructor, forward and backward as sync points in the same order, plus large `timeout` for stragglers; Basic Use Case broadcast contract (page read 2026-10-14)"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Unused-parameter handling in the design note",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/ddp.html",
+          "locator": "Forward Pass: graph traversal from the output with `find_unused_parameters=True`, all buckets still reduced, overhead warning"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Static graphs and related constructor flags",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "`find_unused_parameters` default `False`, `static_graph` semantics and logging check, `skip_all_reduce_unused_params`, `no_sync` forward-inside warning, no `torch.autograd.grad` support"
         }
       ],
       "focus": [
-        "TODO"
+        "`find_unused_parameters=True` walks the autograd graph from the output on every forward to mark unused params ready. It still reduces all buckets; it only stops the wait. Pay it only when some forwards genuinely skip params.",
+        "`static_graph=True` promises the used set and the control flow never change. It then allows reentrant backward, repeated checkpointing with unused params, and params outside forward; check `can_set_static_graph` in the logging data first.",
+        "Constructor, forward and backward are sync points every rank must reach in the same order at about the same time. A rank-dependent branch gives a collective mismatch: hang, timeout, or wrong grads.",
+        "With `skip_all_reduce_unused_params=True` DDP skips reducing unused params, which requires them identical on all ranks or training desyncs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On 2 CPU ranks, train a model with a frozen bias and a tied linear pair through the CS336 suite and show both pass unchanged. Then sketch the divergent case on paper: rank 0 runs an extra DDP forward that rank 1 skips, and name the first mismatched collective.",
       "traps": [
-        "TODO"
+        "Setting `find_unused_parameters=True` always to be safe. It pays a traversal every forward; a stable graph with `static_graph=True` is cheaper.",
+        "Changing graph shape per iteration (for example depth by input) with `static_graph=True`. The promise breaks and training hangs or corrupts.",
+        "Calling `torch.autograd.grad` with DDP. The module only works when grads accumulate into `param.grad`."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What does `find_unused_parameters` cost, and when is it worth it?",
+          "a": "A per-forward graph walk from the output. Pay it only when some params are genuinely unused in some forwards; otherwise use a static graph."
+        },
+        {
+          "q": "Two ranks run different numbers of DDP forwards per step. Symptom?",
+          "a": "Collective mismatch: hang, timeout, or wrong grads. Constructor, forward and backward must match in count and order on all ranks."
+        },
+        {
+          "q": "What three things does `static_graph=True` newly allow?",
+          "a": "Reentrant backward, repeated checkpointing with unused params, and params outside the forward function, plus faster unused handling."
+        },
+        {
+          "q": "How does equivalence treat the ToyModel `fc.bias` with `requires_grad=False`?",
+          "a": "It stays equal with no grad and no sync. Init broadcast covers it; the collective touches only `requires_grad` params."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: frozen and tied params in `test_ddp.py`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "The frozen-parameter cases (`no_grad_fixed_param`, `_FC2` bias with `requires_grad=False`) and the tied-weight case (`ToyModelWithTiedWeights` with `fc4.weight` tied to `fc2.weight`) inside `tests/test_ddp.py`"
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can decide between `find_unused_parameters` and `static_graph` for a given model and explain a divergent hang from the sync-point rule.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "The DDP tutorial plus design note cover sync points and unused handling, and the CS336 suite checks frozen and tied params.",
+        "verdict": "kept"
       }
     },
     {
@@ -641,47 +676,83 @@
         "distributed-batch-normalization-vocabulary-and-limits"
       ],
       "outcomes": [
-        "TODO"
+        "Reduce rank-local losses and metrics to one consistent global number with the correct denominator.",
+        "Convert BatchNorm to SyncBatchNorm before DDP and state its training-only and single-GPU limits.",
+        "Explain DDP buffer broadcast versus gradient averaging."
       ],
-      "why": "TODO",
+      "why": "Local batch stats and local means lie. A reported loss that mixes denominators cannot be compared across runs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-stragglers-scaling-efficiency",
+          "note": "Feeds consistent numbers into scaling-efficiency claims."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Times the reductions described here under fixed work."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "dlas-dp-dt3",
+          "title": "DDP buffers and BatchNorm state",
+          "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
+          "locator": "Distributed Data Parallel (pp. 242 to 243): replicas plus per-forward buffer broadcast from the leader, BatchNorm batch statistics through buffers; Devil in the details box on start methods (p. 243)"
+        },
+        {
+          "resource": "pytorch-syncbn-dt3",
+          "title": "SyncBatchNorm conversion and limits",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.SyncBatchNorm.html",
+          "locator": "`convert_sync_batchnorm(module, process_group)`: converts all `BatchNorm` layers before the DDP wrap; stats sync within the group; sync disabled in eval; single GPU per process note"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Buffer broadcast versus param sync",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "Note that buffers (for example BatchNorm stats) broadcast from rank 0 every iteration while parameters are never broadcast; grads are all-reduced"
         }
       ],
       "focus": [
-        "TODO"
+        "Global mean needs the global denominator: average rank-local means only with equal local counts. With 4 versus 2 samples, sum-then-divide gives 2.667 while averaging the means gives 3.0.",
+        "Reduce metrics as SUM and COUNT, then divide once. Never average per-rank accuracies over different denominators.",
+        "Convert with `convert_sync_batchnorm` before wrapping with DDP. Stats sync within the group during training only; eval uses running estimates; only single GPU per process is supported.",
+        "DDP broadcasts buffers from rank 0 every forward but never rebroadcasts params; grads are the all-reduced quantity in backward."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On 2 CPU ranks with uneven shards (4 versus 2 samples), compute the global mean both ways: plain average of local means and sum-over-count. Show they differ, then implement the correct reduction and match a single-process mean over all 6 samples.",
       "traps": [
-        "TODO"
+        "Averaging per-rank accuracies or losses over unequal local shards (padding, last batches, join). The small shard gets overweighted.",
+        "Skipping conversion and running per-rank BatchNorm. Local stats plus running estimates diverge silently across ranks.",
+        "Expecting stat sync in eval. SyncBatchNorm syncs during training only."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Rank losses 2.0 over 4 samples and 4.0 over 2 samples. Global mean?",
+          "a": "2.667, from `(2.0 * 4 + 4.0 * 2) / 6`. Averaging the means gives 3.0, which overweights the small shard."
+        },
+        {
+          "q": "When is averaging local means correct?",
+          "a": "With equal local counts and the same reduction. Otherwise weight by counts."
+        },
+        {
+          "q": "Where does `convert_sync_batchnorm` go relative to the DDP wrap?",
+          "a": "Before wrapping. Then wrap; only single GPU per process is supported."
+        },
+        {
+          "q": "Buffers versus params in a DDP iteration?",
+          "a": "Buffers broadcast from rank 0 to all ranks each forward; params are never rebroadcast; grads all-reduce in backward."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deep Learning at Scale: Scene Parsing with DDP",
+          "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
+          "locator": "Hands-On Exercise #4 Scene Parsing with DDP (pp. 247 to 251): Lightning `strategy=ddp` training with `sync_dist=True` validation reduction; compare the 1-GPU baseline against rank-consistent 2-GPU numbers",
+          "note": "Extra practice per the pool. Focus on the metric-reduction path, not the segmentation scores."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your reduction matches sum-over-count on uneven shards, and you can state the BatchNorm conversion order plus its limits without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "Coverage failed for the SyncBatchNorm conversion API; the new PyTorch reference fills that gap beside Deep Learning at Scale buffer vocabulary and its DDP exercise.",
+        "verdict": "added"
       }
     },
     {
@@ -697,47 +768,83 @@
         "powersgd-or-low-precision-communication-hook-experiment"
       ],
       "outcomes": [
-        "TODO"
+        "Explain the comm-hook contract: `GradBucket` in, Future of one same-shape tensor out, division owned by the hook.",
+        "Implement `fp16_compress_hook` on a 2-rank CPU DDP job and bound its error versus vanilla all-reduce.",
+        "Run a small PowerSGD experiment and report the compression-versus-accuracy trade with its tuning knobs."
       ],
-      "why": "TODO",
+      "why": "Compression trades bytes for bias. The hook contract decides where the bias enters and who corrects it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-stragglers-scaling-efficiency",
+          "note": "Says when compression matters: the bandwidth-bound regime."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Times hook overhead against exposed communication."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-ddp-dt3",
+          "title": "Comm-hook contract and default hooks",
+          "url": "https://docs.pytorch.org/docs/2.14/ddp_comm_hooks.html",
+          "locator": "How to Use plus What Does a Communication Hook Operate On: `GradBucket.buffer`, per-bucket call, single-tensor Future; Default hooks: `allreduce_hook` reference plus `fp16_compress_hook` and `bf16_compress_hook`; Debugging hooks: `noop_hook` headroom-only warning"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "PowerSGD state and hooks",
+          "url": "https://docs.pytorch.org/docs/2.14/ddp_comm_hooks.html",
+          "locator": "PowerSGD State (`matrix_approximation_rank`, `start_powerSGD_iter`, `min_compression_rate`, `use_error_feedback`, `warm_start`, grad-sized extra memory, minimum start 2) plus PowerSGD Hooks (per-tensor path versus batched variant) and the serialization example"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Hook registration contract",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "`register_comm_hook(state, hook)`: hook signature, buckets not predivided by world size, register once before backward, Future holds the new bucket value"
         }
       ],
       "focus": [
-        "TODO"
+        "Each hook takes one flattened bucket buffer and returns a Future of a single tensor with the same shape. Custom ops divide by world size themselves: buckets are not predivided.",
+        "The `fp16_compress_hook` casts, all-reduces in fp16, casts back. Bound it near `1e-3` relative on CPU; bandwidth claims need NCCL hardware.",
+        "PowerSGD keeps low-rank factors with error feedback and warm start at about grad-sized extra memory, defers compression to `start_powerSGD_iter`, tunes rank 1, 2, 4 upward, and skips vectors and incompressible tensors.",
+        "The `noop_hook` measures all-reduce headroom only. Never train with it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On 2 CPU ranks, register `fp16_compress_hook` on one ToyModel DDP job and `allreduce_hook` on an identical one; assert grads agree within `1e-3` relative for 5 steps. Then switch to `powerSGD_hook` at rank 1 with `start_powerSGD_iter=10` and show the first 10 steps match vanilla exactly.",
       "traps": [
-        "TODO"
+        "Forgetting the division in a custom hook. Buckets arrive undivided, so grads come out R times too large.",
+        "Registering the hook after backward started. It applies late or errors; register before the loop.",
+        "Reading CPU gloo compression timing as interconnect evidence, or compressing from step 0 with feedback on. Bandwidth claims need NCCL hardware and early sensitive steps need vanilla all-reduce."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A hook returns what, and who divides?",
+          "a": "A Future of a single tensor with the bucket buffer shape. Custom ops divide by world size themselves."
+        },
+        {
+          "q": "Why is `start_powerSGD_iter` at least 2 with error feedback on?",
+          "a": "DDP rebuilds buckets at iteration 1, which conflicts with tensors memorized before the rebuild."
+        },
+        {
+          "q": "fp16 hook error bound on the CPU demo?",
+          "a": "Near `1e-3` relative versus fp32 vanilla. Bandwidth claims need NCCL hardware."
+        },
+        {
+          "q": "Which tensors does PowerSGD skip, and why?",
+          "a": "Vectors such as biases, plus shapes failing `min_compression_rate`. Overhead would exceed the saving."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "PyTorch docs: PowerSGD hook experiment",
+          "url": "https://docs.pytorch.org/docs/2.14/ddp_comm_hooks.html",
+          "locator": "PowerSGD State plus PowerSGD Hooks sections with the end-to-end register-and-compare example: `PowerSGDState(process_group, matrix_approximation_rank=1, start_powerSGD_iter=10)` with `powerSGD_hook` on the ToyModel DDP job versus vanilla `allreduce_hook`; report steps-to-match and final param distance",
+          "note": "CPU gloo bounds the error only. Throughput or compression-ratio claims need NCCL hardware."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The fp16 run stays within its bound and you can state the PowerSGD rank, start-iter and feedback trade without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "The comm-hooks page covers contracts and PowerSGD; practice is the docs hook lab on the learner's own DDP job.",
+        "verdict": "kept"
       }
     },
     {
