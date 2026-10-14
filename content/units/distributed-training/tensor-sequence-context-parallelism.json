@@ -8,7 +8,7 @@
       "name": "PyTorch 2.14 SDPA - explicit masks and dropout",
       "provider": "PyTorch",
       "access": "Free",
-      "use": "Use the equivalent attention implementation and attn_mask/dropout_p contract to build a CPU packed-document oracle before translating masks to context-parallel blocks. Do not assume the experimental CP wrapper supports every SDPA mask.",
+      "use": "Use the equivalent attention implementation and `attn_mask`/`dropout_p` contract to build a CPU packed-document oracle before translating masks to context-parallel blocks. Do not assume the experimental CP wrapper supports every SDPA mask.",
       "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html"
     }
   ],
@@ -822,7 +822,7 @@
         {
           "resource": "pytorch-tp-dt5",
           "title": "Uneven DTensor shards and metadata checks",
-          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.Shard",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.placement_types.Shard",
           "locator": "`Shard`: `torch.chunk` semantics and experimental uneven-sharding note; `DTensor.from_local`: `run_check`, `shape` and `stride`",
           "depth": "Read these entries only. Uneven placement support does not imply every module or collective accepts ragged inputs."
         },
@@ -894,47 +894,78 @@
         "asynchronous-tensor-parallelism-and-collective-overlap"
       ],
       "outcomes": [
-        "TODO"
+        "Derive feasible TP and CP degree candidates from head policy, memory, sequence length and link bandwidth.",
+        "Measure synchronous and asynchronous CPU correctness paths without claiming GPU overlap from their timings.",
+        "Distinguish an asynchronous launch from hidden communication using a dependency model and, when hardware permits, a GPU trace."
       ],
-      "why": "TODO",
+      "why": "Increasing a degree shrinks local work but adds communication and can worsen kernel efficiency. Choose a correct, memory-feasible plan before testing whether overlap reduces its critical path.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/parallelism-tradeoffs-context-batch",
+          "note": "Compose TP and CP candidates with batch, state sharding and pipeline choices."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Degree choice depends on the workload and links",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#tensor_parallelism_in_a_transformer_block",
+          "locator": "Closing TP throughput/memory trade-off; Sequence parallelism closing benchmark summary; Context Parallelism and Ring Attention overlap discussion",
+          "depth": "Use the trends and dependencies, not the plotted throughput as a target. The node boundary and eight-GPU threshold describe the authors' topology, not a universal TP limit."
+        },
+        {
+          "resource": "jax-sharding-dt5",
+          "title": "Chunked communication and matmul overlap",
+          "url": "https://jax-ml.github.io/scaling-book/sharding#how-to-overlap-matmul-communication-with-compute",
+          "locator": "Chapter 3, How to overlap matmul communication with compute: all-gather/matmul and matmul/reduce-scatter schedules",
+          "depth": "Read this subsection only. Transfer the dependency reasoning; TPU bandwidth and tiled-kernel behavior are not GPU measurements."
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Input-gradient reduction beside weight-gradient compute",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tp_communications.py",
+          "locator": "`LinearWithAsyncAllReduce.backward`; `linear_with_all_reduce` and `linear_with_async_all_reduce`",
+          "depth": "Trace launch, independent weight/bias work and final wait. This is backward overlap at one column layer, not a tiled forward asynchronous-TP implementation."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Asynchronous results still need completion",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.DTensor.redistribute",
+          "locator": "`DTensor.redistribute`: `async_op`; `DTensor.to_local`: `AsyncCollectiveTensor` return and `wait` contract"
         }
       ],
       "focus": [
-        "TODO"
+        "TP shards large weights and feature work but communicates at projection boundaries. CP partitions tokens and attention work without sharding parameters by itself. Longer sequences supply more attention compute per streamed KV byte, but causal imbalance and small local blocks can limit that advantage.",
+        "Enumerate legal degrees, keep global valid tokens and model semantics fixed, and combine the earlier storage/traffic ledger with launch latency and effective bandwidth. Local GEMM efficiency and temporary-buffer peaks can invalidate an otherwise attractive byte-only plan.",
+        "Picotron computes the input gradient, launches its all-reduce, computes independent weight/bias gradients, then waits before returning. Tiled forward asynchronous TP instead overlaps partial matmuls with communication chunks; it requires additional scheduling and buffer dependencies.",
+        "For ideal independent compute and communication durations, an overlap window costs \\(\\max(T_{\\text{compute}},T_{\\text{comm}})\\), not their sum. Startup, final drain and contention remain. CPU timings and a host's early return establish neither this ideal nor real GPU overlap."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, draw Picotron's synchronous and asynchronous backward dependencies. On four CPU/Gloo processes, run the previous linear oracle with `async_all_reduce=False` and `async_all_reduce=True`, keeping inputs and weights fixed. Compare all gradients and record warmed-up wall-clock backward samples with communication complete before stopping the timer; label them CPU execution, not GPU overlap evidence. In a deterministic timing model with independent 3 ms compute and 2 ms communication, compare a 5 ms serial window with a 3 ms ideal overlapped window. Sweep hypothetical bandwidth and sequence length for legal TP/CP candidates using the earlier ledger. With two or more GPUs, optionally repeat the matched NCCL variants with synchronized timing and a profiler trace; report exposed communication and any regression, not an assumed speedup.",
       "traps": [
-        "TODO"
+        "Timing only the asynchronous launch or reading a collective output before completion. Neither measures the completed operation.",
+        "Increasing TP until local matmuls become too small, or choosing CP to solve parameter memory that remains replicated.",
+        "Claiming overlap because compute and communication appear on different streams. Their actual intervals, dependencies and contention determine the exposed tail."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which work can Picotron place beside the input-gradient all-reduce?",
+          "a": "Weight- and bias-gradient computation. They use saved input and upstream gradient, not the reduced input gradient. The caller still needs completion before consuming that input gradient."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a longer sequence always make a larger CP degree faster?",
+          "a": "No. It can improve compute per KV byte, but local block size, imbalance, launch latency and link contention still constrain useful degrees."
+        },
+        {
+          "q": "Can an asynchronous variant pass every oracle and still be slower?",
+          "a": "Yes. Correct scheduling may add launches, waits, buffers or contention without hiding enough communication. Preserve correctness and report the measured regression."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: legal TP/CP candidate tables, bandwidth-sensitive timing models and matched synchronous/asynchronous correctness and timing records in `trainlab`. GPU overlap traces are conditional on two or more GPUs; CPU results remain explicitly CPU-only.",
+      "stopWhen": "Your legal candidate table names memory and communication limits, both CPU variants match the gradient oracle, and your model or available GPU trace distinguishes launch, useful overlap and exposed communication.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook supplies workload/topology trade-offs, JAX supplies tiled-overlap reasoning, and Picotron plus the 2.14 completion contract supply a CPU-testable asynchronous operator; GPU performance work remains conditional."
       }
     }
   ]
