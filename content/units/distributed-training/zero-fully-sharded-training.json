@@ -333,47 +333,71 @@
         "hybrid-sharded-data-parallel-vocabulary"
       ],
       "outcomes": [
-        "TODO"
+        "Explain FSDP1 flat storage, original-parameter views and communication grouping without treating them as FSDP2's representation.",
+        "Choose wrapping boundaries from the largest live group, launch count and shared-parameter ownership.",
+        "Map hybrid sharding's sharding and replication groups and explain both gradient reductions."
       ],
-      "why": "TODO",
+      "why": "Wrapping determines what must fit in memory at once and which ranks communicate. Understanding both FSDP generations lets you read legacy code without importing its configuration into FSDP2.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp2-mixed-precision",
+          "note": "Implement the per-parameter DTensor representation."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "fsdp-paper-dt4",
+          "title": "Legacy flat parameters and hybrid sharding",
+          "url": "https://arxiv.org/abs/2304.11277v2",
+          "locator": "arXiv:2304.11277v2, Sections 3.2.1 Full Sharding, 3.2.2 Hybrid Sharding and 3.2.3 Autograd; Figures 3 and 4",
+          "depth": "Read the representation and ownership design, not the paper's cluster benchmarks. This paper describes FSDP1."
+        },
+        {
+          "resource": "torchtitan-fsdp-dt4",
+          "title": "From flat parameters to DTensor",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/docs/fsdp.md",
+          "locator": "Why FSDP2? and FSDP1 <> FSDP2 API Differences, including the mesh and state-dict tables",
+          "depth": "Use the tables for migration vocabulary only. The statements that forward prefetch is 'not yet implemented' or 'under discussion' are stale; use the 2.14 prefetch APIs from the preceding unit."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Current grouping and mesh contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#communication-grouping-and-scheduling",
+          "locator": "Communication Grouping and Scheduling; `fully_shard` parameter `mesh` and the FSDP1 comparison"
         }
       ],
       "focus": [
-        "TODO"
+        "FSDP1 flattens and concatenates a group's parameters, pads, then chunks the flat storage. Original parameter tensors are views into that storage. A handle manages this group's lifecycle; it is not a separate model-state category.",
+        "FSDP2 shards each parameter as a DTensor, normally along dim 0, but still groups communication by `fully_shard` calls. Per-parameter representation does not mean one collective per parameter.",
+        "Apply `fully_shard` bottom-up to blocks, then the root. The root owns remaining parameters such as embeddings and the output head. Root-only grouping materializes the whole model's managed weights together.",
+        "For a 2D hybrid mesh, the first dimension replicates and the second shards. Reduce-scatter within each shard group, then all-reduce matching gradient shards across replicas. Model-state memory scales with shard degree, not total world size."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw a deterministic four-rank mesh with rows `[0, 1]` and `[2, 3]`. Identify sharding groups `[0, 1]` and `[2, 3]`, replication groups `[0, 2]` and `[1, 3]`, and each parameter shard's two copies. Sum gradient contributions within rows, then across columns; show that each owner obtains the same averaged shard as a global single-process oracle. Contrast root-only, per-block and per-linear communication groups on a two-block model.",
       "traps": [
-        "TODO"
+        "Dividing persistent memory by all four ranks in a two-by-two hybrid mesh. Each shard is replicated twice.",
+        "Wrapping tied aliases as unrelated groups. A shared parameter needs one compatible ownership and gather lifecycle for every use.",
+        "Assuming smaller groups always run faster. They lower individual gather sizes but increase collective launches and can expose latency."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does FSDP2 use a `FlatParameter` for each group?",
+          "a": "No. It stores per-parameter DTensor shards and groups them for communication. `FlatParameter` is the legacy FSDP1 representation."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why does hybrid sharding need a second gradient reduction?",
+          "a": "The reduce-scatter only combines data contributions inside one shard group. Matching shards in other replicated groups saw other data and must also be combined."
+        },
+        {
+          "q": "What happens to parameters not assigned by the inner sharding calls?",
+          "a": "A later root call groups the remaining parameters. Omitting that call can leave intended-to-be-sharded parameters unmanaged."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab wrap-group inventory and four-rank hybrid ownership and reduction simulation.",
+      "stopWhen": "You can reconstruct the hybrid reduction by hand, identify every group's parameters, and explain why your chosen granularity differs from both root-only and per-parameter grouping.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The FSDP1 paper locates flat views and hybrid sharding; TorchTitan and the 2.14 API distinguish the current representation and grouping."
       }
     },
     {
