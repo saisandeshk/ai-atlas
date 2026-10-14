@@ -777,47 +777,88 @@
         "replica-based-in-memory-recovery"
       ],
       "outcomes": [
-        "TODO"
+        "Explain what a rank crash does to a collective, how teardown plus rendezvous rebuilds membership, and what unstable ranks imply for state.",
+        "Restart a crashed CPU job with `torchrun --max-restarts` and resume from the last checkpoint; contrast with per-step healing."
       ],
-      "why": "TODO",
+      "why": "One dead rank invalidates the whole communicator. The choice is restart-from-checkpoint, which works everywhere, versus heal-in-place, which needs replicas.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Crash tests use this machinery."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/scaling-efficiency-goodput",
+          "note": "Restarts and lost work enter goodput."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "torchelastic-dt9",
+          "title": "Restart and membership vocabulary",
+          "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html",
+          "locator": "Fault tolerant (fixed sized number of workers, no elasticity, tolerates 3 failures) with `--max-restarts=3`; Elastic (`min=1`, `max=4`) with `--nnodes=1:4`; Note on rendezvous backend (`rdzv-id`, `rdzv-backend` c10d, endpoint default 29400); Definitions (Node, Worker, WorkerGroup, `RANK`, `WORLD_SIZE`); Environment Variables (`TORCHELASTIC_RESTART_COUNT`, `TORCHELASTIC_MAX_RESTARTS`)"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Crash-and-restart behavior",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "README Elastic Training: all workers restart on one failure and ranks are unstable across restarts, with one crashing attempt's `error.json`; `toy.py`: barrier-separated steps with a rank-0 state write and a random crash"
+        },
+        {
+          "resource": "torchft-dt9",
+          "title": "Per-step healing as the contrast",
+          "url": "https://github.com/meta-pytorch/torchft",
+          "locator": "Overview: per-step fault tolerance without interrupting the job; Lighthouse: `torchft_lighthouse` quorum with step-granularity membership; Example Training Loop (DDP) with `Manager`, `ProcessGroupGloo` and `TORCHFT_LIGHTHOUSE`; Fault Tolerant HSDP Algorithm (page read 2026-10-14)"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Detection, teardown and warm versus cold",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Failure Detection and Recovery: heartbeat versus collective-timeout versus orchestration layers, the six-step recovery sequence, cold versus warm restart with Table 7.9; Checkpoint 7.5: Tuning detection and recovery"
         }
       ],
       "focus": [
-        "TODO"
+        "A crashed rank turns every pending collective into a hang. Survivors must tear down the process group and re-rendezvous; no rank is removed in place from a live communicator.",
+        "Elastic restart rebuilds the worker group, not the failed rank. `RANK` and `WORLD_SIZE` can change, so resume keys state by global step, never by rank.",
+        "`--max-restarts` bounds crash loops. Each attempt re-runs from the last checkpoint, and exceeding the budget surfaces the failure instead of spinning forever.",
+        "torchft heals inside the job when replicas exist (lighthouse quorum per step, live peer transfer). Restart-from-checkpoint works with no replicas but loses work back to the last save. Replicas are the precondition, not the default."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run a one-process job that exits 1 on its first attempt and 0 after, under `torchrun --max-restarts=1`. Show `TORCHELASTIC_RESTART_COUNT` reads 0 then 1 and the final exit code is 0.",
       "traps": [
-        "TODO"
+        "Catching the exception and continuing in the same process group. Timeouts and dead peers leave the communicator unusable; teardown plus fresh rendezvous is the only path.",
+        "Assuming `RANK` is stable across a restart. The Lambda guide states it explicitly: re-derive sharding and logging identity from the new membership.",
+        "Treating torchft as a checkpoint replacement for all jobs. Without at least two replicas there is no healthy peer to heal from; single-replica jobs still need file checkpoints."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Rank 2 dies mid-`all_reduce`. Why must the surviving ranks tear down instead of continuing?",
+          "a": "The collective never completes, so every survivor hangs waiting for rank 2's contribution. The communicator is defined over the full group, so a membership change needs a new group."
+        },
+        {
+          "q": "A job with `--max-restarts=3` fails four times. How many training attempts ran, and what ends the loop?",
+          "a": "Four: the initial attempt plus three restarts. The fourth failure exceeds the budget, so the agent surfaces the error instead of restarting."
+        },
+        {
+          "q": "After an elastic restart with fewer workers, each rank reloads its old rank's data shard. What breaks?",
+          "a": "Coverage: shards were computed for the old world size. Reshard the dataset for the new membership and resume from the global step."
+        },
+        {
+          "q": "When does per-step healing beat restart-from-checkpoint, and what does it cost standing by?",
+          "a": "When replicas exist and failures are frequent: it loses at most a step instead of all work since the last save. It costs per-step lighthouse coordination plus peer capacity to heal onto."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "torchrun bounded-restart test plus Lambda crash loop",
+          "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html",
+          "locator": "Run the Reproduce script under `--max-restarts=1` and assert the retry runs with `TORCHELASTIC_RESTART_COUNT=1` and the job exits 0; then run the Lambda `toy.py` with two CPU processes and inspect one crashing attempt's `error.json`",
+          "note": "Both run on CPU gloo. `toy.py` loops until its random crash, so bound each attempt externally."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can crash any rank of a CPU job, watch the agent restart within budget, resume from the checkpoint, and state when healing needs replicas.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The elastic run reference, the Lambda crash loop, torchft's healing contrast and the chapter's recovery sequence cover crashes, restart vocabulary and replicas."
       }
     },
     {
@@ -833,47 +874,88 @@
         "retention-garbage-collection-and-last-known-good-protection"
       ],
       "outcomes": [
-        "TODO"
+        "Detect a saturated filesystem, a partial write and a slow saver from rank-side evidence, and act before the job dies.",
+        "Implement keep-k retention that never deletes the last known good and garbage-collects in the background."
       ],
-      "why": "TODO",
+      "why": "Checkpoint writes are the heaviest storage burst in the job. Without retention discipline the disk fills, the newest save corrupts, and there is nothing to fall back to.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "The campaign asserts retention under kill tests."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/fleet-health-runbooks",
+          "note": "Watchdogs become runbooks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "stas-fault-dt9",
+          "title": "Disk watchdogs and the 80 percent rule",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md",
+          "locator": "Low disk space alerts: 80 percent is full on rebalancing filesystems, inode exhaustion, `df` staleness, `fs-watchdog.py`; Dealing with slow memory leaks: voluntary exit with `save_checkpoint` before OOM"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "BLOOM retention arithmetic",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md",
+          "locator": "Frequent checkpoint saving: 2.3TB every 3 hours is 18.4TB a day; keep the 2 most recent checkpoints local for fast resume"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Keep-k retention in code",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`keep_latest_k`: rejecting 1, rank-0 `_purge_stale_checkpoints` with sorted `step-*` selection, background `purge_thread` with `TerminateSentinel`, `_save_last_step` always synchronous and full"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Stragglers and slow ranks",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Distinguishing stragglers from failures with Definition 7.2 and the straggler step-time model; Napkin Math 7.5: the straggler tax"
         }
       ],
       "focus": [
-        "TODO"
+        "Treat 80 percent as full on shared filesystems. Rebalancing can fail a write while `df` still shows space, and `df` itself can lag by 30 minutes. Monitor the consumption rate in TB per day, not just the percent.",
+        "Keep at least two complete checkpoints. The newest may be mid-write when the crash lands, so retention protects the last known good, never just the last.",
+        "Delete in the background and never on the training thread. Rank-0 selection plus a purge queue keeps `rmtree` latency off the critical path.",
+        "A slow saver is a straggler, not yet a failure. Per-rank save timings name it, and past the break-even point killing and recovering beats waiting."
       ],
-      "reproduce": "TODO",
+      "reproduce": "With `keep_latest_k=2`, save steps 1 to 4 on CPU, delete `.metadata` from step 4, and show the loader selects step 3 while the purge set holds only the older steps.",
       "traps": [
-        "TODO"
+        "Setting `keep_latest_k=1` to save space. TorchFeather rejects it because the single copy can be purged while its replacement is still writing; the minimum safe retention is 2.",
+        "Purging from every rank. Concurrent deletes race and partially remove directories, so only rank 0 selects and a single background thread deletes.",
+        "Watching bytes but not inodes. Virtualenvs and sharded checkpoints create many small files, so an inode-full filesystem fails writes with terabytes free."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A filesystem shows 78 percent used and writes start failing. What is the most likely cause, and what threshold would have prevented it?",
+          "a": "Rebalancing or per-device imbalance on a shared filesystem: one device is full while the aggregate shows space. Alert at 80 percent at the latest, and track the daily consumption rate against the job length."
+        },
+        {
+          "q": "Why must the purge select on rank 0 and delete on a background thread?",
+          "a": "Selection needs one decider to avoid races; deletion is slow I/O that must stay off the training thread. The queue between them bounds both."
+        },
+        {
+          "q": "Checkpoints land every hour and each takes 6 minutes to write on the slowest rank. When is that rank a straggler to kill rather than wait for?",
+          "a": "When its slowdown costs more than recovery: sustained, it holds every step 10 percent longer. Past the break-even point of recovery-time share, replacing it is cheaper than waiting."
+        },
+        {
+          "q": "`df` shows free space but a save fails with no space. Name two non-capacity causes from the chapter.",
+          "a": "Inode exhaustion, and stale `df` on a distributed filesystem that lags reality by up to 30 minutes."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Retention plus watchdog lab",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "TorchFeather `_purge_stale_checkpoints` with `keep_latest_k=2`: save 4 interval checkpoints, corrupt the newest, and show the loader falls back to the previous complete one while the purge removes only older ones; adapt the Stas `fs-watchdog.py` thresholds to your disk with a consumption-rate estimate",
+          "note": "Run on CPU with small shards; the purge and fallback logic is identical at scale. The Stas watchdog lives at https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md under Low disk space alerts."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "A corrupted newest checkpoint falls back to the previous complete one, retention holds exactly 2, and your watchdog names the byte rate and the inode headroom.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Stas watchdog and retention arithmetic, TorchFeather's keep-k code and the chapter's straggler model cover storage failure and retention at measure and implement depth."
       }
     },
     {
