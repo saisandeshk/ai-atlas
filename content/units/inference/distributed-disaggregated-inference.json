@@ -263,47 +263,69 @@
         "small-batch-latency-versus-distributed-capacity"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-decode-step and per-prefill-pass collective and stage-boundary traffic with an explicit per-rank or aggregate convention.",
+        "Map that traffic onto PCIe, NVLink, NVSwitch and network paths, including shared bottleneck links.",
+        "Explain when more ranks provide memory capacity but increase small-batch latency after communication startup and dependencies are included."
       ],
-      "why": "TODO",
+      "why": "Serving decode repeatedly pays small collective startup costs. A topology that fits the model can still miss the token-latency target even when its bandwidth-only estimate looks cheap.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/pool-placement-break-even",
+          "note": "Use the exposed communication model to constrain phase placement."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tushar-dist-inf7",
+          "title": "Serving activation traffic",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#math-lab",
+          "locator": "Module 09, Tensor parallelism: split inside the layer - Communication volume; Pipeline parallelism: split across layers - Communication is tiny; Math by hand, Parts 3 and 4",
+          "depth": "Do the byte arithmetic, not the supplied hardware time estimates. The page mixes directional and bidirectional link peaks and calls a whole decode batch step's traffic per-token traffic. Use per-step bytes, a declared directional effective bandwidth and the startup term from your GPU communication model."
+        },
+        {
+          "resource": "hands-serving-dist-inf7",
+          "title": "Placement across links and nodes",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Tensor Parallelism and Pipeline Parallelism, printed pp. 247 to 250, Figures 7-10 and 7-11",
+          "depth": "Treat the flowchart as candidate generation, not proof that TP needs NVLink or that a single-device plan always wins. Check the declared SLO and actual topology."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Ring and tree all-reduce, all-gather and reduce-scatter volume, Interconnects and topology: PCIe, NVLink, NVSwitch and RDMA, and NCCL algorithms, protocols, channels and rank placement. New work here is multiplying those costs by serving-layer frequency.",
+        "For a replicated-activation dense schedule, message size is \(M = BShb\), with batch size \(B\), processed positions per sequence \(S\), hidden width \(h\) and bytes per element \(b\). Decode has \(S = 1\); prefill uses its scheduled prompt or chunk length.",
+        "With \(n\) ranks, ring all-reduce sends \(2(n-1)M/n\) bytes per rank. Two reductions per layer over \(L\) layers cost \(2L\) matched collectives per pass. This is an implementation assumption, not a universal transformer law.",
+        "Use \(2(n-1)\alpha + 2(n-1)M/(nW)\) for a simple ring model with per-step startup \(\alpha\) and directional effective bandwidth \(W\). PP sends one activation per stage boundary and retains the serial stage path. Shared links, uneven ranks and overlap change exposed time."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a synthetic eight-layer dense forward pass with batch size 2, hidden width 64, two-byte activations and four TP ranks, derive the decode message size of 256 bytes and ring egress of 384 bytes per rank per reduction. Two reductions per layer give 6,144 bytes per rank per batch step. Recompute for a 128-position prefill, then compare both startup and bandwidth terms using declared synthetic link parameters. Count PP traffic separately per boundary, not as a ring reduction.",
       "traps": [
-        "TODO"
+        "Calling batch-step wire bytes bytes per output token without dividing by the number of active sequences. A step can generate many tokens, while each request still waits for the complete step.",
+        "Using bidirectional aggregate peak as one rank's send bandwidth, or adding send and receive bytes and comparing them to a one-direction rate.",
+        "Assuming a node count identifies the fabric. TP groups inside one node may cross slow PCIe or socket paths, while some NVLink domains span multiple nodes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What changes when the example processes 128 positions instead of one?",
+          "a": "The activation message and bandwidth term grow 128-fold. The assumed collective count and each collective's startup term do not. Kernel efficiency and attention cost can also change."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can a tiny decode message still make TP slow?",
+          "a": "Many dependent collectives repeatedly pay startup and wait for the slowest participating rank. Dividing only bytes by bandwidth omits those costs."
+        },
+        {
+          "q": "Does PP's smaller traffic prove it has lower isolated-request latency?",
+          "a": "No. The request still traverses every stage sequentially and pays stage-boundary transfers. Its benefit may instead be model capacity or throughput with enough independent work."
+        },
+        {
+          "q": "What must change in the model when two transfers share one NIC?",
+          "a": "Their combined offered bytes compete for that NIC's directional capacity. They cannot both receive its full effective bandwidth at the same time."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's per-layer communication ledger, shared-link model and small-batch latency versus memory-capacity sweep.",
+      "stopWhen": "Your byte ledger reconciles per-rank and aggregate traffic, and your synthetic sweep identifies a capacity-feasible TP plan that loses latency after startup is restored.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's explicit serving traffic arithmetic and placement flowchart cover the derivation when units and directionality are corrected; servelab supplies topology sweeps."
       }
     },
     {
