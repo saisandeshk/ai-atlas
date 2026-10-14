@@ -788,47 +788,80 @@
         "duplicate-request-and-stale-kv-diagnosis"
       ],
       "outcomes": [
-        "TODO"
+        "Implement cancellation and deadline propagation through router, prefill, transfer and decode ownership states.",
+        "Fence retries and late callbacks so one logical request cannot install stale KV or emit duplicate tokens.",
+        "Diagnose rank death, missing transfer fragments and stale worker discovery from a correlated request and ownership trace."
       ],
-      "why": "TODO",
+      "why": "A client timeout does not stop every rank or an already submitted remote write. Recovery must terminate the logical request while retaining physical buffers until late work can no longer corrupt reused memory.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/topology-simulator-evidence",
+          "note": "Include failed, retried and cancelled work in the topology comparison."
+        },
+        {
+          "unit": "inference/production-serving-reliability/serving-failure-injection",
+          "note": "Carry the phase-boundary fault cases into operational recovery tests."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "trtllm-disagg-inf7",
+          "title": "Failure boundaries of an in-flight transfer",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/kv-transfer.html#current-limitations",
+          "locator": "Introduction to KV Cache Transmission, page read October 14, 2026, commit cc63e66: Workflow, steps 5 and 6; Current Limitations - submitted operations cannot be aborted",
+          "depth": "The page explicitly leaves ambiguous-failure and cancellation retirement incomplete. Design and test the stronger servelab contract rather than assuming this engine already guarantees it."
+        },
+        {
+          "resource": "sglang-pd-inf7",
+          "title": "Heartbeat, waiting and cleanup budgets",
+          "url": "https://docs.sglang.io/docs/advanced_features/pd_disaggregation",
+          "locator": "PD Disaggregation, page read October 14, 2026: Mooncake - Advanced Configuration - Prefill Server Configuration and Decode Server Configuration",
+          "depth": "Read bootstrap and waiting timeouts, heartbeat health detection and the warning that longer bootstrap timeouts delay cleanup after lost decode connectivity. Skip launch and tuning snippets; model these events on CPU without importing the page's defaults as your SLO."
+        },
+        {
+          "resource": "distserve-inf7",
+          "title": "Disaggregation can propagate failure",
+          "url": "https://arxiv.org/html/2401.09670v3#S4.SS3",
+          "locator": "arXiv:2401.09670v3, Section 4.3 Online scheduling - Preemption and fault tolerance",
+          "depth": "This paragraph discusses future work, not an implemented fault-tolerance protocol. Use it to identify dependencies your handoff tests must cover."
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Streaming, cancellation, failure and cleanup states and ownership invariants, and Rank-aligned timelines, stragglers, congestion and partial failure. Add the phase boundary and attempt identity to those existing invariants.",
+        "A logical terminal state is absorbing: no late callback may revive it or emit output. Physical retirement is separate; an in-flight one-sided write may still target quarantined destination memory until completion or safe transport teardown.",
+        "Propagate the remaining end-to-end deadline, not a fresh full timeout at each hop. A heartbeat can mark a worker unavailable; it cannot prove whether the request committed, whether bytes arrived or whether a retry is safe.",
+        "A TP/PP rank failure can invalidate its serving group. Cancel or fail the dependent request, rebuild suspect communication state, and choose recomputation or replay only under a declared streaming contract. Correlate logical request, attempt, worker generation, collective sequence and KV ownership."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a deterministic CPU handoff state machine. Replay cancellation before prefill, during a submitted write and after KV-ready but before decode publication. In the submitted-write case, mark the request terminal, quarantine both transfer buffers, and retire them only when the simulated write completes. Start a new attempt, deliver an old completion twice, and verify that neither stale KV nor duplicate output appears. Add one missing-rank completion and require bounded failure instead of waiting forever.",
       "traps": [
-        "TODO"
+        "Equating client cancellation with transport abort. Freeing destination pages while a remote write can still arrive turns a cancelled request into another request's corruption.",
+        "Retrying with the same attempt and worker generation after restart. Delayed control messages can then bind old KV to the new allocation.",
+        "Claiming exactly-once generation from deduplicating requests. A client may already have received tokens before failure; replay needs an explicit offset or a visible failed-stream contract."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A transfer completes after its request was cancelled. What should happen?",
+          "a": "The completion may retire quarantined physical resources, but must not publish KV, resume decode or emit output for the terminal request."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a failed heartbeat prove a request did no work?",
+          "a": "No. It indicates failed health communication. Work may have completed and its acknowledgement may be lost, so retries need attempt fencing and an explicit outcome contract."
+        },
+        {
+          "q": "Why can one dead TP rank fail otherwise healthy ranks' requests?",
+          "a": "Their forward passes depend on matched collectives with that rank. Remaining ranks cannot independently finish the distributed model output."
+        },
+        {
+          "q": "How do you distinguish a stale payload from duplicated delivery of a valid completion?",
+          "a": "Check attempt, worker generation and KV identity first, then the current transition state. An old attempt is rejected; a repeated completion for an already completed live transition is idempotent and must not double-free or republish."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's cancellation and deadline matrix, rank/transfer failures, duplicate delivery, stale-attempt fencing and bounded physical retirement after in-flight writes.",
+      "stopWhen": "Each injected fault reaches one logical terminal outcome, late events cannot revive it, and every allocation is either safely retired or explicitly quarantined with a bounded recovery path.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Current TensorRT-LLM limitations and SGLang timeout/heartbeat docs expose real failure boundaries; DistServe identifies propagation risk, and servelab tests the stronger lifecycle contract."
       }
     },
     {
