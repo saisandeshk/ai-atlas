@@ -18,7 +18,7 @@
       "name": "vLLM v0.31.0 metrics design",
       "provider": "vLLM Project",
       "access": "Free",
-      "use": "Read the WAITING, RUNNING and PREEMPTED request states, the queue, inference, prefill and decode interval definitions, and the exported names including `vllm:num_requests_waiting_by_reason`, `vllm:num_preemptions` and the TTFT, inter-token and end-to-end histograms. Swapped-preemption metrics are legacy in v1.",
+      "use": "Read the WAITING, RUNNING and PREEMPTED request states and the queue, inference, prefill and decode interval definitions. Swapped-preemption metrics are legacy in v1. The exported counters, including `vllm:num_requests_waiting_by_reason` and `vllm:num_preemptions`, are listed on the Production Metrics page, https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
       "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/"
     },
     {
@@ -28,7 +28,7 @@
       "name": "vLLM v0.31.0 benchmark CLI",
       "provider": "vLLM Project",
       "access": "Free",
-      "use": "Use `vllm bench serve`, `vllm bench throughput` and `vllm bench latency` for offered-load sweeps. Fix the dataset, lengths, request rate, warmup and sampling, and keep raw per-request results; do not copy example rates as targets.",
+      "use": "Use `vllm bench serve` with `--request-rate` for offered-load sweeps, and `vllm bench throughput` and `vllm bench latency` for offline endpoint and phase baselines. Fix the dataset, lengths, request rate, warmup and sampling, and keep raw per-request results; do not copy example rates as targets.",
       "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/"
     },
     {
@@ -38,7 +38,7 @@
       "name": "vLLM v0.31.0 online serving",
       "provider": "vLLM Project",
       "access": "Free",
-      "use": "Read the `/abort_requests` endpoint and the Responses cancel API for request cancellation, and how client disconnects abort in-flight requests.",
+      "use": "Read the `/abort_requests` endpoint and the Responses cancel API for request cancellation. Verify client-disconnect aborts on your engine; the page does not cover them.",
       "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/"
     },
     {
@@ -236,10 +236,10 @@
         "Nano-vLLM schedules prefill first and returns early when any prefill is scheduled, so decode-only iterations happen only with no schedulable prefill. Only the first waiting sequence may take a partial chunk.",
         "Conservative admission reserves the full footprint up front, as Orca does with `max_tokens`. Optimistic admission packs tighter and relies on preemption, which the next unit covers."
       ],
-      "reproduce": "Closed-book, decide admission with a token budget of 2048 and at most 8 sequences: 3 running sequences hold 1500 cached tokens and need 3 decode tokens, and two waiting prefills need 1200 and 900 tokens. Admit the 1200-token prefill (\\(3 + 1200 = 1203 \\le 2048\\)) and defer the 900-token one (\\(1203 + 900 = 2103 > 2048\\)). State both checks in tokens and in sequence count.",
+      "reproduce": "Closed-book, decide admission with chunked prefill off, a token budget of 2048 and at most 8 sequences: 3 running sequences hold 1500 cached tokens and need 3 decode tokens, and two waiting prefills need 1200 and 900 tokens. Admit the 1200-token prefill (\\(3 + 1200 = 1203 \\le 2048\\)) and defer the 900-token one (\\(1203 + 900 = 2103 > 2048\\)). State both checks in tokens and in sequence count, then say what changes with chunked prefill on (the vLLM default): the 900-token prefill gets an 845-token chunk instead of waiting.",
       "traps": [
         "Treating the two knobs as phase-exclusive. Decode tokens also consume the token budget (one each), and long prefills also consume sequence slots; either limit can bind in any iteration.",
-        "Reading `--max-num-seqs` as the running cap. vLLM admits at most `max_num_active_seqs` into RUNNING and parks the rest in deferred waiting, so waiting has more than one reason.",
+        "Reading `--max-num-seqs` as the only running cap. When `--max-num-active-seqs` is set, vLLM admits at most that many into RUNNING and parks the rest in deferred waiting; unset, the cap is `max_num_seqs`.",
         "Copying Example 6-1 values as defaults. Installed v0.31.0 defaults vary by GPU class and context, so derive feasibility from the flags on your engine, not from the book example."
       ],
       "selfTest": [
@@ -301,7 +301,8 @@
           "resource": "tushar-batching-inf4",
           "title": "Admission bets, swap versus recompute, and the crossover",
           "url": "https://inference.tusharamrit.in/modules/batching.html",
-          "locator": "Concept 05: admission control as a bet on unknown lengths; swap cost of moving 2.5 GiB at about 50 GB/s each way against recompute cost of one prefill; short sequences favour recomputation and long ones favour swapping"
+          "locator": "Concept 05: admission control as a bet on unknown lengths; swap cost of moving 2.5 GiB at about 50 GB/s each way against recompute cost of one prefill; short sequences favour recomputation and long ones favour swapping",
+          "depth": "The module's 2.5 GiB at about 50 GB/s is about 54 ms each way once GiB is converted to GB; keep the two units apart."
         },
         {
           "resource": "nano-vllm-inf4",
@@ -313,7 +314,7 @@
           "resource": "vllm-metrics-design",
           "title": "Preemption states and counters in vLLM",
           "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
-          "locator": "PREEMPTED state with the queue-time and inference-time interval split across preemptions; `vllm:num_preemptions` counter and `vllm:request_num_preemptions` histogram; the note that swapped-preemption metrics are legacy because v1 preempts by recomputation"
+          "locator": "PREEMPTED state with the queue-time and inference-time interval split across preemptions, and the note that swapped-preemption metrics are legacy because v1 preempts by recomputation. The `vllm:num_preemptions` counter and `vllm:request_num_preemptions` histogram are listed on the Production Metrics page, https://docs.vllm.ai/en/v0.31.0/usage/metrics/"
         },
         {
           "resource": "orca-inf4",
@@ -328,7 +329,7 @@
         "Nano-vLLM only recomputes: `preempt` frees every block and the request restarts prefill from its tokens. vLLM v1 also preempts by recomputation; swap is gone, so size the reserve for recompute cost, not transfer cost.",
         "Repeated preemption of the same request signals an undersized reserve or an overpacked batch, not bad luck. Count preemptions per request and treat growth as the alarm."
       ],
-      "reproduce": "Closed-book, compute the swap round trip for 2.5 GiB at 50 GB/s each way: about 50 ms per direction, about 100 ms total. Then state the decision rule: recompute wins when one prefill of the sequence costs less than that round trip, which favours short sequences, and swap wins for long ones where prefill exceeds transfer.",
+      "reproduce": "Closed-book, compute the swap round trip for 2.5 GB at 50 GB/s each way: about 50 ms per direction, about 100 ms total. Then state the decision rule: recompute wins when one prefill of the sequence costs less than that round trip, which favours short sequences, and swap wins for long ones where prefill exceeds transfer.",
       "traps": [
         "Assuming swap exists in vLLM v1. The engine removed swap space and preempts by recomputation, so a plan that prices preemption as a PCIe transfer misprices every eviction.",
         "Pricing preemption as free because tokens are reused. Recompute re-runs the full prefill and re-consumes its token budget, which delays every other waiter.",
@@ -340,7 +341,7 @@
           "a": "A pool full of running requests with no free slot for any next token, where no iteration can issue and no request can finish to free space. Reserving the maximum footprint admits only requests whose completion fits."
         },
         {
-          "q": "A 2.5 GiB sequence faces preemption on a 50 GB/s link. What does swap cost, and when is recompute cheaper?",
+          "q": "A 2.5 GB sequence faces preemption on a 50 GB/s link. What does swap cost, and when is recompute cheaper?",
           "a": "About 50 ms each way, about 100 ms total. Recompute is cheaper when one prefill of that sequence costs less than the round trip."
         },
         {
@@ -406,7 +407,7 @@
           "resource": "aisys-scheduling-inf4",
           "title": "Stall-free scheduling cost analysis",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Stall-Free Scheduling (Chunked Prefill) (p.998) with Table 16-5 chunk costs; the N(N + 1)/2 per-layer-per-head attention analysis (p.1001), which shows chunking smooths latency without reducing total work"
+          "locator": "Stall-Free Scheduling (Chunked Prefill) (p.998) with Table 16-5 chunk costs; the \\(N(N + 1)/2\\) per-layer-per-head attention analysis (p.1001), which shows chunking smooths latency without reducing total work"
         },
         {
           "resource": "tushar-batching-inf4",
@@ -419,9 +420,9 @@
         "Prefill-priority gives best TTFT and worst token-stream stability, decode-priority gives smooth streams and starving prefills, chunking bounds every iteration, and disaggregation removes the conflict with separate hardware.",
         "Each iteration fills decode tokens first because they are cheap and latency-critical, then one prefill chunk with the remainder of the budget, so iteration time stays near constant.",
         "Chunking changes when attention work runs, not how much: self-attention still performs about \\(N(N + 1)/2\\) QK dot products per layer per head. The mixed iteration is nearly free because decode leaves arithmetic capacity unused.",
-        "Small budgets steady the stream but underfeed the GPU and add chunk overhead; large budgets approach unchunked stalls. Production defaults sit in the middle, around 512 to 2048 tokens."
+        "Small budgets steady the stream but underfeed the GPU and add chunk overhead; large budgets approach unchunked stalls. Sarathi-Serve evaluates 512 to 2048; the vLLM 0.31.0 server default is 2048, or 8192 on GPUs with 70 GiB or more other than A100."
       ],
-      "reproduce": "Closed-book, price an 8000-token prompt arriving while 32 sequences decode, at 70% of 989 TFLOP/s with the module's bandwidth model: unchunked prefill costs about 186 ms, which is the worst inter-token latency the decoders see. At a 2048-token budget the prefill takes 4 iterations of about 47 ms each, total about 188 ms, so worst inter-token latency falls to about 47 ms while TTFT barely moves.",
+      "reproduce": "Closed-book, price an 8000-token prompt arriving while 32 sequences decode, with the module's Llama-3-8B on H100 model at 70% of 989 TFLOP/s and its bandwidth model: unchunked prefill costs about 186 ms, which is the worst inter-token latency the decoders see. At a 2048-token budget the prefill takes 4 iterations (three 2016-token chunks and a 1952-token tail) of about 47 ms each, total about 188 ms, so worst inter-token latency falls to about 47 ms while TTFT barely moves.",
       "traps": [
         "Saying chunked prefill reduces total attention work. It replays KV reads per chunk and adds launch overhead, so total work is unchanged or slightly higher; the win is bounded iteration time.",
         "Calling chunking a pure TTFT-for-TPOT trade. The mixed iteration moves the same bytes as a decode-only one while doing far more arithmetic, so both phases beat running separately.",
@@ -430,11 +431,11 @@
       "selfTest": [
         {
           "q": "Why does one 8000-token prefill stall 32 decoders for about 186 ms?",
-          "a": "The prefill runs as one compute-bound unit costing \\(2 \\times 8.03 \\times 10^{9} \\times 8000\\) FLOP, about 186 ms at 70% of 989 TFLOP/s. The decoders share the same hardware turn by turn, so they emit nothing until it finishes."
+          "a": "In the module's Llama-3-8B on H100 model, the prefill runs as one compute-bound unit costing \\(2 \\times 8.03 \\times 10^{9} \\times 8000\\) FLOP, about 186 ms at 70% of 989 TFLOP/s. The decoders share the same hardware turn by turn, so they emit nothing until it finishes."
         },
         {
           "q": "At a 2048-token budget with 32 decoders, how many iterations does that prefill take and what bounds each one?",
-          "a": "4 iterations of about 2016 tokens each. Each iteration is bounded by the budget, so the worst inter-token latency is one chunk cost, about 47 ms, instead of the full 186 ms."
+          "a": "4 iterations carrying at most 2016 prefill tokens each: three full chunks and a 1952-token tail. Each iteration is bounded by the budget, so the worst inter-token latency is one chunk cost, about 47 ms, instead of the full 186 ms."
         },
         {
           "q": "Does chunking change the total QK work of the prefill?",
@@ -453,7 +454,7 @@
           "note": "Expect ITL max to fall sharply as the budget shrinks with ITL p50 nearly flat and a slight throughput dip at 256. Absolute numbers depend on the sampling seed; keep the table for the ablation unit."
         }
       ],
-      "stopWhen": "You derive the 186 ms stall and the 4-iteration chunked schedule without notes and can defend a budget choice from a measured table.",
+      "stopWhen": "You derive the module's 186 ms stall and the 4-iteration chunked schedule without notes and can defend a budget choice from a measured table.",
       "fit": {
         "verdict": "kept",
         "note": "The book, Sarathi-Serve Sections 3 to 4, the AI Systems cost analysis and the module code lab cover mixing and chunking at derive and measure depth."
@@ -514,7 +515,7 @@
         "Any strict priority can starve the bottom class under sustained load, because higher-priority work always exists. Aging raises a waiter's priority with its wait until it must win.",
         "Reserved capacity shares the machine under contention; it does not promise latency. A premium tier with 10% reserved still queues when its own demand exceeds that share."
       ],
-      "reproduce": "Closed-book, derive convoy delay under FCFS with prefill throughput \\(R = 43{,}000 \\text{ tokens/s}\\): one 100000-token prompt ahead of ten 100-token prompts adds about \\(100000 / 43000 = 2.3 \\text{ s}\\) to every short request's TTFT, independent of their size. Then state an aging rule, such as effective priority rising linearly with wait, that bounds any request's wait under continuous decode-priority load.",
+      "reproduce": "Closed-book, derive convoy delay under FCFS with the module's Llama-3-8B on H100 model, whose prefill runs at \\(R = 692 \\times 10^{12} / (2 \\times 8.03 \\times 10^{9}) \\approx 43{,}000 \\text{ tokens/s}\\): one 100000-token prompt ahead of ten 100-token prompts adds about \\(100000 / 43000 = 2.3 \\text{ s}\\) to every short request's TTFT, independent of their size. Then state an aging rule, such as effective priority rising linearly with wait, that bounds any request's wait under continuous decode-priority load.",
       "traps": [
         "Promising that priority lowers latency for everyone. It redistributes wait from one class to another; the total work is unchanged and the bottom class waits longer.",
         "Reading a reserved fraction as a latency guarantee. `reserved_fraction` splits workers under contention, so a tier still queues past its share and still suffers its own convoys.",
@@ -580,7 +581,7 @@
           "resource": "aisys-scheduling-inf4",
           "title": "Early rejection and fault tolerance",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Early Rejection (Admission Control) (p.1144): predicting SLO misses from queue and throughput signals, fail-fast against queue-then-miss, Fig 18-8 instance load; Fault Tolerance (p.1148) with decode-node failover, TTFT and TPOT p99 monitoring and the prefill and decode queue split"
+          "locator": "Early Rejection (Admission Control) (pp.1144-1147): predicting SLO misses from queue and throughput signals, fail-fast against queue-then-miss, Fig 18-8 instance load on p.1147; the Quality of Service tail (pp.1147-1148) with TTFT and TPOT p99 monitoring and the prefill and decode queue split; Fault Tolerance (p.1148) with decode-node failover via KV pooling"
         },
         {
           "resource": "mini-sglang-inf4",
@@ -592,13 +593,13 @@
           "resource": "vllm-online-serving",
           "title": "vLLM cancellation endpoints",
           "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
-          "locator": "`/abort_requests` for all in-flight or listed request ids without pausing the scheduler; the Responses cancel API at `/v1/responses/{response_id}/cancel`; client-disconnect abort of in-flight requests"
+          "locator": "`/abort_requests` for all in-flight or listed request ids without pausing the scheduler; the Responses cancel API at `/v1/responses/{response_id}/cancel`. The page does not cover client disconnects, which the v0.31.0 server handles in `with_cancellation`; confirm on your engine that dropping a streaming client stops its tokens and frees its blocks"
         },
         {
           "resource": "vllm-metrics-design",
           "title": "Terminal accounting in vLLM metrics",
           "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
-          "locator": "`vllm:request_success` with `finished_reason` including abort; the queue-time against inference-time split; TTFT, inter-token and end-to-end latency histograms as the goodput inputs"
+          "locator": "The queue-time against inference-time split, and TTFT, inter-token and end-to-end latency histograms as the goodput inputs. `vllm:request_success` with its `finished_reason` label (`abort` among the v0.31.0 values) is listed on the Production Metrics page, https://docs.vllm.ai/en/v0.31.0/usage/metrics/"
         }
       ],
       "focus": [
@@ -689,8 +690,8 @@
         }
       ],
       "focus": [
-        "Ownership: every block is free or held with a positive reference count, and every RUNNING request holds a non-empty block table. Freeing checks the count; shared prefix blocks survive one holder's release.",
-        "No overcommit: reserved plus running growth fits free capacity before any admit. Reservation is the static form; the watermark and full-ISL checks from the budgets unit are its runtime form.",
+        "Ownership: every block is free or referenced by live requests with a matching count, and every RUNNING request holds a non-empty block table. Freeing checks the count; shared prefix blocks survive one holder's release.",
+        "No overcommit: reserved plus running growth fits free capacity before any admit. Reservation is the static form; vLLM's runtime form is the `watermark` headroom and the full-input-length admission check, `scheduler_reserve_full_isl`, in its scheduler configuration.",
         "Progress: every iteration retires finished requests, frees their blocks and advances at least one waiter or token. Steady completions with a never-served waiter still violate progress.",
         "Bounded wait: aging or reserved capacity turns FCFS order into a wait bound. State the bound as a number of iterations or requests served, not as good intentions."
       ],
@@ -707,7 +708,7 @@
         },
         {
           "q": "A finish path removes the sequence from running but skips `deallocate`. Which check catches it?",
-          "a": "The ownership check: total held plus free blocks no longer equals total blocks, and the leaked blocks never return to the free list."
+          "a": "The ownership check: the finished sequence still holds blocks that no live request references, so they never return to the free list. Held plus free still equals total, so a count check alone misses it."
         },
         {
           "q": "Why must the invariant check run after preemption, not just admission?",
@@ -777,13 +778,13 @@
           "resource": "mini-sglang-inf4",
           "title": "Mini-SGLang scheduler loop and driver script",
           "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/scheduler.py",
-          "locator": "`Scheduler._schedule_next_batch` with `PrefillManager.schedule_next_batch(prefill_budget)` and overlap against normal loop in `python/minisgl/scheduler/scheduler.py`; the manual end-to-end driver in `tests/core/test_scheduler.py` as a trace-producing example"
+          "locator": "`Scheduler._schedule_next_batch` with `PrefillManager.schedule_next_batch(prefill_budget)` and overlap against normal loop in `python/minisgl/scheduler/scheduler.py`; the manual end-to-end driver in `tests/core/test_scheduler.py` as a single-prompt loop (it sends one request and drains detokenizer messages; it emits no scheduler traces, so record them in your own simulator)"
         },
         {
           "resource": "inference-lab-inf4",
           "title": "Scheduler laboratory path",
           "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
-          "locator": "The Scheduler contribution: add token and memory admission, chunking, priority, cancellation, overload and fairness to the simulator, then carry one policy through the real engine path with a reference fallback"
+          "locator": "The scheduler and KV checkpoints and the contribution requirement: a recorded corpus with priority and cancellation distributions, no-overcommit and bounded-overload invariants, and one contribution carried through the real engine path with a reference fallback and versioned configuration"
         }
       ],
       "focus": [
@@ -792,7 +793,7 @@
         "Trace per request, not per batch: arrival, admit, each state move, preemptions, cancel and completion with timestamps. Policy differences hide in request timelines that batch averages erase.",
         "The simulator proves scheduling logic, not speed. Execution times, kernel shapes, cache reuse and host overhead are modeled coarsely, so every simulated win needs a bounded real-engine check later."
       ],
-      "reproduce": "Closed-book, hand-simulate requests A with 2 prompt and 2 new tokens and B with 1 prompt and 1 new token at capacity 4 with full-footprint reservation: step 0 admits A, active [A], finished none, 3 tokens in use; step 1 finishes A, admits B, active [B], finished [A], 1 in use; step 2 finishes B with nothing active. Then implement that trace as your simulator's first regression test.",
+      "reproduce": "Closed-book, hand-simulate requests A with 2 prompt and 2 new tokens and B with 1 prompt and 1 new token at capacity 4 with full-footprint reservation: step 0 admits A, active [A], finished none, 3 tokens in use; step 1 finishes A, admits B, active [B], finished [A], 1 in use; step 2 finishes B with nothing active and 0 in use. Then implement that trace as your simulator's first regression test.",
       "traps": [
         "Iterating over sets or dicts for admission order. Iteration order is not arrival order, so the replay diverges run to run; sort explicitly by arrival time and input order.",
         "Recording state after the first admission pass. Completions free capacity for a second pass in the same step, so record after the second pass or the trace understates fill.",
@@ -879,7 +880,7 @@
         "Report tails, fairness and errors beside throughput. The adversarial signal lives in p99, maximum wait, preemption counts and leaked blocks, not in the mean.",
         "Keep the losing workload in the report. A policy without a documented regression is an untested policy, and the checkpoint requires one."
       ],
-      "reproduce": "Closed-book, specify a six-request adversarial set: one 8000-token prefill, three short chats, one simultaneous arrival pair, and one request cancelled mid-decode. Predict for unchunked continuous batching: worst inter-token latency near 186 ms during the long prefill, the burst pair queues behind the running batch, and the cancel must free its blocks or memory accounting drifts. Then run it and compare prediction against trace.",
+      "reproduce": "Closed-book, specify a six-request adversarial set: one 8000-token prefill, three short chats, one simultaneous arrival pair, and one request cancelled mid-decode. Predict for unchunked continuous batching: worst inter-token latency near one full prefill cost during the long prefill (about 186 ms in the module's Llama-3-8B on H100 example; recompute it for your model and GPU), the burst pair queues behind the running batch, and the cancel must free its blocks or memory accounting drifts. Then run it and compare prediction against trace.",
       "traps": [
         "Tuning on one friendly workload. Chat-only traffic hides prefill stalls, document-only traffic hides convoys, and steady rates hide bursts; the suite needs all of them.",
         "Regenerating the workload per policy run. Fresh random draws confound policy effects with sampling noise, so generate once, save the corpus and replay it.",
@@ -966,7 +967,7 @@
       ],
       "reproduce": "Closed-book, specify a sweep: double the request rate from clearly below to clearly above capacity on a frozen corpus with warmup and three trials per point. Predict the shape: flat p50 to an inflection, then p99 explosion with goodput plateau while completions keep rising late. Then state the recovery check: stop arrivals, measure drain time to empty queue and baseline latency.",
       "traps": [
-        "Sweeping with a closed-loop generator and declaring no saturation. Self-throttling caps offered load at served load, so the knee never appears no matter how far you push concurrency.",
+        "Calling a closed-loop sweep a saturation test. Self-throttling caps offered load at served load, so the queue never grows past the concurrency limit and the overload an open-loop rate would expose stays hidden.",
         "Reading capacity off peak throughput without an SLO. Baselines in this unit's papers saturate their latency target first, so the honest capacity is the highest load that still meets TTFT and TPOT.",
         "Reporting one run per load point. Queueing systems vary run to run near saturation, so single runs confuse noise with the knee; repeat and show the spread."
       ],
@@ -1051,7 +1052,7 @@
         "Bound the engine change to one policy with a reference fallback and a versioned flag. Reviewers must be able to turn it off and get the old behavior with no stale state.",
         "Diagnose transfer explicitly when the simulator and the engine disagree. Execution times, kernel shapes, cache reuse and host overhead are the usual suspects, and each one is checkable."
       ],
-      "reproduce": "Closed-book, write the three-run ablation plan for chunked prefill on a frozen mixed corpus: hybrid-batching-only, chunked-prefills-only, and combined. Predict the paper's direction on its hardware: hybrid-only lowers TTFT but keeps TBT stalls, chunked-only lowers TBT but stretches TTFT, and combined lowers both. Then state your engine-change checklist: one flag, fallback to reference, regression tests, and per-request traces for both positions.",
+      "reproduce": "Closed-book, write the three-run ablation plan for chunked prefill on a frozen mixed corpus: hybrid-batching-only, chunked-prefills-only, and combined. Predict the paper's direction on its hardware: hybrid-only has the lowest TTFT but keeps TBT stalls, chunked-only cuts TBT but stretches TTFT, and combined has the lowest TBT with TTFT between the two (Table 4). Then state your engine-change checklist: one flag, fallback to reference, regression tests, and per-request traces for both positions.",
       "traps": [
         "Sweeping every flag combination instead of isolating mechanisms. Combinatorial tuning attributes nothing; three runs that differ by one rule attribute everything.",
         "Promoting a simulator win without an engine check. The simulator ranks policies under a coarse cost model, so the bounded engine run is the result, not a formality.",
@@ -1139,14 +1140,14 @@
       ],
       "focus": [
         "Group same-adapter requests together. Mixing adapters is supported up to `max_loras` concurrent adapters, but each active adapter consumes slot and rank-budgeted memory, so affinity scheduling avoids slot churn and oversized-rank waste.",
-        "Grammar cost lands on decode steps and grows with the constraint: a fixed choice is cheaper than a regex, which is cheaper than a schema, which is cheaper than a full EBNF grammar. Budget the per-step constraint work with the token budget, not beside it.",
+        "Grammar cost lands on decode steps: the backend builds a token mask every step, and its cost depends on the compiled constraint. The cited page gives no cost order, so time choice, regex, schema and grammar steps yourself and budget that work with the token budget.",
         "Media tokens join the prompt token budget, and encoder work must be scheduled before or beside the decode stream. Identical text with different images is a different cache entry: reuse is scoped by media identity through content hashes or UUIDs.",
         "All three topics are optional extensions of the same rule: schedule the scarce shared state, whether adapter slots, grammar engines or encoder results, rather than only tokens and blocks."
       ],
-      "reproduce": "Closed-book, schedule with `max_loras` at 2 and three queued adapters: group the two already-active adapters first and state which request waits for a slot. Order per-step constraint cost as choice, then regex, then JSON schema, then full grammar. Then decide cache sharing for two requests with identical text where one pair shares an image UUID and the other uses different images: only the UUID pair shares encoder and prefix-cache work.",
+      "reproduce": "Closed-book, schedule with `max_loras` at 2 and three queued adapters: group the two already-active adapters first and state which request waits for a slot. Predict an order of per-step cost for choice, regex, JSON schema and full grammar, and name the timing run that would test it. Then decide cache sharing for two requests with identical text where one pair shares an image UUID and the other uses different images: only the UUID pair shares encoder and prefix-cache work.",
       "traps": [
         "Claiming different adapters cannot batch together. They can up to `max_loras`; affinity is about slot pressure and memory, not correctness, so the failure mode is churn and waste rather than errors.",
-        "Treating grammar constraints as free because outputs look the same length. The constraint engine works every decode step, and wider grammars cost more per step than a fixed choice.",
+        "Treating grammar constraints as free because outputs look the same length. The constraint engine works every decode step, and wider grammars usually cost more per step than a fixed choice; measure it.",
         "Expecting prefix hits across different images with matching text. Media identity scopes the entry, so a changed image is a cache miss even when every word matches."
       ],
       "selfTest": [
@@ -1155,8 +1156,8 @@
           "a": "It groups requests of the two already-active adapters first and holds the third adapter's requests until a slot frees. This avoids loading churn and oversized-rank memory waste."
         },
         {
-          "q": "Order choice, regex, JSON schema and full grammar by per-step scheduling cost.",
-          "a": "Choice, then regex, then JSON schema, then full grammar. Narrower constraints need less per-step work from the grammar engine alongside sampling."
+          "q": "How do you establish the per-step cost of choice, regex, JSON schema and full grammar constraints?",
+          "a": "Time constrained decode steps for each on your engine and backend with identical prompts and lengths. Expect wider constraints to cost more, but the documentation states no order, so the measurement decides."
         },
         {
           "q": "Two requests share all text but carry different images. Do they share prefix-cache work?",
@@ -1164,7 +1165,7 @@
         },
         {
           "q": "A request skips sending its image and provides only a UUID. When does that work?",
-          "a": "Only on a cache hit for that UUID with caching enabled. Without the cached media entry the request fails, so UUID skipping is an optimization on proven reuse, not a default."
+          "a": "Only when the caller can expect a cache hit for that UUID with caching enabled. The page documents skipping on expected hits, not the miss path, so treat a miss as needing the media and verify the fallback on your engine."
         }
       ],
       "practice": [
