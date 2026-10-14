@@ -647,47 +647,71 @@
         "kv-connectors-and-transfer-metadata"
       ],
       "outcomes": [
-        "TODO"
+        "Explain cache affinity as a routing hint that competes with queueing and load balance.",
+        "Distinguish local prefix reuse, host/storage offload and KV transfer.",
+        "Specify transfer metadata and ownership until load or save completion."
       ],
-      "why": "TODO",
+      "why": "A prefix can be correct but live in the wrong place. Reuse pays only if reaching compatible state costs less than recomputing it, and movement must not outlive its storage owner.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/kv-transfer-connectors-overlap",
+          "note": "Extend the local transfer contract to phase pools and distributed failure."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "sglang-paper-inf3",
+          "title": "RadixAttention: replica affinity and stale routing hints",
+          "url": "https://arxiv.org/html/2312.07104v2#A1.SS4",
+          "locator": "arXiv:2312.07104v2, Appendix A.4, Data-Parallel Distributed RadixAttention"
+        },
+        {
+          "resource": "hands-serving-kv-inf3",
+          "title": "Hands-On LLM Serving and Optimization: offload vocabulary",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Advanced KV Caching: Self-Hosting LLMs, KV cache offloading, printed pp. 261 to 262; Hands-on LMCache, printed pp. 264 to 265",
+          "depth": "Read the hierarchy and cold/warm comparison. Skip the deployment commands, compression, blending and fleet cost claims; this unit needs a local transfer model, not that model size or topology."
+        },
+        {
+          "resource": "vllm-kv-contracts-inf3",
+          "title": "vLLM 0.31.0: connector ownership and synchronization",
+          "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/distributed/kv_transfer/kv_connector/v1/base/",
+          "locator": "`KVConnectorMetadata`, `KVConnectorHandshakeMetadata`; `KVConnectorBase_V1` methods `get_num_new_matched_tokens`, `update_state_after_alloc`, `start_load_kv`, `wait_for_layer_load`, `wait_for_save` and `request_finished`",
+          "depth": "Read these contracts only. The metadata base classes do not prescribe a complete wire schema; design your compatible-state descriptor explicitly."
         }
       ],
       "focus": [
-        "TODO"
+        "Compare predicted queue plus remaining prefill cost, not prefix length alone. A hot replica can have enough queue delay to lose to an idle replica that recomputes.",
+        "Offload retains compatible state on a colder tier; it does not make host or storage bytes GPU-resident. Restore time includes lookup, transfer, synchronization and any conversion, with real destination capacity reserved.",
+        "Transfer metadata needs request generation, exact prefix/position boundary, model and adapter version, tenant authorization, layer/group layout, dtype/scales, valid length and source/destination mapping. A checksum detects corruption, not permission or compatibility.",
+        "Asynchronous save pins source blocks until completion; load must finish before its consumer reads. A cancelled transfer still needs acknowledged cleanup. Routing metadata may be stale, so the destination validates the hit and falls back safely."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use a labeled CPU event simulation, not a fleet measurement. Route one request between a busy prefix-hit replica and an idle miss replica by comparing queue plus service costs; increase only the hit replica's queue until routing changes. Then transfer a small token-labeled state buffer between two CPU stores with a versioned descriptor: reject one stale version, cancel during a pending copy, and keep its source pinned until the copy is acknowledged. Verify byte equality and unchanged logical positions for an accepted transfer.",
       "traps": [
-        "TODO"
+        "Treating a router's hit prediction as authority to use state. The destination must confirm presence, identity, compatibility and authorization.",
+        "Freeing a source page as soon as a save is submitted. A pending copy can then read a recycled generation.",
+        "Assuming a larger cold-tier cache gives a faster decode path. Restoring state and attending to it still consume time and device capacity."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "When should an idle miss replica beat a busy hit replica?",
+          "a": "When its predicted queue plus recomputation and remaining service is less than the hit replica's queue plus reuse and remaining service, under the same request contract."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Is a matching checksum enough to accept transferred KV?",
+          "a": "No. It can confirm payload integrity but not model compatibility, logical positions, tenant permission or freshness."
+        },
+        {
+          "q": "In the V1 connector contract, what does deferred freeing on `request_finished` require?",
+          "a": "The engine must retain the request's blocks while asynchronous save/send owns them, and release them when transfer completion is reported. Submission alone is not completion."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` labeled routing/offload simulation and local descriptor, stale-version, cancellation and deferred-free checks.",
+      "stopWhen": "Your local simulation changes routing at the predicted queue crossover, rejects incompatible transfers and preserves source ownership through completion or acknowledged cancellation.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The paper and book cover affinity and offload, but not the current connector lifecycle. The verified V1 metadata and deferred-free API fills that coverage/currency gap; practice stays in CPU simulation."
       }
     },
     {
