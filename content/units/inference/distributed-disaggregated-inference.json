@@ -341,47 +341,80 @@
         "cache-aware-routing-and-locality-skew"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a deterministic cache-aware router that checks capacity before applying locality and load tie-breaks.",
+        "Compare load-only and cache-aware decisions under hot-prefix skew, changing reuse and stale worker information.",
+        "Diagnose a higher cache-hit rate that worsens queueing, fairness or SLO-qualified completions."
       ],
-      "why": "TODO",
+      "why": "A warm prefix saves prefill work but can attract enough requests to overload its owner. Routing must value the saved work against waiting and capacity, not maximize hits alone.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/pd-disaggregation-phase-capacity",
+          "note": "Split routing and admission across prefill and decode pools."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-dist-inf7",
+          "title": "Routing independent serving replicas",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Data Parallelism, printed pp. 244 to 245 - round robin, least connections, latency-based and cache-aware routing"
+        },
+        {
+          "resource": "mooncake-inf7",
+          "title": "Balance predicted waiting against cache reuse",
+          "url": "https://www.usenix.org/system/files/fast25-qin.pdf",
+          "locator": "FAST 25 paper, Section 4.1 Prefill Global Scheduling and Section 4.2 Cache Load Balancing, printed pp. 161 to 162",
+          "depth": "Study the decision rule and hot-cache replication. Leave the cluster experiments and their numerical results out of your local routing claims."
+        },
+        {
+          "resource": "dynamo-disagg-inf7",
+          "title": "Worker selection at phase boundaries",
+          "url": "https://docs.nvidia.com/dynamo/v1.5.1/knowledge-base/concepts/system-architecture/disaggregated-serving",
+          "locator": "Dynamo v1.5.1, Efficient KV Transfer - Router Orchestration, steps 1 to 4"
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Exact prefix identity, version scope and tenant privacy scope. A cache overlap score is useful only for compatible, authorized KV; it is not permission to reuse another tenant's state.",
+        "Track full assigned token capacity separately from uncached prefill work. Reuse saves computation but does not make the destination request's complete context disappear.",
+        "The TensorTonic problem prioritizes the longest cached prefix before projected uncached load. Mooncake instead minimizes predicted TTFT including waiting; these are different policies, not equivalent implementations.",
+        "Worker discovery, cache events and load estimates can lag. Revalidate capacity and identity at admission, and keep a fallback for evicted prefixes or unavailable workers."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement the named TensorTonic rule from a blank file. Check feasibility using full assigned request lengths, then rank by longest prefix, lowest projected uncached load, most remaining capacity and smallest worker ID. Reproduce the public example with request lengths `[10, 8]`, prefix lengths `[[8, 0], [0, 6]]`, worker IDs `[2, 1]` and capacities `[20, 20]`: assignments `[2, 1]` and uncached loads `[2, 2]`. Then construct a queued hot-prefix case where a predicted-TTFT policy deliberately chooses less reuse.",
       "traps": [
-        "TODO"
+        "Using uncached tokens as the memory-admission cost. The public rule admits against the full assigned request length even when most tokens have a prefix hit.",
+        "Interpreting a router's hit estimate as guaranteed resident KV. Eviction or worker restart between selection and admission can invalidate it.",
+        "Improving aggregate TTFT while starving tenants with cold prefixes. Compare waiting and completions by tenant or request class."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A six-token request has a four-token cache hit on a worker with capacity five. Is it feasible under the problem's rule?",
+          "a": "No. Full assigned length, six tokens, exceeds capacity five. The two uncached tokens determine compute load, not feasibility."
+        },
+        {
+          "q": "Why can longest-prefix routing lose to load-only routing?",
+          "a": "A hot cache owner can have enough waiting work to outweigh the saved prefill. Low reuse or stale cache information can also remove the expected saving."
+        },
+        {
+          "q": "Two workers tie on prefix, projected work and remaining capacity. What breaks the public problem's tie?",
+          "a": "The smaller worker ID, not the first worker in the input array. Returned loads remain in input-worker order."
+        },
+        {
+          "q": "Does replicating a hot prefix always improve goodput?",
+          "a": "No. It costs memory and transfer work, can evict useful other prefixes and may not relieve the current compute or queue bottleneck. Test it on the same arrival trace."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Route Cache-Aware Prefill Requests",
+          "url": "https://www.tensortonic.com/problems/cs336-l18-cache-aware-prefill-routing",
+          "locator": "Implement `cache_aware_prefill_routing(request_token_counts, cached_prefix_lengths, worker_ids, worker_capacities)`",
+          "note": "The free public cases check cache-local choices, worker-ID tie-breaking and rejection when no worker fits. Add tests for projected-load and remaining-capacity ties yourself. The section mini-project compares this locality-first rule with load-only and predicted-TTFT routing."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your router passes the three public cases and your additional tie-break tests, and your hot-prefix counterexample explains why saved prefill does not guarantee lower waiting or better goodput.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book and Mooncake cover locality versus load, Dynamo supplies current phase routing, and the verified free TensorTonic problem anchors deterministic implementation practice."
       }
     },
     {
