@@ -1,6 +1,27 @@
 {
   "section": "production-serving-reliability",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "openai-api-reference",
+      "role": "reference",
+      "priority": "reference",
+      "name": "OpenAI API Reference - streaming, auth, rate limits and request IDs",
+      "provider": "OpenAI",
+      "access": "Free",
+      "use": "Read the chat streaming event shape with the `[DONE]` terminator, bearer auth, rate-limit headers, and `x-request-id` with caller-supplied `X-Client-Request-Id`. vLLM is the implementation under test; use this only for the contract it claims compatibility with.",
+      "url": "https://platform.openai.com/docs/api-reference/chat/streaming"
+    },
+    {
+      "id": "vllm-multimodal-inputs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM Multimodal Inputs - media validation, fetch policy and cache identity",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read Online Serving for image, video and audio inputs: `--allowed-media-domains`, fetch timeouts, `--limit-mm-per-prompt`, local-media path restriction, and media UUIDs for cache identity. The link is pinned to v0.31.0.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/features/multimodal_inputs/"
+    }
+  ],
   "units": [
     {
       "id": "openai-api-streaming",
@@ -16,47 +37,90 @@
         "structured-output-api-and-grammar-cache-lifecycle"
       ],
       "outcomes": [
-        "TODO"
+        "Send a typed chat-completions request to a local engine and parse its SSE stream down to the `[DONE]` terminator.",
+        "Explain where backpressure sits when a client reads slower than decode produces, using per-request queues and `stream_interval`.",
+        "Constrain one endpoint with a JSON-schema structured output and state when a schema change defeats the grammar cache."
       ],
-      "why": "TODO",
+      "why": "The API schema and its stream are the product the learner operates. Every SLO, bill and debug session starts at the request fields and the event stream, not inside the model.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/serving-telemetry-signals",
+          "note": "Account the streamed tokens with per-request metrics and traces."
+        },
+        {
+          "unit": "inference/production-serving-reliability/deadlines-auth-idempotency",
+          "note": "Add deadlines, auth and request identity to the same endpoint."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-production-inf8",
+          "title": "vLLM OpenAI-Compatible Server",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/openai_compatible_server/",
+          "locator": "Supported APIs through Extra HTTP Headers: endpoint table, `vllm serve` with `--api-key token-abc123`, `extra_body` with `top_k`, `--enable-request-id-headers` with `x-request-id`, and `X-Vllm-Priority`"
+        },
+        {
+          "resource": "hands-serving-ch34-inf8",
+          "title": "Streaming with batching from scratch",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 3, Streaming with Batching (printed pp. 77-82): Table 3-1 batch evolution T0-T3, `/generate_stream` with `media_type=\"text/event-stream\"`, per-prompt `asyncio.Queue` and the `None` finish signal"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM structured outputs",
+          "url": "https://docs.vllm.ai/en/v0.31.0/features/structured_outputs/",
+          "locator": "Online Serving section: `choice`, `regex`, `json` and `grammar` examples through `extra_body`, the `--structured-outputs-config.backend` flag, and the deprecated `guided_json` mapping box"
+        },
+        {
+          "resource": "openai-api-reference",
+          "title": "OpenAI streaming events and request IDs",
+          "url": "https://platform.openai.com/docs/api-reference/chat/streaming",
+          "locator": "Streaming event lines and the `[DONE]` terminator; Debugging requests: `x-request-id`, `X-Client-Request-Id` and the rate-limit headers",
+          "depth": "Read only the streaming-event shape and the debugging-requests headers. vLLM on your GPU is the implementation under test, not the hosted service."
         }
       ],
       "focus": [
-        "TODO"
+        "The typed contract is `model`, `messages`, sampling fields such as `temperature`, `top_k` and `seed`, plus vLLM extras (`structured_outputs`, `request_id`, `session_id`, `cache_salt`, `priority`) passed through `extra_body`. `suffix` is unsupported and `user` is ignored.",
+        "Each SSE chunk is one `data:` line with a JSON delta; the stream ends with a bare `data: [DONE]` line, not with connection close. With \\(N\\) output tokens and `stream_interval` \\(= k\\), expect about \\(\\lceil N/k \\rceil\\) data chunks plus `[DONE]`, since the first and last chunks are always sent immediately.",
+        "Backpressure lives in per-request queues between the decode loop and the HTTP connection. A slow reader grows queueing and connection time; it does not pause generation or reduce billed tokens.",
+        "A structured-output grammar is compiled per distinct schema and reused on repeat. Rotating schemas per request turns every call into a cold compile; keep a small fixed schema set."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Against a local vLLM server, send one chat request with `stream=True` and `max_tokens=8`. Save the raw bytes, list every `data:` line, point at the `[DONE]` terminator, and reassemble the assistant text from the delta fields only.",
       "traps": [
-        "TODO"
+        "`temperature=0` does not silence reasoning models. A local Qwen3-0.6B with `temperature=0` and `seed=1` still opens with `<think>`; temperature controls sampling, not the thinking trace.",
+        "The server applies the model's `generation_config.json` from its Hugging Face repository over your defaults. Pass `--generation-config vllm` when you want explicit control of sampling.",
+        "`guided_json`, `guided_regex`, `guided_choice` and `guided_grammar` were removed in v0.12.0. Requests using them fail; use `structured_outputs` with `json`, `regex`, `choice` or `grammar`."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which endpoints does vLLM's `--api-key` protect?",
+          "a": "Only paths under `/v1`, `/v2` and `/inference`. `/health`, `/metrics` and `/invocations` stay unauthenticated, so put the server behind a reverse proxy that enforces auth."
+        },
+        {
+          "q": "How does a client know a stream is finished?",
+          "a": "It receives a bare `data: [DONE]` line. Connection close alone is ambiguous: it can also mean a dropped connection mid-generation."
+        },
+        {
+          "q": "With 8 output tokens and `stream_interval=3`, about how many data chunks arrive?",
+          "a": "About \\(\\lceil 8/3 \\rceil = 3\\) data chunks plus `[DONE]`, since the first and last chunks go out immediately regardless of batching."
+        },
+        {
+          "q": "Why does minting a fresh JSON schema per request hurt structured-output latency?",
+          "a": "The grammar backend compiles each distinct schema, so a fresh schema misses the compiled-grammar cache on every call. A small fixed schema set reuses compiled grammars."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "llm-model-inference ch03: streaming API tests",
+          "url": "https://github.com/orca3/llm-model-inference/blob/main/ch03/single_model_llm_serving/tests/test_api.py",
+          "locator": "`test_generate_stream` and `test_generate_stream_concurrent` against `/generate_stream`; `test_stream.sh` for the live-server variant",
+          "note": "Run with a tiny CPU model. Assert the `[DONE]` terminator and concurrent-stream isolation, then repeat the same assertions against a local vLLM server stream of `/v1/chat/completions`."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your saved stream parses to `[DONE]`, the deltas reassemble to the full text, and you can name which sampling knobs came from the model repository and which from your request.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Added the OpenAI API reference for the SSE event contract and request-ID headers beside Hands streaming and the vLLM server page."
       }
     },
     {
@@ -74,47 +138,97 @@
         "multimodal-media-validation-and-encoder-scheduling"
       ],
       "outcomes": [
-        "TODO"
+        "Put a deadline and cancellation path on a streaming endpoint and prove a disconnected client frees its engine slot.",
+        "Enforce API-key auth, per-key quotas and request validation in front of an engine that authenticates almost nothing by itself.",
+        "Draw the retry boundary with request IDs so a retried call never executes twice, and validate multimodal media before it reaches the encoder."
       ],
-      "why": "TODO",
+      "why": "The engine optimizes tokens, not trust. Auth, quotas, validation, deadlines and idempotency live in the gateway the learner builds around it, and a missing one becomes the incident.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/overload-shedding-retry-budgets",
+          "note": "Turn per-key quotas into fleet-wide admission and shedding."
+        },
+        {
+          "unit": "systems/networking-rpc/rpc-deadlines-retries-idempotency",
+          "note": "Reuse the RPC deadline, retry and idempotency rules at serving depth."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-ch34-inf8",
+          "title": "Enterprise public API: auth, rate limiting and ingress",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 4, Implementing Public API (printed pp. 127-128): `/v1/chat/completions` with `Depends(require_auth)` and `await rate_limit(tenant)`, JWT bearer or API-key lookup, HPA at 70% CPU with 3 to 15 replicas, Nginx `limit-rps: 50` annotations"
+        },
+        {
+          "resource": "infra-llm-project-inf8",
+          "title": "Project 103 auth, rate-limit and streaming middleware",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment",
+          "locator": "`src/api/middleware.py`: `RateLimitMiddleware` token bucket (`requests_per_minute=60`, `burst_size=10`, 429 with `Retry-After: 60`), `APIKeyAuthMiddleware` with public endpoints `/health`, `/docs`, `/openapi.json`; `src/api/streaming.py`: `safe_stream_wrapper` cancellation and error events, `stream_with_heartbeat`"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM request identity and priority headers",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/openai_compatible_server/",
+          "locator": "Extra HTTP Headers: `--enable-request-id-headers` with caller `x-request-id`, `X-Vllm-Priority` overriding body `priority`; Extra Parameters: `request_id` default `random_uuid` and stable `session_id`"
+        },
+        {
+          "resource": "openai-api-reference",
+          "title": "OpenAI auth, rate limits and client request IDs",
+          "url": "https://platform.openai.com/docs/api-reference/chat/streaming",
+          "locator": "Authentication: bearer scheme and secret handling; Debugging requests: `x-request-id`, caller `X-Client-Request-Id` format limits, and the `x-ratelimit-*` headers",
+          "depth": "Use the header and ID contract only. Quota numbers and hosted rate limits do not transfer to a self-hosted engine."
+        },
+        {
+          "resource": "vllm-multimodal-inputs",
+          "title": "vLLM multimodal fetch policy and cache identity",
+          "url": "https://docs.vllm.ai/en/v0.31.0/features/multimodal_inputs/",
+          "locator": "Online Serving for image, video and audio inputs: `--allowed-media-domains` with `VLLM_MEDIA_URL_ALLOW_REDIRECTS=0`, fetch timeouts 5s image / 30s video / 10s audio, `--limit-mm-per-prompt`, `--allowed-local-media-path`, and media `uuid` for cache identity",
+          "depth": "Read the Online Serving parts and the security tip only. Skip decoder-backend tuning; encoder scheduling returns in the disaggregation section."
         }
       ],
       "focus": [
-        "TODO"
+        "vLLM's `--api-key` covers only `/v1`, `/v2` and `/inference`. Quotas, validation, deadlines and idempotency are gateway work: check them before the request enters the scheduler.",
+        "A deadline has three legs: client timeout, gateway timeout, and engine cancellation (`/v1/responses/{response_id}/cancel`, `/abort_requests` with `--tokens-only`). A leg without cancellation leaks the KV slot until `max_tokens`.",
+        "Retries are safe only inside an idempotency boundary: caller-supplied `x-request-id` mapped to one engine `request_id`, with a dedupe table that returns the first result. Retry without that key executes twice.",
+        "Media is untrusted input: restrict fetch domains, cap count and size per prompt with `--limit-mm-per-prompt`, enforce fetch timeouts, and give cacheable media stable UUIDs so identical bytes share encoder work."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a token-bucket limiter keyed by API key (`requests_per_minute=60`, `burst_size=10`) that returns 429 with `Retry-After: 60` and `X-RateLimit-Remaining: 0`. Show two sequential calls from one key: the first passes, the over-limit call is rejected without reaching the engine.",
       "traps": [
-        "TODO"
+        "Trusting `--api-key` as full auth. It leaves `/health`, `/metrics` and `/invocations` open; the security note in the server docs says to deploy behind a reverse proxy.",
+        "Retrying a timed-out stream as a new request. The first attempt may still be decoding; without a shared `request_id` the retry doubles cost and can double side effects.",
+        "Fetching arbitrary media URLs server-side. A prompt can point the fetcher at internal hosts; allow-list domains and disable redirect following."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A client times out after 10s but the engine keeps decoding to `max_tokens=512`. What leaked, and which call stops it?",
+          "a": "The KV-cache slot and the scheduler slot leak until generation ends. Cancelling through `/v1/responses/{response_id}/cancel` (or `/abort_requests` in tokens-only mode) frees them; a client-side timeout alone does not."
+        },
+        {
+          "q": "Two identical chat requests arrive with the same caller `x-request-id`. How many engine executions should happen?",
+          "a": "One. The gateway maps the caller key to a single engine `request_id`, returns the stored result for the duplicate, and only a new key starts new work."
+        },
+        {
+          "q": "Why must media fetch domains be allow-listed even when prompts are authenticated?",
+          "a": "An authenticated prompt can still embed an internal URL, turning the server fetcher into a proxy into the datacenter network. Allow-listing plus no-redirect policy contains that SSRF path."
+        },
+        {
+          "q": "A video request stalls for 40s before the first token on a healthy GPU. Which serving knob do you check first?",
+          "a": "The media fetch timeout path: remote video fetch defaults to a 30s timeout, so a slow host looks like slow inference. Check fetch timing before blaming prefill."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Project 103: stubbed API, middleware and streaming tests",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/tests/test_api.py",
+          "locator": "`TestMiddleware::test_rate_limiting` and `test_authentication`, `TestGenerateEndpoint::test_generate_streaming`; implement `src/api/middleware.py` and `src/api/streaming.py` per their comments until all seven tests pass",
+          "note": "The bodies are `pass` stubs with the contract in comments. Implement token-bucket limiting, key auth with public `/health`, and SSE with heartbeat before running the suite."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "An over-limit key gets 429 without engine work, a cancelled stream frees its slot, and a duplicate `x-request-id` returns one stored result.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Added the OpenAI API reference (auth, rate-limit and request-ID contract) and the vLLM multimodal-inputs page (media validation, SSRF, fetch timeouts); the pool engine docs leave both to the surrounding service."
       }
     },
     {
