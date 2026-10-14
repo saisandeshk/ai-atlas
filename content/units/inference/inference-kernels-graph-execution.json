@@ -15,7 +15,7 @@
       "id": "torch-compile-troubleshooting",
       "role": "reference",
       "priority": "reference",
-      "name": "torch.compile Troubleshooting (PyTorch 2.14)",
+      "name": "PyTorch compiler troubleshooting guide (2.14)",
       "provider": "PyTorch",
       "access": "Free",
       "use": "Read Graph break, Guards, Recompilation and Dynamic Shapes; run `TORCH_LOGS` set to `graph_breaks` and `recompiles` on a small serving-shaped function.",
@@ -714,7 +714,7 @@
         "A graph break splits one function into several graphs. `torch._dynamo.explain` reports the graph count with a reason per break, and each graph carries its own shape guards.",
         "Static guards specialize on sizes. A new batch size fails the guard and recompiles; `dynamic=True` or bucketed static shapes keep one compilation.",
         "Inductor may reassociate reductions, so compiled output can differ from eager by a few ULPs. Compare with a tolerance, never with exact equality.",
-        "Attention is the dynamic operator in a serving layer. vLLM partitions around ops tagged `cudagraph_unsafe` (for example attention) so static regions stay capturable; the lecture's intentional break is the same boundary in older vocabulary."
+        "Attention is the dynamic operator in a serving layer. vLLM's experimental inductor partition splits the graph at ops tagged `cudagraph_unsafe` (for example attention) so static regions stay capturable; the lecture's intentional break is the same boundary in older vocabulary."
       ],
       "reproduce": "On CPU, compile a three-op function containing a `print` with `fullgraph=False` and run `torch._dynamo.explain` on it: predict 2 graphs with the `print` named as the break before you run. Then compile a reduction with static shapes, call it at two batch sizes under `TORCH_LOGS=recompiles`, and observe the size-mismatch guard recompile. Recompiling with `dynamic=True` runs both shapes with no recompile log and matches eager under `torch.testing.assert_close`, not `torch.equal`.",
       "traps": [
@@ -851,47 +851,75 @@
         "profiler-evidence-for-bottleneck-classification"
       ],
       "outcomes": [
-        "TODO"
+        "Time a serving kernel with warmup, device synchronization and repeated trials, reporting medians with the exact timed boundary.",
+        "Derive FLOP, byte and launch counts for the measured shape and place the point against stated ceilings without calling position a bottleneck.",
+        "Confirm or reject the predicted regime with profiler evidence: kernel summaries, NVTX ranges and the counters your GPU exposes."
       ],
-      "why": "TODO",
+      "why": "Timed boundaries, asynchronous launch and event timing and Warp stalls, resource evidence and bottleneck classification taught generic timing and classification. Serving adds phase-shaped inputs, short-decode launch pressure and machine-state controls that decide whether a rerun reproduces.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/dispatch-endpoint-translation",
+          "note": "Carry the timed kernel into the endpoint comparison."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a2-attn-inf5",
+          "title": "Warmup, synchronization and profiler problems",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3 with Problem (`benchmarking_script`) (pp. 3 to 4): warmup steps plus `torch.cuda.synchronize` after each step; Section 2.1.4 with Problem (`nsys_profile`) (pp. 4 to 6): GPU Kernel Summary and NVTX ranges",
+          "depth": "Use the timing idiom and the profiler problem here; leave the full-model sweep for the baseline section."
+        },
+        {
+          "resource": "aisys-code18-inf5",
+          "title": "Benchmark idiom and the FLOP/byte ledger",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch18",
+          "locator": "`benchmark_attention` in `flex_attention_native.py` (warmup loop, device synchronize, `Event` medians) and `compute_paged_attention_metrics` in `paged_attn_common.py` (FLOP, byte and roofline ledger)"
+        },
+        {
+          "resource": "tensorrt-arch-inf5",
+          "title": "Machine state and benchmark method",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/perf-benchmarking.html",
+          "locator": "TensorRT LLM Benchmarking: Before Benchmarking (persistence mode, clock reset, power limits) and Throughput Benchmarking",
+          "depth": "Apply the machine-state controls or label the run uncontrolled. Leave dataset preparation and LoRA sections for later."
         }
       ],
       "focus": [
-        "TODO"
+        "Declare the timed boundary first: kernel, operator, step or request. Warmup must cover capture and autotune caches; the first iteration after a shape change measures a different regime.",
+        "Report medians over repeated synchronized trials, with spread. Best-of hides the launch-supply variance that serving pays every step.",
+        "Separate useful work from executed work. Padded buckets, masked lanes and reloaded tiles execute without serving; label modeled traffic as modeled and measure DRAM only with counters.",
+        "Pin machine state or label the run uncontrolled. A drifting clock moves every ceiling the point is plotted against."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the ledger for one step `y = relu(x @ W + b)` with batch 8 and width 64 in float32: 65,536 dense-product FLOPs and 24,832 ideal bytes, hence a low-intensity prediction near 2.6 FLOP/byte where launch supply dominates wall time at this size. On your GPU, time that step with 20 warmup and 200 synchronized event-timed iterations; report the median with the boundary and setup, then confirm the regime with a timeline or the counters your GPU exposes.",
       "traps": [
-        "TODO"
+        "Timing the enqueue call and reporting it as kernel time. Record events around the work and synchronize before reading.",
+        "Comparing a replay median with an eager median taken under different warmup or synchronization. Interleave the two series instead.",
+        "Placing a modeled-bytes point and reading the bottleneck off its position. Position proposes; stall and counter evidence dispose."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why warm up 20 before timing 200?",
+          "a": "Warmup settles capture, autotune and clocks. Early iterations measure setup, not the steady step."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Median or best-of for the report?",
+          "a": "Median with spread. Best-of hides the variance serving pays; a tail-sensitive SLO needs the distribution."
+        },
+        {
+          "q": "The point sits below the bandwidth ceiling. Is it bandwidth-bound?",
+          "a": "Not established. Launch, occupancy or latency can dominate below the ceiling. Test with a launch-scaling sweep or stall evidence."
+        },
+        {
+          "q": "Clocks drift mid-sweep. What breaks?",
+          "a": "Ceilings move, so reruns stop reproducing. Pin machine state per the benchmarking page or label the run uncontrolled."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` timing harness with warmup, ledgers, repeated-trial records and profiler ranges.",
+      "stopWhen": "Your ledger predicts the regime before you profile, interleaved medians with stated boundaries match the prediction or the profiler explains the mismatch, and a rerun under pinned machine state reproduces the median.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the assignment timing idiom, the ch18 benchmark and ledger pair, and the machine-state guide cover all three topics; the mini-project supplies the harness."
       }
     },
     {
@@ -909,47 +937,75 @@
         "flashinfer-backend-selection-and-custom-masks"
       ],
       "outcomes": [
-        "TODO"
+        "Wire one kernel path into a serving runner with explicit backend selection and a tested eager fallback.",
+        "Translate a measured kernel win into endpoint TTFT, TPOT and goodput with Amdahl shares, or reject the win honestly.",
+        "Preserve the negative result: keep outputs identical, keep the losing regime in the report, and keep the fallback as the shipped behavior where it loses."
       ],
-      "why": "TODO",
+      "why": "Attention baselines, shape matrices, end-to-end translation and losing regimes gave the translation formula for generic blocks. Here the runner chooses backends per phase and batch, so translation must survive dispatch, padding and fallback.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/quantization-speculative-decoding/inference-number-formats",
+          "note": "Carry the dispatch and fallback contract into quantized paths."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "Backend registry and graph fallback boundary",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/engine/graph.py",
+          "locator": "`GraphRunner.pad_batch`, `can_use_cuda_graph`, `replay` and the `prepare_for_capture`/`prepare_for_replay` backend hooks in `engine/graph.py`; `create_attention_backend` implements the registry with a hybrid `prefill,decode` string"
+        },
+        {
+          "resource": "flashinfer-docs-inf5",
+          "title": "Backend selection and capture limits",
+          "url": "https://docs.flashinfer.ai/api/attention.html#flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
+          "locator": "FlashInfer 0.7.0.post1 documentation: the `backend` parameter (`auto`, `fa2`, `fa3`, `trtllm-gen`, `cute-dsl`, `prims-ts`) with automatic selection, `use_cuda_graph` rules, and the constraint that `plan` runs outside capture",
+          "depth": "For custom masks also open https://docs.flashinfer.ai/tutorials/kv_layout.html and read Mask Layout (2D Ragged Tensor). Leave experimental backends off unless you export the documented opt-in flag."
+        },
+        {
+          "resource": "aisys-code18-inf5",
+          "title": "Decode-kernel dispatch and the eager endpoint baseline",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch18/baseline_vllm_v1_integration.py",
+          "locator": "`BaselineVLLMV1Integration` (`enforce_eager=True` baseline, `SamplingParams`, `llm.generate`, `mean_latency_ms` and `throughput_tokens_per_sec`); compare with `build_decode_kernel` in `decode_kernels.py` (`prefer_vllm` selects the vLLM path, `prefer_vllm=False` keeps the explicit torch path)",
+          "depth": "The dispatch file imports `paged_attention_v1` from `vllm._custom_ops`, which does not exist in installed vLLM 0.31.0; treat it as a dispatch sketch and verify the op name against your engine version before running."
         }
       ],
       "focus": [
-        "TODO"
+        "Dispatch is per phase and batch, not per model. A hybrid `prefill,decode` string can win prefill and lose decode; log the backend per phase before translating.",
+        "Translate with shares, not kernels. For a kernel speedup \\(s\\) on a runtime share \\(f\\), endpoint speedup is \\(S = 1 / ((1 - f) + f / s)\\): a 2x win on a 10% share is barely 1.05x, before padding and fallback shrink the share further.",
+        "A fallback that never fires in testing is untested. Force an unsupported shape, dtype or backend and check outputs plus the miss count.",
+        "Custom masks ride the same dispatch. A mask the backend cannot express must fall back with identical outputs, not silently run unmasked."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the endpoint translation for a measured 2x kernel win on a 10% share: about 1.05x. Then build a two-backend dispatch matrix (serve path versus explicit torch path) over supported and unsupported shapes with per-phase backend logging; unsupported cases must take the fallback with identical outputs and a counted miss. Run the endpoint comparison under a fixed replayable load and report improvement or honest rejection with outputs preserved.",
       "traps": [
-        "TODO"
+        "Averaging per-kernel speedups into an endpoint claim. Weight by measured shares under the serving shape distribution.",
+        "Testing dispatch only on supported shapes. The fallback path ships too; an untested fallback is a latent outage.",
+        "Dropping the negative result from the report. A documented loss with its regime is section evidence; an unreported one will be rediscovered in production."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A kernel runs 3x faster on half the runtime. What is the endpoint win?",
+          "a": "About 1.5x: \\(1 / (0.5 + 0.5 / 3)\\). Padding and fallback batches shrink the half further."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "The fallback never triggers in your tests. Done?",
+          "a": "No. Force unsupported inputs and verify identical outputs plus miss accounting; otherwise the fallback is untested code."
+        },
+        {
+          "q": "Backend A wins decode but loses prefill. Which ships?",
+          "a": "The workload's phase mix decides. Log per-phase backends, translate each phase, and keep the hybrid or per-phase choice the numbers support."
+        },
+        {
+          "q": "The endpoint shows no win with outputs preserved. Report or retry?",
+          "a": "Report. A preserved negative result with its regime and shifted bottleneck is the required evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` endpoint translation with per-phase dispatch logs, preserved outputs, and a kept negative result.",
+      "stopWhen": "One kernel path ships behind dispatch with a tested fallback, the endpoint comparison under replayable load shows a win or a preserved rejection, and every number traces to a logged share.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the runner's registry and graph boundary, the backend-selection contract and the eager endpoint baseline cover all four topics; the mini-project supplies the endpoint comparison."
       }
     }
   ]
