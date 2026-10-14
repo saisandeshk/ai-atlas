@@ -498,47 +498,70 @@
         "cuda-streams-events-and-asynchronous-execution"
       ],
       "outcomes": [
-        "TODO"
+        "Separate host scheduling and launch supply from GPU execution on a decode timeline.",
+        "Preserve producer, consumer and host-read ordering with stream events and buffer lifetimes.",
+        "Measure a completed serving step without inserting a device-wide wait after every operator."
       ],
-      "why": "TODO",
+      "why": "Pinned memory, streams, events and copy-compute overlap supplied the CUDA mechanics. A serving loop must hide host preparation without exposing unfinished tokens or recycling KV before its consumers finish.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/serving-cuda-graphs",
+          "note": "Reduce repeated launch supply without changing the dependency graph."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cse291-vllm-inf5",
+          "title": "Host work on the decode critical path",
+          "url": "https://haoailab.com/cse291-s26/assets/scribe_notes/may7_scribe.pdf",
+          "locator": "May 7, 2026 scribe notes: Sections 4.1, 4.3 and 4.4, CPU overhead, asynchronous scheduling and GPU-native input preparation",
+          "depth": "Read the dependencies and preparation boundaries. Do not inherit lecture timing examples or treat all host work as removed by asynchronous scheduling."
+        },
+        {
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "Sampled-token copy completion",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/engine/engine.py",
+          "locator": "`ForwardOutput` and `Engine.forward_batch`: active stream, sampling, CPU copy and completion event"
+        },
+        {
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "Overlap and safe host consumption",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/scheduler.py",
+          "locator": "`overlap_loop`, `normal_loop`, `_process_last_data` and `shutdown`"
         }
       ],
       "focus": [
-        "TODO"
+        "A short GPU step can wait for host launches, scheduler work or input preparation. Locate gaps on the timeline before choosing a faster arithmetic kernel.",
+        "One stream orders its operations; another stream needs an explicit dependency. Event waiting establishes readiness, while retaining storage or recording its use prevents allocator reuse. These are separate obligations.",
+        "A nonblocking copy return is not proof that the CPU tensor is ready or that transfer overlaps compute. Wait for completion before host inspection and verify overlap in the trace.",
+        "Overlap can prepare work for a request that finishes or is cancelled. Discard its output and defer storage reuse until in-flight consumers finish; check this ordering in a deterministic CPU event simulation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On your GPU, prepare a 32-element `torch.float32` vector of ones and a pinned host output. Have a producer stream add one, record a ready event, and a consumer stream wait on it before multiplying by three and copying to the host. Record completion after the copy and wait before reading; every host element must be 6. Keep all buffers alive. Capture a short timeline and identify both dependencies; overlap is an observation, not a requirement. Repeat the ownership sequence in a CPU event simulation where cancellation prevents early slot reuse.",
       "traps": [
-        "TODO"
+        "Timing Python enqueue duration and calling it completed decode latency.",
+        "Replacing an event wait with a global synchronization at every token, thereby changing the overlap being measured.",
+        "Freeing a cancelled request's slots while previously enqueued kernels still read them. Cancellation changes ownership, not completion of GPU work."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does a stream wait block the host until the producer finishes?",
+          "a": "No. It orders future work on the waiting stream. A host event synchronization is needed before the CPU consumes unfinished results."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why retain a buffer after adding a cross-stream event dependency?",
+          "a": "The dependency establishes execution order, not storage lifetime. The allocator must not reuse storage while another stream still uses it."
+        },
+        {
+          "q": "What disproves a host-launch-bound hypothesis?",
+          "a": "A timeline with sufficient queued GPU work and device execution occupying the critical path, together with no useful improvement when host launch supply is reduced."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` stream/event dependency trace, completed-step timing and cancellation-safe in-flight buffer simulation.",
+      "stopWhen": "The two-stream result is correct, the trace shows the required ordering, and cancellation cannot return storage before its final consumer completes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the lecture locates serving host work and the pinned engine/scheduler pair exposes completion ownership; the mini-project adds timing and cancellation checks."
       }
     },
     {
