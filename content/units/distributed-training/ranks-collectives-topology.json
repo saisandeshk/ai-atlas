@@ -1,6 +1,27 @@
 {
   "section": "ranks-collectives-topology",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-dist-api-dt2",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch 2.14 torch.distributed reference",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Look up the backends table, init_process_group with timeout and device_id, new_group and new_subgroups, the Work and async_op contract, monitored_barrier, destroy_process_group and TORCH_DISTRIBUTED_DEBUG. Use it for API lookup beside the tutorial first pass.",
+      "url": "https://docs.pytorch.org/docs/2.14/distributed.html"
+    },
+    {
+      "id": "pytorch-torchrun-dt2",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch 2.14 torchrun (elastic launch) reference",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read Single-node multi-worker through the elastic membership rows for --standalone, --nnodes, --nproc-per-node, --rdzv-backend, --rdzv-endpoint and the RANK, WORLD_SIZE and LOCAL_RANK table. Launch every CPU run with torchrun --standalone and a distinct port per run.",
+      "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html"
+    }
+  ],
   "units": [
     {
       "id": "ranks-world-size-placement",
@@ -14,47 +35,83 @@
         "device-placement-and-one-process-per-device-convention"
       ],
       "outcomes": [
-        "TODO"
+        "Explain global rank, local rank and world size, and state which launcher variables set each.",
+        "Explain the one-process-per-device convention and predict what breaks when two ranks share one GPU.",
+        "Map a stated node and GPU count to global ranks, node-local ranks and device choices."
       ],
-      "why": "TODO",
+      "why": "Every collective names its participants by rank. A wrong rank map turns each later group and collective into a hang or a silent mismatch, so ranks come before any communication.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/ranks-collectives-topology/rendezvous-process-groups",
+          "note": "Launch the ranks you just mapped and connect them through a store."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Use ranks for the first gradient average across workers."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dist-dt2",
+          "title": "Setup and the All-Reduce example (page read 2026-10-14)",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Setup: the spawn template with MASTER_ADDR, MASTER_PORT and dist.init_process_group, then Collective Communication with dist.new_group and the dist.all_reduce example"
+        },
+        {
+          "resource": "ultrascale-crash-course-dt2",
+          "title": "A0 opening through Broadcast setup",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#a0:_parallel_programming_crash_course",
+          "locator": "A0 Parallel Programming Crash Course, from its opening through the Broadcast setup code with dist.get_rank",
+          "depth": "Read for the rank and world-size vocabulary. Do not copy the snippets: the print misspells the init call as dist.initi_process_group and passes dst to dist.all_reduce, which takes no dst argument."
+        },
+        {
+          "resource": "umar-framework-dt2",
+          "title": "Ranks and the process group",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=18920s",
+          "locator": "Minutes 5:15 to 5:20: what torchrun assigns as global and local rank and why a process group is created"
         }
       ],
       "focus": [
-        "TODO"
+        "Global rank \\(r\\) with \\(0 \\le r < W\\) names one process in a run of \\(W\\) processes. Local rank names the same process inside its node. World size \\(W\\) is the process count, not the GPU count.",
+        "`RANK`, `WORLD_SIZE` and `LOCAL_RANK` come from the launcher. `MASTER_ADDR` and `MASTER_PORT` tell every process where rank 0 waits for the handshake.",
+        "Plan one process per GPU and set the device from the local rank, as in `torch.cuda.set_device(local_rank)`. Two ranks sharing one GPU serialize kernels and break the one-device-per-rank NCCL setup."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, map 2 nodes with 4 GPUs each under one launcher job of 8 processes: the world size, the global ranks on each node, each rank's local rank, and the device each rank sets. Then state which rank holds local rank value 1 on the second node.",
       "traps": [
-        "TODO"
+        "Reading local rank as global rank on the second node. Local ranks restart at 0 on each node.",
+        "Launching more processes than GPUs and assigning two ranks to one device. NCCL expects one device per rank.",
+        "Setting WORLD_SIZE to a value that disagrees with the spawned process count. The init handshake waits for processes that never arrive."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two nodes hold 4 GPUs each and one job launches 8 processes. Which global ranks sit on node 1, and what is the local rank of global rank 6?",
+          "a": "Node 1 holds global ranks 4 to 7. Rank 6 has local rank 2 and uses the third GPU of that node."
+        },
+        {
+          "q": "What does dist.init_process_group exchange between processes?",
+          "a": "Only handshake locations through the master address and port, a shared file, or a TCP endpoint. No tensors move; setup only makes later communication possible."
+        },
+        {
+          "q": "A snippet calls dist.all_reduce(tensor, dst=0). Why is that wrong?",
+          "a": "dist.all_reduce takes no dst argument, and every rank keeps the reduced result. The dst argument belongs to dist.reduce, whose result is valid only on the root."
+        },
+        {
+          "q": "Two ranks share one GPU and both call NCCL collectives. What breaks?",
+          "a": "The one-device-per-rank setup breaks. Kernels from both ranks serialize on the shared device, and the communicator is built per device, so sharing is unsupported even when it appears to start."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Writing Distributed Applications with PyTorch: Setup and All-Reduce example",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Adapt the Setup template and the All-Reduce example to torchrun --nproc-per-node 4 with the gloo backend: print dist.get_rank and dist.get_world_size on each rank and assert that all-reducing ones gives the world size",
+          "note": "Run on CPU with four processes and a distinct port. Keep the GPU device lines for a later run with four GPUs."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your rank table for a two-node layout is correct, and the four-process gloo run prints consistent ranks with the expected all-reduce sum.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The tutorial setup plus the crash-course vocabulary and the video ranks segment cover both topics at explain depth."
       }
     },
     {
@@ -70,47 +127,90 @@
         "default-and-nested-process-groups"
       ],
       "outcomes": [
-        "TODO"
+        "Explain rendezvous, stores and launchers, and what the process-group lifecycle owns.",
+        "Build the default world group plus nested subgroups for a stated 2 by 2 layout.",
+        "Predict init hangs from a mismatched world size, endpoint or mesh shape."
       ],
-      "why": "TODO",
+      "why": "Collectives run inside named groups, not on bare machines. The store handshake and the group grid decide who talks to whom before any tensor moves.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/ranks-collectives-topology/p2p-broadcast-reduce",
+          "note": "Move the first tensor inside the groups you just built."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Average gradients across one data-parallel group."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dist-dt2",
+          "title": "Initialization methods (page read 2026-10-14)",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Initialization Methods: Environment Variable, Shared File-System with the fcntl locking warning, and TCP"
+        },
+        {
+          "resource": "pytorch-torchrun-dt2",
+          "title": "Single-node and elastic launch flags",
+          "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html",
+          "locator": "Single-node multi-worker through the elastic membership rows: --standalone, --nnodes, --nproc-per-node, --rdzv-backend, --rdzv-endpoint and the RANK, WORLD_SIZE and LOCAL_RANK table"
+        },
+        {
+          "resource": "picotron-groups-dt2",
+          "title": "ProcessGroupManager grid and subgroup enumeration",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/process_group_manager.py",
+          "locator": "class ProcessGroupManager through setup_process_group_manager: the arange grid over dp, pp, cp and tp plus new_subgroups_by_enumeration"
+        },
+        {
+          "resource": "picotron-tutorial-dt2",
+          "title": "Steps 1 to 3 with diffs and the Part 1 video",
+          "url": "https://github.com/huggingface/picotron_tutorial",
+          "locator": "step2_process_group_manager and step3_dataloader with their diffs and the Part 1 video on the model, the process group manager and the dataloader",
+          "depth": "Rebuild the rank grid yourself before reading the solution."
         }
       ],
       "focus": [
-        "TODO"
+        "A store is a key-value handshake, either `TCPStore` or `FileStore`. The launcher starts the processes, rendezvous introduces them, and `dist.init_process_group` builds the world group.",
+        "The default group holds all \\(W\\) ranks. `dist.new_group` carves named subsets, one rank may belong to several groups at once, and each group orders its own collectives.",
+        "Picotron lays ranks out as `torch.arange(world).view(dp, pp, cp, tp)` and enumerates one subgroup per axis. Every rank must build the identical grid or the groups disagree silently.",
+        "File init needs a nonexistent or empty shared file with fcntl locking. Mesh shapes must match on all ranks or setup hangs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, take world size 4 with dp 2 and tp 2 in Picotron axis order: write the tensor-parallel groups and the data-parallel groups as rank sets.",
       "traps": [
-        "TODO"
+        "Reusing one fixed MASTER_PORT for several concurrent runs. The second job fails or joins the wrong rendezvous, so use a distinct port per run.",
+        "Trusting a LOCAL_RANK fallback of the form `global_rank % world_size` in example code on multiple nodes. It is not the true node-local rank.",
+        "Assuming subgroups inherit a barrier or an ordering from the world group. Each group needs its own calls in the same order."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What does the store do, and when is it no longer needed?",
+          "a": "It exchanges handshake locations so ranks can find each other during init. After the process group is built, collectives use direct links and no longer consult the store."
+        },
+        {
+          "q": "World size 4 with dp 2 and tp 2 in Picotron order: which ranks share a tensor-parallel group, and which share a data-parallel group?",
+          "a": "Tensor-parallel groups are {0, 1} and {2, 3}. Data-parallel groups are {0, 2} and {1, 3}."
+        },
+        {
+          "q": "Rank 0 of a subgroup calls all_reduce but rank 1 of the same subgroup calls broadcast. What happens?",
+          "a": "Both hang. Every member of a group must issue the same collective sequence, and subgroups do not inherit ordering from the world group."
+        },
+        {
+          "q": "Two jobs on one machine share MASTER_PORT. What goes wrong?",
+          "a": "The second job either fails to bind or rendezvous with the wrong peers. Give each run its own port."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Picotron Tutorial: Steps 1 to 3 (process group manager and dataloader)",
+          "url": "https://github.com/huggingface/picotron_tutorial",
+          "locator": "step2_process_group_manager and step3_dataloader with their diffs: rebuild the rank grid yourself, then diff against the solution",
+          "note": "Keep the Part 1 video for the second pass over the same steps."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand-drawn groups match the subgroup enumeration on CPU, and a subgroup barrier passes on four processes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for launcher rendezvous flags in the tutorial alone; the torchrun reference fills that gap beside Picotron group construction."
       }
     },
     {
@@ -125,47 +225,89 @@
         "broadcast-and-reduce-ownership-semantics"
       ],
       "outcomes": [
-        "TODO"
+        "Implement matched send and receive pairs with blocking and non-blocking calls.",
+        "Implement broadcast and reduce and state exactly which ranks hold valid results.",
+        "Predict the deadlock or stale read from an unmatched pair or an early buffer access."
       ],
-      "why": "TODO",
+      "why": "Pipelines move activations along single edges, not group averages. One unmatched send or one read of a stale root buffer corrupts the handoff silently.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/ranks-collectives-topology/allreduce-gather-scatter-duality",
+          "note": "Replace pairs with group reductions that every rank holds."
+        },
+        {
+          "unit": "distributed-training/ranks-collectives-topology/all-to-all-token-exchange",
+          "note": "Send distinct payloads to distinct destinations instead of one copy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dist-dt2",
+          "title": "Point-to-point listings and wait rules (page read 2026-10-14)",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Point-to-Point Communication: the blocking listing, the non-blocking listing with dist.isend and dist.irecv, and the two undefined-behaviour rules before req.wait()"
+        },
+        {
+          "resource": "pytorch-dist-dt2",
+          "title": "Broadcast and reduce bullets (page read 2026-10-14)",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Collective Communication: the dist.broadcast and dist.reduce bullets plus the ReduceOp list with SUM"
+        },
+        {
+          "resource": "stas-comms-dt2",
+          "title": "Point-to-point, Broadcast and Reduce",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/network/comms.md",
+          "locator": "Point-to-point communications with send, recv, isend and irecv, then Broadcast and Reduce with their call signatures"
+        },
+        {
+          "resource": "umar-framework-dt2",
+          "title": "Send, receive and pipeline handoffs",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=25685s",
+          "locator": "Minutes 7:08 to 7:10: send and receive as point-to-point primitives, with the pipeline send at minutes 9:59 to 10:00 as the use case"
         }
       ],
       "focus": [
-        "TODO"
+        "Every `dist.send` names a dst and every `dist.recv` names a src, with a preallocated buffer of matching shape and dtype on the receiving rank. Blocking calls return after completion; immediates return a `Work` handle that requires `req.wait()`.",
+        "After `dist.isend`, writing the sent tensor is undefined until wait. After `dist.irecv`, reading the receive buffer is undefined until wait. After wait, the transfer is guaranteed.",
+        "Broadcast copies one source tensor to all ranks. Reduce combines every rank into dst only, so other ranks hold stale data after the call.",
+        "A send with no matching receive, or a receive with no send, blocks forever. The matched pair is the unit that must agree."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the two-process exchange: rank 0 builds a 3-element tensor and sends it to rank 1 with isend and irecv plus wait, then rank 1 broadcasts it back so both ranks hold it. State every buffer each rank allocates.",
       "traps": [
-        "TODO"
+        "Allocating the receive buffer with the wrong shape or dtype. The call may hang or corrupt instead of raising.",
+        "Reading a reduce result on a non-root rank. Only dst holds the combined value.",
+        "Reusing a send buffer right after isend without wait. The transfer may still be in flight."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What is the observable difference between dist.send with dist.recv and dist.isend with dist.irecv?",
+          "a": "The blocking pair returns after the transfer completes. The immediate pair returns a Work handle at once, and the transfer is only guaranteed after req.wait()."
+        },
+        {
+          "q": "Rank 0 calls isend on a tensor, then overwrites the tensor before wait. Rank 1 receives after its own wait. What can rank 1 hold?",
+          "a": "Anything, including a mix of old and new values. Writing a sent buffer before wait is undefined behaviour."
+        },
+        {
+          "q": "Four ranks call dist.reduce with dst 0 and SUM. Afterwards rank 2 reads its tensor. What does it see?",
+          "a": "Its own stale input. Only rank 0 holds the combined sum after a reduce."
+        },
+        {
+          "q": "Rank 0 sends to rank 1, but rank 1 never posts a receive and instead calls all_reduce. What happens?",
+          "a": "Both hang. The send waits for a matching receive that never comes, and rank 1 waits at a collective rank 0 never joins."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Writing Distributed Applications with PyTorch: point-to-point listings",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Blocking plus Non-blocking listings on two gloo CPU processes: assert both ranks end with 1.0, then extend the script with the two-process exchange from Reproduce",
+          "note": "Run with torchrun --nproc-per-node 2 and a distinct port. Never touch a buffer before its wait."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The exchange passes on two processes, and you can name every valid and every stale buffer without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The tutorial listings plus the Stas signatures and the video handoff segment cover both topics at implement depth."
       }
     },
     {
