@@ -170,47 +170,71 @@
         "flashdecoding-and-decode-mega-kernel-vocabulary"
       ],
       "outcomes": [
-        "TODO"
+        "Connect variable request lengths and GQA heads to a paged decode wrapper's metadata.",
+        "Implement a CPU page-gather and head-mapping oracle independent of backend scheduling.",
+        "Explain split-KV, FlashDecoding and decode megakernels as distinct execution choices."
       ],
-      "why": "TODO",
+      "why": "Build on Variable-length, paged and decode attention. Here the page table must remain correct as a live serving batch changes, and its plan must match the wrapper that actually executes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/kv-append-rope-offsets",
+          "note": "Update the addressed cache without changing logical positions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-docs-inf5",
+          "title": "Page-table and decode contracts",
+          "url": "https://docs.flashinfer.ai/api/attention.html#flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
+          "locator": "FlashInfer 0.7.1 documentation: `BatchDecodeWithPagedKVCacheWrapper`, constructor and `plan`/`run` Parameters and Notes",
+          "depth": "Read ordinary paged GQA decode only. The wrapper needs a planned supported shape and dtype; leave architecture-specific backends for reference."
+        },
+        {
+          "resource": "flashinfer-paper-inf5",
+          "title": "Dynamic split-KV and scheduling, arXiv:2501.01005v1",
+          "url": "https://arxiv.org/html/2501.01005v1#S3.SS3",
+          "locator": "Sections 3.1.1 and 3.3.1, including Algorithm 1 and Figure 6; Section 5.1, FlashDecoding discussion"
+        },
+        {
+          "resource": "aisys-ch18-inf5",
+          "title": "Decode-kernel vocabulary",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 18, Optimized Decode Kernels: FlashMLA (DeepSeek), ThunderMLA (Stanford) and FlexDecoding (PyTorch)",
+          "depth": "Read for vocabulary and fusion boundaries, not quoted speedups or a requirement to run MLA kernels. An attention decode kernel is not the full transformer layer."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse your earlier page translation: logical position \(t\) maps through entry \(\lfloor t/P\rfloor\) and slot \(t\bmod P\) for page size \(P\). A request's metadata must exclude another request's pages and the invalid tail.",
+        "For divisible head counts, \(g=H_q/H_{kv}\) and KV head \(\lfloor h_q/g\rfloor\). The API requires that divisibility; unsupported mappings must reject or use a documented alternative.",
+        "FlashDecoding splits a long KV range into parallel partial attention states and merges them. A megakernel may fuse scheduling and reduction; neither term implies fusion of every model operator.",
+        "Planning follows live lengths and can be reused across compatible layers in one step. Reusing a plan from a different request order, shape or page mapping can produce plausible but wrong outputs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build a CPU double-precision decode oracle for two requests of lengths 5 and 7, page size 4, physical page lists `[4, 1]` and `[3, 0]`, four query heads, two KV heads and width 8. Generate standard-normal queries, keys and values with seed 0. Gather each request independently, map heads as `[0, 0, 1, 1]` and compare with contiguous attention at `rtol=1e-12, atol=1e-12`. Permute the physical allocation and swap batch order with matching metadata; outputs must follow request identity. Poison unused slots and confirm they cannot affect valid outputs.",
       "traps": [
-        "TODO"
+        "Treating the CSR page offsets as token offsets. Each offset counts page-table entries, not token rows.",
+        "Setting last-page length to zero for a full page. The nonempty-page convention uses the page size.",
+        "Equally averaging split-KV outputs instead of merging their normalizers."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "With page size 4 and page list `[4, 1]`, where is logical token 4?",
+          "a": "Physical page 1, slot 0. Logical and physical page numbers need not match."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What length does two pages with last-page occupancy 3 represent at page size 4?",
+          "a": "7 valid tokens. Only three slots of the final page are readable."
+        },
+        {
+          "q": "Why might split-KV lose on short contexts?",
+          "a": "Extra partial-state writes, reduction and dispatch can exceed the benefit of added parallelism. Measure the crossover rather than assuming it."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` paged decode checks over request reordering, unequal lengths, GQA groups and poisoned page tails.",
+      "stopWhen": "The independent oracle passes reordered and remapped batches, a seeded wrong-page or wrong-head defect fails, and you distinguish split-KV from full-layer fusion.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the current wrapper contract, FlashInfer scheduling and Chapter 18 vocabulary cover all three topics; the mini-project tests live metadata."
       }
     },
     {
