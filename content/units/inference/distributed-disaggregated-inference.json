@@ -430,47 +430,75 @@
         "independent-phase-parallelism-and-capacity"
       ],
       "outcomes": [
-        "TODO"
+        "Trace a request through prefill, KV handoff and decode, locating each queue and duplicated model copy.",
+        "Derive independent phase demand and a bottleneck capacity bound for a declared workload.",
+        "Explain how phase-specific batching and parallelism can improve isolation while stranding capacity in the other pool."
       ],
-      "why": "TODO",
+      "why": "Disaggregation removes one source of phase interference and introduces a new queue and transfer boundary. Pool sizes must follow service demand and SLOs, not just the input-to-output token ratio.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/kv-transfer-connectors-overlap",
+          "note": "Restore the transfer and ownership costs to the phase-capacity model."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-inf7",
+          "title": "The independent phase trade-off",
+          "url": "https://arxiv.org/html/2401.09670v3#S3",
+          "locator": "arXiv:2401.09670v3, Section 2.3 Problems and Opportunities, then Sections 3.1 Analysis for Prefill Instance and 3.2 Analysis for Decoding Instance",
+          "depth": "Use the phase and queue models, not the paper's speedups as targets. Its constant-service, Poisson-arrival queue approximation is not a tail-SLO model for arbitrary prompt mixtures."
+        },
+        {
+          "resource": "aisys-ch15-17-inf7",
+          "title": "What each phase pool owns",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Disaggregated Prefill and Decode Architecture; Chapter 17, Disaggregated Prefill and Decode Cluster Pools",
+          "depth": "Read the architecture, memory-management and phase-worker design. Skip deployment snippets and fixed hardware recommendations; use Dynamo v1.5.1 for the current orchestration path."
+        },
+        {
+          "resource": "dynamo-disagg-inf7",
+          "title": "Where phase separation helps and loses",
+          "url": "https://docs.nvidia.com/dynamo/v1.5.1/knowledge-base/concepts/system-architecture/disaggregated-serving",
+          "locator": "Dynamo v1.5.1, Performance Characteristics - Prefill saturation, Decode memory tradeoff and Capacity effects of disaggregation"
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Mixing prefill and decode, and chunked prefill to protect decode. Separate pools remove same-device mixed-phase execution, but not queueing, host contention, shared-link contention or decode KV pressure.",
+        "DistServe prefill produces prompt KV and the first sampled token. Follow the first token explicitly: receiving it is not the same event as having KV ready for the next decode step.",
+        "For arrival rate \(\lambda\), mean prompt length \(\mathbb{E}[I]\) and mean output length \(\mathbb{E}[O]\), prompt demand is \(\lambda\mathbb{E}[I]\). If prefill emits the first token, subsequent decode demand is \(\lambda\mathbb{E}[\max(O-1,0)]\). Declare that convention before using token/s capacities.",
+        "An idealized fixed-throughput bound is the minimum of each pool's token capacity divided by its per-request token demand. Actual capacity must also satisfy KV admission, transfers, arrivals and latency tails; token rates vary with batch, lengths and cache reuse."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive a transfer-free synthetic bound for two prefill workers, each assumed to sustain 1,000 prompt tokens/s, and one decode worker assumed to sustain 400 subsequent output tokens/s. Every request has 100 prompt tokens and 21 output tokens, with the first output produced in prefill. Both phase bounds are 20 requests/s. Explain why 20 requests/s is a capacity ceiling, not a safe offered-load target or an SLO guarantee, and identify what happens if only prefill capacity doubles.",
       "traps": [
-        "TODO"
+        "Sizing pool counts from token ratio alone. One prompt token and one decode token need not consume equal service time or memory.",
+        "Treating phase isolation as independent end-to-end latency. The request still depends on both pools and its handoff.",
+        "Removing GPUs from decode to add prefill without accounting for stranded weights and lost decode KV capacity."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "In the synthetic example, what is the rate bound after prefill capacity doubles?",
+          "a": "Still 20 requests/s. Decode must produce 20 subsequent tokens per request from its unchanged 400-token/s capacity."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why must both phase pools hold model weights?",
+          "a": "Both execute the model's layers, although their parallel layouts may differ. Separating phases does not let the decode pool operate from KV alone without model weights."
+        },
+        {
+          "q": "Why is operation exactly at the ideal rate bound unsafe?",
+          "a": "Variability, bursts and finite buffers create waiting, and any capacity loss can make the backlog grow. A latency contract needs headroom and a workload-specific queue test."
+        },
+        {
+          "q": "Can higher decode batch size change the phase ratio you should provision?",
+          "a": "Yes. It changes effective decode throughput, token latency and workspace or KV availability. Recompute the ratio under the chosen operating point."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's separate phase queues, fixed-budget pool-size sweep and first-token versus KV-ready event trace.",
+      "stopWhen": "Your request trace names every phase queue and first-token event, and your capacity derivation identifies the limiting phase without treating its ceiling as an SLO-qualified rate.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DistServe supplies independent phase reasoning, the book supplies ownership and worker design, and Dynamo v1.5.1 covers current capacity trade-offs; servelab practices pool sizing."
       }
     },
     {
