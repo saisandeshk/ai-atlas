@@ -1,0 +1,1121 @@
+{
+  "section": "data-parallelism-overlap",
+  "addedResources": [
+    {
+      "id": "pytorch-syncbn-dt3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch SyncBatchNorm API",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Use `convert_sync_batchnorm` to convert BatchNorm layers before wrapping with DDP, and read the training-only sync plus single-GPU-per-process limits.",
+      "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.SyncBatchNorm.html"
+    }
+  ],
+  "units": [
+    {
+      "id": "dp-replication-sampler-ownership",
+      "title": "Replicated state, disjoint data ownership and DistributedSampler invariants",
+      "hours": 3,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "replicated-parameters-and-optimizer-state",
+        "disjoint-data-ownership-and-distributedsampler-invariants"
+      ],
+      "outcomes": [
+        "Explain what each data-parallel rank replicates and what it owns: full parameters, gradients and optimizer state are replicated, while the data shard is disjoint.",
+        "Build a disjoint sharding with `DistributedSampler`, calling `set_epoch` each epoch and stating the padding and drop policy.",
+        "Predict how a sharding bug (overlap, repeat, or miscounted padding) changes the global batch."
+      ],
+      "why": "Every rank trains a full copy of the model on its own shard. Overlapping shards or miscounted padding silently change the global batch, so ownership must be proved before any timing or scaling claim.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-update-equivalence",
+          "note": "Proves updates match one process on the disjoint shards built here."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Syncs the replicated grads over these shards with one explicit collective."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "DDP construction, rank-zero-first downloads and rank-tagged logs",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "Lines 36 to 50: rank, device and process-group init with the `[rank=...]` log format; lines 55 to 68: `rank0_first` downloads plus the `DistributedDataParallel` wrap with `bucket_cap_mb=500`; lines 272 to 280: the `rank0_first` definition"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "DistributedSampler with per-epoch `set_epoch`",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "Lines 76 to 84: the `DataLoader` with `DistributedSampler(train_data, shuffle=True, drop_last=True)`; lines 129 to 137: the `set_epoch` call before iterating, with the shuffle comment"
+        },
+        {
+          "resource": "dlas-dp-dt3",
+          "title": "Data partitioning and sampling strategies",
+          "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
+          "locator": "Chapter 7 Data Parallelism: Data Partitioning and Implications of Data Sampling Strategies (pp. 229 to 231); Distributed Data Parallel (pp. 242 to 243) including the Devil in the details box on DataLoaders and multiprocessing start methods (p. 243)"
+        }
+      ],
+      "focus": [
+        "`DistributedDataParallel` broadcasts the `state_dict` from rank 0 at construction. It never shards data; the sampler or manual offsets own disjointness. This extends the single-process loader contract from Datasets, data loaders and samplers.",
+        "`DistributedSampler` deals strided shards. With `shuffle=False` over 10 items and 2 ranks, rank 0 owns `[0, 2, 4, 6, 8]` and rank 1 owns `[1, 3, 5, 7, 9]`.",
+        "`set_epoch` re-seeds the shuffle each epoch. Without it every epoch repeats the same order on every rank.",
+        "With `drop_last=False`, short datasets pad by repeating head indices. Over 10 items and 3 ranks each rank holds 4 indices and ranks 1 and 2 repeat 0 and 1, so token counts must account for the repeats."
+      ],
+      "reproduce": "On CPU with no process group, build a `TensorDataset` of 10 items and two `DistributedSampler` instances with `num_replicas=2` and `shuffle=False`. Print both index lists, assert they are disjoint and their union is 0 to 9. Then repeat with 3 replicas and `drop_last=False` and show each rank holds 4 indices with the head repeats.",
+      "traps": [
+        "Assuming the DDP wrapper shards batches. The guide states it does not: the wrapper syncs grads while the sampler splits data.",
+        "Forgetting `set_epoch`, then reading correlated epochs as a data bug. Same order every epoch is the default without it.",
+        "Storing resume position in the sampler. It has no `state_dict`; the loop owns the epoch integer, and the dataset version plus worker RNG must be restored beside it."
+      ],
+      "selfTest": [
+        {
+          "q": "What state is replicated on each rank and what differs?",
+          "a": "Parameters, gradients and optimizer state are replicated; the data shard differs. After backward the grads are averaged, so the local optimizer steps agree."
+        },
+        {
+          "q": "Ten items over three ranks with `drop_last=False`. How many indices per rank, and which repeat?",
+          "a": "Four per rank. Rank 0 holds `[0, 3, 6, 9]`, rank 1 holds `[1, 4, 7, 0]` and rank 2 holds `[2, 5, 8, 1]`; 0 and 1 are the head repeats."
+        },
+        {
+          "q": "`set_epoch` is never called with `shuffle=True`. What breaks?",
+          "a": "Nothing crashes, but every epoch shuffles identically, so epochs are fully correlated and any epoch-dependent analysis is wrong."
+        },
+        {
+          "q": "Where does sampler resume position live?",
+          "a": "In the training loop as the epoch integer, not in the sampler. Resume must also fix the dataset version and worker seeding."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: sampler disjointness and union checks, padding versus drop policy, and epoch-resume equivalence.",
+      "stopWhen": "Your CPU script prints disjoint even and odd shards for two ranks and the padded 4-per-rank lists for three ranks, and you can state what each rank replicates and what it owns without notes.",
+      "fit": {
+        "note": "The guide covers construction plus sampler and `set_epoch`, Deep Learning at Scale covers partitioning and sampler warnings, and the mini-project supplies the sampler tests.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "dp-update-equivalence",
+      "title": "Loss reduction, update equivalence and the single-process oracle",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "local-loss-gradient-sum-or-average-and-update-equivalence",
+        "single-process-numerical-oracle-and-tolerance-policy"
+      ],
+      "outcomes": [
+        "Derive when averaged rank-local mean gradients equal the full-batch gradient, and how sum reduction changes the answer by a factor of the rank count.",
+        "Implement a single-process oracle and compare losses, gradients, parameters and optimizer state under a stated tolerance.",
+        "Explain why the CS336 test shuffles with one shared seed across ranks."
+      ],
+      "why": "Equivalence to one process is the contract that buckets, hooks, compression and sharding must all preserve. An oracle plus a tolerance turns silent scale bugs into loud failures.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-global-batch-no-sync",
+          "note": "Holds this equivalence fixed while accumulating over micro-steps."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/ddp-construction-reducer-buckets",
+          "note": "Shows how DDP preserves this contract with buckets and hooks."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "DDP oracle test: one process versus two disjoint shards",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Function `_test_DistributedDataParallel`: non-parallel baseline on all 20 fixture rows, per-rank disjoint 10-row shards at `offset = rank * local_bs`, 5 SGD steps at lr 0.1 with `torch.allclose` after each step, shared shuffle seed `42 + i`"
+        },
+        {
+          "resource": "ultrascale-dp-dt3",
+          "title": "Data-parallel averaging during backward",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#data_parallelism",
+          "locator": "Data Parallelism through the first optimization (overlap gradient synchronization with backward pass): per-GPU micro-batches with gradient averaging by all-reduce before the optimizer step"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Sum versus mean loss across nodes",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "Note on training on M nodes with batch N: summed losses give M-times-smaller grads than the single-node batch M times N; treat mean-reduction models as equivalent at the same global batch"
+        }
+      ],
+      "focus": [
+        "With per-rank mean loss, averaging local grads equals the full-batch mean grad. A 2-rank CPU run on an 8-row oracle matches params with `torch.allclose` at `atol=1e-6`.",
+        "With per-rank sum loss, averaging gives the full-batch sum divided by the rank count. Sum the grads, or scale the learning rate, to match a summed oracle.",
+        "The oracle fixes init, data pool and global batch, then compares loss, grads, params and optimizer state. Exact `torch.eq` can fail across different GEMM blockings (a CPU port of Picotron's tensor-parallel test missed by `1.8e-7` on PyTorch 2.14.1); use `assert_close` with a stated tolerance.",
+        "One shared shuffle seed keeps shards disjoint. Rank-dependent seeds can deal overlapping rows to both ranks."
+      ],
+      "reproduce": "Run two CPU ranks on a fixed 8-row linear-regression oracle with `MSELoss` mean reduction: rank shards of 4 rows, local backward, `all_reduce` SUM then divide by 2, one SGD step. Assert both ranks match the oracle params with `torch.allclose`. Then repeat with sum reduction and show averaging misses by the rank count unless grads are summed.",
+      "traps": [
+        "Comparing a mean-reduction DP run against a sum-reduction oracle and blaming the collective for the factor-of-R gap.",
+        "Demanding bitwise equality between sharded and full GEMM paths. Rounding differs by blocking; tolerance is the contract.",
+        "Shuffling per rank with rank-dependent seeds and silently overlapping shards. The shared seed is load-bearing."
+      ],
+      "selfTest": [
+        {
+          "q": "Two ranks hold mean-loss grads over disjoint halves. What does their average equal?",
+          "a": "The gradient of the mean loss over the concatenated batch: \\((g_0 + g_1)/2\\) is the full-batch mean gradient."
+        },
+        {
+          "q": "Same setup with sum losses. What does averaging give relative to the full-batch sum gradient?",
+          "a": "The full-batch sum gradient divided by 2. Average to match a mean oracle; sum to match a sum oracle."
+        },
+        {
+          "q": "Why does the CS336 test use `torch.manual_seed(42 + i)` on every rank before shuffling?",
+          "a": "All ranks draw the identical permutation, so the two 10-row shards stay disjoint. Different seeds per rank could overlap rows."
+        },
+        {
+          "q": "A CPU port of Picotron's tensor-parallel linear test (2 `gloo` ranks, PyTorch 2.14.1) fails `torch.eq` by `1.8e-7` on the gathered outputs. Does that point to a broken collective?",
+          "a": "No. Splitting a GEMM changes its blocking and rounding, and the same port passes `assert_close`. A DP oracle meets the same effect: per-rank half-batch GEMMs round differently from the full batch."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Synchronize Data-Parallel Gradients",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-data-parallel-gradient-sync",
+          "locator": "Function `data_parallel_gradient_sync(parameter_replicas, gradient_replicas, learning_rate)`: public cases check two-rank means, a zero local gradient, and three ranks with two parameter shapes; mean grads are stored in each parameter dtype and updated replicas are independent copies",
+          "note": "Solve before the CS336 DDP tests, as the pool orders it. It checks the averaging arithmetic, not the collective."
+        }
+      ],
+      "stopWhen": "Your 2-rank gloo run matches the oracle with `assert_close`, and you can derive the sum-versus-mean factor without notes.",
+      "fit": {
+        "note": "The CS336 oracle test plus the DDP sum and mean note cover equivalence at implement depth, and the free TensorTonic problem checks the averaging arithmetic.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "dp-global-batch-no-sync",
+      "title": "Global batch across workers and accumulation, and `no_sync`",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "global-batch-under-workers-and-gradient-accumulation",
+        "gradient-accumulation-with-no-sync"
+      ],
+      "outcomes": [
+        "Derive the global batch in samples and tokens from microbatch, accumulation steps and DP degree.",
+        "Implement accumulation with `no_sync` so only the final micro-step synchronizes.",
+        "Explain the two failure modes: syncing every micro-step (correct but slow) and syncing none (stale grads)."
+      ],
+      "why": "Global batch is the fixed semantic; microbatch, accumulation and worker count are interchangeable ways to reach it. `no_sync` is what makes accumulation cheaper than repeating full syncs.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Names the collective that `no_sync` skips on non-final steps."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Measures what skipping those syncs saves."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-dp-dt3",
+          "title": "Global batch across workers and accumulation",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#revisiting_global_batch_size",
+          "locator": "Revisiting global batch size: the batch equation of microbatch, accumulation and DP degree plus the maximize-dp-then-accumulate recipe; Our journey up to now for the worked large-batch example pattern"
+        },
+        {
+          "resource": "ultrascale-dp-dt3",
+          "title": "Microbatch accumulation on one GPU",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#gradient_accumulation",
+          "locator": "Gradient accumulation: microbatch versus global batch before data parallelism enters"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "Accumulation with `no_sync`",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/gradient-accumulation/README.md",
+          "locator": "Standard Implementation versus DataDistributedParalell Implementation: `maybe_sync_grads` with `model.no_sync` on non-final steps and `nullcontext` on the final step, with forward and backward inside the context"
+        }
+      ],
+      "focus": [
+        "Global batch is \\(\\text{gbs} = \\text{mbs} \\times \\text{grad\\_acc} \\times \\text{dp}\\) in samples, times sequence length in tokens. Example: \\(\\text{mbs} = 2\\), \\(\\text{grad\\_acc} = 4\\), \\(\\text{dp} = 128\\) gives 1024 samples, or 4,194,304 tokens at length 4096.",
+        "`no_sync` scopes forward plus backward on non-final micro-steps; grads accumulate locally and the first step outside the context syncs.",
+        "Under mean reduction each micro loss is scaled by one over the accumulation count before backward, so the accumulated grad equals the global mean grad. A 2-rank CPU run with two halved micro-steps matches the oracle. The single-process baseline is the one from Schedules, gradient accumulation and clipping.",
+        "The training guide's chapter 2 README (`02-distributed-data-parallel/README.md`) says `optimizer.step()` synchronizes gradients. For DDP that is wrong: the reducer all-reduces during backward and the step is local. During accumulation only the final backward syncs."
+      ],
+      "reproduce": "Extend the unit-2 script: wrap the model in `DistributedDataParallel` on `gloo` (`no_sync` exists only on the wrapper), split each rank shard into two micro-batches with each micro loss halved, run the first forward and backward inside `no_sync` and the second outside it, then take one SGD step. Assert oracle match. Then move the first forward outside the context, count the all-reduces with a communication hook, and show the extra sync while results stay correct.",
+      "traps": [
+        "Wrapping only backward in `no_sync`. The DDP docs require the forward inside too, or grads still sync.",
+        "Skipping the one-over-K loss scaling under mean reduction. Accumulated grads come out K times too large, which looks like a learning-rate bug.",
+        "Reading the guide's chapter 2 sentence that `optimizer.step()` synchronizes as DDP behavior. With DDP the sync point is backward."
+      ],
+      "selfTest": [
+        {
+          "q": "Microbatch 2, 4 accumulation steps, 128 workers, sequence length 4096. Global batch?",
+          "a": "1024 samples; 4,194,304 tokens (about 4M)."
+        },
+        {
+          "q": "Why scale each micro loss by one over K for K micro-steps under mean reduction?",
+          "a": "The K micro-means sum to K times the global mean; dividing restores the oracle gradient."
+        },
+        {
+          "q": "Forward runs outside `no_sync`, backward inside. Effect?",
+          "a": "Still correct, but DDP synchronizes on that step anyway, so the accumulation saving is lost."
+        },
+        {
+          "q": "Where does DDP synchronize: backward or optimizer step?",
+          "a": "Backward, through bucket all-reduces on grad-ready hooks. The optimizer step is local on identical averaged grads."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: accumulation and `no_sync` equivalence under a fixed global batch, including the loss-scaling check.",
+      "stopWhen": "You derive the global batch both ways without notes, and your `no_sync` run matches the oracle while the mis-scoped variant stays correct but syncs.",
+      "fit": {
+        "note": "Ultrascale covers the batch equations and the dp-first recipe, The guide covers the `no_sync` pattern, and the mini-project supplies the equivalence tests.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "explicit-allreduce-dp",
+      "title": "Minimal data parallelism with an explicit all-reduce",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "minimal-data-parallelism-with-explicit-all-reduce"
+      ],
+      "outcomes": [
+        "Implement naive data parallelism by hand: broadcast at init, shard the batch evenly, all-reduce and average grads, step locally.",
+        "Pass the CS336 DDP public tests for the plain and tied-weight toy models on CPU.",
+        "State the per-step collective volume for the toy model from its parameter count."
+      ],
+      "why": "One explicit collective loop, written by hand, is the reference every wrapper must match. Wrappers hide ordering; this unit makes it visible.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/ddp-construction-reducer-buckets",
+          "note": "Replaces the per-param loop with bucketed reducer hooks."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/bucket-size-overlap",
+          "note": "Groups the loop's launches into buckets and overlaps them."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Naive DDP: broadcast, shard, all-reduce, step",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.2 A Naive Implementation of Distributed Data Parallel Training (p. 33): broadcast from rank 0, shard batch n over d devices, local forward and backward, all-reduce average grads, local optimizer step; problems `naive_ddp` (5pt) and `naive_ddp_benchmarking` (3pt)"
+        },
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Public DDP tests and adapter contract",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Tests `test_DistributedDataParallel` over `ToyModel` and `ToyModelWithTiedWeights` at world size 2 on gloo: `validate_ddp_net_equivalence` broadcast check, disjoint 10-row shards, 5 SGD steps at lr 0.1 with `torch.allclose` per step; adapters `get_ddp` plus `ddp_on_after_backward`"
+        },
+        {
+          "resource": "picotron-dp-dt3",
+          "title": "Naive-path trap (read, do not copy)",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/data_parallel/data_parallel.py",
+          "locator": "Class `DataParallelNaive`: `register_backward_hook` with `register_post_accumulate_grad_hook` in `_allreduce_grads` (lines 33 to 49). Read-only trap: the hook receives the parameter, so this path averages parameters and leaves `param.grad` local."
+        }
+      ],
+      "focus": [
+        "Init broadcasts params from rank 0; the CS336 check `validate_ddp_net_equivalence` all-gathers the `state_dict` and asserts `allclose` on every rank.",
+        "Each rank forwards its disjoint shard (20 rows over 2 ranks gives `offset = rank * local_bs` with 10 rows each), backprops a local mean loss, then `all_reduce` SUM plus divide by world size.",
+        "The optimizer step stays local: identical averaged grads plus identical init keep replicas in sync with no per-step broadcast.",
+        "Frozen params with `requires_grad=False` carry no grads: `no_grad_fixed_param` and the `_FC2` bias stay equal and untouched."
+      ],
+      "reproduce": "Implement `get_ddp` and `ddp_on_after_backward` in your own repo and run `pytest tests/test_ddp.py` on CPU (world size 2, gloo) until both model variants pass all 5 steps.",
+      "traps": [
+        "Copying the Picotron naive hook. `register_post_accumulate_grad_hook` receives the parameter tensor, not the grad: the shipped code all-reduces weights while grads diverge (for example `grad[0,0]` of `-0.0538` on rank 0 versus `-0.0662` on rank 1 after one backward on different inputs, 2 CPU ranks on `gloo`, PyTorch 2.14.1).",
+        "Dividing by world size twice, or never. All-reduce SUM followed by exactly one division matches the mean oracle.",
+        "Requiring grads for frozen params. The test asserts they stay equal without sync; only `requires_grad` params enter the collective."
+      ],
+      "selfTest": [
+        {
+          "q": "What three operations does naive DDP need, and when?",
+          "a": "Broadcast params once at init; per step, all-reduce SUM grads plus one division; local optimizer step. No per-step broadcast."
+        },
+        {
+          "q": "The Picotron naive hook all-reduces its argument and divides. Why do grads still diverge across ranks?",
+          "a": "Its argument is the parameter. Parameters get averaged while `param.grad` stays local on every rank."
+        },
+        {
+          "q": "20 examples, world size 2. Which rows does rank 1 train on?",
+          "a": "Rows 10 to 19: `offset = rank * local_bs` with `local_bs` 10."
+        },
+        {
+          "q": "Why does the test call `ddp_on_after_backward` before the optimizer step?",
+          "a": "Async implementations wait on grad handles there. A blocking naive version implements it as a no-op."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `naive_ddp`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Problem (`naive_ddp`), Section 5.2; connect your container to `get_ddp` in `tests/adapters.py` and pass `tests/test_ddp.py`",
+          "note": "Runs on CPU with gloo. Implement in your own repository; keep the benchmark write-up even where two GPUs are unavailable."
+        }
+      ],
+      "stopWhen": "Both toy variants pass all 5 steps, and you can explain the Picotron hook trap without notes.",
+      "fit": {
+        "note": "The CS336 handout plus public tests cover explicit all-reduce at implement depth; Picotron supplies the documented trap.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "ddp-construction-reducer-buckets",
+      "title": "DDP construction, parameter registration and reducer buckets",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "pytorch-ddp-construction-and-parameter-registration",
+        "reducer-buckets-and-reverse-gradient-ready-order"
+      ],
+      "outcomes": [
+        "Explain DDP construction: rank-0 broadcast, reducer creation, bucket formation in reverse registration order.",
+        "Explain gradient-ready order: one hook per parameter, async all-reduce per full bucket, blocking wait at end of backward.",
+        "Contrast bucketed DDP with the hand-rolled per-param loop on launch count and overlap."
+      ],
+      "why": "Buckets in reverse order are why communication starts before backward finishes. Misreading the order makes every later overlap prediction wrong.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/bucket-size-overlap",
+          "note": "Tunes the bucket size this unit forms."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/unused-params-divergent-control",
+          "note": "Shows when the readiness assumption breaks."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "DDP design note: construction and backward",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/ddp.html",
+          "locator": "Construction: broadcast of `state_dict` from rank 0, reducer with buckets sized by `bucket_cap_mb`, mapping in roughly reverse `Model.parameters()` order, one autograd hook per parameter; Backward Pass: per-ready-grad marking, async all-reduce per full bucket, blocking wait, averaged grads in `param.grad`"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "DDP constructor surface",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "`bucket_cap_mb` default 25 MiB; parameters allreduce in reverse registration order; `find_unused_parameters` default `False`; `static_graph`, `gradient_as_bucket_view`, `no_sync` and `register_comm_hook` signatures"
+        },
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Overlapped per-parameter DDP",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.3.2 Overlapping Computation with Communication of Individual Parameter Gradients (pp. 34 to 36): `register_post_accumulate_grad_hook` per param, `async_op=True` all-reduce per ready grad, `finish_gradient_synchronization` wait; problems `ddp_overlap_individual_parameters` (5pt) plus benchmarking (1pt)"
+        },
+        {
+          "resource": "ddp-paper-dt3",
+          "title": "PyTorch DDP paper: bucketing and overlap",
+          "url": "https://arxiv.org/abs/2006.15704",
+          "locator": "arXiv:2006.15704v1, Sections 3 and 5.2: reducer design, overlap through autograd hooks and buckets, default 25MB buckets, with 10 to 25MB best on ResNet50 with NCCL, 50MB best on BERT with NCCL and 5MB best with Gloo, on 16 GPUs"
+        }
+      ],
+      "focus": [
+        "The design note maps buckets in roughly reverse `Model.parameters()` order because backward readies last-layer grads first. In PyTorch 2.14.1 with default flags, construction puts every parameter in one bucket; after the first backward DDP rebuilds the buckets in the order the grads actually became ready. With `find_unused_parameters=True` the construction-time buckets stay.",
+        "The reducer fires one async all-reduce per full bucket and always launches buckets in index order on every rank; mismatched order hangs or corrupts.",
+        "After backward returns, `param.grad` already holds the averaged grad on every rank; the optimizer step is local.",
+        "The CS336 overlap build is per-parameter, not bucketed: one async all-reduce per ready grad plus an explicit finish wait. This handout has no bucketed problem; buckets come from Picotron in the next unit."
+      ],
+      "reproduce": "Closed-book, draw a 4-parameter model with a cap covering 2 params: place grads into buckets per the reverse-order rule for a steady-state step, mark which bucket all-reduces first, and state when each launches relative to backward.",
+      "traps": [
+        "Assuming buckets follow forward order. They follow reverse registration; forward order delays every launch.",
+        "Assuming launches follow ready order across ranks. Index order is the safety rule; ready order can differ per rank.",
+        "Adding or removing params after construction. Hooks were registered at construction for the exact set and order."
+      ],
+      "selfTest": [
+        {
+          "q": "Why reverse order?",
+          "a": "Backward computes last-layer grads first, so reverse registration matches readiness and buckets fill at the earliest time."
+        },
+        {
+          "q": "The reverse-order assumption is wrong for a model. Consequence?",
+          "a": "Later launches and less overlap, until DDP rebuilds the buckets in observed ready order after the first iteration (not with `find_unused_parameters=True`). Correctness holds either way."
+        },
+        {
+          "q": "Why bucket index order instead of ready order?",
+          "a": "Every rank must invoke matching all-reduces in the same order; otherwise backward hangs or grads mismatch."
+        },
+        {
+          "q": "CS336 overlap versus DDP buckets?",
+          "a": "CS336 launches one async all-reduce per ready param plus a finish wait; DDP groups params into buckets for fewer launches with the same overlap idea."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `ddp_overlap_individual_parameters`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Problem (`ddp_overlap_individual_parameters`), Section 5.3.2; connect to `get_ddp` plus `ddp_on_after_backward` and run `tests/test_ddp.py` 5 times",
+          "note": "Per-param overlap only. Bucketed overlap is built from Picotron in the next unit."
+        }
+      ],
+      "stopWhen": "You can narrate construction, buckets, hooks, ordered all-reduce and the `param.grad` handoff without notes.",
+      "fit": {
+        "note": "The design note plus paper explain buckets and order, and the CS336 overlap problem gives checked practice; Picotron buckets follow next.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "bucket-size-overlap",
+      "title": "Bucket size, launch count, autograd hooks and compute-communication overlap",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "bucket-size-launch-count-and-exposed-communication",
+        "autograd-hooks-and-compute-communication-overlap"
+      ],
+      "outcomes": [
+        "Derive bucket count, launch count and per-step collective bytes from `bucket_cap_mb` and the parameter count.",
+        "Implement bucketed overlap on the Picotron bucket path with an equality test against one process.",
+        "Explain when smaller buckets help overlap and when launch overhead wins, citing the paper's middle-range result."
+      ],
+      "why": "Bucket size trades launch overhead against exposed communication. The default is a starting point, not an optimum.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Measures hidden versus exposed communication honestly."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-stragglers-scaling-efficiency",
+          "note": "Shows where overlap stops helping at scale."
+        }
+      ],
+      "study": [
+        {
+          "resource": "picotron-dp-dt3",
+          "title": "Bucketed overlap implementation",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/data_parallel/bucket.py",
+          "locator": "`BucketManager._initialize_buckets`: params grouped by `bucket_size` elements with per-param views into `grad_data`; `Bucket.sync_gradient`: divide by group size then async `all_reduce`; `mark_param_as_ready` launches when the bucket fills; `wait` blocks in `_post_backward`"
+        },
+        {
+          "resource": "picotron-dp-dt3",
+          "title": "DataParallelBucket wrapper",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/data_parallel/data_parallel.py",
+          "locator": "Class `DataParallelBucket`: `bucket_size` from `bucket_cap_mb` with 4 bytes per fp32 grad; grad-accumulator hooks accumulate into `main_grad`; `no_sync` skips marking; `_post_backward` waits then copies `main_grad` to `param.grad`"
+        },
+        {
+          "resource": "ddp-paper-dt3",
+          "title": "Bucket-size sweep",
+          "url": "https://arxiv.org/abs/2006.15704",
+          "locator": "arXiv:2006.15704v1, Section 5.2: bucket-size sweep with 10 to 25MB best on ResNet50 with NCCL, 50MB best on BERT with NCCL and 5MB best with Gloo, on 16 GPUs; extremes lose to launch overhead or late starts"
+        },
+        {
+          "resource": "aisys-overlap-dt3",
+          "title": "Bucket and overlap trade-offs",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4: Overlapping Communication and Computation (Pipelining), Reducing Communication Frequency and Volume, and Achieving Maximal Overlap in Practice; default 25MB buckets, large buckets use bandwidth but delay first launch, small buckets start early but add overhead"
+        }
+      ],
+      "focus": [
+        "Bucket count follows the cap and parameter boundaries. On PyTorch 2.14.1 with 2 `gloo` ranks and eight 6.25 MiB fp32 weights (50 MiB), `bucket_cap_mb=25` gave 2 all-reduces per step and the default cap gave 3, because the default keeps the first rebuilt bucket small. The first iteration used one 50 MiB bucket in both. Total bytes stay identical; only launch count and timing change.",
+        "Picotron accumulates each ready grad into its `main_grad` bucket view, fires async all-reduce per full bucket during backward, and copies back to `param.grad` after the wait.",
+        "The paper sweep peaks in the middle: 10 to 25MB best on ResNet50 with NCCL, 50MB best on BERT with NCCL and 5MB best with Gloo, on 16 GPUs. Tiny buckets drown in launch overhead; giant buckets start late and barely overlap.",
+        "One giant bucket means one end-of-backward all-reduce with almost no overlap. Treat any larger-is-sooner claim as workload-specific until your timeline says otherwise."
+      ],
+      "reproduce": "On a 4-param toy with a cap covering exactly one param versus all params, count the launches per step (4 versus 1) and show identical averaged grads; state the launch-count rule.",
+      "traps": [
+        "Reading fewer launches as fewer bytes. Bytes are fixed by the parameter count and rank count; bucketing only regroups them.",
+        "Expecting overlap from a single giant bucket. With one bucket the all-reduce waits for the last grad.",
+        "Quoting CPU gloo timings as NCCL evidence. Order and equality transfer; timings do not."
+      ],
+      "selfTest": [
+        {
+          "q": "50 MiB of fp32 grads in eight equal weights with `bucket_cap_mb=25`. Buckets and launches per step?",
+          "a": "2 buckets and 2 all-reduces from the second iteration on; the first used one bucket. The bytes match one 50 MiB all-reduce; the timing differs. The default cap gives 3, since its first rebuilt bucket is small."
+        },
+        {
+          "q": "Why can smaller buckets hurt?",
+          "a": "Per-launch latency and overhead dominate, and fragmentation grows; the middle range wins."
+        },
+        {
+          "q": "What does `_post_backward` do and when does it run?",
+          "a": "Queued once per backward; waits for all bucket handles, then copies `main_grad` into `param.grad` before the optimizer step."
+        },
+        {
+          "q": "A source says raising the cap launches sooner. Right?",
+          "a": "Not in general. Larger buckets fill later; they move bytes more efficiently but start later."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `minimal_ddp_flat_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.3.1: single flattened all-reduce through `torch._utils._flatten_dense_tensors`; compare with the per-tensor version at 1 node by 2 GPUs on the xl model; report time per iter plus comm share plus 1 to 2 sentences"
+        },
+        {
+          "name": "CS336 Assignment 2: `naive_ddp_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.2: per-param all-reduce timing on the xl model at 1 node by 2 GPUs; total step time plus gradient-communication share"
+        },
+        {
+          "name": "CS336 Assignment 2: `ddp_overlap_individual_parameters_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.3.2: overlapped versus flat versus per-tensor timings plus Nsight screenshots proving overlap",
+          "note": "Needs 2 GPUs with NCCL plus Nsight. On CPU or one GPU, run the same three as labeled timing examples only; they are not interconnect evidence."
+        }
+      ],
+      "stopWhen": "Your bucketed run matches the oracle, and you can predict launch count from the cap and explain a measured crossover.",
+      "fit": {
+        "note": "Picotron supplies the bucket mechanism, the paper the size sweep, AISys the trade-off reading, and CS336 the benchmarking practice.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "unused-params-divergent-control",
+      "title": "Unused parameters, static graphs and divergent control flow",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "unused-parameters-and-static-versus-dynamic-graphs",
+        "divergent-control-flow-and-collective-mismatch"
+      ],
+      "outcomes": [
+        "Explain `find_unused_parameters` cost and `static_graph` promises, and choose between them for a given model.",
+        "Implement correct handling for frozen and tied params, and diagnose a divergent-control hang from the sync-point rule.",
+        "State why `torch.autograd.grad` does not work with DDP."
+      ],
+      "why": "One rank taking a different branch turns a collective into a hang. Static versus dynamic is the difference between paying traversal every step and promising stability.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-failure-rank-logs",
+          "note": "Turns the hang described here into attributed first-cause lines."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/rank-consistent-metrics-batchnorm",
+          "note": "Keeps reported numbers consistent once control flow is uniform."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "DDP sync points and stragglers",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/ddp_tutorial.html",
+          "locator": "Skewed Processing Speeds: constructor, forward and backward as sync points in the same order, plus large `timeout` for stragglers; Basic Use Case broadcast contract (page read 2026-10-14)"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Unused-parameter handling in the design note",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/ddp.html",
+          "locator": "Forward Pass: graph traversal from the output with `find_unused_parameters=True`, all buckets still reduced, overhead warning"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Static graphs and related constructor flags",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "`find_unused_parameters` default `False`, `static_graph` semantics (its logging-key check is stale in 2.14.1), `skip_all_reduce_unused_params`, `no_sync` forward-inside warning, no `torch.autograd.grad` support"
+        }
+      ],
+      "focus": [
+        "`find_unused_parameters=True` walks the autograd graph from the output on every forward to mark unused params ready. It still reduces all buckets; it only stops the wait. Pay it only when some forwards genuinely skip params.",
+        "`static_graph=True` promises the used set and the control flow never change. It then supports reentrant backward, activation checkpointing applied several times or over unused parameters, and parameters outside forward. Decide from graph stability: the `can_set_static_graph` logging key the docstring names is absent from `_get_ddp_logging_data()` in PyTorch 2.14.1.",
+        "Constructor, forward and backward are sync points every rank must reach in the same order at about the same time. A rank-dependent branch gives a collective mismatch: hang, timeout, or wrong grads.",
+        "With `skip_all_reduce_unused_params=True` DDP skips reducing unused params. The same params must stay unused on every rank for the whole run; otherwise ranks desynchronize and can hang."
+      ],
+      "reproduce": "On 2 CPU ranks, train a model with a frozen bias and a tied linear pair through the CS336 suite and show both pass unchanged. Then sketch the divergent case on paper: rank 0 runs an extra DDP forward that rank 1 skips, and name the first mismatched collective.",
+      "traps": [
+        "Setting `find_unused_parameters=True` always to be safe. It pays a traversal every forward; a stable graph with `static_graph=True` is cheaper.",
+        "Changing graph shape per iteration (for example depth by input) with `static_graph=True`. The promise breaks and training hangs or corrupts.",
+        "Calling `torch.autograd.grad` with DDP. The module only works when grads accumulate into `param.grad`."
+      ],
+      "selfTest": [
+        {
+          "q": "What does `find_unused_parameters` cost, and when is it worth it?",
+          "a": "A per-forward graph walk from the output. Pay it only when some params are genuinely unused in some forwards; otherwise use a static graph."
+        },
+        {
+          "q": "Two ranks run different numbers of DDP forwards per step. Symptom?",
+          "a": "Collective mismatch: hang, timeout, or wrong grads. Constructor, forward and backward must match in count and order on all ranks."
+        },
+        {
+          "q": "What does `static_graph=True` newly support?",
+          "a": "Reentrant backward, activation checkpointing applied several times or over unused parameters, and parameters outside the forward function. It also skips the per-step search for unused parameters."
+        },
+        {
+          "q": "How does equivalence treat the ToyModel's `fc2.fc.bias` with `requires_grad=False`?",
+          "a": "It stays equal with no grad and no sync. Init broadcast covers it; the collective touches only `requires_grad` params."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: frozen and tied params in `test_ddp.py`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "The frozen-parameter cases (`no_grad_fixed_param`, `_FC2` bias with `requires_grad=False`) and the tied-weight case (`ToyModelWithTiedWeights` with `fc4.weight` tied to `fc2.weight`) inside `tests/test_ddp.py`"
+        }
+      ],
+      "stopWhen": "You can decide between `find_unused_parameters` and `static_graph` for a given model and explain a divergent hang from the sync-point rule.",
+      "fit": {
+        "note": "The DDP tutorial plus design note cover sync points and unused handling, and the CS336 suite checks frozen and tied params.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "rank-consistent-metrics-batchnorm",
+      "title": "Rank-consistent loss and metrics, and distributed batch normalization",
+      "hours": 3,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "rank-consistent-loss-and-metric-reduction",
+        "distributed-batch-normalization-vocabulary-and-limits"
+      ],
+      "outcomes": [
+        "Reduce rank-local losses and metrics to one consistent global number with the correct denominator.",
+        "Convert BatchNorm to SyncBatchNorm before DDP and state its training-only and single-GPU limits.",
+        "Explain DDP buffer broadcast versus gradient averaging."
+      ],
+      "why": "Local batch stats and local means lie. A reported loss that mixes denominators cannot be compared across runs.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-stragglers-scaling-efficiency",
+          "note": "Feeds consistent numbers into scaling-efficiency claims."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Times the reductions described here under fixed work."
+        }
+      ],
+      "study": [
+        {
+          "resource": "dlas-dp-dt3",
+          "title": "DDP buffers and BatchNorm state",
+          "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
+          "locator": "Distributed Data Parallel (pp. 242 to 243): replicas plus per-forward buffer broadcast from the leader, BatchNorm batch statistics through buffers; Devil in the details box on start methods (p. 243)"
+        },
+        {
+          "resource": "pytorch-syncbn-dt3",
+          "title": "SyncBatchNorm conversion and limits",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.SyncBatchNorm.html",
+          "locator": "`convert_sync_batchnorm(module, process_group)`: converts all `BatchNorm` layers before the DDP wrap; stats sync within the group; sync disabled in eval; single GPU per process note"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Buffer broadcast versus param sync",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "Note that buffers (for example BatchNorm stats) broadcast from rank 0 every iteration while parameters are never broadcast; grads are all-reduced"
+        }
+      ],
+      "focus": [
+        "Global mean needs the global denominator: average rank-local means only with equal local counts. With 4 versus 2 samples, sum-then-divide gives 2.667 while averaging the means gives 3.0.",
+        "Reduce metrics as SUM and COUNT, then divide once. Never average per-rank accuracies over different denominators.",
+        "Convert with `convert_sync_batchnorm` before wrapping with DDP. Stats sync within the group during training only; eval uses running estimates; only single GPU per process is supported. Its training forward rejects CPU tensors (`SyncBatchNorm expected input tensor to be on GPU`), so a CPU check reduces sums and counts by hand. The BatchNorm axes are the ones from Batch, layer, group and RMS normalization.",
+        "DDP broadcasts buffers from rank 0 every forward but never rebroadcasts params; grads are the all-reduced quantity in backward."
+      ],
+      "reproduce": "On 2 CPU ranks with uneven shards (4 versus 2 samples), compute the global mean both ways: plain average of local means and sum-over-count. Show they differ, then implement the correct reduction and match a single-process mean over all 6 samples.",
+      "traps": [
+        "Averaging per-rank accuracies or losses over unequal local shards (padding, last batches, join). The small shard gets overweighted.",
+        "Skipping conversion and running per-rank BatchNorm. Local stats plus running estimates diverge silently across ranks.",
+        "Expecting stat sync in eval. SyncBatchNorm syncs during training only."
+      ],
+      "selfTest": [
+        {
+          "q": "Rank losses 2.0 over 4 samples and 4.0 over 2 samples. Global mean?",
+          "a": "2.667, from `(2.0 * 4 + 4.0 * 2) / 6`. Averaging the means gives 3.0, which overweights the small shard."
+        },
+        {
+          "q": "When is averaging local means correct?",
+          "a": "With equal local counts and the same reduction. Otherwise weight by counts."
+        },
+        {
+          "q": "Where does `convert_sync_batchnorm` go relative to the DDP wrap?",
+          "a": "Before wrapping. Then wrap; only single GPU per process is supported."
+        },
+        {
+          "q": "Buffers versus params in a DDP iteration?",
+          "a": "Buffers broadcast from rank 0 to all ranks each forward; params are never rebroadcast; grads all-reduce in backward."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Deep Learning at Scale: Scene Parsing with DDP",
+          "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
+          "locator": "Hands-On Exercise #4 Scene Parsing with DDP (pp. 247 to 251): Lightning `strategy=ddp` training with `sync_dist=True` validation reduction; compare the 1-GPU baseline against rank-consistent 2-GPU numbers",
+          "note": "With two or more GPUs, run it and compare the rank-consistent numbers against the 1-GPU baseline. On one GPU or CPU, read the `sync_dist=True` path and treat the book's 1-GPU versus 2-GPU V100 numbers as the author's example. Focus on the metric-reduction path, not the segmentation scores."
+        }
+      ],
+      "stopWhen": "Your reduction matches sum-over-count on uneven shards, and you can state the BatchNorm conversion order plus its limits without notes.",
+      "fit": {
+        "note": "Coverage failed for the SyncBatchNorm conversion API; the new PyTorch reference fills that gap beside Deep Learning at Scale buffer vocabulary and its DDP exercise.",
+        "verdict": "added"
+      }
+    },
+    {
+      "id": "ddp-comm-hooks-compression",
+      "title": "DDP communication hooks, compression contracts and a PowerSGD experiment",
+      "hours": 4,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "communication-hooks-and-compression-contracts",
+        "powersgd-or-low-precision-communication-hook-experiment"
+      ],
+      "outcomes": [
+        "Explain the comm-hook contract: `GradBucket` in, Future of one same-shape tensor out, division owned by the hook.",
+        "Implement `fp16_compress_hook` on a 2-rank CPU DDP job and bound its error versus vanilla all-reduce.",
+        "Run a small PowerSGD experiment and report the compression-versus-accuracy trade with its tuning knobs."
+      ],
+      "why": "Compression trades bytes for bias. The hook contract decides where the bias enters and who corrects it.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-stragglers-scaling-efficiency",
+          "note": "Says when compression matters: the bandwidth-bound regime."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Times hook overhead against exposed communication."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Comm-hook contract and default hooks",
+          "url": "https://docs.pytorch.org/docs/2.14/ddp_comm_hooks.html",
+          "locator": "How to Use plus What Does a Communication Hook Operate On: `GradBucket.buffer`, per-bucket call, single-tensor Future; Default hooks: `allreduce_hook` reference plus `fp16_compress_hook` and `bf16_compress_hook`; Debugging hooks: `noop_hook` headroom-only warning"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "PowerSGD state and hooks",
+          "url": "https://docs.pytorch.org/docs/2.14/ddp_comm_hooks.html",
+          "locator": "PowerSGD State (`matrix_approximation_rank`, `start_powerSGD_iter`, `min_compression_rate`, `use_error_feedback`, `warm_start`, grad-sized extra memory, minimum start 2) plus PowerSGD Hooks (per-tensor path versus batched variant) and the serialization example"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Hook registration contract",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "`register_comm_hook(state, hook)`: hook signature, buckets not predivided by world size, register once before backward, Future holds the new bucket value"
+        }
+      ],
+      "focus": [
+        "Each hook takes one flattened bucket buffer and returns a Future of a single tensor with the same shape. Custom ops divide by world size themselves: buckets are not predivided.",
+        "The `fp16_compress_hook` casts, all-reduces in fp16, casts back. Bound it near `1e-3` relative (a 2-rank `gloo` ToyModel run on PyTorch 2.14.1 stayed within it); bandwidth claims need NCCL hardware.",
+        "PowerSGD keeps low-rank factors with error feedback and warm start at about grad-sized extra memory, defers compression to `start_powerSGD_iter`, tunes rank 1, 2, 4 upward, and skips vectors and incompressible tensors.",
+        "The `noop_hook` measures all-reduce headroom only. Never train with it."
+      ],
+      "reproduce": "On 2 CPU ranks, register `fp16_compress_hook` on one ToyModel DDP job and `allreduce_hook` on an identical one; assert grads agree within `1e-3` relative for 5 steps. Then switch to `powerSGD_hook` with `matrix_approximation_rank=1` and `start_powerSGD_iter=10` and show the first 10 steps match vanilla exactly.",
+      "traps": [
+        "Forgetting the division in a custom hook. Buckets arrive undivided, so grads come out R times too large.",
+        "Registering the hook after backward started. It applies late or errors; register before the loop.",
+        "Reading CPU gloo compression timing as interconnect evidence, or compressing from step 0 with feedback on. Bandwidth claims need NCCL hardware and early sensitive steps need vanilla all-reduce."
+      ],
+      "selfTest": [
+        {
+          "q": "A hook returns what, and who divides?",
+          "a": "A Future of a single tensor with the bucket buffer shape. Custom ops divide by world size themselves."
+        },
+        {
+          "q": "Why is `start_powerSGD_iter` at least 2 with error feedback on?",
+          "a": "DDP rebuilds buckets at iteration 1, which conflicts with tensors memorized before the rebuild."
+        },
+        {
+          "q": "fp16 hook error bound on the CPU demo?",
+          "a": "Near `1e-3` relative versus fp32 vanilla. Bandwidth claims need NCCL hardware."
+        },
+        {
+          "q": "Which tensors does PowerSGD skip, and why?",
+          "a": "Vectors such as biases, plus shapes failing `min_compression_rate`. Overhead would exceed the saving."
+        }
+      ],
+      "practice": [
+        {
+          "name": "PyTorch docs: PowerSGD hook experiment",
+          "url": "https://docs.pytorch.org/docs/2.14/ddp_comm_hooks.html",
+          "locator": "PowerSGD State plus PowerSGD Hooks sections with the end-to-end register-and-compare example: `PowerSGDState(process_group, matrix_approximation_rank=1, start_powerSGD_iter=10)` with `powerSGD_hook` on the ToyModel DDP job versus vanilla `allreduce_hook`; report steps-to-match and final param distance",
+          "note": "CPU gloo bounds the error only. Throughput or compression-ratio claims need NCCL hardware."
+        }
+      ],
+      "stopWhen": "The fp16 run stays within its bound and you can state the PowerSGD rank, start-iter and feedback trade without notes.",
+      "fit": {
+        "note": "The comm-hooks page covers contracts and PowerSGD; practice is the docs hook lab on the learner's own DDP job.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "dp-stragglers-scaling-efficiency",
+      "title": "Stragglers, weak and strong scaling, parallel efficiency and hierarchical DP",
+      "hours": 5,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "slow-data-ranks-and-compute-stragglers",
+        "weak-scaling-strong-scaling-and-parallel-efficiency",
+        "hierarchical-data-parallelism-within-and-across-nodes"
+      ],
+      "outcomes": [
+        "Derive weak versus strong scaling efficiency and parallel efficiency from fixed-work timings.",
+        "Diagnose a straggler to input, launch, kernel, collective or imbalance causes using rank timelines.",
+        "Explain hierarchical data parallelism across fast intra-node and slow inter-node links plus the ring-latency limit."
+      ],
+      "why": "More workers can reduce both statistical and hardware efficiency. Scaling numbers without fixed work and denominators are marketing.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Supplies the honest timing method behind every efficiency number here."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-failure-rank-logs",
+          "note": "Turns a localized straggler into attributed first-cause lines."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-dp-dt3",
+          "title": "Data-parallel scaling limits",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#data_parallelism",
+          "locator": "Past the DP optimizations: ring-latency bound past hundreds of GPUs with flat memory per GPU and dropping throughput; Our journey up to now: the dp-first then accumulation recipe"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Stragglers as sync-point timeouts",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/ddp_tutorial.html",
+          "locator": "Skewed Processing Speeds: constructor, forward and backward as sync points in the same order, workload balance as user duty, large `timeout` for stragglers (page read 2026-10-14)"
+        },
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Single-node collective benchmarking",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.1 Single-Node Distributed Communication in PyTorch (pp. 30 to 32) with 5.1.1 Best Practices (p. 32): all-reduce over 1MB to 1GB across 2, 4 or 6 ranks, 5 warmup iters, synchronize even with `async_op=False`, aggregate with `dist.all_gather_object`; problem `distributed_communication_single_node` (5pt)"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "Per-phase timers with sync",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "Lines 127 and 140 to 159: the `timers` dict over data, forward, backward and update phases; class `LocalTimer` (lines 283 to 309) synchronizes the device before and after each region"
+        }
+      ],
+      "focus": [
+        "Strong scaling fixes the global batch and divides it; weak scaling fixes the per-rank shard and grows the global batch. Strong efficiency is \\(T_1/(p T_p)\\); weak compares the 1-rank step against the p-rank step at fixed per-rank work.",
+        "Attribute first: per-rank data, forward, backward and update timers separate input starvation from launch, kernel, collective and imbalance causes. Timeouts name the reporter; the slowest rank's last phase names the culprit.",
+        "Hierarchical DP uses the two-level all-reduce from Hierarchical collectives and compressed communication with accuracy controls: reduce-scatter inside each node, all-reduce each shard across nodes, all-gather inside the node. Past hundreds of GPUs ring latency bounds flat DP; the Playbook runs are their H100 and EFA cluster's results, not targets.",
+        "CPU gloo timings prove logic and efficiency arithmetic only. No interconnect claim leaves this unit without NCCL hardware."
+      ],
+      "reproduce": "Run the fixed 8-row oracle job on 1 rank and on 2 CPU ranks with `torchrun`; compute strong efficiency from the two step times, labeled with hardware, PyTorch 2.14.1, gloo and world size; then inject a 200 ms sleep into rank 1's data phase and show which timer moves.",
+      "traps": [
+        "Changing the global batch between the 1-rank and p-rank runs, then calling the ratio strong scaling.",
+        "Blaming the rank that raised the timeout. Collectives report at the waiter; diagnose from the slowest rank's timers.",
+        "Quoting Playbook, paper, or vendor speedups as targets. They are other clusters' measurements under other batches."
+      ],
+      "selfTest": [
+        {
+          "q": "Strong versus weak setup and efficiency formula?",
+          "a": "Strong: fixed global batch with efficiency \\(T_1/(p T_p)\\). Weak: fixed per-rank work with a p-times global batch, efficiency against the 1-rank step."
+        },
+        {
+          "q": "Only rank 3's data timer is high. First suspect?",
+          "a": "That rank's input path: loader, prefetch, storage or shared-drive contention. Not the collective."
+        },
+        {
+          "q": "Why does Playbook DP throughput drop past hundreds of GPUs?",
+          "a": "Ring-latency bound coordination plus overhead; per-GPU memory stays flat."
+        },
+        {
+          "q": "Hierarchical DP in one sentence?",
+          "a": "Reduce-scatter within each node, all-reduce each GPU's shard across nodes, then all-gather within the node, so only a 1/g share of the node's reduced gradient crosses the slow links per GPU, where g is GPUs per node."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `distributed_communication_single_node`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.1 with 5.1.1: benchmark all-reduce over 1MB, 10MB, 100MB and 1GB across 2, 4 or 6 ranks; warmup, synchronize, aggregate; plots or tables plus 2 to 3 sentences",
+          "note": "Use gloo on CPU for debug and NCCL on GPUs for bandwidth. CPU numbers are not interconnect evidence."
+        }
+      ],
+      "stopWhen": "You compute both efficiencies from fixed-work runs and localize an injected slow rank to the right timer without notes.",
+      "fit": {
+        "note": "Ultrascale plus the DDP straggler note cover scaling vocabulary, CS336 covers collective benchmarking, the guide covers phase timers.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "dp-timing-bucket-timelines",
+      "title": "Synchronized timing under fixed work and gradient-ready and bucket timelines",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "warmup-fixed-global-work-and-synchronized-timing",
+        "gradient-ready-and-bucket-timeline-instrumentation"
+      ],
+      "outcomes": [
+        "Apply warmup, synchronization and fixed global work to every timing.",
+        "Instrument gradient-ready and bucket all-reduce start and end per rank.",
+        "Read a timeline to say whether communication hid behind compute or stayed exposed."
+      ],
+      "why": "Unsynchronized, unwarmmed timings are fiction on async runtimes. The bucket timeline is the only honest picture of overlap.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-failure-rank-logs",
+          "note": "Reads these timelines as first-cause evidence when the job hangs."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Benchmark hygiene and Nsight overlap proof",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.1.1 Best Practices for Benchmarking Distributed Applications (p. 32): warmup, synchronize, same-machine comparison, cross-rank aggregation; Section 5.3.2 benchmarking (p. 36): two Nsight screenshots proving overlapped versus sequential backward plus communication"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "Synchronized per-phase timers",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "`timers` dict over data, forward, backward and update (lines 127, 140 to 159); `LocalTimer` synchronizes the device before and after each region and reports average ms (lines 283 to 309)"
+        },
+        {
+          "resource": "aisys-overlap-dt3",
+          "title": "Streams, events and overlap reading",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 13: Concurrency with CUDA Streams and Overlapping Communication and Computation; Stream Synchronization with Events (with two or more GPUs, read bucket all-reduces on the communication stream against backward compute)"
+        }
+      ],
+      "focus": [
+        "Warm up (5 iters per CS336), synchronize both sides of every region, fix the global batch, aggregate across ranks, report mean plus spread. These are the rules from Streams, asynchronous copies and honest timing and Profiling training phases and verifying optimizations.",
+        "Stamp grad-ready plus all-reduce start and end per bucket per rank. Interleaved all-reduces during backward are hidden; the tail wait after backward is exposed.",
+        "One bucket gives one end-of-backward all-reduce: fully exposed. The CS336 screenshots show the same contrast under Nsight.",
+        "CPU timelines prove ordering and the hidden-versus-exposed reading. GPU overlap claims need two or more GPUs."
+      ],
+      "reproduce": "On 2 CPU ranks, log per-bucket ready plus all-reduce start and end stamps around a 2-bucket backward on a step after the first, once DDP has rebuilt its buckets; print the interleave and compute the exposed tail as the time from the last grad-ready stamp to the end of the last all-reduce.",
+      "traps": [
+        "Timing CUDA without synchronize. Async launches return at once; you time submission.",
+        "Timing the first step as steady state. Allocator prep plus DDP bucket rebuild make it slower; warmup excludes it.",
+        "Comparing timelines across different global batches. Fix work first; the scaling unit enforces it."
+      ],
+      "selfTest": [
+        {
+          "q": "Why synchronize before and after the timed region?",
+          "a": "Launches are async: without sync you time submission, and earlier work bleeds into the region."
+        },
+        {
+          "q": "All-reduces sit entirely after backward. Reading?",
+          "a": "Fully exposed, no overlap. Check the bucket count; one bucket explains it."
+        },
+        {
+          "q": "First step 3 times slower, rest flat. Bug?",
+          "a": "Usually not: allocator prep, DDP's single all-parameter bucket on the first iteration and the bucket rebuild after it. Warmup exists for this."
+        },
+        {
+          "q": "CPU timeline interleaves perfectly. Claim GPU overlap?",
+          "a": "No. Ordering logic transfers; timing does not across streams, NCCL and kernels."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-rank gradient-ready and bucket-collective timelines with hidden-versus-exposed reading.",
+      "stopWhen": "Your 2-rank timeline labels hidden and exposed intervals under fixed global work without notes.",
+      "fit": {
+        "note": "CS336 covers hygiene plus the Nsight proof, the guide covers the timer pattern, AISys the stream reading; the mini-project supplies the timeline artifact.",
+        "verdict": "kept"
+      }
+    },
+    {
+      "id": "dp-failure-rank-logs",
+      "title": "Failure cleanup and rank-attributed logs in data-parallel training",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "failure-cleanup-and-rank-attributed-logs"
+      ],
+      "outcomes": [
+        "Add rank-attributed logging to every data-parallel log line.",
+        "Implement bounded teardown with barrier timeout and `destroy_process_group` in `finally`.",
+        "Attribute a rank crash to its first cause from per-rank logs."
+      ],
+      "why": "A multi-process job with one log stream is undebuggable. Rank tags plus bounded cleanup turn hangs into readable first-cause lines.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/rank-crash-elastic-restart",
+          "note": "Carries rank crashes and collective timeouts into elastic restart."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/preemption-graceful-shutdown",
+          "note": "Bounds the shutdown this unit practices."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "Rank-attributed logs and rank-zero side effects",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "Lines 43 to 50: the `[rank=...]` log format plus rank and world-size line; line 132: progress bar disabled above rank 0; lines 122 to 125 and 192 to 199: rank-0-only directory and checkpoint with barrier guards; lines 272 to 280: `rank0_first`"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "Rank-attributed failure walk",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "Per-rank step logs with the rank tag, `dist.barrier` per step, rank-0 state persist; each rank raises when its draw falls under 0.001, so the job crashes on its own within a few hundred steps (a 2-rank CPU run on PyTorch 2.14.1 stopped at step 402 in about 2 s). Delete `toy-state.json` before a fresh run: a rerun resumes from its step count."
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Teardown and checkpoint barriers",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/ddp_tutorial.html",
+          "locator": "Save and Load Checkpoints: save on rank 0, `dist.barrier` before load, per-rank `map_location`; `cleanup` with `destroy_process_group`; file deletion needs no extra barrier after backward all-reduce (page read 2026-10-14)"
+        }
+      ],
+      "focus": [
+        "Tag every line with rank (plus local rank at launch): the `[rank=...]` format makes interleaved streams attributable.",
+        "Rank 0 owns side effects: downloads, directories, checkpoints, progress. Barriers bracket shared artifacts so no rank reads unfinished state.",
+        "Teardown runs in `finally` with a bounded timeout plus `destroy_process_group`. A barrier with no explicit timeout waits for the process-group default (30 minutes, or 10 for NCCL, in 2.14.1) while a peer is stuck, so pass a short one.",
+        "Read first cause, not the reporter: the earliest stuck rank with its last timer phase (data, backward, collective) attributes the fault."
+      ],
+      "reproduce": "Launch a 2-rank CPU job with rank-tagged logs and `try` with `finally` teardown; raise on rank 1 at step 3. Show the survivor exits boundedly and the logs name rank 1 with its last phase.",
+      "traps": [
+        "One shared log stream with no rank tags. Interleaved ranks cannot attribute a stall.",
+        "Skipping teardown on the exception path. Orphan procs hold the port and the next run collides; use a distinct port per run.",
+        "Checkpointing on all ranks to one path concurrently. Writes interleave; rank-0-only plus barrier is the rule."
+      ],
+      "selfTest": [
+        {
+          "q": "Why barriers on both sides of `rank0_first`?",
+          "a": "Rank 0 acts first while others wait; the trailing barrier stops early readers of unfinished state."
+        },
+        {
+          "q": "A survivor sits in a barrier for many minutes while its peer is stuck. Missing what?",
+          "a": "A short explicit timeout and teardown in `finally`. Without one the barrier waits for the process-group default timeout."
+        },
+        {
+          "q": "Rank 1 times out in backward all-reduce. Culprit?",
+          "a": "Not necessarily rank 1. Find the slowest rank and its last phase; the waiter reports, the straggler causes."
+        },
+        {
+          "q": "Why a distinct port per run?",
+          "a": "Crashed runs leave orphans holding ports; concurrent workers collide on fixed ports."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Training-guide lab: elastic-training `toy.py`",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "Run on 2 CPU ranks with the GPU hidden (`CUDA_VISIBLE_DEVICES=` selects `gloo`) under `timeout`: read the rank-tagged step logs, watch barrier-coupled progress, find the raising rank in the traceback and the rank-0 state file, and state the first-cause rank",
+          "note": "Read here for log attribution and teardown only; restart membership belongs to the checkpointing section."
+        }
+      ],
+      "stopWhen": "Your crash run names the first-cause rank within a bounded time and no orphan holds the port.",
+      "fit": {
+        "note": "The guide covers rank logs plus rank-zero discipline and the crash walk; the DDP tutorial covers teardown and checkpoint barriers.",
+        "verdict": "kept"
+      }
+    }
+  ]
+}

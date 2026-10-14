@@ -1,0 +1,972 @@
+{
+  "section": "pipeline-parallelism",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "pipeline-stage-partitioning",
+      "title": "Ordered stages, stage cost and balanced or automated partitioning",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "layer-partitioning-into-ordered-pipeline-stages",
+        "stage-cost-estimation-and-balanced-partitioning",
+        "automated-graph-partitioning"
+      ],
+      "outcomes": [
+        "Partition an ordered layer stack over \\(p\\) stages with embedding-first and output-last ownership and a stated remainder rule.",
+        "Estimate per-stage cost from forward plus backward time and name the critical stage that sets the makespan.",
+        "Explain why hand-placed splits are not automatic graph partitioning and what an automatic partitioner would still decide."
+      ],
+      "why": "A pipeline is only as fast as its slowest stage, and every later schedule assumes the partition. Placing embedding, layers and output head once, with cost attached, fixes the map the rest of the section executes.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-microbatch-dependencies",
+          "note": "Split batches into microbatches that flow across the stages built here."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/stage-ownership-tied-embeddings",
+          "note": "Give each stage its parameters, loss and optimizer state from this partition map."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "Split layers across devices",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Pipeline Parallelism introduction through Splitting layers on various nodes - All forward, all backward: layer ranges per GPU, low-bandwidth activation transfers, and the note that activation memory stays flat because each stage holds \\(1/p\\) of the layers for \\(p\\) microbatches in flight"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "PipelineParallel stage construction",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pipeline_parallel.py",
+          "locator": "`PipelineParallel`: `distribute_layers` evening out remainder layers over early ranks, `embedding` on the first stage only, `final_norm` and `final_proj` on the last stage only, `forward` threading `hidden_states` through the assigned decoder layers"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Stage maps with embedding and output weights",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/pipeline_parallel.py",
+          "locator": "`generate_llm_fqn_per_model_part` with `input_weight` and `output_weight` charging `tok_embeddings` and `norm` plus `output` against the first and last stages, and `pipeline_module_split` looped versus V-shaped placement"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "Manual and tracer model splits",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Step 1 (page read 2026-10-14): manual split deleting layers 4 to 7 or 0 to 3 with `ModuleDict` names kept, and tracer split with `SplitPoint.BEGINNING` at `layers.4` plus `build_stage`",
+          "depth": "Stop after Step 1. Schedules and loss placement belong to later units."
+        }
+      ],
+      "focus": [
+        "Stages are ordered and contiguous: microbatch \\(i\\) leaves stage \\(s\\) for stage \\(s+1\\) in both directions, so any partition is a cut plan over the layer list.",
+        "First and last stages carry extra cost: the embedding lookup lives on stage 0 and the final norm plus output projection live on the last stage, and a balance that ignores them overloads both ends.",
+        "Equal layer counts do not imply equal stage cost: position-dependent work such as the vocabulary projection, plus backward costing about twice forward, moves the critical stage.",
+        "The tracer `split_spec` still takes hand-placed split points; it automates cutting, not choosing where to cut."
+      ],
+      "reproduce": "From a blank file, partition a 10-layer stack over 3 stages with the remainder-to-early-ranks rule, mark embedding and output ownership, and write each stage's layer list with its per-stage layer count.",
+      "traps": [
+        "Counting the embedding, norm and output projection as free when balancing. Measure them as layers would be measured, or the end stages become the bottleneck.",
+        "Assuming equal layer counts balance the pipe. Estimate forward plus backward seconds per stage and balance those, not layer counts.",
+        "Calling a tracer `split_spec` an automatic partitioner. It places cuts you chose; a true partitioner would also choose cut positions from a cost model, and that stays later work."
+      ],
+      "selfTest": [
+        {
+          "q": "Split 10 layers over 3 stages with Picotron's remainder rule. Which layers land on each stage?",
+          "a": "Counts \\([4, 3, 3]\\): stage 0 holds layers 0 to 3, stage 1 holds 4 to 6, stage 2 holds 7 to 9. The \\(10 \\bmod 3 = 1\\) remainder layer goes to the earliest rank."
+        },
+        {
+          "q": "Why does the Playbook say pipeline parallelism saves no activation memory per GPU?",
+          "a": "Each stage holds \\(1/p\\) of the layers but \\(p\\) microbatches are in flight before the first backward, so the layer fraction times the microbatch count leaves activation memory about flat."
+        },
+        {
+          "q": "Why does the tutorial split delete `ModuleDict` entries instead of rebuilding a smaller list?",
+          "a": "Deleting keeps fully qualified names stable, so checkpoints save and load and FQN-addressed services keep resolving. Reindexing shifts every name."
+        },
+        {
+          "q": "A 12-layer model with `input_weight` 1 and `output_weight` 1 is split over 4 stages. How many transformer layers does each stage hold?",
+          "a": "14 effective layers split \\([4, 4, 3, 3]\\), minus the end weights: \\([3, 4, 3, 2]\\), which sums to 12."
+        }
+      ],
+      "practice": [
+        {
+          "name": "PyTorch pipelining tutorial: both splits, one output check",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Run the Step 2 script with `manual_model_split` and again with `tracer_model_split` under `torchrun --nnodes 1 --nproc_per_node 2`; assert rank 1 prints identical losses",
+          "note": "The script falls back to `torch.device(cpu)`, so CPU is enough. Keep the 8-layer split and 4 microbatches; the output-equality gate is the point, not step time."
+        }
+      ],
+      "stopWhen": "Both split modes print identical rank-1 losses, and you can write any small layer-to-stage map with embedding and output ownership from memory.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Playbook partition narrative plus Picotron, TorchFeather and PyTorch split implementations cover ordered stages, cost balance and hand-placed splits; automatic partitioners stay later per the section leaveForLater."
+      }
+    },
+    {
+      "id": "pipeline-microbatch-dependencies",
+      "title": "Microbatches, the forward and backward dependency graph and divisibility",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "microbatch-splitting-and-global-batch-accounting",
+        "forward-and-backward-dependency-graph",
+        "uneven-microbatch-and-divisibility-constraints"
+      ],
+      "outcomes": [
+        "Derive global batch and token counts from microbatch size, microbatch count and data-parallel degree.",
+        "Draw the forward activation and backward gradient edges across stages and place the synchronous update.",
+        "State divisibility constraints and a remainder policy that keeps the loss mean correct."
+      ],
+      "why": "Microbatches turn a sequential layer stack into a parallel schedule, but only if batch accounting and cross-stage dependencies are exact. Every bubble number and equivalence check later divides by these counts.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/gpipe-1f1b-schedules",
+          "note": "Run GPipe and 1F1B over this dependency graph."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-simulator",
+          "note": "Encode the graph as simulator events with validation checks."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpipe-paper-dt6",
+          "title": "Microbatching and synchronous accumulation",
+          "url": "https://arxiv.org/abs/1811.06965",
+          "locator": "Sections 2 and 3 (arXiv:1811.06965v5): splitting each mini-batch of size \\(N\\) into \\(M\\) equal microbatches, forward and backward dependencies across stages, gradients applied synchronously after accumulating over all \\(M\\)"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Microbatch constants and divisibility gates",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`LOCAL_BATCH_SIZE` 8 with `MICRO_BATCH_SIZE` 2, the `LOCAL_BATCH_SIZE % MICRO_BATCH_SIZE` guard, `inputs.split(MICRO_BATCH_SIZE)`, and each microbatch loss divided by `num_microbatches` before summing"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "`grad_acc_steps` as the microbatch count",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/train.py",
+          "locator": "`pp_engine` branch calling the AFAB or 1F1B step with `grad_acc_steps` microbatches, and `MicroBatchDataLoader` with `global_batch_size` equal to microbatch size times `grad_acc_steps` times `dp_world_size`"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Pipelining pseudocode and dependency walk",
+          "url": "https://jax-ml.github.io/scaling-book/training",
+          "locator": "Pipelining section: layer-by-layer forward with device handoffs, loss derivative seeding the backward walk, per-stage input-gradient and weight-gradient computation"
+        }
+      ],
+      "focus": [
+        "Global batch is a product: microbatch size times microbatch count times data-parallel degree, and token counts multiply by sequence length on top.",
+        "Forward edges carry activations to the next stage; backward edges carry input gradients to the previous stage; weights never move between stages.",
+        "The synchronous update sits after the last microbatch's gradients accumulate at mini-batch end, which is what makes the pipeline update match a large-batch update.",
+        "Equal microbatches keep every mean exact; a short tail microbatch needs explicit reweighting or padding, never silent averaging."
+      ],
+      "reproduce": "Closed-book, write the global-batch equation and the forward and backward dependency edges for \\(p\\) stages and \\(m\\) microbatches: which forward output feeds which stage, which gradient flows back, and where the synchronous update sits.",
+      "traps": [
+        "Reading the microbatch size as the global batch. Multiply by the microbatch count and the data-parallel degree first.",
+        "Letting a short last microbatch keep weight 1 in the loss mean. Size-weight it or pad it, or the update drifts from the oracle.",
+        "Starting backward before microbatch 0 reaches the last stage. The loss seed does not exist until then, so early backward calls have nothing to differentiate."
+      ],
+      "selfTest": [
+        {
+          "q": "Microbatch size 2, microbatch count 4, data-parallel degree 4. What is the global batch?",
+          "a": "\\(2 \\times 4 \\times 4 = 32\\) examples before any sequence-length factor."
+        },
+        {
+          "q": "Where does the synchronous update sit in GPipe, and why does that placement matter?",
+          "a": "After gradients accumulate over all \\(M\\) microbatches at mini-batch end. That placement is what equates one pipelined step with one large-batch synchronous step."
+        },
+        {
+          "q": "What happens on setting `MICRO_BATCH_SIZE` 3 with `LOCAL_BATCH_SIZE` 8 in the TorchFeather example?",
+          "a": "The divisibility guard raises. Either pad or re-split into equal microbatches, or implement a remainder policy that reweights the loss mean."
+        },
+        {
+          "q": "In the JAX pipelining pseudocode, what is copied between devices on the forward pass and on the backward pass?",
+          "a": "Forward copies activations to the next device; backward copies the loss derivative with respect to the input to the previous device. Weights stay sharded per device."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TorchFeather `pp_gpipe.py`: microbatch-count variation with reference check",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "Run the stock 8-rank CPU launch with `MICRO_BATCH_SIZE` 2 and again with 4; both runs must print the GPipe PASS line",
+          "note": "Change only the microbatch constant and recompute the expected per-microbatch loss scaling. CPU gloo timings are not interconnect evidence; the reference match is the gate."
+        }
+      ],
+      "stopWhen": "Both microbatch settings print PASS, and you can write the global-batch product and the cross-stage edge directions without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "GPipe accumulation semantics plus TorchFeather divisibility gates and Picotron batch accounting cover microbatches, dependencies and divisibility; the JAX pseudocode gives the device-handoff walk."
+      }
+    },
+    {
+      "id": "pipeline-p2p-protocols",
+      "title": "Activation and gradient transfer, send and receive protocols and stalled peers",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "point-to-point-activation-and-gradient-transfer",
+        "tag-shape-and-ordering-protocols-for-send-and-receive",
+        "rank-failure-stalled-peer-and-timeout-diagnosis"
+      ],
+      "outcomes": [
+        "Send activations forward and gradients backward between two gloo processes with per-microbatch tags and shape assertions.",
+        "Explain tag, shape and ordering agreements and how a mismatch stalls a peer.",
+        "Read a per-rank event trace to name the unmatched send or receive."
+      ],
+      "why": "Activations move forward and gradients move back over point-to-point links with no collective to hide a mismatch. Tag, shape and order agreements are the contract, and a stalled peer is usually a broken one.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/gpipe-1f1b-schedules",
+          "note": "Execute GPipe and 1F1B over these send and receive pairs."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-simulator",
+          "note": "Model each transfer as a simulator event with a matching rule."
+        }
+      ],
+      "study": [
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Tagged microbatch transfers and per-rank schedules",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`run_schedule`: `IRECV_FORWARD` and `ISEND_FORWARD` with `FORWARD_TAG_BASE` plus microbatch, `IRECV_BACKWARD` and `ISEND_BACKWARD` with `BACKWARD_TAG_BASE` plus microbatch, wait-before-use ordering, and the printed per-rank schedule"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "Raw pipeline communicate calls",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pp_communications.py",
+          "locator": "`pipeline_communicate` with `recv_forward`, `send_forward`, `recv_backward` and `send_backward` over `batch_isend_irecv`, `bidirectional_pipeline_communicate` pairing one send with one receive, and the `VERBOSE` step prints"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "The pipeline process group",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "`init_distributed` (page read 2026-10-14): `pp_group` from `dist.new_group` as the send and receive group, `stage_index` equal to rank, `num_stages` equal to world size, with the note that the group can be a subgroup in the N-D parallel case"
+        },
+        {
+          "resource": "umar-pipeline-dt6",
+          "title": "Forward and backward handoffs between devices",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=21977s",
+          "locator": "06:06:14 to 06:11:12: layer groups per GPU, forward activation handoffs to the next device, and backward upstream-gradient handoffs to the previous device"
+        }
+      ],
+      "focus": [
+        "Each transfer is identified by direction plus microbatch: TorchFeather adds the microbatch index to a per-direction tag base so in-flight microbatches cannot match the wrong receive.",
+        "Picotron leans the other way: single ops on the default tag pair up in strict program order, so any rank-specific branch in the op sequence deadlocks the pair.",
+        "Shapes and dtypes are agreed out of band: the receiver allocates the buffer from `tensor_shapes` before the transfer. On gloo a size mismatch aborts the receiving process; on other backends it can hang or corrupt, so assert shapes before the transfer instead of waiting for an error.",
+        "First and last stages skip one direction each: the first stage never receives forward, the last stage never receives backward, and the skip must be in the protocol, not just the compute."
+      ],
+      "reproduce": "Closed-book, write a two-process gloo script where rank 0 sends an activation tensor forward with tag 100 plus microbatch index and rank 1 returns its gradient with tag 200 plus microbatch index, asserting shape and dtype on receipt.",
+      "traps": [
+        "Reusing one tag for every microbatch and trusting call order. Tag per microbatch as TorchFeather does, or prove every rank runs an identical op sequence as Picotron requires.",
+        "Calling `torch.cuda.synchronize` after a gloo transfer on a CPU-only run. It raises when no GPU is visible (a CPU-only machine or `CUDA_VISIBLE_DEVICES=`), so gate device sync on the backend instead of copying GPU code.",
+        "Posting a blocking send before the peer posts its receive on both ranks at once. Pair each send with a receive through one bidirectional call, or keep the recv-first order on both sides."
+      ],
+      "selfTest": [
+        {
+          "q": "Why do TorchFeather tags add the microbatch index to the base instead of using one tag per direction?",
+          "a": "Several microbatches are in flight at once, so one tag per direction could match a receive with the wrong microbatch's send. Each direction-plus-microbatch pair gets its own tag."
+        },
+        {
+          "q": "Picotron posts single ops with `batch_isend_irecv` and waits immediately. What ordering property does the schedule rely on?",
+          "a": "Every rank calls the same op sequence, so sends and receives pair in program order on the default tag. Any rank-specific branch breaks the pairing and stalls the peer."
+        },
+        {
+          "q": "A run hangs after changing `FORWARD_TAG_BASE` on one rank only. What is the first check?",
+          "a": "Tag agreement across peers, then shape and dtype agreement, then a per-rank event log in the TorchFeather schedule-print style to find the unmatched op."
+        },
+        {
+          "q": "Where does the pipeline group come from when pipeline composes with data parallelism?",
+          "a": "A subgroup over the pipeline ranks, built with `dist.new_group`. Gradient averaging uses the separate replicate group, never the pipeline group."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TorchFeather `pp_gpipe.py` stock run on CPU",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`torchrun --standalone --nproc-per-node=8 ./minimal_examples/pp_gpipe.py` on CPU with gloo; rank 0 prints the GPipe PASS line and every rank prints its schedule and trace path",
+          "note": "Run from the pinned commit with 8 processes. The script pins the gloo backend on CPU, so one GPU or none both work; then break one tag on purpose and read which rank stalls."
+        }
+      ],
+      "stopWhen": "Rank 0 prints PASS, every rank prints its schedule and trace path, your two-process tag script round-trips, and you can name the stalled side of a broken-tag run from its event log.",
+      "fit": {
+        "verdict": "kept",
+        "note": "TorchFeather tagged schedules plus Picotron raw communicate calls and the PyTorch pipeline-group contract cover transfer, protocols and stall diagnosis; the video segment motivates the handoffs."
+      }
+    },
+    {
+      "id": "gpipe-1f1b-schedules",
+      "title": "GPipe fill-drain and 1F1B schedules with their phases",
+      "hours": 5,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "fill-drain-gpipe-schedule",
+        "one-forward-one-backward-schedule",
+        "warmup-steady-state-and-cooldown-phases"
+      ],
+      "outcomes": [
+        "Write the AFAB two-loop schedule and the 1F1B warmup, steady-state and cooldown phases for any rank.",
+        "Derive each stage's warmup count and the FIFO drain order of stored tensors.",
+        "Explain why 1F1B bounds in-flight activations while keeping the same bubble."
+      ],
+      "why": "GPipe and 1F1B are the two schedules every later variant modifies. Their phases decide which tensors are alive when, which is what the bubble and memory derivations price.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-bubble-activation-lifetime",
+          "note": "Price the bubble and the activation lifetime of both schedules."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/interleaved-zero-bubble-schedules",
+          "note": "See how virtual stages and split backprop modify 1F1B."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "AFAB schedule and code",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Splitting layers on various nodes - All forward, all backward with FIG.XLVIII and CODE.VII: the all-forward then all-backward loops, loss on the last stage, and the note that plot numbers are microbatches from here on"
+        },
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "1F1B schedule and code",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "One forward, one backward and Llama 3.1 schemes with FIG.XLIX and CODE.VIII parts 1 and 2: warmup forwards, steady state alternating one forward and one backward, cooldown backward drain"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "AFAB and 1F1B step functions",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pipeline_parallel.py",
+          "locator": "`train_step_pipeline_afab` all-forward then all-backward loops with FIFO tensor pops, and `train_step_pipeline_1f1b` with warmup count `min(pp_world_size - pp_rank - 1, grad_acc_steps)`, bidirectional steady-state exchanges and cooldown drain"
+        },
+        {
+          "resource": "picotron-tutorial-dt6",
+          "title": "AFAB then 1F1B as cumulative diffs",
+          "url": "https://github.com/huggingface/picotron_tutorial/tree/master/step7_pipeline_parallel_afab",
+          "locator": "`step7_pipeline_parallel_afab` with `pipeline_parallel.py` and `patch_step_7.diff` for the AFAB step, then `step8_pipeline_parallel_1f1b` with its diff for the 1F1B step; read the step-8 diff as the exact AFAB-to-1F1B change"
+        },
+        {
+          "resource": "umar-pipeline-dt6",
+          "title": "GPipe grid, 1F1B steady state and activation freeing",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=23212s",
+          "locator": "06:26:15 to 06:38:33: GPipe grid inefficiency, 1F1B warmup into alternating steady state, backward costing about twice a forward for matmul-heavy layers, and why 1F1B frees each microbatch's activations earlier"
+        }
+      ],
+      "focus": [
+        "AFAB keeps both waves sequential: all \\(m\\) forwards complete before any backward starts, so every stage holds all \\(m\\) microbatches at the wave boundary.",
+        "1F1B starts each microbatch's backward as soon as its loss exists, which alternates one forward with one backward in steady state and frees activations stage by stage.",
+        "Warmup on rank \\(r\\) of \\(p\\) stages is \\(\\min(p - 1 - r, m)\\): the last stage warms up zero forwards and the first stage warms up the most.",
+        "Stored tensors drain first-in first-out: the oldest forward pairs with the incoming gradient, and the cooldown loop exists only to finish the warmup leftovers."
+      ],
+      "reproduce": "Closed-book, draw the 1F1B event grid for 3 stages and 4 microbatches: mark warmup, steady state and cooldown on each stage and count each stage's forwards and backwards.",
+      "traps": [
+        "Expecting 1F1B to shrink the bubble at fixed microbatch count. The bubble is the same size as AFAB; the win is bounded activation memory that permits more microbatches.",
+        "Starting steady state before microbatch 0 reaches the last stage. No loss exists yet, so early backward calls have no seed gradient.",
+        "Forgetting the cooldown. Warmup forwards leave stored tensors behind, and their backward passes still have to run after the last steady-state step."
+      ],
+      "selfTest": [
+        {
+          "q": "A run has 4 stages and 8 microbatches. How many warmup forwards does each rank do?",
+          "a": "\\(\\min(3 - r, 8)\\): ranks 0 to 3 do 3, 2, 1 and 0 warmup forwards."
+        },
+        {
+          "q": "Why does the video draw backward blocks about twice as wide as forward blocks?",
+          "a": "A matmul backward needs two matmuls, one for the input gradient and one for the weight gradient, so it costs about twice one forward matmul."
+        },
+        {
+          "q": "What work remains after the last 1F1B steady-state iteration on a rank with nonzero warmup?",
+          "a": "One backward per warmup forward, drained oldest-first from the stored tensors: the cooldown phase."
+        },
+        {
+          "q": "In the step-8 tutorial diff, what is the structural change from AFAB to 1F1B?",
+          "a": "The single all-backward loop becomes warmup forwards, an alternating forward-backward steady state with paired exchanges, and a cooldown drain of the leftover stored tensors."
+        }
+      ],
+      "practice": [
+        {
+          "name": "PyTorch pipelining tutorial: GPipe versus 1F1B",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Swap `ScheduleGPipe` for `Schedule1F1B` in the Step 2 script and run both under `torchrun --nnodes 1 --nproc_per_node 2`; compare the rank-1 `losses` lists",
+          "note": "Keep the 8-layer split and 4 microbatches fixed. The gate is matching losses across schedules, not timing."
+        }
+      ],
+      "stopWhen": "Both schedules print equal rank-1 losses, and you can write any rank's warmup, steady-state and cooldown counts without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Playbook schedule sections with Picotron code, the tutorial AFAB-to-1F1B diff and the video walkthrough cover both schedules and their phases at derive depth."
+      }
+    },
+    {
+      "id": "pipeline-bubble-activation-lifetime",
+      "title": "The pipeline bubble and activation lifetime under GPipe and 1F1B",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "pipeline-bubble-derivation",
+        "activation-lifetime-under-gpipe-and-1f1b"
+      ],
+      "outcomes": [
+        "Derive bubble fraction, utilization and makespan for fill-drain schedules from the \\(T = m + p - 1\\) slot model.",
+        "Contrast GPipe and 1F1B activation lifetimes and state each schedule's peak stashed count.",
+        "Predict how utilization moves with stage and microbatch counts before measuring."
+      ],
+      "why": "The bubble decides whether more stages buy speed, and activation lifetime decides whether the schedule fits in memory. Both come from one slot count.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-simulator",
+          "note": "Validate these bubble and peak predictions in the event simulator."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-tradeoffs",
+          "note": "Measure the predicted trade-offs across schedules on a stated setup."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "Naive bubble, AFAB estimate and the 1F1B memory note",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Pipeline Parallelism naive bubble with FIG.XLVII, the AFAB estimate pages with FIG.XLVIII, and the 1F1B note that stashed activations drop from \\(m\\) to \\(p\\) microbatches while the bubble stays the same size"
+        },
+        {
+          "resource": "pipedream-flush-paper-dt6",
+          "title": "1F1B activation bound",
+          "url": "https://arxiv.org/abs/2006.09503",
+          "locator": "Sections 2 and 3 (arXiv:2006.09503v3): 1F1B steady state with at most \\(p\\) microbatches in flight and no weight stashing in the Flush variant, contrasted with GPipe holding all \\(m\\)"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Bubble figures and transfer on the critical path",
+          "url": "https://jax-ml.github.io/scaling-book/gpus",
+          "locator": "Pipeline Parallelism section: the 2-stage 2-microbatch bubble figure with data-parallel AllReduces marked, and the transfer-cost figure shifting stages on the critical path"
+        }
+      ],
+      "focus": [
+        "One wave lasts \\(T = m + p - 1\\) slots: utilization is \\(m / (m + p - 1)\\) and the idle fraction is \\((p - 1) / (m + p - 1)\\), for either wave direction.",
+        "The book's \\((p - 1) / m\\) is bubble over ideal compute, an upper bound that exceeds 1 when \\(m < p - 1\\); use the slot fraction when you need a fraction of total time.",
+        "GPipe stashes \\(m\\) microbatches per stage at the wave boundary; 1F1B keeps at most warmup plus one live per stage, so at most \\(p\\) on the first stage and 1 on the last.",
+        "Backward costing twice forward scales bubble and total together, so the fraction is unchanged under equal stage costs; unequal stages need the critical-stage derivation instead."
+      ],
+      "reproduce": "Closed-book, derive idle fraction \\((p - 1) / (m + p - 1)\\) and utilization \\(m / (m + p - 1)\\) for \\(p\\) stages and \\(m\\) microbatches, and hand-write the forward schedule for \\(p = 2\\), \\(m = 3\\) with cells placed by \\(i = t - s\\).",
+      "traps": [
+        "Quoting \\((p - 1) / m\\) as the idle fraction. It is bubble over ideal compute; the idle fraction of total slots is \\((p - 1) / (m + p - 1)\\).",
+        "Assuming 1F1B wastes less compute than AFAB at fixed \\(m\\). Same bubble; the memory bound is what lets \\(m\\) grow.",
+        "Treating the TensorTonic two-wave model as 1F1B. Its backward wave starts only after the forward wave completes, which is the AFAB shape, not interleaved steady state."
+      ],
+      "selfTest": [
+        {
+          "q": "A run has 4 stages and 8 microbatches. What are the utilization and the idle fraction?",
+          "a": "Utilization \\(8 / 11 \\approx 0.73\\), idle fraction \\(3 / 11 \\approx 0.27\\)."
+        },
+        {
+          "q": "What is each schedule's peak stashed activation count per stage?",
+          "a": "GPipe holds all \\(m\\) microbatches at the wave boundary. 1F1B holds at most warmup plus one live per stage, peaking at \\(p\\) on the first stage."
+        },
+        {
+          "q": "Backward costs twice forward on every stage. Does the bubble fraction change?",
+          "a": "No. Both bubble and total scale by the same forward-plus-backward factor, so the fraction stays \\((p - 1) / (m + p - 1)\\) under equal stage costs."
+        },
+        {
+          "q": "Two stages, two microbatches, forward plus backward waves. What are total slots, bubble slots and utilization?",
+          "a": "Total 12, bubble 4, utilization \\(8 / 12 \\approx 0.67\\): each \\(T = 3\\) wave has 2 useful cells per slot-row pattern giving 8 useful of 12."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Measure Pipeline Bubble Utilization",
+          "url": "https://www.tensortonic.com/problems/cs336-l08-pipeline-bubble-utilization",
+          "locator": "Implement `pipeline_bubble_utilization(num_stages, num_microbatches, include_backward)` returning `schedule`, `bubble_slots`, `total_slots` and `utilization`; pass all public cases",
+          "note": "Derive answers from the slot model before running: the checker compares exact schedule cells, idle counts and the float ratio."
+        }
+      ],
+      "stopWhen": "The TensorTonic cases pass and you can derive utilization, idle fraction and both peak counts for any small \\(p\\) and \\(m\\) without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Playbook derivation plus the PipeDream memory bound and the JAX GPU-chapter cost model cover bubble and lifetime; the TensorTonic problem gives checked arithmetic practice."
+      }
+    },
+    {
+      "id": "interleaved-zero-bubble-schedules",
+      "title": "Interleaved virtual stages and zero-bubble and dual-pipeline schedules",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "interleaved-virtual-pipeline-stages",
+        "zero-bubble-and-dual-pipeline-schedule-vocabulary"
+      ],
+      "outcomes": [
+        "Explain virtual stages, the bubble-versus-communication trade and depth-first versus breadth-first priority.",
+        "Explain the input-gradient versus weight-gradient backward split and what a zero-bubble schedule reschedules.",
+        "Name each PyTorch multi-stage schedule class and its preconditions."
+      ],
+      "why": "Interleaved and zero-bubble schedules are the vocabulary production stacks speak. This unit teaches reading them and pricing them, not building them.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-tradeoffs",
+          "note": "Weigh these schedules against GPipe and 1F1B on memory and complexity."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/bubble-critical-path-overlap",
+          "note": "Carry bubble and overlap vocabulary into composed-plan analysis."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "Interleaved stages",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Interleaving stages with FIG.LI and FIG.LII: chunks per GPU dividing pass time by \\(v\\), communication growing by \\(v\\), depth-first versus breadth-first priority, and the Llama 3.1 schedule in FIG.LIII"
+        },
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "Zero bubble and DualPipe sketch",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Zero bubble and DualPipe with FIG.LIV and FIG.LV: splitting backward into input-gradient and weight-gradient parts and scheduling weight gradients after their input gradients to fill bubbles",
+          "depth": "Stop at the integer-programming paragraph. Handcrafted and solved schedules are vocabulary here; implementation stays depth work."
+        },
+        {
+          "resource": "zero-bubble-paper-dt6",
+          "title": "Split backprop and handcrafted schedules",
+          "url": "https://arxiv.org/abs/2401.10241",
+          "locator": "Abstract and Sections 1 to 4 (arXiv:2401.10241v1): the input-gradient versus parameter-gradient split, the handcrafted ZB-H1 and ZB-H2 schedules, the automatically searched ZB-1P schedule behind `ScheduleInterleavedZeroBubble`, and the Section 4 optimizer-step sync bypass needed for true zero bubble; read for vocabulary, not for a build"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "Multi-stage schedule reference",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.pipelining.html",
+          "locator": "Pipeline Schedules (page read 2026-10-14): `ScheduleInterleaved1F1B` depth-first, `ScheduleLoopedBFS` breadth-first, `ScheduleInterleavedZeroBubble` as ZB1P, `ScheduleZBVZeroBubble` needing exactly two stages per rank with zero bubble only when forward, input-backward and weight-backward times match, and `ScheduleDualPipeV`",
+          "depth": "Names and preconditions only. Constructing multi-stage runs needs more than two stages and stays an extension of the simulator unit."
+        },
+        {
+          "resource": "umar-pipeline-dt6",
+          "title": "Looped layout and the zero-bubble intro",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=23934s",
+          "locator": "06:38:54 for the interleaved looped layout with earlier flush and the hop-count cost, and 06:47:59 for the zero-bubble input-gradient versus weight-gradient split intro"
+        }
+      ],
+      "focus": [
+        "Virtual stages cut each device's passes into \\(v\\) chunks: the bubble shrinks by about \\(v\\) while each microbatch crosses about \\(v\\) times more stage boundaries.",
+        "Only the input gradient sits on the critical path to earlier stages; the weight gradient waits only for its own input gradient plus the optimizer step, so it fills idle slots.",
+        "Depth-first serves earlier microbatches through later stages first; breadth-first serves earlier stages with all ready microbatches first.",
+        "Zero bubble is conditional: matched op times, enough microbatches, and bypassed optimizer-step sync all have to hold at once."
+      ],
+      "reproduce": "Closed-book, sketch how \\(v = 2\\) virtual stages per GPU cut the bubble while raising hop count on 4 GPUs, and state the three conditions zero-bubble-class schedules need: the gradient split, matched op times, and optimizer-sync handling.",
+      "traps": [
+        "Calling any interleaved run zero-bubble. Interleaving shrinks the bubble by about \\(v\\) but keeps one; zero needs the gradient split plus the sync bypass.",
+        "Ignoring the extra communication. Each microbatch crosses more stage boundaries, so slow links can eat the schedule win.",
+        "Expecting ZBV zero bubble on real layers. It needs forward, input-backward and weight-backward times equal, which real models rarely satisfy."
+      ],
+      "selfTest": [
+        {
+          "q": "Two chunks per GPU: what happens to the bubble and to point-to-point volume?",
+          "a": "The bubble shrinks by about a factor of 2 while P2P volume roughly doubles, since each microbatch crosses twice as many stage boundaries."
+        },
+        {
+          "q": "What does the weight gradient wait for, and what does the input gradient unblock?",
+          "a": "The weight gradient waits only for its own input gradient and the optimizer step. The input gradient unblocks the previous stage, so it stays on the critical path while weight gradients fill idle slots."
+        },
+        {
+          "q": "How do Interleaved 1F1B and Looped BFS differ when several microbatches are ready?",
+          "a": "Interleaved 1F1B is depth-first: it prioritizes earlier microbatches through later stages. Looped BFS is breadth-first: it prioritizes earlier stages and runs all ready microbatches there."
+        },
+        {
+          "q": "What are the ZBV schedule's preconditions?",
+          "a": "Exactly two stages per rank, and the zero-bubble property only when forward, input-backward and weight-backward times match."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: one interleaved-schedule extension in the validated simulator with bubble and memory deltas.",
+      "stopWhen": "You can price any named schedule's bubble, memory and preconditions from its class name and state which two conditions fail first on real layers.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Playbook sketches plus the Zero Bubble paper and the versioned PyTorch schedule reference cover this optional topic at vocabulary depth; builds stay depth work per the section leaveForLater."
+      }
+    },
+    {
+      "id": "pipeline-schedule-simulator",
+      "title": "A validated pipeline schedule event simulator",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "schedule-event-simulation-and-validation"
+      ],
+      "outcomes": [
+        "Implement a deterministic event simulator for GPipe and 1F1B with timeline and per-stage live-activation state.",
+        "Validate traces against dependency, order and peak-live checks plus hand traces for small stage and microbatch counts.",
+        "Emit failure-injection cases with wrong order, short microbatches and stalled peers that the validator rejects."
+      ],
+      "why": "A simulator turns schedule arguments into checkable traces. It is the oracle the section checkpoint asks for: valid GPipe and 1F1B traces with predicted bubbles and peaks.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-tradeoffs",
+          "note": "Measure step time and memory against the simulator's predictions."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/composed-plan-correctness",
+          "note": "Reuse trace validation for composed-plan correctness tests."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpipe-paper-dt6",
+          "title": "Fill-drain specification",
+          "url": "https://arxiv.org/abs/1811.06965",
+          "locator": "Sections 2 and 3 (arXiv:1811.06965v5) as the fill-drain specification the simulator reproduces: \\(M\\) equal microbatches, simultaneous work on different microbatches, synchronous apply at mini-batch end"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "AFAB and 1F1B as event-order oracles",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pipeline_parallel.py",
+          "locator": "`train_step_pipeline_afab` and `train_step_pipeline_1f1b` as event-order oracles: FIFO tensor pops, the warmup formula, bidirectional steady-state exchanges, and the cooldown drain"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Action tables as the trace format",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`build_stage_zero_schedule` and `build_stage_one_schedule` action tables with `ActionKind` events and `format_schedule` prints as the trace format to match, including the empty-schedule guard"
+        },
+        {
+          "resource": "tensortonic-dt6",
+          "title": "Schedule cell representation",
+          "url": "https://www.tensortonic.com/problems/cs336-l08-pipeline-bubble-utilization",
+          "locator": "Time-ordered stage-ordered lists with forward, backward and idle cells as the interchange format for traces"
+        },
+        {
+          "resource": "dt-project-pp-dt6",
+          "title": "Scheduler contract from the subsystem project",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/distributed-training-subsystem.md",
+          "locator": "Milestones B, D and E: per-rank event trace (B), failure-injection cases (D), and bubble and activation-peak prediction versus measurement (E); keep the simulator runnable without GPUs"
+        }
+      ],
+      "focus": [
+        "Events are timestamped stage ops with explicit dependencies: a forward needs the previous stage's forward for its microbatch, a backward needs its own forward plus the next stage's backward.",
+        "Live-activation state is part of the trace: each stored forward increments the count, each consumed backward decrements it, and the peak per stage is checked against \\(m\\) for GPipe and \\(p\\) for 1F1B.",
+        "Validation is three checks on every trace: dependencies completed, each microbatch's backward after its forward on every stage, and no stage running two ops at once.",
+        "Failure cases are first-class outputs: wrong order, short microbatch and stalled peer must each fail validation with a named cause, not a silent wrong trace."
+      ],
+      "reproduce": "Closed-book, write the event rules that generate valid GPipe and 1F1B traces for \\(p\\) stages and \\(m\\) microbatches, and the three validation checks with the peak-live bounds \\(m\\) for GPipe and at most \\(p\\) for 1F1B.",
+      "traps": [
+        "Validating only the happy path. Inject wrong order, short microbatches and stalled peers, and require the validator to reject each by name.",
+        "Reporting simulator makespans as hardware predictions. Unit-cost traces prove schedule validity, not GPU step time.",
+        "Accepting degenerate inputs. Mirror the TorchFeather guards: reject empty microbatch counts and warn when microbatches undercount stages."
+      ],
+      "selfTest": [
+        {
+          "q": "What three checks validate a trace?",
+          "a": "Every op's dependencies completed first; each microbatch's backward comes after its forward on every stage; no stage runs two ops at once."
+        },
+        {
+          "q": "GPipe with 3 stages and 5 microbatches at unit forward and backward cost: what makespan and peak live count does the simulator predict?",
+          "a": "Each wave lasts \\(5 + 3 - 1 = 7\\) slots for a makespan of 14, and each stage peaks at 5 live microbatches at the wave boundary."
+        },
+        {
+          "q": "1F1B with 3 stages and 5 microbatches: what warmup counts and peak live counts apply?",
+          "a": "Warmup forwards \\([2, 1, 0]\\) by rank, and each stage peaks at warmup plus one live, at most 3 on the first stage."
+        },
+        {
+          "q": "Why keep the simulator deterministic and CPU-only?",
+          "a": "Schedule validity is a discrete property of event order, so determinism makes traces diffable. Hardware timing belongs to the trade-offs unit with a stated topology."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the validated GPipe and 1F1B event simulator with trace output, activation accounting and failure-injection cases.",
+      "stopWhen": "Hand traces for small stage and microbatch counts match simulator output cell for cell, and all three injected failures fail validation by name.",
+      "fit": {
+        "verdict": "kept",
+        "note": "GPipe paper spec plus Picotron and TorchFeather oracle traces and the Milestone B scheduler contract cover simulation and validation; integrated practice lives in the section mini-project."
+      }
+    },
+    {
+      "id": "stage-ownership-tied-embeddings",
+      "title": "Stage-local ownership, final-stage loss and tied embeddings",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "stage-local-parameter-and-optimizer-ownership",
+        "loss-computation-and-final-stage-semantics",
+        "tied-embeddings-across-first-and-last-stages"
+      ],
+      "outcomes": [
+        "Assign parameters, loss computation and optimizer state to stages for embedding-first, output-last splits.",
+        "Correct microbatch gradient scaling so pipeline updates match a single-process oracle.",
+        "State the tied-weight contract across first and last stages."
+      ],
+      "why": "Ownership decides what each rank saves, optimizes and differentiates. Loss placement and gradient scaling decide whether pipeline gradients mean the same thing as single-process ones.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-recompute-composition",
+          "note": "Checkpoint activations inside these owned stages and compose stage groups with data parallelism."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-state-memory",
+          "note": "Carry per-stage ownership into per-rank memory accounting."
+        }
+      ],
+      "study": [
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "Stage-local parameters and last-stage loss",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pipeline_parallel.py",
+          "locator": "`PipelineParallel` init owning `embedding` on the first stage and `final_norm` plus `final_proj` on the last, per-microbatch mean `cross_entropy` on the last stage only, and `logging_loss` averaged over `grad_acc_steps`; note the backward loss is not divided, so accumulated gradients sum microbatch means"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "Split ownership and last-stage loss contract",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Step 1 manual split (page read 2026-10-14): `tok_embeddings` with stage 0 and `norm` plus `output` with stage 1; Step 2 `tokenwise_loss_fn` with the `losses` list filled on the last stage through `step(target=y, losses=losses)`"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Reference loss and gradient averaging",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`run_reference` full-model loss versus summed per-microbatch losses each divided by `num_microbatches`, and `average_gradients` all-reducing over the `dp_replicate` group"
+        }
+      ],
+      "focus": [
+        "Token IDs enter as a batch of sequences and leave as vectors per the embeddings-and-positions unit; the first stage owns that lookup and the last stage owns the projection back to vocabulary.",
+        "Only the last stage holds logits, so `loss_fn`, targets and the per-microbatch `losses` list all belong there; other stages receive gradients, never targets.",
+        "Accumulated microbatch-mean gradients sum to \\(m\\) times the global-batch mean: divide by \\(m\\) or scale the learning rate before comparing with a single-process oracle.",
+        "Tied weights live on two stages at once: Picotron sidesteps this by not tying, and any tied design must sync gradients across the first and last stage before the optimizer step."
+      ],
+      "reproduce": "Closed-book, write which rank owns parameters, loss and optimizer state for a 2-stage run, and the gradient-scale correction that makes accumulated microbatch-mean gradients equal the global-batch mean.",
+      "traps": [
+        "Comparing Picotron updates directly with a same-learning-rate single-process run. Per-microbatch mean losses sum to \\(m\\) times the global mean, so divide by \\(m\\) first or read a scaling difference as a pipeline bug.",
+        "Splitting a tied embedding and output projection by copying the weight to two stages. The copies drift after step one unless gradients sync across both stages every step.",
+        "Computing loss off the last stage. Only the last stage holds logits, so the loss function and the losses list belong there."
+      ],
+      "selfTest": [
+        {
+          "q": "Four microbatches with per-microbatch mean losses accumulate gradients. What factor separates the sum from the global-batch mean gradient?",
+          "a": "4. Each backward adds one full mean gradient, so the accumulated sum is \\(m\\) times the mean for \\(m\\) equal microbatches."
+        },
+        {
+          "q": "How do TorchFeather and PyTorch `scale_grads=True` avoid that factor?",
+          "a": "TorchFeather divides each microbatch loss by the microbatch count before summing. `scale_grads=True` divides accumulated gradients by `n_microbatches`, which matches an averaging loss function."
+        },
+        {
+          "q": "A tied embedding weight sits on stages 0 and 3 with independent optimizers. What breaks?",
+          "a": "Each stage updates its copy from its own gradient slice, so the copies diverge after the first step. Sync the gradients, or share the storage, before updating."
+        },
+        {
+          "q": "Why must `ModuleDict` names survive the split?",
+          "a": "Checkpoint keys and fully-qualified-name services such as FSDP or tensor parallelism resolve by name; renaming breaks save and load."
+        }
+      ],
+      "practice": [
+        {
+          "name": "PyTorch pipelining tutorial: single-process output equivalence",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Compare the rank-1 merged output and `losses` against the same 8-layer model run on one process with dropout off (call `eval()` on both copies: the tutorial's decoder layers keep the default dropout of 0.1); gate on forward match within 1e-5 and equal per-microbatch losses",
+          "note": "Run on CPU. In a measured example with 2 CPU processes on gloo and PyTorch 2.14.1, an equivalent probe matched forwards within 1e-5; your transformer numbers will differ, and the match is the gate, not the values."
+        }
+      ],
+      "stopWhen": "Pipeline outputs match the single-process run within 1e-5 with the scaling correction stated, and you can place parameters, loss and tied weights on a stage diagram from memory.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Picotron ownership code plus the PyTorch split and loss contracts and the TorchFeather reference comparison cover stage-local state, final-stage loss and tied-weight policy."
+      }
+    },
+    {
+      "id": "pipeline-recompute-composition",
+      "title": "Recompute inside stages and pipeline groups combined with DP or TP",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "activation-checkpointing-within-stages",
+        "pipeline-groups-combined-with-data-or-tensor-groups"
+      ],
+      "outcomes": [
+        "Apply activation checkpointing inside a stage and state the alive-versus-recomputed contract.",
+        "Build pipeline-by-data group membership and place gradient averaging on the replicate group.",
+        "Explain the ZeRO-1 versus ZeRO-3 pairing choice under microbatching."
+      ],
+      "why": "Stages compose: recompute trades memory inside a stage, and data parallelism replicates stages across groups. Both change what the backward communicates, so both need oracle checks.",
+      "next": [
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-tradeoffs",
+          "note": "Measure recompute and composition choices as schedule trade-offs."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Compose pipeline with data and tensor degrees in the plan search."
+        }
+      ],
+      "study": [
+        {
+          "resource": "gpipe-paper-dt6",
+          "title": "Re-materialization design",
+          "url": "https://arxiv.org/abs/1811.06965",
+          "locator": "Section 3 (arXiv:1811.06965v5): re-materialization recomputing forward activations in the backward pass to trade compute for memory; pair with the activation-lifetime numbers from the bubble unit"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Selective and full checkpoint policies",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/activation_checkpoint.py",
+          "locator": "`apply_ac` with the selective custom policy and `_apply_full_ac` per transformer block as the policy menu for checkpointing inside stages"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Pipeline stages composed with other parallelism",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/pipeline_parallel.py",
+          "locator": "`pipeline_llm`: stages per rank from the schedule class, per-part `parallelize_fn` applying tensor or data parallelism inside each pipeline group, and `build_pipeline_schedule` warning when microbatches undercount stages"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "Composability contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.pipelining.html",
+          "locator": "What is `torch.distributed.pipelining` (page read 2026-10-14): composability with DDP, FSDP and tensor parallelism with the TorchTitan 3D reference, and the `PipelineStage` group argument carrying the pipeline subgroup"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Pipeline plus sharding pairing costs",
+          "url": "https://jax-ml.github.io/scaling-book/gpus",
+          "locator": "Pipeline Parallelism item (2), Pipelining makes data parallelism and FSDP hard: per-microbatch weight all-gathers and delayed gradient reduction as the composition costs, with ZeRO-1 style replication as the workable pairing"
+        }
+      ],
+      "focus": [
+        "Checkpoint regions must sit inside one stage: only the region inputs stay alive and the rest recomputes, following the activation-checkpointing unit's contract.",
+        "Pipeline groups move activations while replicate groups average gradients: same-stage ranks across data coordinates form the averaging group, and pipeline peers never average each other's parameters.",
+        "Microbatching shrinks the compute that amortizes a ZeRO-3 all-gather to one microbatch share, which is why replication-style ZeRO-1 pairs better with pipelines.",
+        "Picotron holds data-parallel sync until the last microbatch's backward through `require_backward_grad_sync`; syncing every microbatch would pay a full all-reduce per microbatch."
+      ],
+      "reproduce": "Closed-book, state what stays alive and what recomputes when one stage is checkpointed, and draw pipeline-by-data group membership for 8 processes with pipeline degree 2 and data degree 4, marking which group averages gradients.",
+      "traps": [
+        "Checkpointing across a stage boundary. The recompute region must sit inside one stage, or the backward needs activations from another rank.",
+        "Composing pipeline with ZeRO-3 naively. Per-microbatch all-gathers amortize over a microbatch share of the batch, so prefer replication inside pipeline groups.",
+        "Forgetting RNG determinism under recompute. State the seed-preservation policy from the activation-checkpointing unit, or dropout diverges between the two passes."
+      ],
+      "selfTest": [
+        {
+          "q": "What stays alive when one pipeline stage is checkpointed with `torch.utils.checkpoint`?",
+          "a": "Only the region inputs. Region outputs and intermediates recompute in the backward pass, and the recompute region must not cross a stage boundary."
+        },
+        {
+          "q": "Eight processes run pipeline degree 2 by data degree 4. Which ranks average gradients together?",
+          "a": "Same-stage ranks across data coordinates, in the replicate group. Pipeline peers hold different parameters and never average each other."
+        },
+        {
+          "q": "Why does ZeRO-3 pair badly with pipelines while ZeRO-1 pairs well?",
+          "a": "ZeRO-3 all-gathers weights per microbatch while compute per microbatch shrinks to a batch share. ZeRO-1 replicates parameters and shards only optimizer state, so no per-microbatch gather sits on the critical path."
+        },
+        {
+          "q": "Why does Picotron set `require_backward_grad_sync` false during 1F1B steady state?",
+          "a": "Data-parallel sync waits for the last microbatch's backward. Syncing every microbatch would pay a full gradient all-reduce per microbatch instead of once per step."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: recompute inside one owned stage with equivalence checks, and a pipeline-by-data group composition test against a single-process oracle.",
+      "stopWhen": "You can draw the group grid, place the averaging call, and state the alive set of a checkpointed stage without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "GPipe re-materialization plus TorchFeather checkpoint and mesh code and the PyTorch composability contract cover in-stage recompute and group composition; the JAX note prices the ZeRO pairing."
+      }
+    },
+    {
+      "id": "pipeline-schedule-tradeoffs",
+      "title": "Throughput, latency and memory trade-offs across schedules",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "throughput-latency-and-memory-trade-offs-across-schedules"
+      ],
+      "outcomes": [
+        "Measure bubble, memory, transfer and step time across stages, microbatch counts and schedules on a stated setup.",
+        "Explain why a smaller theoretical bubble can leave measured throughput flat.",
+        "Keep analytical predictions and measured results distinct with residuals stated."
+      ],
+      "why": "Throughput, latency and memory pull in different directions across schedules. This unit turns the section's derivations into a measurement discipline with stated setups.",
+      "next": [
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/bubble-critical-path-overlap",
+          "note": "Carry measured bubble and overlap numbers into composed-plan analysis."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Use schedule measurements to choose the pipeline degree in the plan search."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "Throughput scaling with microbatch count",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Throughput scaling pages with FIG.L: microbatches at or below pipeline degree minus one hurt and fall with more stages, many more microbatches help low degrees, and the target global batch size caps the ratio; the plotted numbers are the authors' cluster results, read them as method"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Cluster recipes with pipeline degrees",
+          "url": "https://jax-ml.github.io/scaling-book/gpus",
+          "locator": "Pipeline Parallelism examples: 16-way pipeline with 2-way ZeRO-1 data parallelism, and 8-way tensor plus 16-way pipeline plus 128-way ZeRO-1 data parallelism, as cited cluster recipes with stated batch sizes"
+        },
+        {
+          "resource": "pipedream-flush-paper-dt6",
+          "title": "What the 20x claim compares",
+          "url": "https://arxiv.org/abs/2006.09503",
+          "locator": "Abstract and Section 5 (arXiv:2006.09503v3): the up-to-20x figure is against non-pipelined model-parallel baselines (tensor model parallelism and inter-layer model parallelism) on up to 64 16-GB V100s, not a schedule-versus-schedule speedup; against GPipe the gain is up to 3.2x"
+        },
+        {
+          "resource": "dt-project-pp-dt6",
+          "title": "Measurement contract from the subsystem project",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/distributed-training-subsystem.md",
+          "locator": "Milestone E: predict versus measure bubbles and imbalance, compare candidate layouts on the available tier, and keep analytical and measured results distinct"
+        }
+      ],
+      "focus": [
+        "Vary one thing at a time: stages, microbatch count, schedule or recompute, while the global batch, dtype and backend stay fixed and equivalence still passes.",
+        "Report the full row per configuration: predicted bubble, peak live activations, transfer bytes, measured step time, and the equivalence result with its tolerance.",
+        "Name the setup on every number: hardware, PyTorch version, backend, world size, stage and microbatch counts, schedule and settings.",
+        "CPU gloo timings bound nothing about GPU links: they check schedule logic and equivalence, never interconnect behavior."
+      ],
+      "reproduce": "Closed-book, write the measurement table for one schedule comparison with bubble, peak live activations, transfer bytes, step time and equivalence columns, and list the setup each entry needs.",
+      "traps": [
+        "Reporting CPU gloo step times as interconnect evidence. They say nothing about NVLink or InfiniBand behavior.",
+        "Quoting paper or Playbook speedups as expected learner results. They are author-cluster numbers under fixed recipes.",
+        "Tuning the microbatch count on the simulator and skipping the equivalence gate. A faster schedule with wrong gradients is a bug, not a trade-off."
+      ],
+      "selfTest": [
+        {
+          "q": "Microbatches at or below pipeline degree minus one: what does the scaling plot show, and why?",
+          "a": "Low throughput that falls as stages grow. Too few microbatches leave the pipe mostly bubble, so extra stages add idle time without useful work."
+        },
+        {
+          "q": "What caps the microbatch count in practice?",
+          "a": "The target global batch size: microbatch size times microbatch count times data-parallel degree is fixed by the recipe."
+        },
+        {
+          "q": "A smaller theoretical bubble leaves measured throughput flat. What are the first three suspects?",
+          "a": "Point-to-point transfer sitting on the critical path, small-kernel launch overhead, and host or data starvation stalling the first stage."
+        },
+        {
+          "q": "What must every measurement entry name?",
+          "a": "Hardware, PyTorch version, backend, world size, stage and microbatch counts, schedule, dtype and settings. Measured numbers are labeled examples, never targets."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: bubble, memory, transfer and step-time measurements across stages, microbatch counts and schedules with equivalence kept.",
+      "stopWhen": "Your table fills one full comparison with setups stated, residuals explained, and equivalence passing on every row.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Playbook scaling method plus JAX cluster recipes and the Milestone E measurement contract cover schedule trade-offs; measurement practice lives in the section mini-project."
+      }
+    }
+  ]
+}

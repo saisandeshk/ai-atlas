@@ -1,0 +1,1088 @@
+{
+  "section": "training-pipeline-framework-internals",
+  "addedResources": [
+    {
+      "id": "pytorch-dataloader-docs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch data loading API - DataLoader, Sampler and multi-process loading",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read Data Loading Order and Sampler, Single- and Multi-process Data Loading with its Randomness subsection, and the DistributedSampler entry for `set_epoch`, `drop_last` padding and worker seeding. Use it to define sampler position and worker sharding for the lineage and resume units.",
+      "url": "https://docs.pytorch.org/docs/2.14/data.html"
+    },
+    {
+      "id": "pytorch-autograd-docs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch Autograd mechanics note",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read How autograd encodes the history with Saved tensors, Hooks for saved tensors, and Backward Hooks execution (whether each hook fires and in which order). Use it for the autograd graph, saved-tensor and hook-ordering claims.",
+      "url": "https://docs.pytorch.org/docs/2.14/notes/autograd.html"
+    }
+  ],
+  "units": [
+    {
+      "id": "run-identity-launch-contracts",
+      "title": "Run identity, launch configuration and the setup, step, save, load and teardown contract",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "launch-configuration-immutable-run-identity-and-environment-capture",
+        "framework-contracts-for-setup-step-save-load-and-teardown"
+      ],
+      "outcomes": [
+        "Explain what belongs in an immutable run identity and why a seed alone cannot reproduce a run.",
+        "Implement setup, step, save, load and teardown in one script so a relaunch resumes from committed state instead of restarting.",
+        "Capture the launch configuration and environment needed to tell a changed setup apart from a broken resume."
+      ],
+      "why": "Distributed runs multiply every unspecified choice: one missing flag or untracked code change becomes a different experiment on every rank. A written run contract makes resume and blame possible before any parallelism is added.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/dataset-lineage-sampler-position",
+          "note": "Add sampler position and dataset version to the identity."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/exact-resume-tiny-fixtures",
+          "note": "Prove the contract with an interruption test."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Single-GPU trainer end to end",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "README.md Code explanation from Argument parsing through Checkpoints; `train_llm.py` `_get_parser`, `LocalTimer`, the checkpoint-save block writing `model.pt`, `optimizer.pt`, `lr_scheduler.pt` and `state.json`, and the resume branch reloading them and skipping finished steps"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Pipeline architecture and the benchmark envelope",
+          "url": "https://mlsysbook.ai/vol1/training/training.html",
+          "locator": "Model Training, Pipeline Architecture; Training Benchmarks in https://mlsysbook.ai/vol1/benchmarking/benchmarking.html for the full envelope of commit, checksum, preprocessing, seed plan, versions, precision, batch schedule, topology, power and thermal, and checkpoint behavior"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "Reproducible environment capture",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/reproducibility/README.md",
+          "locator": "`enforce_reproducibility`: seed handling, `CUBLAS_WORKSPACE_CONFIG` set before CUDA init, `torch.use_deterministic_algorithms(True)`, `cudnn.benchmark=False`; Reproduce env: `modules.txt`, `env.txt`, `pip freeze`, `git diff` of local installs"
+        }
+      ],
+      "focus": [
+        "The run identity is code version, dataset version, config, seeds, and hardware and software versions together. Logging `os.environ` and args, as the single-GPU guide script does, starts the identity but `pip freeze` and the dataset version complete it.",
+        "`state.json` carries `epoch`, `global_step`, `epoch_step` and `running_loss` beside the three state dicts. Resume restores all of them and skips finished batches; loading weights alone restarts the schedule midstream.",
+        "Process-global flags are environment, not model config. In PyTorch 2.14 the default is `torch.backends.cuda.matmul.allow_tf32` False with `torch.get_float32_matmul_precision` returning `highest`; record both in the manifest.",
+        "Teardown belongs to the contract: workers shut down, barriers complete, and only committed checkpoints are read back."
+      ],
+      "reproduce": "From a blank file, write a loop that saves model, optimizer, scheduler and a position record every N steps, stops mid-epoch, and relaunches to the same loss trajectory. State which files must exist before the resumed run may continue.",
+      "traps": [
+        "Treating the random seed as the full identity. Seeding alone still leaves algorithm choice and data position unspecified.",
+        "Reading a checkpoint written by different code or config and calling the mismatch a resume bug. Reject resume under a changed configuration instead.",
+        "Saving only `model.state_dict`. Optimizer, scheduler and data position are state too; without them the trajectory diverges after resume."
+      ],
+      "selfTest": [
+        {
+          "q": "A resumed run reproduces the loss values but the learning rate schedule looks shifted by half an epoch. Which state was likely not restored?",
+          "a": "The scheduler state and the position record (`epoch_step` or `global_step`). Weights plus optimizer without scheduler and position restart the schedule at the wrong point."
+        },
+        {
+          "q": "Why is logging `os.environ` and parsed args insufficient as a run identity?",
+          "a": "It misses code version, dataset version, installed package versions and process-global flags. Two runs can share env and args yet differ in code, data or library behavior."
+        },
+        {
+          "q": "Where must `CUBLAS_WORKSPACE_CONFIG` be set, and why?",
+          "a": "Before any CUDA work, as the Stas recipe does; it raises if CUDA is already initialized. cuBLAS reads the setting when it creates its workspaces, and with deterministic algorithms on PyTorch raises at a cuBLAS call when the variable is missing."
+        },
+        {
+          "q": "A crash leaves new weight files but no new `state.json`. Should the resumed run load the new weights?",
+          "a": "No. Only a committed checkpoint with its position record is readable. Rebuild or discard the uncommitted shards first."
+        }
+      ],
+      "practice": [
+        {
+          "name": "01-single-gpu: interrupted and resumed run",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/README.md",
+          "locator": "Outputs and Resuming plus Checkpoints: with one GPU on your machine, launch `train_llm.py` on the smallest model that fits, stop it mid-epoch, relaunch with the same experiment name and show it resumes from `state.json` instead of restarting. On a CPU-only machine run the same interrupt-and-resume cycle with the loop from the reproduce step, since this script hardcodes CUDA, `fused=True` and `bfloat16`.",
+          "note": "Keep the timer and memory logs from both halves as the resume evidence."
+        }
+      ],
+      "stopWhen": "You can list the complete identity for your own loop, and an interrupted run continues its loss trajectory instead of restarting it.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The single-GPU trainer plus the MLSys pipeline and envelope sections and the Stas reproducibility checklist cover launch identity and the setup, step, save, load and teardown contract at explain and implement depth."
+      }
+    },
+    {
+      "id": "dataset-lineage-sampler-position",
+      "title": "Dataset manifests, document-to-batch lineage and deterministic sampler position",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "dataset-manifests-versions-and-document-to-batch-lineage",
+        "deterministic-shuffle-shards-workers-and-sampler-position"
+      ],
+      "outcomes": [
+        "Implement a restartable sharded sampler with deterministic shuffle, disjoint coverage and a stated padding or drop policy.",
+        "Trace any batch back to document IDs and a manifest version, and serialize sampler position as epoch plus RNG state.",
+        "Diagnose duplicate or omitted samples and seed collisions across ranks and loader workers."
+      ],
+      "why": "Data order is optimizer input: a duplicated shard or a reshuffle on resume silently trains a different model. Lineage plus sampler position makes every example accountable before ranks are added.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/batch-token-accounting",
+          "note": "Count the batches the sampler yields."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/exact-resume-tiny-fixtures",
+          "note": "Prove resume restores the exact example sequence."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-dataloader-docs",
+          "title": "Sampler order, sharding and worker randomness",
+          "url": "https://docs.pytorch.org/docs/2.14/data.html",
+          "locator": "Data Loading Order and Sampler; Single- and Multi-process Data Loading with Randomness in multi-process data loading; `DistributedSampler` entry: `set_epoch`, `seed`, `drop_last` head padding, `len` reporting the per-rank count",
+          "depth": "Read the sampler contract, not the whole loader reference. Note that `DistributedSampler` has no `state_dict`; position is the epoch integer plus the loop-owned RNG state."
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Determinism and data-loading notes",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/determinism/README.md",
+          "locator": "RNG save and restore (`rng.pt` with torch, NumPy and Python states), `torch.use_deterministic_algorithms(True)`, seeded `Generator` with `_seed_worker`; related-topics `optimizing-data-loading` README for `num_workers`, `prefetch_factor` and the rank-wait timer"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "Deterministic seeding and worker discipline",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/reproducibility/README.md",
+          "locator": "`enforce_reproducibility(use_seed=None)`: seeds for `random`, NumPy, torch and CUDA, `CUBLAS_WORKSPACE_CONFIG` set before CUDA init, `torch.use_deterministic_algorithms(True)` and `cudnn.benchmark=False`. For the copied-generator trap read Randomness in multi-process data loading in https://docs.pytorch.org/docs/2.14/data.html and reseed inside each loader worker from the seed that `torch.utils.data.get_worker_info()` reports"
+        }
+      ],
+      "focus": [
+        "Sampler position is an epoch integer owned by the training loop plus dataset version and RNG state. Call `set_epoch(n)` every epoch or every epoch repeats the first epoch's order.",
+        "With `shuffle=False` and `drop_last=False` an uneven split pads with head indices: 10 items over 3 ranks yield per-rank rows \\([0, 3, 6, 9]\\), \\([1, 4, 7, 0]\\) and \\([2, 5, 8, 1]\\). Padding duplicates examples, so token and sample counts must use the manifest, not the batch count.",
+        "Main-process shuffling assigns indices to loader workers, but an RNG object created in `Dataset.__init__` is fork-copied identically into each worker. Seed inside each worker process from the seed that `torch.utils.data.get_worker_info()` reports instead.",
+        "Document-to-batch lineage means each batch element records its document ID, shard and position. A manifest fixes ordered shard paths, checksums, counts and recipe version; resume under a changed manifest is rejected."
+      ],
+      "reproduce": "From a blank file, build a 10-item dataset with a 3-way sampler, print the per-rank index rows with `drop_last` True and False, and show that `set_epoch(0)` and `set_epoch(1)` give different orders while re-setting the same epoch reproduces them. Save and restore the epoch plus RNG state mid-epoch and continue the identical sequence.",
+      "traps": [
+        "Calling `DistributedSampler.state_dict`. It does not exist; resume restores the epoch integer and the loop-owned RNG and worker state.",
+        "Assuming padding is free. Padded head items are real repeated examples that inflate token counts unless the loss denominator excludes them.",
+        "Seeding only the main process and trusting it to cover workers. Since PyTorch 1.9 each worker gets a per-worker seed for torch and the `random` and NumPy global RNGs, but an RNG object built in `Dataset.__init__` is still copied identically into every worker. Build or reseed generators inside each worker from the seed that `get_worker_info` reports."
+      ],
+      "selfTest": [
+        {
+          "q": "Ten items, 3 replicas, `shuffle=False`, `drop_last=False`. Which indices does rank 1 yield?",
+          "a": "\\([1, 4, 7, 0]\\). Each rank takes every third index and rank 1 pads with head index 0 to reach length 4."
+        },
+        {
+          "q": "What must be saved to resume a shuffled sampler exactly?",
+          "a": "The epoch integer passed to `set_epoch`, the dataset and recipe version, and the RNG state feeding shuffle and workers. The sampler object itself holds no serializable position."
+        },
+        {
+          "q": "Two loader workers produce identical augmentations. What is the likely cause on a current PyTorch?",
+          "a": "An RNG object created in `Dataset.__init__` was copied identically into both workers. Build or reseed the generator in each process from the seed that `get_worker_info` reports."
+        },
+        {
+          "q": "Why must resume be rejected when the manifest changed?",
+          "a": "Shard order, counts or recipe changes remap positions to different documents. Continuing from the old cursor silently duplicates some examples and omits others."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: deterministic sampler with disjoint-coverage tests, padding and drop policy, document-to-batch lineage, and interrupted versus uninterrupted record-ID equivalence.",
+      "stopWhen": "Your sampler prints disjoint per-rank rows for both padding policies, and a mid-epoch save and restore continues the identical example sequence.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for sampler position and worker randomness in the pool; the official DataLoader and Sampler reference fills that gap beside the guide determinism notes and the Stas seeding checklist."
+      }
+    },
+    {
+      "id": "batch-token-accounting",
+      "title": "Microbatches, accumulation, global batch, token accounting and update semantics",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "microbatch-gradient-accumulation-global-batch-and-token-accounting",
+        "gradient-accumulation-zeroing-and-optimizer-update-semantics"
+      ],
+      "outcomes": [
+        "Derive global batch and token counts from microbatch size, accumulation steps, packing and data-parallel degree.",
+        "Implement accumulation with correct mean weighting over uneven microbatches and one optimizer step per global batch.",
+        "Explain when accumulation matches a large batch and which padding and zeroing choices break the match."
+      ],
+      "why": "The global batch sets gradient noise and learning-rate scaling, while the microbatch sets memory. Confusing the two changes the optimized objective without changing any config name.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-global-batch-no-sync",
+          "note": "Extend the batch equation with workers and `no_sync`."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/training-state-ownership",
+          "note": "See which states the single optimizer step updates."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-first-steps-dt1",
+          "title": "Gradient accumulation and the batch equation",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#gradient_accumulation",
+          "locator": "Gradient accumulation through Revisiting global batch size: microbatch size, accumulation steps and \\(\\text{gbs} = \\text{mbs} \\times \\text{grad\\_acc} \\times \\text{dp}\\); the note that accumulation keeps separate gradient buffers alive across the step"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Accumulation and effective batch size",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/gradient-accumulation/README.md",
+          "locator": "Effective batch as `batch * accum_steps` with `backward` each step and `step` only when `i % accum == 0`; related-topics `effective-batch-size-and-lr` README for linear versus square-root learning-rate scaling with batch size"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Capacity levers: accumulation and checkpointing",
+          "url": "https://mlsysbook.ai/vol1/training/training.html",
+          "locator": "Model Training, Pipeline Optimizations: gradient accumulation and activation checkpointing as the capacity responses when a batch does not fit"
+        }
+      ],
+      "focus": [
+        "Global batch is \\(\\text{gbs} = \\text{mbs} \\times \\text{grad\\_acc} \\times \\text{dp}\\), with tokens \\(\\text{gbs} \\times \\text{seq}\\). In LLM reports the batch is quoted in tokens so the count survives a sequence-length change.",
+        "Uneven microbatches need size-weighted averaging. With per-microbatch mean gradients \\(g_1 = [1, -1]\\) over 2 examples and \\(g_2 = [-2, -2]\\) over 1, the full-batch gradient is \\([0, -1.33]\\); averaging the two means gives the wrong \\([-0.5, -1.5]\\).",
+        "Accumulation keeps gradient buffers across micro-steps but holds only one microbatch's activations at a time, so its peak sits below a single large batch when activations dominate, even though the update matches. The optimizer steps once per global batch, then gradients are cleared.",
+        "Padding and packing change the denominator. Padded positions and cross-document transitions excluded from the loss must not count as tokens in the batch."
+      ],
+      "reproduce": "Closed-book, derive the update for two microbatches of sizes 2 and 1 with the gradients above, showing the size-weighted mean and one SGD step. Then implement accumulation over uneven microbatches and match it against a single full-batch step to 1e-5.",
+      "traps": [
+        "Averaging per-microbatch losses or gradients instead of weighting by microbatch size. Equal weight per microbatch overweights small ones.",
+        "Stepping the optimizer per microbatch. That trains with the microbatch size while the config claims the global size.",
+        "Counting padded or masked positions as batch tokens. Throughput and scaling rules then use tokens the loss never saw."
+      ],
+      "selfTest": [
+        {
+          "q": "Microbatch 8 with seq 4096, 4 accumulation steps, dp 2. What is the global batch in samples and tokens?",
+          "a": "\\(\\text{gbs} = 8 \\times 4 \\times 2 = 64\\) samples, or \\(64 \\times 4096 = 262{,}144\\) tokens."
+        },
+        {
+          "q": "Why does naive averaging of per-microbatch gradients fail for uneven microbatches?",
+          "a": "Each microbatch gradient is already a mean over its own size. The full-batch mean must weight each by its example count; unweighted averaging gives small microbatches excess influence."
+        },
+        {
+          "q": "Does accumulation with the same global batch always match a large batch numerically?",
+          "a": "It matches when every microbatch uses the same graph, the correctly weighted mean, one step per global batch and identical ordering. It differs when padding, dropout draws, batch statistics or ordering differ."
+        },
+        {
+          "q": "Where does the extra memory of accumulation sit?",
+          "a": "In gradient buffers held across micro-steps plus one microbatch of activations at a time, instead of the full-batch activation peak."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Gradient Accumulation Equivalence",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-gradient-accumulation-step",
+          "locator": "Implement `gradient_accumulation_step`: accumulate the full-batch mean-squared-error gradient over uneven microbatches and return the updated parameter and full gradient; the public cases check uneven sizes, equal sizes and zero loss",
+          "note": "Answer the weighting by hand first: each example contributes equally even when microbatch sizes differ. Then run the same comparison in your own trainer against a full-batch step."
+        }
+      ],
+      "stopWhen": "You derive the global batch in samples and tokens for any setting, and your accumulator matches a full-batch step while the naive mean-of-means fails as predicted.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook accumulation sections plus the guide accumulation and batch-size notes cover the batch equation at derive depth, and the free TensorTonic equivalence problem gives checked uneven-microbatch practice."
+      }
+    },
+    {
+      "id": "training-state-ownership",
+      "title": "Who owns parameters, buffers, gradients, optimizer, scheduler, scaler, RNG and loader state",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "model-parameters-buffers-gradients-and-optimizer-state-ownership",
+        "scheduler-scaler-rng-and-dataloader-state"
+      ],
+      "outcomes": [
+        "Explain which object owns parameters, buffers, gradients, optimizer state, scheduler, scaler, RNG and loader state during one step.",
+        "Build a state-ownership table for your trainer and show the update each entry receives per step.",
+        "Predict which missing entry diverges a resume and which leaves memory allocated but unused."
+      ],
+      "why": "Every later sharding and checkpoint decision is a question of who owns which tensor and when. An ownership table turns silent state bugs into checkable rows.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/precision-state-loss-scaling",
+          "note": "Split the parameter and gradient rows by dtype."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/exact-resume-tiny-fixtures",
+          "note": "Turn the table into a resume checklist."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Anatomy of a training step",
+          "url": "https://mlsysbook.ai/vol1/frameworks/frameworks.html",
+          "locator": "ML Frameworks, Anatomy of a Training Step: the seven-statement two-layer MLP traced through forward dispatch, `loss.backward` traversal with `.grad` accumulation and freed saved tensors, and the optimizer update"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Every state object in one file",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "`train_llm.py` model init with `torch.compile`, `DataLoader` with `num_workers=1` and `prefetch_factor=2`, `AdamW(fused=True)`, `CosineAnnealingLR`, the `zero_grad(set_to_none=True)` update block, and the checkpoint block saving model, optimizer and scheduler state dicts"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "RNG ownership and deterministic flags",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/reproducibility/README.md",
+          "locator": "`enforce_reproducibility`: torch, CUDA, NumPy and Python RNG streams seeded together, `CUBLAS_WORKSPACE_CONFIG` before CUDA init, and `torch.use_deterministic_algorithms(True)` with `cudnn.benchmark=False`; check the round trip of `torch.get_rng_state` and `torch.set_rng_state` yourself, since this note does not cover it"
+        }
+      ],
+      "focus": [
+        "Parameters and buffers live in the module; gradients accumulate into `.grad` on leaves; optimizer state (momentum, variance, plus an FP32 master copy when parameters are stored in low precision) lives in the optimizer; scheduler step count lives in the scheduler. Each has exactly one writer per step.",
+        "The scaler owns the scale factor and the skip-or-step decision; the RNG streams owned by torch, CUDA, NumPy and Python decide dropout, init and shuffle draws; the loader owns worker processes, prefetch queues and the sampler cursor.",
+        "Buffers such as BatchNorm running statistics update by moving average, not by gradient. Forgetting them in a checkpoint corrupts evaluation while training loss looks fine.",
+        "`zero_grad()` sets `.grad` to None by default (`set_to_none=True`) instead of filling zeros. Code that adds into `.grad` before the next backward then raises on None rather than reading zeros."
+      ],
+      "reproduce": "Closed-book, draw the ownership table for a tiny model with AdamW, cosine schedule, scaler and a two-worker loader: one row per state with owner, dtype, writer and lifetime. Then save and reload every row and show the next-step update matches an uninterrupted run.",
+      "traps": [
+        "Constructing the optimizer before the parameters it should track, or adding new parameters later without extending the optimizer. Those parameters train with no update while the loss still falls.",
+        "Saving the model but not the scaler. The resumed run restarts from the initial scale, so it repeats the early overflow skips and its updates differ from the uninterrupted run.",
+        "Moving the model to a device after the optimizer has stepped. The parameters move in place, but the existing optimizer state stays on the first device and the next step raises a device-mismatch error. Move the model first, then build the optimizer."
+      ],
+      "selfTest": [
+        {
+          "q": "Which objects must be saved so an AdamW plus cosine-schedule run resumes its exact trajectory?",
+          "a": "Model, optimizer, scheduler and scaler state dicts plus RNG states and the data position record. Weights alone restart the schedule and the scale history at the wrong point."
+        },
+        {
+          "q": "Why do BatchNorm running statistics need checkpointing if they receive no gradients?",
+          "a": "They are updated by forward moving averages and used at evaluation. Restoring weights without them shifts every normalized activation at test time."
+        },
+        {
+          "q": "What does `zero_grad(set_to_none=True)` change about `.grad` ownership?",
+          "a": "It sets `.grad` to None instead of zeros, and it is the default. The next backward allocates a fresh gradient; code that adds into `.grad` in between fails on None, and code that reads it sees None, not zeros."
+        },
+        {
+          "q": "A resumed run diverges although model and optimizer were restored. Name two other owners to check first.",
+          "a": "Scheduler position and RNG plus loader position. A shifted schedule or a different example and dropout sequence changes every later update."
+        }
+      ],
+      "practice": [
+        {
+          "name": "01-single-gpu: state-ownership table",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "Walk `train_llm.py` top to bottom and list every stateful object with its owner, dtype and per-step writer; then delete one saved entry at a time from a resumed run and record which deletion diverges the trajectory",
+          "note": "Keep the table; later sharding units add an owner column per rank."
+        }
+      ],
+      "stopWhen": "Your table names every stateful object in your loop with its writer, and you can predict the symptom of deleting any single row.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The MLSys training-step anatomy plus the single-file trainer and the Stas RNG checklist cover every ownership topic at explain and implement depth."
+      }
+    },
+    {
+      "id": "autograd-backward-hooks",
+      "title": "Autograd graphs, backward scheduling, saved tensors and gradient hooks",
+      "hours": 5,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "autograd-graph-creation-backward-scheduling-and-saved-tensors",
+        "gradient-hooks-readiness-order-and-synchronization-side-effects",
+        "custom-autograd-function-with-explicit-forward-and-backward"
+      ],
+      "outcomes": [
+        "Explain how the backward graph is rebuilt each iteration, which tensors are saved for backward, and when each gradient becomes ready.",
+        "Implement a custom autograd `Function` with explicit forward and backward and verify it against a numeric gradient.",
+        "Predict hook firing order and which hook side effects break accumulation or overlap."
+      ],
+      "why": "Distributed overlap hooks into gradient readiness: a hook that fires late or mutates state delays or corrupts every collective built on top of it. The single-process ordering must be exact first.",
+      "next": [
+        {
+          "unit": "distributed-training/data-parallelism-overlap/bucket-size-overlap",
+          "note": "Attach collectives to the readiness order built here."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/activation-recompute-tradeoffs",
+          "note": "Trade saved tensors for recompute with open eyes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-autograd-docs",
+          "title": "Graph encoding, saved tensors and hook order",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/autograd.html",
+          "locator": "How autograd encodes the history with Saved tensors (`save_for_backward`, `_saved` attributes, pack and unpack hooks); Backward Hooks execution (whether each of `register_hook`, `register_post_accumulate_grad_hook`, node pre and post hooks fires, and their firing order)"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Differentiation problem and backward cost",
+          "url": "https://mlsysbook.ai/vol1/frameworks/frameworks.html",
+          "locator": "ML Frameworks, Differentiation Problem: why reverse mode wins for a scalar loss over millions of parameters and the stored-intermediate memory price; the backward-at-twice-forward FLOP ratio is in the Model Training chapter"
+        }
+      ],
+      "focus": [
+        "The graph is rebuilt from scratch every iteration: what you run is what you differentiate. Control flow may change the graph shape each step, so a hook registered on one iteration's node may not exist on the next.",
+        "Only operations with at least one input requiring grad are recorded, and only leaves with `requires_grad=True` accumulate `.grad`. A `register_hook` fires while its gradient is computed; a `register_post_accumulate_grad_hook` fires once after accumulation into `.grad`, and only on leaves.",
+        "Saved tensors are the forward intermediates backward needs: `x.pow(2)` saves its input for the gradient. Pack hooks run once at save time while unpack hooks may run many times; mutating their inputs in place is forbidden.",
+        "In-place operations bump a version counter that is checked when backward unpacks a saved tensor, so an in-place change to a saved value raises. Mutation through `.data` skips the counter, so that route can still produce a silent wrong gradient."
+      ],
+      "reproduce": "From a blank file, implement a custom autograd `Function` for \\(y = x^2\\) with `save_for_backward` in forward and the chain-rule product in backward, verify it against a finite-difference gradient, and log the firing order of a tensor hook versus a post-accumulate hook over two steps with accumulation.",
+      "traps": [
+        "Misusing a post-accumulate hook. On a non-leaf tensor it errors even after `retain_grad()`; on a leaf it receives the parameter itself, not the gradient, so read `param.grad`. Picotron's `DataParallelNaive` hook all-reduces its argument, so it averages parameters and leaves the gradients unsynchronized.",
+        "Mutating a gradient inside a `register_hook` and expecting later hooks to see the original. Hooks compose in order, so each sees the previous hook's output.",
+        "Doing collective or CUDA-sync side effects inside a hook during overlap experiments. The hook runs inside backward scheduling, so a blocking call serializes the very overlap being measured."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does `y = x.pow(2)` keep `x` alive after forward?",
+          "a": "Backward needs the input to compute \\(2x\\). The gradient function saves it at forward time and releases it once backward completes, unless the graph is retained."
+        },
+        {
+          "q": "A tensor hook and a post-accumulate hook are registered on the same leaf. Which fires first?",
+          "a": "The tensor hook, while that gradient is computed. The post-accumulate hook fires right after the gradient is accumulated into that leaf's `.grad`, still during backward, not at the end of the whole pass."
+        },
+        {
+          "q": "Backward is called twice without `retain_graph=True`. What fails and why?",
+          "a": "The second call finds freed saved tensors. The first backward releases intermediates as it traverses unless retention was requested."
+        },
+        {
+          "q": "When does a node hook not fire although its tensor received a gradient?",
+          "a": "When the node itself did not execute, for example a tensor passed as `inputs` to `torch.autograd.grad` whose `grad_fn` was skipped. Tensor hooks still fire; node hooks do not."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a custom autograd function or gradient hook with ordering, numerical-result and accumulation-interaction tests against a single-process oracle.",
+      "stopWhen": "Your custom Function matches finite differences, and you can predict for any hook whether it fires, when, and what it observes.",
+      "fit": {
+        "verdict": "added",
+        "note": "Depth failed for hook firing order and saved-tensor packing in the pool books; the official autograd mechanics note fills that gap beside the MLSys differentiation chapter, with implementation practice in the section mini-project."
+      }
+    },
+    {
+      "id": "precision-state-loss-scaling",
+      "title": "FP32, TF32, BF16 and FP16 state, autocast and loss-scaling failures",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "fp32-tf32-bf16-and-fp16-state-and-accumulation-choices",
+        "mixed-precision-autocast-and-loss-scaling-failure-modes"
+      ],
+      "outcomes": [
+        "Explain which training state lives in which precision and where accumulation must stay in FP32.",
+        "Derive the per-dtype byte counts for parameters, gradients and optimizer state of a small model.",
+        "Diagnose lost updates, underflowed gradients and overflowed products from a failing mixed-precision run."
+      ],
+      "why": "Precision is a memory and stability contract: the wrong accumulation dtype silently deletes small updates, while the wrong loss scale deletes the gradients. Both look like a healthy run with worse results.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/training-memory-accounting",
+          "note": "Turn the byte counts into a full memory ledger."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/numerical-failure-instrumentation",
+          "note": "Trace an overflow back to its first invalid value."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mixed-precision-paper-dt1",
+          "title": "Mixed Precision Training",
+          "url": "https://arxiv.org/abs/1710.03740",
+          "locator": "Sections 1 to 3: FP32 master weights, loss scaling that lifts gradients above the FP16 underflow point \\(2^{-24}\\) (values below the minimum normal \\(2^{-14}\\) are subnormal and lose precision), and FP32 accumulation; Section 5 for the accuracy-matching evidence across architectures (arXiv:1710.03740v3)"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "Dtype states and TF32",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/dtype.md",
+          "locator": "Tensor Precision with the ML dtype progression; TF32 (`allow_tf32` matmul and cudnn flags); When to use fp32 accumulators (LayerNorm, reductions, gradient accumulation and master weights)"
+        },
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: mixed-precision accumulation",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.5 `mixed_precision_accumulation`: the four-loop `0.01 * 1000` accumulation in fp32 versus fp16; Section 2.1.5 `benchmarking_mixed_precision`: `ToyModel` dtype table under `torch.autocast` and why LayerNorm is sensitive"
+        }
+      ],
+      "focus": [
+        "Three techniques together make FP16 training match FP32: an FP32 master copy updated by the optimizer, a loss scale keeping small gradients representable in FP16, and FP32 accumulation of products. Each fixes a different failure.",
+        "Autocast keeps parameters in FP32 while running matmuls in low precision: a CPU check shows a Linear output in `torch.bfloat16` with `weight.dtype` still FP32. Reductions and norms stay wide because they sum many small terms.",
+        "TF32 is a process-global matmul mode, default `allow_tf32` False in PyTorch 2.14. It changes every matmul silently, so it belongs in the run manifest, not in model code.",
+        "The 2018 paper predates BF16 and TF32. Its loss-scaling derivation still holds, but every BF16 range claim must come from the Stas notes or current docs, never from this paper."
+      ],
+      "reproduce": "Closed-book, run the four-loop accumulation (`0.01 * 1000` in fp32-on-fp32, fp16-on-fp16, fp32-on-fp16 and cast-back) and explain which loop drifts and why. Then show one overflow fixed by scaling the loss and one small-update loss fixed by FP32 accumulation.",
+      "traps": [
+        "Testing loss scaling only on clean steps. The skip-and-backoff path runs only after an overflow: put an `inf` into one gradient and check that the step is skipped and the scale halves, from 65536 to 32768. This works on CPU in PyTorch 2.14.1.",
+        "Casting the master weights to FP16 to save memory. Small updates then round to zero and the model freezes while the loss looks algorithmically stuck.",
+        "Citing the 2018 paper for BF16 behavior. BF16 has the range of FP32 with short mantissa, the opposite tradeoff to FP16, and the paper predates it."
+      ],
+      "selfTest": [
+        {
+          "q": "FP16 gradients underflow while FP32 loss looks fine. Which of the three techniques is missing or misset?",
+          "a": "Loss scaling. In FP16, gradients below \\(2^{-24}\\) round to zero and those below \\(2^{-14}\\) already lose precision; scaling the loss up before backward and the gradients down before the step keeps them representable."
+        },
+        {
+          "q": "A BF16 run keeps parameters in FP32 under autocast. Why not store them in BF16 directly?",
+          "a": "The optimizer needs the FP32 master copy so small updates accumulate instead of rounding away. Autocast casts to BF16 only for compute."
+        },
+        {
+          "q": "Why does LayerNorm stay in FP32 under autocast while linears run narrow?",
+          "a": "It reduces over many elements, so narrow accumulation compounds rounding and its statistics need range. Linears are products plus a single accumulation that the backend keeps wide."
+        },
+        {
+          "q": "TF32 was enabled halfway through a study. Which comparisons break?",
+          "a": "All matmul numerics across the flag change. TF32 rounds differently from FP32, so loss, gradient and timing comparisons across the change confound precision with the studied effect."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `mixed_precision_accumulation` and `benchmarking_mixed_precision`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.5 both problems on model sizes your hardware fits: the accumulation error table with a 2 to 3 sentence accuracy comment, and the autocast dtype table with the LayerNorm sensitivity explanation",
+          "note": "These are writeup problems with no public tests; checking is your own error table plus the dtype table. Run the accumulation loops on CPU, the autocast table needs one GPU."
+        }
+      ],
+      "stopWhen": "Your accumulation table predicts which loop drifts, and you can attribute a new mixed-precision failure to scale, accumulation width or master-copy dtype.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The mixed-precision paper gives the three-technique derivation, the Stas dtype notes add TF32 and BF16 state the paper predates, and the CS336 accumulation problems give named practice."
+      }
+    },
+    {
+      "id": "training-memory-accounting",
+      "title": "Persistent, activation, temporary and allocator memory in one training step",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "persistent-activation-temporary-and-allocator-memory-accounting"
+      ],
+      "outcomes": [
+        "Derive parameter, gradient, optimizer, activation, temporary and checkpoint bytes by dtype for a small model.",
+        "Distinguish allocated, reserved and peak memory in a profiler snapshot and explain the gaps.",
+        "Validate one predicted memory number against measurement and explain allocator and temporary-buffer differences."
+      ],
+      "why": "OOMs are decided before the step runs: persistent state sets the floor, activations scale with batch and sequence, and the allocator decides what fits in practice. A ledger turns an OOM into an arithmetic error with a line number.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/activation-recompute-tradeoffs",
+          "note": "Cut the activation row the ledger identifies as dominant."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/profiler-memory-snapshots-nvtx",
+          "note": "Measure the rows with profiler and snapshot."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-first-steps-dt1",
+          "title": "Weight, gradient, optimizer and activation bytes",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#memory_usage_in_transformers",
+          "locator": "Memory usage in transformers: the FP32 and mixed-precision byte rules with the 1B, 7B, 70B and 405B table; the activation formula \\(m_{\\text{act}}\\) in sequence length, batch, width, heads and layers and its quadratic sequence dependence",
+          "depth": "Derive the table rows by hand; use the interactive calculator only after fixing sequence length and recomputation mode, since it does not display either."
+        },
+        {
+          "resource": "transformer-math-dt1",
+          "title": "Second derivation of the training ledger",
+          "url": "https://blog.eleuther.ai/transformer-math/",
+          "locator": "Memory Requirements, Training: Model Parameters, Optimizer States, Gradients, Activations and Batch Size, Total Training Memory; Distributed Training, Sharded Optimizers for the ZeRO-1, ZeRO-2 and ZeRO-3 rows"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Bottleneck signatures around the ledger",
+          "url": "https://mlsysbook.ai/vol1/training/training.html",
+          "locator": "Model Training, Identifying Bottlenecks: MFU with the 7B, 1024-token, 1.2s A100 example at 11.5 percent, and the compute, memory and data-bound signatures that say which ledger row binds"
+        }
+      ],
+      "focus": [
+        "Persistent bytes follow \\(M = N \\times w\\): element count times byte width. Mixed precision without FP32 gradient accumulation holds \\(2 + 2 + 4 + 8 = 16\\) bytes per parameter; with FP32 gradient accumulation it holds 20. The book table checks: 1B gives 16 GB and 20 GB, 7B gives 112 GB and 140 GB.",
+        "Eleuther counts the same 16 bytes differently: 2 for BF16 parameters, 2 for gradients and 12 for optimizer with the FP32 master inside. Reconcile presentations before comparing numbers across sources.",
+        "Activations scale with batch and quadratically with sequence while persistent state does not. For long sequences activations dominate; for short ones the persistent rows do.",
+        "Allocated is tensors alive, reserved includes the caching allocator pool, peak is the high-water mark. The Playbook budgets 1 to 2 GB for CUDA kernels on first use; measure yours, since lazy module loading makes it smaller, and fragmentation makes reserved exceed allocated even when the ledger balances."
+      ],
+      "reproduce": "Closed-book, ledger a 10M-parameter Adam model in mixed precision without FP32 gradient accumulation: parameters, gradients, optimizer and a stated activation shape in bytes. Then measure one row on your machine and explain the gap to allocator or temporary buffers.",
+      "traps": [
+        "Quoting GB against GiB without converting. The book table uses GB; profiler snapshots and the CS336 3.6 GiB per-layer numbers use GiB, 7 percent apart.",
+        "Treating mixed precision as memory saving for persistent state. It redistributes the same 16 bytes and adds 4 more with FP32 accumulation; the saving sits in activations and compute, not in the persistent rows.",
+        "Reading the Playbook widget number against the formula with unstated widget state. Without its sequence length and recomputation mode the two cannot be compared."
+      ],
+      "selfTest": [
+        {
+          "q": "A 1B-parameter model trains mixed precision with Adam, no FP32 gradient accumulation. What are the persistent bytes?",
+          "a": "16 GB: \\(16 \\times 10^9\\) bytes, as 2 GB parameters, 2 GB gradients, 12 GB optimizer with master, momentum and variance."
+        },
+        {
+          "q": "Why do Eleuther (2 plus 2 plus 12) and the Playbook (2 plus 2 plus 4 plus 8) agree?",
+          "a": "Both sum to 16 bytes per parameter. Eleuther files the 4-byte FP32 master inside the 12-byte optimizer row; the Playbook lists it as a separate parameters row."
+        },
+        {
+          "q": "Allocated reads 0.85 GB while reserved reads 1.29 GB after a step. Is memory leaking?",
+          "a": "Not necessarily. Reserved includes the allocator pool held for reuse plus fragmentation; allocated is live tensors. A leak needs growth across steps, not a reserved gap."
+        },
+        {
+          "q": "Batch doubles but persistent state is unchanged. Which row grows and how?",
+          "a": "Activations grow linearly with batch (and quadratically with sequence). Parameters, gradients and optimizer state are batch independent."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Mixed-Precision Training Memory Accountant",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant",
+          "locator": "Implement `memory_accountant`: byte counts for parameters, gradients, saved activations and optimizer state (none for SGD, one per parameter for AdaGrad, two for Adam) from shapes and byte widths; the public cases check BF16 with FP32 gradients under Adam, FP32 SGD and BF16 AdaGrad",
+          "note": "The problem excludes allocator overhead and master-weight copies by construction; state both exclusions when you compare its totals with your measured ledger."
+        }
+      ],
+      "stopWhen": "Your hand ledger predicts the measured persistent bytes within allocator noise, and you can name which row any batch, sequence or dtype change moves.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook byte rules plus the Eleuther second derivation and the MLSys bottleneck signatures cover the full ledger at derive and measure depth, with the free TensorTonic accountant as checked practice."
+      }
+    },
+    {
+      "id": "activation-recompute-tradeoffs",
+      "title": "Activation checkpointing, recomputation cost and selective policies",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "activation-checkpointing-and-recomputation-trade-offs",
+        "selective-activation-checkpoint-policy"
+      ],
+      "outcomes": [
+        "Derive the memory saving and extra forward cost of full versus selective checkpointing for a small stack.",
+        "Apply `torch.utils.checkpoint` with `use_reentrant=False` and validate the peak-memory change by measurement.",
+        "Choose checkpoint granularity from a memory profile instead of a rule of thumb."
+      ],
+      "why": "Activations are the elastic row of the ledger: checkpointing trades a bounded recompute cost for a large memory cut. The policy choice decides whether a bigger batch or a longer sequence fits.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/training-memory-accounting",
+          "note": "File the saving back into the ledger."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/activation-checkpointing",
+          "note": "Reuse the single-GPU mechanism under sharding later."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-first-steps-dt1",
+          "title": "Full versus selective recomputation",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#activation_recomputation",
+          "locator": "Activation recomputation: full checkpointing at layer boundaries costing up to 30 to 40 percent extra compute, selective checkpointing of attention at about 70 percent memory saving for 2.7 percent cost on GPT-3 175B, and the HFU versus MFU accounting that follows"
+        },
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: checkpointing mechanics",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 3.1 autograd residuals with `saved_tensors_hooks` and Section 3.2.1 `gradient_checkpointing`: the memory-optimal nested strategy with asymptotics, then the single-level granularity choice on a model size your GPU fits (the handout uses `xl`) validated by peak-memory profile"
+        }
+      ],
+      "focus": [
+        "Full checkpointing stores only layer-boundary activations and replays each layer forward in backward, adding up to a full extra forward pass. Selective checkpointing stores the cheap-to-keep feedforward activations and recomputes only attention, which is expensive to store but cheap to redo.",
+        "Recompute cost belongs in the FLOP count honestly: hardware FLOPs include the replayed forward, model FLOPs exclude it. Recompute can raise HFU while MFU falls, because MFU improves only when the same model work finishes sooner.",
+        "Checkpointing changes which tensors backward saves, not the mathematics. Gradients must match the uncheckpointed run; only the memory timeline and step time change.",
+        "Pin `use_reentrant=False` explicitly. Omitting it in PyTorch 2.14.1 warns and falls back to the reentrant mode, which supports only `backward`, needs an input that requires grad, and always recomputes the whole region."
+      ],
+      "reproduce": "Closed-book, sketch the nested checkpoint plan for a stack of N identical blocks with its memory asymptotics. Then checkpoint one granularity on a tiny model, show gradients match the baseline and the peak-memory profile moves as predicted.",
+      "traps": [
+        "Passing `preserve_rng_state=False` to skip the RNG bookkeeping while the region uses dropout. The replay then draws different masks and the gradients silently differ; with the default both modes replay torch RNG exactly, but randomness from other libraries is never replayed.",
+        "Wrapping the loss or the optimizer step in a checkpointed region. Recompute replays forward ops only; step side effects replay wrongly or not at all.",
+        "Comparing step times with and without checkpointing as pure overhead. The checkpointed run may fit a larger microbatch, so compare at equal global batch or not at all."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does selective checkpointing target attention activations?",
+          "a": "They grow largest with sequence length yet cost little to recompute per byte saved. Feedforward activations are cheaper to store relative to their recompute cost, so they are kept."
+        },
+        {
+          "q": "A checkpointed run matches loss but its step is slower. Is the optimization failing?",
+          "a": "Not necessarily. Extra forward work is expected; the win is fitting a larger batch or longer sequence. Judge at equal global batch and memory, not per-step time alone."
+        },
+        {
+          "q": "Checkpointed and baseline gradients differ with dropout on. What is the first suspect?",
+          "a": "RNG state across the replay. Forward randomness must be preserved and replayed identically; otherwise backward differentiates a different graph."
+        },
+        {
+          "q": "What distinguishes HFU from MFU when recomputation is on?",
+          "a": "HFU counts the replayed forward in achieved FLOPs; MFU counts only the required forward and backward. Recompute raises hardware work while model work stays fixed."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `gradient_checkpointing`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 3.2.1 on a model size your hardware fits: the nested-strategy asymptotics sketch, then the single-level granularity choice validated against the peak-memory profile of the neighboring sizes",
+          "note": "A writeup problem with no public tests; checking is your gradient-equality test plus the before and after memory profiles."
+        }
+      ],
+      "stopWhen": "Your checkpointed run matches baseline gradients and your profile explains which granularity fits the next larger batch.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook recomputation section plus the CS336 checkpointing problems cover full versus selective policy at derive and measure depth."
+      }
+    },
+    {
+      "id": "step-timeline-benchmark-hygiene",
+      "title": "Step timelines and repeated-trial benchmark hygiene",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "input-transfer-forward-backward-optimizer-and-checkpoint-timelines",
+        "warmup-synchronization-and-repeated-trial-benchmark-hygiene"
+      ],
+      "outcomes": [
+        "Instrument one step into data, transfer, forward, backward, optimizer and checkpoint phases with honest synchronization.",
+        "Run repeated trials with warmup and report mean, spread and exact settings instead of a best step.",
+        "Attribute a slow step to its phase from timer evidence rather than from intuition."
+      ],
+      "why": "Without phase timers every optimization is a guess: input stalls look like slow kernels and allocator warmup looks like a regression. Timelines make the bottleneck state its name.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/profiler-memory-snapshots-nvtx",
+          "note": "Replace coarse timers with a full trace."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/throughput-mfu-hfu",
+          "note": "Turn phase times into throughput and utilization."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: benchmarking method",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3 `benchmarking_script`: `benchmark.py` with selectable forward-only, forward plus backward and plus `optimizer.step` modes, `torch.cuda.synchronize` around `timeit.default_timer`, 5 warmup plus 10 measured steps with mean and standard deviation; Section 2.1.4 `nsys_profile` for the annotated trace"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Per-phase timers and memory statistics",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "`LocalTimer` with `data`, `forward`, `backward` and `update` phases using `synchronize` plus `time.time`, `get_mem_stats` with current and peak allocation and reservation, and the per-`log_freq` logging line reporting loss, tokens per second and all four timers"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "What a benchmark must hold fixed",
+          "url": "https://mlsysbook.ai/vol1/benchmarking/benchmarking.html",
+          "locator": "Benchmarking, Training Benchmarks: time to fixed quality rather than raw step speed, the full run envelope, and the distribution of accepted runs rather than a single best run; Benchmarking Best Practices: the methodology limits that decide whether a benchmark carries over to deployment"
+        }
+      ],
+      "focus": [
+        "CUDA launches are asynchronous, so a timer without `torch.cuda.synchronize` measures launch time, not work time. `LocalTimer` synchronizes around every phase boundary and the CS336 script around every timed step.",
+        "The first steps include allocator prep, compilation and cache fill, so they run slower and allocate differently. The CS336 5-warmup plus 10-measured pattern with 0 versus 1 to 2 warmup comparison exists to show this effect, not to hide it.",
+        "Report mean and standard deviation over the measured steps with model size, batch, sequence, precision, hardware, backend and commit. A single fast step is a sample of one from an unknown distribution.",
+        "Keep data, transfer, forward, backward, optimizer and checkpoint phases separate. The guide logs show all four timers plus tokens per second on every line so a slow step names its phase immediately."
+      ],
+      "reproduce": "Closed-book, write a three-mode timer (forward-only, forward plus backward, full step) with synchronization and warmup, and run it on a tiny model reporting mean and standard deviation per phase. Then remove warmup and synchronization one at a time and explain how each number lies.",
+      "traps": [
+        "Timing the first step and calling it the step time. Allocator and compilation effects make it unrepresentative in both directions.",
+        "Averaging across a checkpoint step. Checkpoint I/O belongs to its own phase; folding it into the mean hides both the steady step and the save cost.",
+        "Comparing steps across machines or commits without restating settings. Interconnect, allocator state and kernel versions move numbers more than most optimizations."
+      ],
+      "selfTest": [
+        {
+          "q": "Forward time measures near zero while backward looks normal. What is wrong with the timer?",
+          "a": "Missing synchronization around the forward phase. The timer recorded kernel launch and returned while the GPU still worked; backward synchronized implicitly and absorbed the forward time."
+        },
+        {
+          "q": "Why do the CS336 instructions ask for runs with 0 and with 1 to 2 warmup steps?",
+          "a": "To exhibit the warmup effect directly. The unwarmed mean mixes compilation and allocator prep with steady state; the comparison quantifies the bias warmup removes."
+        },
+        {
+          "q": "Tokens per second rises but time to fixed quality does not. Which benchmark view disagrees and why?",
+          "a": "The training-benchmark view: time to quality counts convergence per token, while tokens per second counts throughput. A faster step that harms sample efficiency can lose on quality time."
+        },
+        {
+          "q": "One step in ten is far slower and the slow phase is data. What do you check first?",
+          "a": "Loader workers, prefetch depth and storage versus local disk, not kernels. Periodic data-phase spikes with idle compute point at input starvation."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `benchmarking_script`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3 on the Table 1 sizes your hardware fits: all three timer modes with mean and standard deviation tables, plus the 0 versus 1 to 2 warmup comparison with its explanation",
+          "note": "A writeup problem with no public tests; checking is your timing tables plus the annotated explanation. Needs one GPU; CPU timers cannot stand in for device phases."
+        }
+      ],
+      "stopWhen": "Your phase table attributes any slow step to a named phase, and a peer can rerun your exact settings from the report alone.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The CS336 benchmarking problems plus the guide per-phase timers and the MLSys training-benchmark sections cover timelines and repeated-trial hygiene at measure depth."
+      }
+    },
+    {
+      "id": "profiler-memory-snapshots-nvtx",
+      "title": "PyTorch profiler traces, memory snapshots and NVTX ranges for a training step",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "pytorch-profiler-memory-snapshots-and-nvtx-ranges"
+      ],
+      "outcomes": [
+        "Capture a profiler trace of one full training step with labeled ranges and explain every gap in it.",
+        "Record a CUDA memory snapshot around a peak and attribute the largest allocations to a ledger row.",
+        "Annotate loader, forward, backward and optimizer phases with NVTX ranges that survive into Nsight timelines."
+      ],
+      "why": "Coarse timers say which phase is slow; traces say why. A labeled step trace plus a snapshot turns hidden synchronization and retained state into visible events.",
+      "next": [
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/compile-training-graph-breaks",
+          "note": "Explain the breaks the trace reveals."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/timeline-attribution-trace-alignment",
+          "note": "Extend single-rank traces to multi-rank alignment."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-profiler-dt1",
+          "title": "PyTorch profiler recipe",
+          "url": "https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html",
+          "locator": "Using profiler to analyze execution time (`activities`, `record_shapes`, `record_function`, self versus total time); Using profiler to analyze memory consumption (`profile_memory`); Using tracing functionality (`export_chrome_trace`); Using profiler to analyze long-running jobs (`schedule` with wait, warmup and active plus `on_trace_ready`) (page read 2026-10-14)"
+        },
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: traces and snapshots",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.4 `nsys_profile`: `nsys profile` with cuda, cudnn, cublas, osrt, nvtx and backtrace flags, `torch.cuda.nvtx.range` annotation and warmup filtering; Section 2.1.6 `memory_profiling`: `_record_memory_history` with `_dump_snapshot` into the memory visualizer and the forward versus full-step Active timelines"
+        },
+        {
+          "resource": "aisys-pytorch-dt1",
+          "title": "NVTX markers and the allocator view",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 13, NVTX Markers and Profiling Tools; Chapter 13, Profiling PyTorch to Identify Bottlenecks with Using PyTorch Profiler; Chapter 13, Tuning the CUDA Memory Allocator; Chapter 13, Optimizing the Data Input Pipeline"
+        }
+      ],
+      "focus": [
+        "Self time excludes children while total time includes them, so a large `model_inference` total with small self time points at the child operator holding the cost. Group by input shape to split one operator name across its call sites.",
+        "A trace needs both activities: CPU shows launch order and gaps, CUDA shows kernel execution. A CPU gap with no kernel beneath is launch overhead or a synchronization stall, not compute.",
+        "Snapshots record a few iterations only: start `_record_memory_history` just before the suspect region and dump right after, then render in the visualizer. Tracing a whole epoch produces an unreadable file.",
+        "`record_function` and NVTX ranges are the labels that make a trace attributable. Wrap each phase so loader waits, forward, backward and optimizer appear as named spans in both the chrome trace and Nsight."
+      ],
+      "reproduce": "Closed-book, profile three steps of a tiny linear model on CPU with shapes and memory recording, print the top table by total CPU time, and export a chrome trace. Then annotate each phase with a named range and explain the largest gap in the trace.",
+      "traps": [
+        "Profiling the first step and diagnosing steady state from it. Warmup kernels and allocator prep dominate the first trace; schedule wait plus warmup before the active window.",
+        "Reading CPU-side operator time as device time. Without the CUDA activity the table hides kernel overlap and misattributes device stalls to host operators.",
+        "Leaving memory history recording on for a full run. The buffer grows with every allocation event and perturbs the run it measures; scope it to a few iterations."
+      ],
+      "selfTest": [
+        {
+          "q": "The table shows `aten::conv2d` with large total time but tiny self time. Where is the cost?",
+          "a": "In a child operator it calls. Self time excludes children, total includes them; descend to the child row holding the self time."
+        },
+        {
+          "q": "A trace shows a long CPU gap with no kernel running beneath it. What does that indicate?",
+          "a": "Host-side stall: kernel launch overhead, a synchronization point, or the CPU waiting on data. No device work was even queued in that window."
+        },
+        {
+          "q": "Why does the long-running-jobs API use wait, warmup and active phases?",
+          "a": "Wait skips unrepresentative early steps, warmup discards profiler-skewed samples at trace start, and active records the steady window. Continuous tracing would be slow and unreadable."
+        },
+        {
+          "q": "A snapshot shows peak far above the ledger prediction with many small blocks. What is the likely cause?",
+          "a": "Allocator fragmentation or retained temporaries, not model state. Check the largest allocations with stack traces and whether freed blocks are reusable."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `memory_profiling`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.6 on a model size your GPU fits (the handout uses `xl`) at context 128 and 2048: forward versus full-step Active timeline images with stage labels, the 2 by 2 peak-memory table, and the largest-allocation stack-trace analysis",
+          "note": "A writeup problem with no public tests; checking is your timeline images plus the peak table reconciled against the ledger. Needs one GPU."
+        }
+      ],
+      "stopWhen": "One labeled trace of your own step has no unexplained gap, and your snapshot attributes its peak to named ledger rows.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The profiler recipe plus the CS336 trace and snapshot problems and the AISys NVTX and allocator sections cover traces, snapshots and ranges at measure depth."
+      }
+    },
+    {
+      "id": "compile-training-graph-breaks",
+      "title": "`torch.compile` on a training step: graph boundaries, recompiles and breaks",
+      "hours": 3,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "torch-compile-graph-boundaries-recompilation-and-graph-breaks"
+      ],
+      "outcomes": [
+        "Explain what `torch.compile` captures, what forces a graph break, and what invalidates a compiled graph.",
+        "Locate every graph break in one training step with `torch._dynamo.explain` and explain each in one sentence.",
+        "Measure compiled versus eager step time honestly, with compilation time kept out of the steady-step mean."
+      ],
+      "why": "Compilation moves work across the eager boundary: a break silently keeps the slow path while the config claims the fast one. Knowing where the graph ends says which optimizations actually apply.",
+      "next": [
+        {
+          "unit": "distributed-training/performance-fleet-operation/allocator-oom-recompile-storms",
+          "note": "Treat recompilation storms as a fleet symptom."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/torch-compile-graph-breaks",
+          "note": "Reuse the break taxonomy under sharding."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-pytorch-dt1",
+          "title": "Graph breaks and recompilations",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 13, PyTorch Compiler (`torch.compile`) with Using the PyTorch Compiler and Compilation Modes and Trade-Offs in Speed, Memory, and Compile Time; Chapter 14, Explaining and Minimizing Graph Breaks with Graph Breaks and TorchDynamo explain(), Minimize Graph Recompilations, and Debugging Compiler Phases, Graph Breaks, and Performance"
+        },
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: compile on the reference model",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 3.1.1 Operator Fusion for `torch.compile` fusion and Section 4 `torch_compile` (2pt): compile the attention benchmarking script and then the whole Transformer, compare eager and compiled timing tables, and report where fusion helps and where it does not"
+        }
+      ],
+      "focus": [
+        "Dynamo captures bytecode into graphs guarded on shapes, devices, grad mode and hook state. A CPU check of a compiled Linear reports Graph Count 1 with Break Count 0; any data-dependent branch or untraceable call splits the graph and runs the fragment eager.",
+        "Guards explain recompiles: a new shape, a toggled grad mode, a changed hook table or a new argument structure re-triggers compilation. Stable training loops keep shapes and modes fixed for exactly this reason.",
+        "Breaks preserve numerics but drop optimization scope. A step with many breaks is eager with extra overhead, so count breaks before quoting speedups.",
+        "Compilation time is a first-step cost like allocator prep. Warm it up, then time steady steps; folding compile minutes into the step mean punishes the compiled run for one-off work."
+      ],
+      "reproduce": "Closed-book, compile a tiny Linear training step, print the explain graph and break counts, add one branch on a `.item()` value and show the break count rise (a branch on a tensor predicate alone may not break). Then time eager versus compiled steady steps with warmup separated from measurement.",
+      "traps": [
+        "Quoting first-step compiled time as the compiled step time. Compilation happens once; steady steps are the comparison.",
+        "Assuming fewer breaks always means faster. A single graph with tiny dynamic shapes can recompile every step, which is worse than two stable graphs.",
+        "Calling `.item()` or printing a tensor inside the compiled step. Each forces a graph break and a device sync, so the step runs as fragments with a host round trip in the middle."
+      ],
+      "selfTest": [
+        {
+          "q": "Explain reports Graph Count 1 and Break Count 0 for a Linear. What does that promise?",
+          "a": "The whole call captured as one graph under its guards. It promises nothing about speed; it only says no fragment fell back to eager."
+        },
+        {
+          "q": "A loop over varying sequence lengths recompiles every step. Which guard fires?",
+          "a": "The shape guard. Each new shape invalidates the compiled graph; padding or bucketing to fixed shapes stops the storm."
+        },
+        {
+          "q": "A compiled step matches eager loss but runs slower. Name two suspects before blaming the compiler.",
+          "a": "Graph breaks leaving most work eager with added overhead, and timing that includes compilation or allocator warmup in the compiled mean."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 2: `torch_compile`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 4 `torch_compile` on a size your hardware fits: eager versus compiled comparison with the break and guard evidence for where fusion applies",
+          "note": "A writeup problem; checking is your explain output plus honest steady-step tables with compilation kept separate. Needs one GPU for device-relevant breaks; CPU shows the counting method."
+        }
+      ],
+      "stopWhen": "You can point at every break in your own step, name the guard or construct behind it, and defend the compiled speedup with warmup excluded.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The AISys compiler chapters plus the CS336 compile problem cover graph boundaries, breaks and recompiles at explain and measure depth without reaching below public APIs."
+      }
+    },
+    {
+      "id": "exact-resume-tiny-fixtures",
+      "title": "Exact resume state and tiny deterministic fixtures for systems debugging",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "checkpoint-contents-compatibility-and-exact-resume-state",
+        "tiny-deterministic-fixtures-for-fast-systems-debugging"
+      ],
+      "outcomes": [
+        "Specify the complete resume state for a training job and reject incompatible checkpoints explicitly.",
+        "Build tiny deterministic fixtures that run a full interrupt and resume cycle in seconds on CPU.",
+        "Prove uninterrupted versus resumed equivalence for data order, RNG draws and optimizer trajectory."
+      ],
+      "why": "Systems debugging is iteration speed times certainty: a tiny fixture that resumes exactly lets every later fault experiment run in seconds with an oracle to check against.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/recoverable-training-state",
+          "note": "Grow the fixture into the recoverable state set."
+        },
+        {
+          "route": "distributed-training",
+          "note": "Carry the fixture into multi-process equivalence tests."
+        }
+      ],
+      "study": [
+        {
+          "resource": "stas-training-dt1",
+          "title": "Tiny models and fast-debug discipline",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/debug/pytorch.md",
+          "locator": "Fast debug with Tiny Models, Tokenizers and Datasets: shrink width, depth, layers and data to the smallest case showing the bug, including the layer-count edit and the tiny-dataset recipe; Memory usage for the OOM triage that keeps fixtures small"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Deterministic resume pattern",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/determinism/README.md",
+          "locator": "Save and restore of torch, NumPy, Python and CUDA RNG into `rng.pt` with `torch.use_deterministic_algorithms(True)`; the `01-single-gpu` resume branch in https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py as the commit-then-read pattern to copy"
+        },
+        {
+          "resource": "dt-subsystem-dt1",
+          "title": "Subsystem Milestone A as the fixture contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/e840bca144d922ddf2e4cf96dda24786c1d6675d/projects/tier-3/distributed-training-subsystem.md",
+          "locator": "Milestone A: frozen golden data, model and update with a hand-checked step, plus the single-process golden trainer everything later compares against"
+        }
+      ],
+      "focus": [
+        "Complete resume state is model, optimizer, scheduler, scaler, every RNG stream, data position with dataset version, and the code and config identity. The fixture asserts all of them; a CPU check shows `get_rng_state` and `set_rng_state` round-tripping a `randn` draw exactly.",
+        "Compatibility is a gate, not a warning: tokenizer identity, config version, manifest version and world layout must match before loading. Mismatched loads can produce confident wrong results instead of errors.",
+        "Tiny means seconds on CPU with the same code paths: same sampler, same accumulation, same checkpoint format, miniature sizes. A fixture that swaps in toy logic for speed proves nothing about the real path.",
+        "Equivalence has a tolerance policy stated up front. Bitwise identity holds for CPU deterministic replay with the same thread count and library build; GPU reductions and TF32-class modes need a norm tolerance with its justification."
+      ],
+      "reproduce": "From a blank file, build a CPU fixture with a fixed seed, a few dozen examples and a two-layer model that checkpoints mid-epoch, kills the run, resumes, and asserts identical example IDs, RNG draws, losses and parameters against an uninterrupted twin. Then change one config value and show resume refuses.",
+      "traps": [
+        "Testing resume with the same process instead of a fresh one. In-memory state masks missing checkpoint rows; kill and relaunch to test what was actually written.",
+        "Freezing the seed but not the data position. Identical RNG with a restarted cursor replays early examples and silently overtrains them.",
+        "Validating on training loss alone. Loss can match while example order differs; assert consumed IDs and optimizer state, not just the scalar."
+      ],
+      "selfTest": [
+        {
+          "q": "Loss matches after resume but per-example IDs differ from the twin. Is resume correct?",
+          "a": "No. Matching loss with different order is coincidence or averaging luck; the run trains a different example sequence and later updates diverge."
+        },
+        {
+          "q": "Why must the resume test relaunch a fresh process?",
+          "a": "Only a fresh process reads exclusively from the checkpoint files. A same-process test inherits live optimizer, RNG and loader state that hides missing rows."
+        },
+        {
+          "q": "A fixture passes on CPU bitwise but fails bitwise on GPU. What changes?",
+          "a": "The tolerance policy, not the verdict method. Parallel reduction order and matmul modes vary device results; assert a justified norm tolerance while keeping the CPU bitwise gate."
+        },
+        {
+          "q": "The checkpoint loads but the tokenizer version differs. Proceed?",
+          "a": "No. Token IDs map to different embeddings and a different objective. Reject and re-tokenize or retrain from the compatible artifact."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: frozen golden trainer, mid-run interruption with fresh-process resume, consumed-ID and optimizer-trajectory equivalence, and changed-config refusal.",
+      "stopWhen": "Your fixture interrupts and resumes to identical IDs, draws and parameters on CPU, and refuses a changed config with a named reason.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Stas tiny-model discipline plus the guide determinism and resume pattern and the subsystem Milestone A contract cover exact resume and fixtures at implement depth, with practice in the section mini-project."
+      }
+    }
+  ]
+}

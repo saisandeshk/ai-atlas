@@ -1,0 +1,1060 @@
+{
+  "section": "checkpointing-fault-tolerance",
+  "addedResources": [
+    {
+      "id": "olmo-core-checkpointer",
+      "role": "reference",
+      "priority": "support",
+      "name": "OLMo-core Checkpointer",
+      "provider": "Ai2",
+      "access": "Free",
+      "use": "Read `src/olmo_core/train/checkpoint.py` (`_temporary_wd`, `_get_tmp_dir`, `_teardown_tmp_dir`, `_save_metadata`) for temp-directory atomic publish with barrier discipline, and `src/test/train/checkpoint_test.py` (`run_checkpointer`) for the save, find and reload assertions.",
+      "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/checkpoint.py"
+    }
+  ],
+  "units": [
+    {
+      "id": "recoverable-training-state",
+      "title": "The recoverable state set and deterministic resume of samplers and RNG streams",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "model-optimizer-scheduler-scaler-rng-and-dataloader-state",
+        "deterministic-resume-of-sampler-shuffle-and-rng-streams"
+      ],
+      "outcomes": [
+        "List the complete resume state of a distributed job: model, optimizer, scheduler, scaler, every RNG stream, sampler position, and config and code identity.",
+        "Resume a multi-process CPU job mid-epoch and prove the next batches, RNG draws and updates match an uninterrupted run."
+      ],
+      "why": "A resume that restores weights but not data position or RNG trains a different experiment while the loss looks normal. Every later unit in this section assumes this contract.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/sharded-checkpoint-formats-dcp",
+          "note": "Carry this state set into sharded format with the distributed state-dict contract."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Use this contract as the equivalence bar for every kill test."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Deterministic resume: RNG states and loader seeding",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/determinism/README.md",
+          "locator": "Code Changes diff: `torch.use_deterministic_algorithms(True)`, a seeded `Generator` with `DistributedSampler`, `worker_init_fn=_seed_worker`, and save plus restore of `rng.pt` holding NumPy, Python, torch and per-device CUDA states"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Crash-and-restart state discipline",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "`_STATE_PATH` load at start, `random.seed(rank + world_size * num_steps)` from the saved step, rank-0 write between two `dist.barrier()` calls; README Elastic Training: all workers restart on one failure and ranks are unstable across restarts"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Every stream as a Stateful entry",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`CheckpointManager.__init__` states map with `MODEL`, `OPTIMIZER`, `DATALOADER`, `LR_SCHEDULER` plus `additional_states`; `ModelWrapper`, `OptimizersContainer`, `LRSchedulersContainer` and `BaseDataLoader` each implement `Stateful`"
+        }
+      ],
+      "focus": [
+        "Resume state is every stream that advances: parameters, optimizer moments and step counters, scheduler position, scaler state, each RNG stream, and the sampler epoch plus consumed offset. Each missing stream replays or skips data.",
+        "Sampler resume needs the epoch and the offset inside it: same seed with `set_epoch`, then fast-forward past consumed batches. Restarting the iterator replays the epoch from batch 0.",
+        "The DCP recipe's `AppState` holds model and optimizer only. Scheduler, scaler, RNG and loader state must be added as further `Stateful` entries, as TorchFeather's states map shows.",
+        "Per-worker RNG needs per-worker construction. A `Generator` built in the `Dataset` constructor is copied identically into every worker and repeats its stream; reseed from `torch.initial_seed()` inside `worker_init_fn`."
+      ],
+      "reproduce": "On CPU with 2 gloo processes, train a tiny model with dropout under a `DistributedSampler` loader for 2 steps, and save model, optimizer, torch RNG state, sampler epoch and consumed count. Continue 2 steps as reference. Resume fresh objects from the save, fast-forward the loader, run 2 steps, and show `torch.equal` on weights. Then restart the loader from batch 0 and show the first batches repeat.",
+      "traps": [
+        "Saving only model and optimizer. The loss curve looks normal while data order and schedule quietly diverge, so check the next-batch sequence, not just the loss.",
+        "Treating the recipe's `get_state_dict` pattern as full resume. It manages FSDP names for model and optimizer but knows nothing of scheduler, scaler, RNG or loader position.",
+        "Seeding `random.seed(rank + world_size * steps)` once and assuming draws stay aligned. Any extra draw on one rank desynchronizes the streams, so reseed from saved step counts at load."
+      ],
+      "selfTest": [
+        {
+          "q": "A resumed run matches the reference loss for 50 steps, then diverges slowly. The checkpoint held model, optimizer and scheduler. Name the two most likely missing pieces and the test that tells them apart.",
+          "a": "Sampler position and RNG state. Log the first batches after resume and compare with the reference batches at that step: repeated or shifted batches point to the sampler, identical batches with diverging updates point to an unrestored RNG stream."
+        },
+        {
+          "q": "Why does rank 0's file write in `toy.py` sit between two `dist.barrier()` calls?",
+          "a": "The first barrier stops rank 0 from writing state for a step some rank has not finished. The second stops every rank from starting the next step before the write lands. Without them a crash leaves state ahead of or behind the slowest rank."
+        },
+        {
+          "q": "Two `DataLoader` workers emit identical augmentation streams. What was built in the wrong place, and where should it be built?",
+          "a": "A `torch.Generator` built in the `Dataset` constructor was copied identically into both workers. Build or reseed it inside `worker_init_fn` from `torch.initial_seed()`."
+        },
+        {
+          "q": "`torch.get_rng_state()` is saved but CUDA draws still diverge after resume. What is missing?",
+          "a": "The CUDA RNG states from `torch.cuda.get_rng_state_all()`, restored per device with `torch.cuda.set_rng_state`, plus the NumPy and Python states if the pipeline draws from them."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Crash-and-restart loop with the guide `toy.py`",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "Run `toy.py` with two CPU processes with GPUs hidden so it uses gloo: let it crash once, restart, and show `num_steps` continues from the saved state",
+          "note": "Each rank raises with probability 0.001 per step, so a 2-process run crashes within a few hundred steps (step 402 in about 2 s on CPU with PyTorch 2.14.1) and leaves `toy-state.json`; a rerun continues from it, so delete the file before a fresh start. Compare post-restart draws with an uninterrupted run and explain the gap: the script reseeds from the step count instead of restoring the RNG state."
+        }
+      ],
+      "stopWhen": "A mid-epoch resume reproduces the reference run's next batches and weights exactly on CPU, and you can name every stream in the checkpoint plus what breaks when each is dropped.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The determinism diff and crash loop plus TorchFeather's states map cover every stream at implement depth; the DCP recipe's model-only gap is called out, not searched."
+      }
+    },
+    {
+      "id": "sharded-checkpoint-formats-dcp",
+      "title": "Full and sharded formats and distributed checkpoint state-dict contracts",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "full-versus-sharded-checkpoint-formats",
+        "distributed-checkpoint-state-dict-contracts"
+      ],
+      "outcomes": [
+        "Explain when each rank writes its own shard versus gathering a full copy, and what the `.metadata` plus one-file-per-rank layout guarantees.",
+        "Save and load a tiny FSDP2 model with `get_state_dict` and `set_state_dict` plus a `Stateful` wrapper on CPU, and convert the result to a single-file torch checkpoint."
+      ],
+      "why": "Sharded checkpoints are the only format that scales past one device's memory. The state-dict contract of pre-allocated storage plus name management is what later makes resharding possible.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Load the same files onto a new world size."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/checkpoint-manifests-compatibility",
+          "note": "Version the layout this format writes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-dcp-dt9",
+          "title": "DCP save and load with FSDP2",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "How DCP works: parallel save, reshard at load, multiple files with at least one per rank, in-place operation, `Stateful` handling; Saving: `AppState`, `get_state_dict`, `dcp.save`; Loading: rebuild model and optimizer first, then `dcp.load`, at the same or a different world size (page read 2026-10-14)"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Sharded save and load in the distributed-training guide",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/04-fully-sharded-data-parallel/README.md",
+          "locator": "Sharded Checkpoints with `StateDictOptions(full_state_dict=False, cpu_offload=True)`; Saving a sharded checkpoint: barrier, then all ranks call `get_state_dict` for one file per rank; Loading a sharded checkpoint: `get_state_dict`, `load`, `set_state_dict`; Converting a sharded checkpoint to a full state dict checkpoint",
+          "depth": "The chapter links the unversioned `stable` reference; read the 2.14 pages instead, where FSDP2 (`fully_shard`) is current and FSDP1 helpers are legacy."
+        },
+        {
+          "resource": "pytorch-dcp-dt9",
+          "title": "Formats: DCP versus `torch.save`",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html#formats",
+          "locator": "Formats: `dcp_to_torch_save` and `torch_save_to_dcp` with `python -m torch.distributed.checkpoint.format_utils dcp_to_torch <dir> <out>` (page read 2026-10-14)"
+        },
+        {
+          "resource": "picotron-ckpt-dt9",
+          "title": "Per-rank files without DCP",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/checkpoint.py",
+          "locator": "`CheckpointManager._get_checkpoint_path` names files by TP and PP rank; `save_checkpoint` writes model, optimizer, `trained_steps` and `trained_tokens` with `torch.save` from DP and CP rank 0 only; `load_checkpoint` assumes the same topology"
+        }
+      ],
+      "focus": [
+        "DCP loads into pre-allocated storage: rebuild the model and optimizer before `dcp.load`, because sharding for the load plan comes from the live objects. `torch.load` needs only a path.",
+        "Sharded means every rank saves. The checkpoint is the set of per-rank files plus `.metadata`; a missing shard is a corrupt checkpoint, not a smaller one.",
+        "`get_state_dict` with `full_state_dict=False` keeps shards local with CPU offload; `True` gathers the full copy on each rank. Choose per use, not per habit: shards for training, full for export.",
+        "Picotron's hand-rolled per-rank `torch.save` files carry no resharding metadata, so restore needs the identical TP and PP layout. That limitation is what DCP's planner plus `.metadata` removes."
+      ],
+      "reproduce": "On CPU with 2 gloo processes, save a `fully_shard` toy model plus Adam state with the recipe's `AppState`, mutate both, reload, and show all 16 flattened state entries equal with `torch.equal`. Then convert the directory with `dcp_to_torch_save`.",
+      "traps": [
+        "Expecting `dcp.load` to create the model. It updates the passed state dict in place, so an unbuilt model gives it nothing to write into.",
+        "Saving only on rank 0 with a sharded state dict. Skipped ranks lose their shards and `.metadata` describes files that do not exist.",
+        "Reading one rank's `.distcp` file as a partial model. Shards are planner-assigned ranges, not layers; only `dcp.load` reassembles them."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the DCP loading example rebuild the FSDP model and optimizer before calling `dcp.load`?",
+          "a": "DCP loads in place into pre-allocated storage and takes each rank's sharding from the live objects. Without them it has nowhere to write and no resharding plan."
+        },
+        {
+          "q": "A 4-rank checkpoint directory holds `.metadata` and three `.distcp` files. Is it loadable?",
+          "a": "No. One shard is missing, so the checkpoint is incomplete. Resume must refuse it and fall back to the last known good, never train on three quarters of the state."
+        },
+        {
+          "q": "When should `full_state_dict` be true at save time, and what does it cost?",
+          "a": "Only to export for single-process use such as inference. Every rank gathers the full model, so peak memory holds the whole copy instead of one shard."
+        },
+        {
+          "q": "Picotron saves one `.pth` per TP and PP rank with `torch.save`. What breaks when the job restarts with a different TP degree?",
+          "a": "Each file holds a fixed TP slice with no resharding metadata, and `load_checkpoint` assumes the same topology. The slices no longer match the new layout."
+        }
+      ],
+      "practice": [
+        {
+          "name": "PyTorch DCP recipe: FSDP save plus load, CPU-ported",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "Port the Saving and Loading examples to CPU with gloo and `torchrun --nproc-per-node 2` (no per-rank CUDA device): save after one step, mutate, reload, and assert bit-exact parameters and optimizer state; then run `dcp_to_torch_save` on the directory",
+          "note": "The recipe targets an 8-GPU server with NCCL but the logic is identical on gloo. Expect `.metadata` plus one `__<rank>_0.distcp` per rank."
+        }
+      ],
+      "stopWhen": "Your CPU port saves, reloads bit-exactly and converts to a single file, and you can state which half of the contract (`get_state_dict` versus `set_state_dict`) each failure violates.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The DCP recipe, the guide's sharded save and load, the format converter and the Picotron no-DCP baseline cover both topics at explain and implement depth."
+      }
+    },
+    {
+      "id": "checkpoint-manifests-compatibility",
+      "title": "Checkpoint manifests, schema versions and name and optimizer compatibility",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "checkpoint-manifests-schema-and-version-compatibility",
+        "parameter-name-and-optimizer-state-compatibility"
+      ],
+      "outcomes": [
+        "Write a checkpoint manifest with schema version, topology, config and code identity, and refuse resume on mismatch.",
+        "Handle renamed parameters and missing or extra optimizer keys with explicit strict versus lax loading and a logged decision per key."
+      ],
+      "why": "Silent name or shape mismatches resume successfully and train the wrong model. The manifest turns that into a loud refusal or a logged remap.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/atomic-publish-checksums",
+          "note": "Publish only complete manifests."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Topology entries make resharding explicit."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nanotron-ckpt-dt9",
+          "title": "Nanotron serialization format and its limits",
+          "url": "https://github.com/huggingface/nanotron/blob/fb0747bac263a4c3a8ff4d724869a533afb561d8/docs/docs.md",
+          "locator": "Distributed serialization mechanism: `checkpoint_metadata.json` with version and topology, per-rank optimizer, scheduler and `random` shards, model `safetensors`; checkpoints are NOT topology agnostic because of `random_states` and sharded tensors, with the `checkpoint_reshape` plan"
+        },
+        {
+          "resource": "torchtitan-ckpt-dt9",
+          "title": "Keys, versions and partial loading",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/docs/checkpoint.md",
+          "locator": "EXCLUDING SPECIFIC KEYS FROM CHECKPOINT LOADING with `exclude_from_loading` for `dataloader`, `lr_scheduler` and `ema` plus the cold-start warning; Creating a seed checkpoint; Conversion support for HuggingFace and Torch formats"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Minimal manifest probe and strictness choices",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`_find_load_step`: `step-*` directories count only with a `.metadata` probe; `ModelWrapper.load_state_dict` uses `StateDictOptions(strict=False)` and rebuilds its cache; `load` with `step == 0` loads model weights only"
+        }
+      ],
+      "focus": [
+        "A manifest answers four questions before training resumes: which schema version, which topology produced this, which config and code, and which keys with which shapes. Anything less is directory discovery, not a manifest.",
+        "`strict=False` is a policy, not a default to copy. TorchFeather uses it for model weights so renamed runs still load, but every skipped or remapped key must be logged, and optimizer state needs stricter handling because a dropped moment silently restarts adaptation.",
+        "Seed checkpoints separate initialization from training. TorchTitan builds weights once on one device and DCP-reshards them anywhere, so layout never leaks into the initial weights.",
+        "Nanotron's format shows why manifests must record topology. Per-rank optimizer and RNG shards have no defined meaning under a new TP, DP or PP layout, so the honest manifest refuses rather than guesses."
+      ],
+      "reproduce": "Write a three-key manifest (schema version, topology, config hash) for a toy checkpoint, then demonstrate all three refusals: bump the schema, rename one parameter under strict loading, and delete `.metadata`. Each must fail loudly with the cause named. Catch a failed `dcp.load` as `CheckpointException`: in PyTorch 2.14.1 it derives from `BaseException`, so `except Exception` lets it through.",
+      "traps": [
+        "Trusting file names as a manifest. `step-12` without a `.metadata` probe is an interrupted write; TorchFeather's loader skips it, and yours must too.",
+        "Excluding a key from loading and forgetting to remove the exclusion. TorchTitan's EMA note shows the failure: every later resume cold-starts the EMA and discards its history.",
+        "Reloading optimizer state whenever shapes match. Changed `betas` or `eps` keep shapes but change the update, so record hyperparameters in the manifest and refuse or warm-start explicitly."
+      ],
+      "selfTest": [
+        {
+          "q": "A checkpoint directory contains `step-9` with shards but no `.metadata`, plus a complete `step-8`. Which step loads, and why?",
+          "a": "Step 8. Without the manifest probe the newer directory is an interrupted write, so the loader takes the newest complete checkpoint."
+        },
+        {
+          "q": "After enabling EMA mid-run, resume fails on a missing `ema` key. What is the one-resume fix, and what must happen right after?",
+          "a": "Exclude `ema` from loading once so it cold-starts from the loaded weights, then remove the exclusion so later resumes keep the EMA history."
+        },
+        {
+          "q": "A renamed layer loads with `strict=False` and training continues. What two records make this safe instead of silent?",
+          "a": "The manifest's map from old to new key names, and a load log of every skipped, remapped and shape-changed key. Unlogged lax loading is silent corruption."
+        },
+        {
+          "q": "Why does Nanotron record topology in `checkpoint_metadata.json` instead of attempting cross-topology loads?",
+          "a": "Its per-rank optimizer and RNG shards are only defined under the saving layout. The metadata states that assumption, so a changed mesh fails loudly instead of misassigning state."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TorchTitan CPU checkpoint suite",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/tests/unit_tests/cpu/test_checkpoint.py",
+          "locator": "Run `tests/unit_tests/cpu/test_checkpoint.py`: save, load, `load_step` selection and purge cases on CPU",
+          "note": "Run in the repo's dev environment on CPU; the full trainer needs GPUs. Read the case names as the manifest contract: latest-complete selection, key exclusion, stale cleanup."
+        }
+      ],
+      "stopWhen": "Your loader refuses a version bump, a renamed parameter under strict mode, and a manifest-less directory, each with a message naming the cause; lax loads log every remapped key.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Nanotron's worked manifest format, TorchTitan's key-exclusion contract and TorchFeather's probe-plus-strictness rules cover both topics at implement depth."
+      }
+    },
+    {
+      "id": "atomic-publish-checksums",
+      "title": "Atomic publish, commit markers, checksums and corruption detection",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "atomic-publish-with-temporary-paths-and-commit-markers",
+        "checksums-completeness-validation-and-corruption-detection"
+      ],
+      "outcomes": [
+        "Publish a sharded checkpoint so readers only ever see complete versions: temp directory, barrier, atomic replace, manifest last.",
+        "Detect corruption with per-shard checksums plus a completeness check, and fall back to the last known good."
+      ],
+      "why": "A crash during a write is normal at scale. Without atomic publish the newest checkpoint is the corrupt one, and without checksums that corruption trains silently.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "Retention keeps the fallback this unit refuses toward."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Killing during publish is one boundary in the campaign."
+        }
+      ],
+      "study": [
+        {
+          "resource": "olmo-core-checkpointer",
+          "title": "Temporary-directory publish with barriers",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/checkpoint.py",
+          "locator": "`_temporary_wd` with `_get_tmp_dir` (`<name>-tmp`), `_teardown_tmp_dir` (barrier, rank-0 `replace`, visibility `wait_for`), `_prepare_dir` barrier discipline, `_save_metadata` writing rank-0 `.metadata.json` last"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Checksums on every sync",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/storage/README.md",
+          "locator": "Don't forget the checksums: verify MD5 or SHA256 on sync because some tools skip it; slow but safe"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Commit marker on the read path",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`_find_load_step` `.metadata` probe for newest complete step; `_purge_stale_checkpoints` rank-0 only with sorted `step-*` selection"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Check-and-verify against silent corruption",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Check-and-Verify: Defending Against Silent Data Corruption, with Napkin Math 1.2: hash each gradient shard or reduced buffer and block the optimizer step on digest mismatch"
+        }
+      ],
+      "focus": [
+        "Publish order is the whole protocol: write shards to a temp directory, barrier, atomically replace onto the final name, then write the manifest. Readers list only final names and require the manifest.",
+        "The manifest is the commit marker. A directory without it is garbage from an interrupted write, however new its shards are.",
+        "Checksums catch bit rot and truncated transfers; completeness (every shard present, sizes matching the manifest) catches interruption. Run both: a complete set of corrupt shards and a pristine subset both refuse.",
+        "Hash in-flight reductions too, not just files at rest. Check-and-verify compares digests across ranks before the optimizer step, because a corrupt buffer poisons weights no disk checksum can see."
+      ],
+      "reproduce": "Kill a two-process CPU save between the last shard write and the replace, and show the loader ignores the temp directory and loads the previous complete checkpoint. Then flip one byte in a good shard and show the checksum check refuses the checkpoint.",
+      "traps": [
+        "Writing shards straight into the final directory. A crash mid-write leaves the newest version half complete, and the loader cannot tell it from a good one.",
+        "Checksumming the archive but skipping per-shard hashes. One corrupt shard then invalidates the whole checkpoint with no way to name the bad file.",
+        "Syncing file data but ignoring the directory entry. The earlier unit Files, page cache, fsync, atomic rename and durability covers the full contract: each file made durable first, then the rename, with the containing directory made durable."
+      ],
+      "selfTest": [
+        {
+          "q": "Ranks finish writing shards at different times and rank 0 replaces the temp directory as soon as its own shard lands. What breaks?",
+          "a": "The replace publishes an incomplete checkpoint. The barrier before teardown exists so every rank's shards are durable before any reader can see the final name."
+        },
+        {
+          "q": "Every shard verifies against its checksum but training still diverges right after resume. Which check is missing?",
+          "a": "Completeness against the manifest: a stale shard from an older step carries a valid checksum. Sizes, versions and the full shard set must match too."
+        },
+        {
+          "q": "Why is the manifest written after the replace rather than before the shards?",
+          "a": "The manifest is the commit marker. Written early it commits shards that do not exist yet; written last it certifies exactly what is durable."
+        },
+        {
+          "q": "A gradient shard's checksum matches on disk but the loss spikes after one AllReduce. Where did verification miss?",
+          "a": "In flight: silent corruption during the reduction never touched the disk copy. Check-and-verify hashes reduced buffers across ranks before the optimizer step."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Atomic publish plus tamper refusal in your own harness",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/test/train/checkpoint_test.py",
+          "locator": "Mirror the `run_checkpointer` assertions (`dir_is_checkpoint`, `find_checkpoints`, `latest_checkpoint`, reload equivalence) for a temp-dir publish with manifest plus per-shard SHA256, and add a one-byte tamper case that refuses the checkpoint",
+          "note": "Implement in your own repository on CPU with small shards. The OLMo suite is the layout contract, not a drop-in dependency."
+        }
+      ],
+      "stopWhen": "An interrupted publish never appears on the load path, a tampered shard is named by its checksum failure, and both cases fall back to the previous complete checkpoint.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for a worked temp-dir publish with barrier discipline; OLMo-core's Checkpointer supplies that pattern and its test assertions beside Stas checksums and TorchFeather's probe."
+      }
+    },
+    {
+      "id": "coordinated-async-save",
+      "title": "Coordinated saves, asynchronous checkpointing and staging memory",
+      "hours": 5,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "rank-participation-and-coordinated-save-barriers",
+        "synchronous-versus-asynchronous-checkpointing",
+        "staging-buffers-and-host-memory-pressure-during-async-save",
+        "asynchronous-checkpoint-isolation-with-a-separate-process-group"
+      ],
+      "outcomes": [
+        "Explain who must participate in a save and where the barriers go, including the separate-group isolation pattern.",
+        "Measure synchronous pause against asynchronous overlap on CPU and state the staging memory cost of each mode."
+      ],
+      "why": "Synchronous saves stop the world; asynchronous saves move the cost to host memory and a background thread. Ranks that disagree on participation corrupt the checkpoint either way.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/checkpoint-frequency-objectives",
+          "note": "Feed the measured save cost into the interval model."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "Background uploads interact with retention."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-dcp-dt9",
+          "title": "The async DCP recipe",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_async_checkpoint_recipe.html",
+          "locator": "Asynchronous Checkpointing Overview: copy to CPU buffers first, memory rises by per-rank size times ranks, one outstanding request at a time; Fully Asynchronous Staging with `DefaultStager` (new in 2.9): `staging_completion` before `optimizer.step`, `upload_completion` join; Even more performance with Pinned Memory: `FileSystemWriter(cache_staged_state_dict=True)` keeps a persistent buffer (page read 2026-10-14)"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Coordinated async with an isolated group",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`AsyncMode` with `dist.new_group(backend=\"gloo\")` for `async_save_pg` with all ranks participating; `_async_wait` before each new save and in `close`; the last-step save forced synchronous; garbage collection around async saves"
+        },
+        {
+          "resource": "torchtitan-ckpt-dt9",
+          "title": "Async modes and staging waits",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/torchtitan/components/checkpointer/dcp.py",
+          "locator": "`AsyncMode` with `DISABLED`, `ASYNC` and `ASYNC_WITH_PINNED_MEM`; `DefaultStager` with `StagingOptions`; `_maybe_wait_for_staging` separating staging from upload completion"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "All ranks enter every save",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/04-fully-sharded-data-parallel/README.md",
+          "locator": "Saving a sharded checkpoint: `dist.barrier`, then all ranks call `get_state_dict` because every shard is needed"
+        }
+      ],
+      "focus": [
+        "Every rank participates in every save. DCP plans across the group, so a rank that skips `save` breaks the plan for all. Barrier before, join the future before the next save.",
+        "Async staging copies parameters to CPU buffers first so training continues. The copy costs per-rank size times ranks of host memory, and pinned buffers persist between saves instead of releasing.",
+        "With a `DefaultStager` doing asynchronous staging, `async_save` returns two futures with two deadlines: `staging_completion` must resolve before `optimizer.step` mutates the parameters, and `upload_completion` before the next save reuses the buffers or the job exits. The CPU default path stages synchronously and returns one future; join it before the next save or the exit.",
+        "Isolate checkpoint collectives on their own process group, as TorchFeather's gloo `async_save_pg` does, so save coordination never interleaves with training collectives."
+      ],
+      "reproduce": "Time 5 synchronous `dcp.save` calls against 5 `async_save` calls with joining on CPU, and report both totals plus how many staging copies are held at once. Then destroy the process group right after the last `async_save` without joining: on 2 CPU processes with PyTorch 2.14.1 this left `.metadata` plus only rank 0's shard, with exit code 0. A plain exit without the destroy still completes, because the interpreter waits for the background thread.",
+      "traps": [
+        "Queueing a second `async_save` before joining the first. Each outstanding request holds a full staging copy, and on one `gloo` group the two background saves interleave their collectives: in a 2-process CPU run both timed out and neither checkpoint was written.",
+        "Calling `optimizer.step` right after `async_save` with a `DefaultStager`. The device-to-host copy may still be in flight, so wait on `staging_completion` first or the checkpoint captures half-updated weights.",
+        "Tearing down while the future is pending. Join first, as TorchFeather's `close` does with `_async_wait` before destroying its group: destroying the group with the save in flight produced `.metadata` plus one of two shards and a clean exit code."
+      ],
+      "selfTest": [
+        {
+          "q": "Training continues immediately after `async_save` returns. What protects the checkpoint from the next `optimizer.step`?",
+          "a": "The staging copy: parameters are first copied to CPU buffers, and the step mutates device weights, not the staged copy. With `DefaultStager` the copy itself is asynchronous, so `staging_completion` must resolve before the step."
+        },
+        {
+          "q": "Two ranks save while a third skips the call and keeps training. What happens at load?",
+          "a": "The save plan assumed all ranks, so the checkpoint is missing a shard while `.metadata` disagrees with the files. Every rank must enter every save."
+        },
+        {
+          "q": "Why does TorchFeather create a separate gloo group for async saves instead of reusing the training group?",
+          "a": "So checkpoint coordination traffic and barriers never interleave with training collectives on the default group. The save path gets its own ordering domain."
+        },
+        {
+          "q": "Host memory grows with every checkpoint although each save completes. What was kept, and what releases it?",
+          "a": "The pinned staging buffer from `cache_staged_state_dict=True`, which persists between saves by design. Only destroying the writer releases it; without the cache, buffers release at each save's completion."
+        }
+      ],
+      "practice": [
+        {
+          "name": "PyTorch async DCP recipe loop, CPU-ported",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_async_checkpoint_recipe.html",
+          "locator": "Port the 10-step `async_save` loop to CPU gloo: one outstanding request with a `.result()` join per step, then add the `DefaultStager` variant with `staging_completion` before `optimizer.step` and `upload_completion` at the end; time the pause against synchronous `dcp.save`",
+          "note": "The recipe uses CUDA devices. On CPU there is no device-to-host copy, so timings compare API overhead and disk writes only. GPU staging overlap needs two or more GPUs; state that condition in your notes."
+        }
+      ],
+      "stopWhen": "Your CPU port joins exactly one outstanding request per step, separates staging from upload completion in the `DefaultStager` variant, and your timings state which costs transfer to GPUs and which do not.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The async recipe plus the TorchFeather and TorchTitan isolation patterns cover coordination, staging memory and measurement at explain and measure depth."
+      }
+    },
+    {
+      "id": "checkpoint-frequency-objectives",
+      "title": "Checkpoint frequency, save cost, lost work and recovery objectives",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "checkpoint-frequency-save-cost-and-recomputation-loss",
+        "incremental-and-differential-checkpoint-vocabulary",
+        "recovery-point-and-recovery-time-objectives"
+      ],
+      "outcomes": [
+        "Derive the Young-Daly interval from write time and system MTBF and recompute the chapter's worked numbers.",
+        "State RPO and RTO for a job and show how interval, retention and recovery time each move them.",
+        "Use incremental and differential vocabulary precisely: what each reuses and what a restore needs."
+      ],
+      "why": "Every checkpoint policy is one trade: frequent writes burn throughput, rare writes burn rework. RPO and RTO turn that trade into objectives the schedule must meet.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "Retention depth is part of the RPO."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/scaling-efficiency-goodput",
+          "note": "Restarts and rework enter goodput."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "The interval model",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Checkpointing: Preserving Progress with Definition 1.1; Checkpoint interval from failure analysis with Figure 25 and Napkin Math 1.3; Systems Perspective 1.3 on Young-Daly assumptions; Checkpoint overhead analysis; The stop-the-world cost"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Recovery budgets and vocabulary",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Failure Detection and Recovery with equation 9 for recovery time; Checkpoint 1.4: Reasoning about the checkpoint tax; appendix Reliability Foundations: Checkpoint Optimization, Recovery Budgets, Strategy Selection"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Frequency arithmetic from production",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Frequent checkpoint saving: BLOOM-176B wrote 2.3TB in 40 seconds on 384 processes every 3 hours, 720 saves totalling 8 hours (0.37 percent); keep the 2 most recent checkpoints local for fast resume"
+        },
+        {
+          "resource": "llama3-reliability-dt9",
+          "title": "Failure rates to plan against",
+          "url": "https://arxiv.org/abs/2407.21783",
+          "locator": "Section 3.3.4 Reliability and Operational Challenges with Table 5: 466 interruptions over a 54-day snapshot, 47 planned and 419 unexpected; Section 3.3.1 storage on bursty writes and minimizing pause time (arXiv:2407.21783v3)"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Incremental checkpoints and their restore chain",
+          "url": "https://mlsysbook.ai/vol2/data_storage/data_storage.html",
+          "locator": "Checkpoint Storage: the paragraph beginning \"Incremental checkpointing offers a further optimization\"",
+          "depth": "It defines an incremental checkpoint as changes since the last full one, which backup vocabulary calls differential, yet restores it by applying a chain of increments. Use this unit's two definitions and record in the manifest which one each partial checkpoint follows."
+        }
+      ],
+      "focus": [
+        "Total waste is write cost plus expected rework: \\(T_{\\text{write}} / \\tau + \\tau / (2 \\cdot \\text{MTBF})\\). The Young-Daly interval \\(\\tau_{\\text{opt}} = \\sqrt{2 \\cdot T_{\\text{write}} \\cdot \\text{MTBF}}\\) sits at its minimum. Derive it by differentiating, not by quoting.",
+        "Restart time is a per-failure term, not a smaller write time. Folding restart into the square root needs a recovery-aware model, as Systems Perspective 1.3 warns.",
+        "RPO is the oldest state you can lose, bounded by interval plus retention gaps. RTO is detect plus restart plus load plus warmup, the chapter's equation 9. Interval moves RPO; recovery engineering moves RTO. Both terms come from SLIs, SLOs, error budgets and recovery objectives, applied here to checkpoints.",
+        "Incremental checkpoints store changes since the last checkpoint of any kind; differential store changes since the last full one. Restore needs the base plus every incremental since, or the base plus the latest differential. Neither replaces a correct full checkpoint. The storage chapter uses incremental for since-last-full deltas, so name the definition you use."
+      ],
+      "reproduce": "Closed-book, recompute Napkin Math 1.3 (37-second writes with 3.69-hour MTBF give a 991-second interval at 7.5 percent total waste) and the BLOOM overhead (720 saves of 40 seconds are 8 hours, 0.37 percent of 90 days).",
+      "traps": [
+        "Setting the interval from write time alone, or quoting the chapter's 16.5-minute interval as a recommendation. The formula needs the fleet MTBF as its second input, and that worked number belongs to a 10,000-GPU cluster with 37-second writes.",
+        "Trusting the printed Table 5 percentages. The counts sum to 419 but the Faulty GPU share (30.1 percent) disagrees with its count (148 of 419 is 35.3 percent), so plan from counts and recompute shares yourself.",
+        "Calling RTO the checkpoint write time. RTO includes detection, scheduling, loading and warmup, which run 3 to 5 times the write in production."
+      ],
+      "selfTest": [
+        {
+          "q": "Derive the Young-Daly interval from the two-sided tax.",
+          "a": "Minimize \\(T_{\\text{write}} / \\tau + \\tau / (2 \\cdot \\text{MTBF})\\) over \\(\\tau\\): \\(-T_{\\text{write}} / \\tau^2 + 1 / (2 \\cdot \\text{MTBF}) = 0\\), so \\(\\tau = \\sqrt{2 \\cdot T_{\\text{write}} \\cdot \\text{MTBF}}\\)."
+        },
+        {
+          "q": "A cluster doubles in size and system MTBF halves with write time fixed. How does the optimal interval move?",
+          "a": "It shortens by \\(\\sqrt{2}\\): the new interval is \\(\\tau / \\sqrt{2}\\), since only the MTBF term changes."
+        },
+        {
+          "q": "Llama 3 saw 419 unexpected interruptions in 54 days. What fleet MTBF does that imply, and what is it for?",
+          "a": "About 3.1 hours (54 times 24 divided by 419). It is the MTBF input to the interval model for a fleet of that scale, not a constant for all jobs."
+        },
+        {
+          "q": "A job keeps hourly checkpoints with a 10-minute RTO and the last two are corrupt. What are the realized RPO and recovery time?",
+          "a": "Up to 3 hours of lost work: the newest usable checkpoint is the third most recent. Recovery still takes the 10-minute RTO on top. Retention depth is part of the RPO, not just the interval."
+        }
+      ],
+      "practice": [
+        {
+          "name": "MLSys Checkpoint 1.4: Reasoning about the checkpoint tax",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Checkpoint 1.4: Young-Daly shift, Two-sided tax, Faster writes, Square-root scaling",
+          "note": "Answer all four boxes on paper first: recompute Napkin Math 1.3 and the Llama 3 fleet MTBF (419 over 54 days) before checking against the text."
+        }
+      ],
+      "stopWhen": "You derive the interval from the tax expression without notes, recompute both worked numbers exactly, and can state your own job's RPO and RTO with the input each depends on.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The chapter's interval model, recovery budgets and Checkpoint 1.4, the storage chapter's incremental paragraph and the Stas and Llama 3 production numbers cover derivation, vocabulary and objectives at derive depth."
+      }
+    },
+    {
+      "id": "restore-mesh-resharding",
+      "title": "Restoring onto a different world size or mesh",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "world-size-and-mesh-resharding-on-restore"
+      ],
+      "outcomes": [
+        "Load a sharded checkpoint onto a different world size and prove full-parameter equality.",
+        "Explain which state reshards cleanly (parameters, aligned optimizer moments) and which does not (RNG streams, topology-bound shards)."
+      ],
+      "why": "Jobs rarely restart on identical hardware. Resharding turns a checkpoint from a same-mesh snapshot into portable state.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Resharding is one recovery path under test."
+        },
+        {
+          "unit": "distributed-training/zero-fully-sharded-training/checkpoint-consolidation-resharding",
+          "note": "Consolidation is the companion operation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-dcp-dt9",
+          "title": "Reshard across topologies at load",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "How DCP works: save on any number of ranks, then re-shard across differing cluster topologies at load time; Loading: same or different world size with the pre-allocated destination plan; Formats for the single-file export path (page read 2026-10-14)"
+        },
+        {
+          "resource": "torchtitan-ckpt-dt9",
+          "title": "Seed checkpoints and resharding",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/docs/checkpoint.md",
+          "locator": "Creating a seed checkpoint: every parallelism degree set to 1 on one device, then loaded anywhere via DCP resharding"
+        },
+        {
+          "resource": "nanotron-ckpt-dt9",
+          "title": "Why resharding is hard",
+          "url": "https://github.com/huggingface/nanotron/blob/fb0747bac263a4c3a8ff4d724869a533afb561d8/docs/docs.md",
+          "locator": "Distributed serialization mechanism: checkpoints are NOT topology agnostic because of `random_states` and sharded tensors, with the `checkpoint_reshape` plan; optimizer states aligned with parameters as the reshardable part"
+        },
+        {
+          "resource": "picotron-ckpt-dt9",
+          "title": "The no-reshard baseline",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/checkpoint.py",
+          "locator": "`load_checkpoint`: Assume the topology is the same, with per-TP and PP-rank `.pth` names, so resume never remaps across degrees; `adjust_tensor_size` belongs to the separate Hugging Face initialization path, where it slices embedding, output-projection and MLP weights by TP rank but takes the leading rows of q, k and v on every rank"
+        }
+      ],
+      "focus": [
+        "DCP resharding is a load-time plan from saved shards to live objects: same files, new layout, decided from the destination model's sharding. Nothing in the checkpoint changes.",
+        "Parameters and their aligned optimizer moments remap; RNG streams do not. Two streams at \\(\\text{TP} = 2\\) have no \\(\\text{TP} = 1\\) equivalent, so a resharded resume reseeds or replays RNG explicitly.",
+        "A seed checkpoint is the extreme case: build once at degree 1, reshard everywhere. It separates initialization randomness from layout.",
+        "Picotron resumes only onto the saving layout. Its slicer serves initialization from full Hugging Face weights, and even there its q, k and v slices ignore the TP rank. Shrinking from \\(\\text{TP} = 4\\) onto \\(\\text{TP} = 2\\) needs concatenation across files, which only a planner (DCP) or an explicit reshape provides."
+      ],
+      "reproduce": "Save a `fully_shard` toy model plus Adam state at world size 2 on CPU, load it at world size 1 over differently seeded initialization, and show the full parameter tensors equal the world-size-2 reference exactly.",
+      "traps": [
+        "Assuming shard files map to ranks. Planner-assigned ranges follow the destination layout; a new rank's slice may come from any old file.",
+        "Resharding the model but skipping the moments check. Moments follow parameters only while the parameter-to-state alignment holds, so verify moments per parameter after the move.",
+        "Expecting the sampler position to survive a world-size change. Per-rank data ownership changes with the new degree, so recompute the shard assignment and resume from a global step, not a rank offset."
+      ],
+      "selfTest": [
+        {
+          "q": "A 4-rank checkpoint loads onto 2 ranks. Where does the second rank's new slice come from?",
+          "a": "Wherever the load plan puts it: DCP reads all saved shards and writes each destination rank its new slice. Files are not rank-addressed."
+        },
+        {
+          "q": "After a restore from \\(\\text{TP} = 2\\) to \\(\\text{TP} = 1\\), loss matches but later dropout draws differ from the same-mesh resume. Is the restore broken?",
+          "a": "No. Parameters and optimizer state reshard, but RNG streams have no cross-topology equivalent, so dropout draws legitimately differ. Statistical match is the right bar for that stream."
+        },
+        {
+          "q": "Why can a seed checkpoint initialize any mesh while a training checkpoint cannot resume on any mesh without extra work?",
+          "a": "The seed holds only initial weights, which slice cleanly. A training checkpoint also holds optimizer moments, scheduler position, RNG streams and data position, each with its own layout dependence."
+        },
+        {
+          "q": "Picotron's `adjust_tensor_size` pads a narrowed slice with `torch.empty` rows when the target is wider. What must happen before training on those rows?",
+          "a": "They must be re-initialized: `torch.empty` allocates without drawing values, so the padded rows are garbage until reset. That path is Hugging Face initialization, not resume."
+        }
+      ],
+      "practice": [
+        {
+          "name": "DCP recipe Loading example across world sizes",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "Loading: rebuild the model at the new world size, then `dcp.load` the old `checkpoint_id`; assert full-parameter equality with a `full_state_dict=True` comparison",
+          "note": "Proven pattern on CPU gloo: save at 2 processes, load at 1, all 4 parameter tensors bit-exact. Check optimizer moments the same way when the optimizer configuration is unchanged."
+        }
+      ],
+      "stopWhen": "A 2-to-1 CPU restore matches the reference bit-exactly on parameters, and you can state for each state class (parameters, moments, RNG, sampler) whether it reshards, reseeds or recomputes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The DCP reshard contract, TorchTitan seed checkpoints, Nanotron's worked limits and the Picotron baseline cover the single resharding topic at implement depth."
+      }
+    },
+    {
+      "id": "preemption-graceful-shutdown",
+      "title": "Preemption signals and bounded graceful shutdown",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "preemption-signals-and-bounded-graceful-shutdown"
+      ],
+      "outcomes": [
+        "Install a signal handler that finishes the current iteration, saves a checkpoint and exits inside a grace budget.",
+        "Derive the grace budget from iteration time plus save time, and synchronize the exit decision across ranks."
+      ],
+      "why": "Preemption is scheduled, not random. A bounded handler converts a killed job into a clean checkpoint instead of lost work.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/rank-crash-elastic-restart",
+          "note": "Unplanned failures need the restart side."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "A preemption save still needs a place to land."
+        }
+      ],
+      "study": [
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Graceful exit before the time limit",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Dealing with forced job preemption: grace budget as iteration time plus save time, doubled; Approach A (a training-script exit-duration argument, `args.exit_duration_in_mins` in the quoted Megatron code, with an `all_reduce` MAX sync); Approach B.1 (the `#SBATCH --signal=USR1@600` directive with a `SIGUSR1` handler and exit-asap flag); Approach B.2 (launcher signal forwarding with `B:USR1`, `trap` and `pgrep` children); QoS-based SLURM preemption"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Kill and save switches",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Kill switch: poll for a file before each iteration, save and exit; Save switch: save and continue, removing the switch file"
+        }
+      ],
+      "focus": [
+        "Grace time must cover a full started iteration plus the save: measure both, then double. Exiting early wastes nothing; exiting late loses the save.",
+        "The exit decision is collective. Reduce one flag across ranks, as BLOOM's `all_reduce` MAX pattern does, so no rank saves while another trains on.",
+        "Signals sent to the launcher do not reach the workers: a `SIGUSR1` sent to the `torchrun` agent terminated it, and no worker handler fired (2 CPU processes, PyTorch 2.14.1). Signal each worker process directly, or forward with the B.2 trap.",
+        "Kill and save switches are the same mechanism without the scheduler. A file poll before each iteration gives operators a manual preemption path."
+      ],
+      "reproduce": "On CPU, run a two-process job with a `SIGUSR1` handler that sets a flag, finishes the iteration, saves model plus step, and exits. Send the signal mid-run and show both ranks exit 0 with a loadable checkpoint at the post-iteration step.",
+      "traps": [
+        "Relying on the default 30 to 60 seconds of `SIGTERM`. Large-model saves take minutes, so request the early signal (`USR1@600`) and handle that instead.",
+        "Saving inside the signal handler. Handlers run asynchronously, so set a flag and let the main loop finish the iteration, then save and exit.",
+        "Letting one rank exit on its signal while others continue. The job hangs in a collective, so synchronize the decision before anyone leaves."
+      ],
+      "selfTest": [
+        {
+          "q": "An iteration takes up to 2 minutes and a save takes up to 2 minutes. What grace period do you request, and why not exactly 4?",
+          "a": "At least 8 minutes (double the sum). Exact budgets fail on jitter: a slow iteration plus a slow save overruns 4 minutes and the kill lands mid-write."
+        },
+        {
+          "q": "Rank 0's handler sets its flag but rank 1 never receives the signal. How does the job still exit cleanly?",
+          "a": "The flag is reduced across ranks before acting (MAX over the done tensor), so one rank's signal becomes every rank's decision in the same iteration."
+        },
+        {
+          "q": "Why does Approach B.2 send the signal to the `sbatch` shell instead of the launcher?",
+          "a": "Launchers such as `torchrun` do not forward `SIGUSR1` to workers. The shell traps it and re-sends to the child processes found with `pgrep`."
+        },
+        {
+          "q": "A QoS preemption can land at any time, unlike a time-limit preemption. What changes in the handler?",
+          "a": "Nothing in the handler: the same flag, collective decision and bounded save run. What changes is that the grace duration is fixed by policy, so the budget must fit the worst case, not the schedule."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Stas `SIGUSR1` trap demo as a bounded-shutdown test",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Approach B.1 `sigusr1.slurm` handler plus the train-loop flag pattern; test on a two-process CPU job by sending `kill -s USR1 \"$pid\"` mid-run and assert both ranks save and exit within the budget",
+          "note": "No SLURM needed for the mechanism test: signal by PID and verify the checkpoint loads afterwards. The SLURM headers only schedule the signal."
+        }
+      ],
+      "stopWhen": "A mid-iteration signal produces a complete checkpoint at a clean boundary on every rank, inside a budget you derived from measured iteration and save times.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Stas preemption approaches plus kill and save switches cover signals, budgets and collective exit at implement depth."
+      }
+    },
+    {
+      "id": "rank-crash-elastic-restart",
+      "title": "Rank crashes, collective timeouts, elastic restart and replica recovery",
+      "hours": 5,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "rank-crash-collective-timeout-and-process-group-teardown",
+        "rendezvous-restart-and-elastic-membership-vocabulary",
+        "replica-based-in-memory-recovery"
+      ],
+      "outcomes": [
+        "Explain what a rank crash does to a collective, how teardown plus rendezvous rebuilds membership, and what unstable ranks imply for state.",
+        "Restart a crashed CPU job with `torchrun --max-restarts` and resume from the last checkpoint; contrast with per-step healing."
+      ],
+      "why": "One dead rank invalidates the whole communicator. The choice is restart-from-checkpoint, which works everywhere, versus heal-in-place, which needs replicas.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Crash tests use this machinery."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/scaling-efficiency-goodput",
+          "note": "Restarts and lost work enter goodput."
+        }
+      ],
+      "study": [
+        {
+          "resource": "torchelastic-dt9",
+          "title": "Restart and membership vocabulary",
+          "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html",
+          "locator": "Fault tolerant (fixed sized number of workers, no elasticity, tolerates 3 failures) with `--max-restarts=3`; Elastic (`min=1`, `max=4`) with `--nnodes=1:4`; Note on rendezvous backend (`rdzv-id`, `rdzv-backend` c10d, endpoint default 29400); Definitions (Node, Worker, WorkerGroup, `RANK`, `WORLD_SIZE`); Environment Variables (`TORCHELASTIC_RESTART_COUNT`, `TORCHELASTIC_MAX_RESTARTS`)"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Crash-and-restart behavior",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "README Elastic Training: all workers restart on one failure and ranks are unstable across restarts, with one crashing attempt's `error.json`; `toy.py`: barrier-separated steps with a rank-0 state write and a random crash"
+        },
+        {
+          "resource": "torchft-dt9",
+          "title": "Per-step healing as the contrast",
+          "url": "https://github.com/meta-pytorch/torchft/blob/b8a096f9f23589ec93e988e2368a934cab01b890/README.md",
+          "locator": "Overview: per-step fault tolerance without interrupting the job; Lighthouse: `torchft_lighthouse` quorum with step-granularity membership; Example Training Loop (DDP) with `Manager`, `ProcessGroupGloo` and `TORCHFT_LIGHTHOUSE`; Fault Tolerant HSDP Algorithm (page read 2026-10-14)"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Detection, teardown and warm versus cold",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Failure Detection and Recovery: heartbeat versus collective-timeout versus orchestration layers, Figure 28's detect, pause, rescale and resume sequence with the equation 9 recovery budget, cold versus warm restart with Table 9; Checkpoint 1.5: Tuning detection and recovery"
+        }
+      ],
+      "focus": [
+        "A crashed rank turns every pending collective into a hang or an error. Survivors must tear down the process group and re-rendezvous; no rank is removed in place from a live communicator. PyTorch 2.14.1 also ships an experimental, private reconfigure path behind `init_process_group(..., enable_reconfigure=True)`; this section does not rely on it.",
+        "Elastic restart rebuilds the group of workers, not the failed rank. `RANK` and `WORLD_SIZE` can change, so resume keys state by global step, never by rank.",
+        "`--max-restarts` bounds crash loops. Each attempt re-runs the script, which reloads the last checkpoint itself, and exceeding the budget surfaces the failure instead of spinning forever.",
+        "torchft heals inside the job when replicas exist (lighthouse quorum per step, live peer transfer). Restart-from-checkpoint works with no replicas but loses work back to the last save. Replicas are the precondition, not the default."
+      ],
+      "reproduce": "Run a one-process job that exits 1 on its first attempt and 0 after, under `torchrun --max-restarts=1`. Show `TORCHELASTIC_RESTART_COUNT` reads 0 then 1 and the final exit code is 0.",
+      "traps": [
+        "Catching the exception and continuing in the same process group. Timeouts and dead peers leave the communicator unusable; teardown plus fresh rendezvous is the only path.",
+        "Assuming `RANK` is stable across a restart. The guide states it explicitly: re-derive sharding and logging identity from the new membership.",
+        "Treating torchft as a checkpoint replacement for all jobs. Without at least two replicas there is no healthy peer to heal from; single-replica jobs still need file checkpoints."
+      ],
+      "selfTest": [
+        {
+          "q": "Rank 2 dies mid-`all_reduce`. Why must the surviving ranks tear down instead of continuing?",
+          "a": "The collective never completes, so every survivor hangs waiting for rank 2's contribution. The communicator is defined over the full group, so a membership change needs a new group."
+        },
+        {
+          "q": "A job with `--max-restarts=3` fails four times. How many training attempts ran, and what ends the loop?",
+          "a": "Four: the initial attempt plus three restarts. The fourth failure exceeds the budget, so the agent surfaces the error instead of restarting."
+        },
+        {
+          "q": "After an elastic restart with fewer workers, each rank reloads its old rank's data shard. What breaks?",
+          "a": "Coverage: shards were computed for the old world size. Reshard the dataset for the new membership and resume from the global step."
+        },
+        {
+          "q": "When does per-step healing beat restart-from-checkpoint, and what does it cost standing by?",
+          "a": "When replicas exist and failures are frequent: it loses at most a step instead of all work since the last save. It costs per-step lighthouse coordination plus peer capacity to heal onto."
+        }
+      ],
+      "practice": [
+        {
+          "name": "torchrun bounded-restart test plus crash loop",
+          "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html",
+          "locator": "Run the Reproduce script under `--max-restarts=1` and assert the retry runs with `TORCHELASTIC_RESTART_COUNT=1` and the job exits 0; then run the guide's `toy.py` with two CPU processes and inspect one crashing attempt's `error.json`",
+          "note": "Both run on CPU gloo. `toy.py` crashes on its own within seconds; delete `toy-state.json` before each fresh run and wrap it in `timeout`."
+        }
+      ],
+      "stopWhen": "You can crash any rank of a CPU job, watch the agent restart within budget, resume from the checkpoint, and state when healing needs replicas.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The elastic run reference, the crash loop, torchft's healing contrast and the chapter's recovery sequence cover crashes, restart vocabulary and replicas."
+      }
+    },
+    {
+      "id": "storage-failures-retention",
+      "title": "Storage saturation, partial writes, slow ranks and last-known-good retention",
+      "hours": 4,
+      "target": [
+        "measure",
+        "implement"
+      ],
+      "topics": [
+        "storage-saturation-partial-writes-and-slow-rank-diagnosis",
+        "retention-garbage-collection-and-last-known-good-protection"
+      ],
+      "outcomes": [
+        "Detect a saturated filesystem, a partial write and a slow saver from rank-side evidence, and act before the job dies.",
+        "Implement keep-k retention that never deletes the last known good and garbage-collects in the background."
+      ],
+      "why": "Checkpoint writes are the heaviest storage burst in the job. Without retention discipline the disk fills, the newest save corrupts, and there is nothing to fall back to.",
+      "next": [
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "The campaign asserts retention under kill tests."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/fleet-health-runbooks",
+          "note": "Watchdogs become runbooks."
+        }
+      ],
+      "study": [
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Disk watchdogs and the 80 percent rule",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Low disk space alerts: 80 percent is full on rebalancing filesystems, inode exhaustion, `df` staleness, `fs-watchdog.py`; Dealing with slow memory leaks: voluntary exit with `save_checkpoint` before OOM"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "BLOOM retention arithmetic",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Frequent checkpoint saving: 2.3TB every 3 hours is 18.4TB a day; keep the 2 most recent checkpoints local for fast resume"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Keep-k retention in code",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`keep_latest_k`: rejecting 1, rank-0 `_purge_stale_checkpoints` with sorted `step-*` selection, background `purge_thread` with `TerminateSentinel`, `_save_last_step` always synchronous and full"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Stragglers and slow ranks",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Distinguishing stragglers from failures with Definition 1.2 and the straggler step-time model; Napkin Math 1.5: the straggler tax"
+        }
+      ],
+      "focus": [
+        "Treat 80 percent as full on shared filesystems. Rebalancing can fail a write while `df` still shows space, and `df` itself can lag by 30 minutes. Monitor the consumption rate in TB per day, not just the percent.",
+        "Keep at least two complete checkpoints. The newest may be mid-write when the crash lands, so retention protects the last known good, never just the last.",
+        "Delete in the background and never on the training thread. Rank-0 selection plus a purge queue keeps `rmtree` latency off the critical path.",
+        "A slow saver is a straggler, not yet a failure. Per-rank save timings name it, and past the break-even point killing and recovering beats waiting."
+      ],
+      "reproduce": "With `keep_latest_k=2`, save steps 1 to 4 on CPU, delete `.metadata` from step 4, and show the loader selects step 3 while the purge set holds only the older steps.",
+      "traps": [
+        "Setting `keep_latest_k=1` to save space. TorchFeather rejects it because the single copy can be purged while its replacement is still writing; the minimum safe retention is 2.",
+        "Purging from every rank. Concurrent deletes race and partially remove directories, so only rank 0 selects and a single background thread deletes.",
+        "Watching bytes but not inodes. Virtualenvs and sharded checkpoints create many small files, so an inode-full filesystem fails writes with terabytes free."
+      ],
+      "selfTest": [
+        {
+          "q": "A filesystem shows 78 percent used and writes start failing. What is the most likely cause, and what threshold would have prevented it?",
+          "a": "Rebalancing or per-device imbalance on a shared filesystem: one device is full while the aggregate shows space. Alert at 80 percent at the latest, and track the daily consumption rate against the job length."
+        },
+        {
+          "q": "Why must the purge select on rank 0 and delete on a background thread?",
+          "a": "Selection needs one decider to avoid races; deletion is slow I/O that must stay off the training thread. The queue between them bounds both."
+        },
+        {
+          "q": "Checkpoints land every hour and each takes 6 minutes to write on the slowest rank. When is that rank a straggler to kill rather than wait for?",
+          "a": "Sustained, it holds every step 10 percent longer (\\(6/60\\)). Napkin Math 1.5's rule: replace it once that slowdown share exceeds \\(T_{\\text{recovery}} / \\text{MTBF}_{\\text{system}}\\); past that break-even point, killing and recovering beats waiting."
+        },
+        {
+          "q": "`df` shows free space but a save fails with no space. Name two non-capacity causes from the chapter.",
+          "a": "Inode exhaustion, and stale `df` on a distributed filesystem that lags reality by up to 30 minutes."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Retention plus watchdog lab",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "TorchFeather `_purge_stale_checkpoints` with `keep_latest_k=2`: save 4 interval checkpoints, corrupt the newest, and show the loader falls back to the previous complete one while the purge removes only older ones; adapt the Stas `fs-watchdog.py` thresholds to your disk with a consumption-rate estimate",
+          "note": "Run on CPU with small shards; the purge and fallback logic is identical at scale. The Stas watchdog lives at https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md under Low disk space alerts."
+        }
+      ],
+      "stopWhen": "A corrupted newest checkpoint falls back to the previous complete one, retention holds exactly 2, and your watchdog names the byte rate and the inode headroom.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Stas watchdog and retention arithmetic, TorchFeather's keep-k code and the chapter's straggler model cover storage failure and retention at measure and implement depth."
+      }
+    },
+    {
+      "id": "fault-injection-campaigns",
+      "title": "Kill-at-every-boundary campaigns, post-resume equivalence and the recovery audit",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "kill-at-every-boundary-fault-injection",
+        "reference-trajectory-and-post-resume-equivalence-tests",
+        "failure-manifest-and-recovery-audit-trail"
+      ],
+      "outcomes": [
+        "Enumerate every crash window in a save and load cycle and kill the job in each one.",
+        "Validate post-resume equivalence against a reference trajectory with declared deterministic versus statistical bars.",
+        "Write a failure manifest and recovery audit entry per incident: what died, what was kept, what was refused."
+      ],
+      "why": "The section checkpoint is this unit. Recovery that works everywhere except the one untested boundary is not recovery.",
+      "next": [
+        {
+          "unit": "distributed-training/performance-fleet-operation/fleet-health-runbooks",
+          "note": "Audits become runbooks."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/fixed-workload-benchmark-contracts",
+          "note": "Reference trajectories become regression contracts."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Fault injection and recovery validation",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Fault Injection Tools and Frameworks; Failure Detection and Recovery: the detect, pause, rescale and resume sequence in Figure 28 and recovery validation (shapes, dtypes, loss consistency, gradient statistics); Distributed Debugging and Observability"
+        },
+        {
+          "resource": "llama3-reliability-dt9",
+          "title": "What production failures look like",
+          "url": "https://arxiv.org/abs/2407.21783",
+          "locator": "Section 3.3.4 Reliability and Operational Challenges: 466 interruptions over a 54-day snapshot with the Table 5 root-cause mix (plan from counts: the printed Faulty GPU share disagrees with its count); NCCL flight recorder paragraph on ring-buffer collective metadata with automatic dumps on watchdog or heartbeat timeout (arXiv:2407.21783v3)"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Boundary enumeration from the save path",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`save` (should-save decision, async-wait join, sync or async write, purge), `close` (final join, group destroy, purge-thread join), `load` (`_find_load_step`, model-only versus full): one kill window per boundary"
+        },
+        {
+          "resource": "bumblebee-dcp-dt9",
+          "title": "Capstone-adjacent smoke tests (depth)",
+          "url": "https://github.com/isLinXu/bumblebee/blob/5782386adbf5e518e42804597f7206b3fc9ce8cc/bumblebee/primitive/ckpt/dcp.py",
+          "locator": "`primitive/ckpt/dcp.py` entry points `save_training_checkpoint` and `load_training_checkpoint`; `tests/qwen3_moe/test_checkpoint_smoke.py` only asserts that the two exports resolve to the local DCP runtime and are callable, and `docs/roadmap.md` lists reshardable optimizer state as a P2 item, so treat it as an untested target, not a reference"
+        }
+      ],
+      "focus": [
+        "A boundary is any point where a crash changes what resume sees: before the first shard, mid-shards, after shards before commit, after commit before manifest, during purge, during load. List them from the code, then kill in each.",
+        "Equivalence has two bars. Deterministic state (parameters, optimizer, data position) must match exactly on CPU; stochastic streams after a reshard match statistically with a declared test.",
+        "Every incident writes the same record: failed rank and step, surviving checkpoints with checksums, refused artifacts with reasons, and the recovery action. The audit is the deliverable, not the log.",
+        "Production mixes set the campaign weights. Hardware dominates Table 5's counts, but the campaign still covers hangs, slow ranks and corrupt files, because those are the cases restart logic gets wrong."
+      ],
+      "reproduce": "List every kill window in a two-process CPU save and load cycle from the code, then kill in each window and show every kill either resumes to the reference trajectory or refuses loudly with an audit entry.",
+      "traps": [
+        "Testing only clean kills between steps. Mid-write, mid-commit and mid-purge kills are the windows that corrupt; a campaign of tidy exits proves nothing.",
+        "Comparing resumed loss to reference loss with no tolerance statement. Deterministic CPU resume must be exact, so any gap is a bug; GPU or resharded resume needs an explicit statistical bar.",
+        "Keeping the audit in the training log. Rank-interleaved stdout is not an audit trail; write one manifest entry per incident with the kept and refused artifacts named."
+      ],
+      "selfTest": [
+        {
+          "q": "Name six kill windows in an async checkpoint cycle.",
+          "a": "Before the first shard write, mid-shard writes, after shards before the future joins, after join before commit, during manifest write, and during stale purge; plus during load. Each must leave a loadable prior checkpoint or a refused partial."
+        },
+        {
+          "q": "Post-resume weights match exactly but the next data batches differ. Which window was hit, and what does the audit record?",
+          "a": "The sampler-position window: state saved without the consumed offset. Record the kept checkpoint, the duplicated batch range, and the missing offset field."
+        },
+        {
+          "q": "Table 5 shows 6 silent-data-corruption interruptions out of 419. Why does the campaign still include corruption injection?",
+          "a": "Rare but load-bearing: corruption defeats every path that assumes files are honest. Confirmed plus suspected cases justify a checksum-and-refuse test."
+        },
+        {
+          "q": "A recovery audit lists the loaded checkpoint but not the refused ones. What is missing, and why does it matter?",
+          "a": "The refused artifacts with reasons. Without them a later reader cannot tell a tested refusal from an untested path, and the same corrupt file can be retried."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: kill-at-every-boundary campaign on a sharded CPU job, post-resume equivalence against a reference trajectory, and the failure-manifest plus recovery-audit trail.",
+      "stopWhen": "Your campaign kills in every listed window, each kill either resumes to the reference trajectory or refuses loudly with an audit entry, and no window is untested.",
+      "fit": {
+        "verdict": "kept",
+        "note": "MLSys supplies the injection and validation vocabulary, Llama 3 the production failure mix and TorchFeather the boundary enumeration; the integrated campaign practice belongs to the section mini-project."
+      }
+    }
+  ]
+}

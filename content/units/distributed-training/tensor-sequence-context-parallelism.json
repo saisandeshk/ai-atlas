@@ -1,0 +1,972 @@
+{
+  "section": "tensor-sequence-context-parallelism",
+  "addedResources": [
+    {
+      "id": "pytorch-sdpa-masks-dt5",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch 2.14 SDPA - explicit masks and dropout",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Use the equivalent attention implementation and `attn_mask`/`dropout_p` contract to build a CPU packed-document oracle before translating masks to context-parallel blocks. Do not assume the experimental CP wrapper supports every SDPA mask.",
+      "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html"
+    }
+  ],
+  "units": [
+    {
+      "id": "column-row-parallel-linear",
+      "title": "Column- and row-parallel linear layers and communication cancellation",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "column-parallel-linear-layers-and-output-ownership",
+        "row-parallel-linear-layers-and-partial-result-reduction",
+        "colwise-to-rowwise-communication-cancellation"
+      ],
+      "outcomes": [
+        "Derive local outputs, weight gradients and input-gradient reductions for column- and row-parallel linear layers.",
+        "Implement a paired sharded MLP and reconstruct its forward and backward results against an unsharded oracle.",
+        "Explain why keeping the intermediate features sharded removes communication between the two projections."
+      ],
+      "why": "TP changes which rank computes each part of one layer. A plausible forward output can hide a missing input-gradient reduction or a repeated bias.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-attention-mlp-partitioning",
+          "note": "Carry the paired projection layout into attention and SwiGLU."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Two matrix partitions and their composition",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#tensor_parallelism",
+          "locator": "Tensor Parallelism; Tensor parallelism in a transformer block, opening feedforward example",
+          "depth": "Stop before the attention discussion. Do not gather column outputs when the next row-parallel layer consumes the same feature shards."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "Megatron-LM: forward and backward communication",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, equations 1 to 3, Figure 3a and Code 1",
+          "depth": "Read through the MLP derivation. Leave self-attention and vocabulary sharding to the next units."
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Weight storage and conjugate autograd operators",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py",
+          "locator": "`ColumnParallelLinear` and `RowParallelLinear`, including initialization and `forward`",
+          "depth": "Also open https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tp_communications.py and read `CopyToModelParallelRegion`, `ReduceFromModelParallelRegion` and `GatherFromModelParallelRegion`. Defer the asynchronous operator."
+        }
+      ],
+      "focus": [
+        "Use the paper's convention \\(Y=XW\\), then translate to PyTorch's stored \\(W\\) of shape \\([D_{\\text{out}},D_{\\text{in}}]\\). Column parallelism shards stored rows; row parallelism shards stored columns.",
+        "Column outputs own distinct features. Their input gradients are partial contributions that must be summed. Row outputs are full-shaped partial sums; their forward reduction must happen before adding a replicated bias.",
+        "An elementwise activation preserves feature ownership. Pair matching column output shards with row input shards instead of gathering and splitting again.",
+        "Megatron's identity-backward reduction assumes replicated outputs represent one logical loss, not separate independent losses on every TP rank. Reconstruct gradients under that contract."
+      ],
+      "reproduce": "Closed-book, derive and simulate a bias-free column-GELU-row MLP on CPU with two shards, \\(X\\) shaped \\([2,3,4]\\), first stored weight \\([8,4]\\) and second \\([4,8]\\). Generate all tensors once with seed 0 in `torch.float64`, slice the same weights, and use squared-output mean loss. Match output, input gradient and both reconstructed weight gradients with `torch.testing.assert_close`. Then add one shared output bias after summation.",
+      "traps": [
+        "Applying GELU to each row-parallel partial sum before reduction. Nonlinearity does not commute with summation.",
+        "Adding a full output bias on every rank before a sum. The result contains one bias per rank.",
+        "Comparing bitwise equality after changing GEMM partitioning. Floating-point reduction order changes; use a justified tolerance."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the first projection need a backward sum even though its forward pass is local?",
+          "a": "Each feature shard contributes to the same input. The full input gradient is the sum of those contributions."
+        },
+        {
+          "q": "For stored weights shaped \\([8,4]\\) and \\([4,8]\\) on two ranks, what shapes stay local?",
+          "a": "The first weight is \\([4,4]\\), the intermediate is \\([2,3,4]\\), and the second weight is \\([4,4]\\). Each second-projection partial output is \\([2,3,4]\\) and must be summed."
+        },
+        {
+          "q": "Does column-to-row pairing eliminate all communication?",
+          "a": "No. It eliminates the intermediate gather. With replicated block boundaries, the row output still needs a forward sum and the column input gradient a backward sum."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Reconstruct a Column-Parallel MLP Layer",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-column-parallel-mlp",
+          "locator": "Implement `column_parallel_mlp(x, weight_shards, bias_shards)`; public cases: Two single-column shards, Uneven biased shards and One shard",
+          "note": "This free problem reconstructs a linear projection only, despite its title. Its weights use input-by-output storage. It checks rank-ordered outputs, not collectives or gradients. The section mini-project covers the paired TP MLP, explicit communication and gradient oracle in `trainlab`."
+        }
+      ],
+      "stopWhen": "The three public cases and your paired MLP output and gradient checks pass, and you draw both passes with no intermediate gather and exactly one output bias.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook and Megatron supply the derivation; Picotron exposes ownership and autograd; the named free problem plus the mini-project cover implementation and gradients within five hours."
+      }
+    },
+    {
+      "id": "vocab-parallel-cross-entropy",
+      "title": "Vocabulary-parallel embeddings, output projection and cross-entropy",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "vocabulary-parallel-embedding-and-output-projection",
+        "parallel-cross-entropy-and-log-sum-exp-reduction",
+        "loss-parallel-apis-in-current-pytorch"
+      ],
+      "outcomes": [
+        "Derive stable vocabulary-parallel cross-entropy and its local logit gradients without gathering full logits.",
+        "Implement vocabulary-range embedding ownership and preserve tied embedding/output weights.",
+        "Compare a CPU sharded loss with ordinary cross-entropy, then map it to PyTorch 2.14 loss parallelism."
+      ],
+      "why": "Vocabulary logits can be much larger than the residual stream. Reducing per-token statistics avoids gathering them, but only if target ownership and the loss denominator remain correct.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-memory-communication-volume",
+          "note": "Account separately for vocabulary logits and per-token reductions."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-divisibility-oracles",
+          "note": "Test range boundaries, invalid targets and tied weights."
+        }
+      ],
+      "study": [
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "Sharded input and output embeddings",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, paragraphs beginning 'The transformer language model has an output embedding' through the fused cross-entropy discussion"
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Vocabulary ranges and masked lookup",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py",
+          "locator": "`VocabParallelEmbedding`, especially `_vocab_range_from_global_vocab_size` and `forward`; `apply_tensor_parallel` final-projection replacement",
+          "depth": "Use default dense lookup without padding or renormalization. Picotron gathers the final logits; use the loss-parallel route below to avoid that gather."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Loss-parallel layouts and current contract",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/TP_tutorial.html#apply-loss-parallel",
+          "locator": "Apply Loss Parallel, Figure 2 and final-projection plan (page read 2026-10-14)",
+          "depth": "Open https://docs.pytorch.org/docs/2.14/distributed.tensor.parallel.html#torch.distributed.tensor.parallel.loss_parallel for the 2.14 contract. Keep the first implementation on a one-dimensional CPU mesh with class-index targets and no label smoothing."
+        }
+      ],
+      "focus": [
+        "Build on Stable softmax, cross-entropy and loss reductions. For a token, reduce local maxima to \\(m=\\max_j z_j\\), then sum local exponentials into \\(s=\\sum_j\\exp(z_j-m)\\). Reduce the target logit from its unique owner; loss is \\(m+\\log s-z_y\\).",
+        "Each vocabulary shard computes its part of \\(\\operatorname{softmax}(z)-\\operatorname{onehot}(y)\\). Only the target owner subtracts one. Apply the same valid-token denominator as the unsharded loss.",
+        "Embedding ranks own disjoint vocabulary ranges. Nonowners contribute zero; summation reconstructs each lookup. Tied embeddings and output projections must share the same trainable shard, accumulating both gradient contributions once.",
+        "`loss_parallel()` requires class-sharded DTensor logits and backward inside the context. PyTorch 2.14 supports mean reduction only on a one-dimensional mesh; multi-dimensional token sharding needs sums or unreduced losses and an explicit global denominator."
+      ],
+      "reproduce": "Without notes, split `torch.tensor([[1000., 1001., -1000., 999.], [2., -1., 0., 3.]], dtype=torch.float64)` into two class shards and use targets `[1, 3]`. Compute the max, exponential-sum and target-owner reductions, then the mean loss and analytic logit gradients. Match ordinary `torch.nn.functional.cross_entropy`. Repeat with class-sharded DTensors on two CPU processes using Gloo and `loss_parallel()`, comparing loss and reconstructed gradients.",
+      "traps": [
+        "Normalizing each vocabulary shard separately. That produces multiple distributions rather than one distribution over the full vocabulary.",
+        "Treating every nonlocal token as an invalid global token. Validate the global ID first, then mask nonownership before lookup.",
+        "Padding the vocabulary and leaving padded logits in the softmax. Those classes change the denominator unless explicitly excluded."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must the maximum be global before summing exponentials?",
+          "a": "All shard sums must use the same exponential scale. Independent local maxima require additional rescaling before their sums can be combined."
+        },
+        {
+          "q": "Does averaging local vocabulary losses recover cross-entropy?",
+          "a": "No. Vocabulary shards partition classes for the same tokens. Combine their normalization statistics first; average only over the declared valid tokens."
+        },
+        {
+          "q": "What gradient reaches a tied vocabulary shard?",
+          "a": "The sum of its input-embedding and output-projection contributions. Two independently updated copies are not weight tying."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: vocabulary-range lookup, stable sharded loss, tied-weight accumulation and loss/gradient comparisons in `trainlab`.",
+      "stopWhen": "Your sharded loss and logit gradients match the ordinary oracle, lookup ownership passes at both ends of each range, and a tied-weight test accumulates both uses into one shard.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Megatron v4 and Picotron cover embedding ownership; the tutorial's reduction diagram and 2.14 API cover loss parallelism, with the mini-project supplying tied-weight and gradient practice."
+      }
+    },
+    {
+      "id": "tp-attention-mlp-partitioning",
+      "title": "Tensor-parallel attention heads, GQA divisibility and MLP partitioning",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "tensor-parallel-attention-head-partitioning",
+        "grouped-query-attention-divisibility-constraints",
+        "tensor-parallel-mlp-partitioning"
+      ],
+      "outcomes": [
+        "Partition complete attention heads and matching output-projection columns, preserving forward and backward semantics.",
+        "Derive legal GQA head layouts and distinguish KV sharding from KV replication.",
+        "Implement matching gate/up feature shards for a tensor-parallel SwiGLU block."
+      ],
+      "why": "Attention heads and MLP features supply independent work, but shared KV heads and paired gates constrain which shards may be kept local.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/sequence-parallel-norm-residual",
+          "note": "Shard the residual and normalization regions around these blocks."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Transformer TP and the GQA qualification",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#tensor_parallelism_in_a_transformer_block",
+          "locator": "Tensor parallelism in a transformer block: feedforward and multi-head attention diagrams, MQA/GQA paragraph and KV-head synchronization example",
+          "depth": "Stop before the throughput plots. The stated head limit describes whole-head partitioning, not every possible tensor-parallel algorithm."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "Whole-head attention partitioning",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, Figure 3b and Figure 4"
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Tensor-parallel attention oracle",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_attention.py",
+          "locator": "`split_heads`, `merge_heads`, `local_attention` and `main`: projection placements through output and all gradient comparisons"
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Aligned SwiGLU shards",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_swiglu.py",
+          "locator": "`swiglu`; `main` from gate/up/down distribution through reconstruction and gradient assertions"
+        }
+      ],
+      "focus": [
+        "Build on Multi-head attention: split, merge and gradients, MQA and GQA: sharing keys and values, and The modern decoder block. The new task is ownership and communication, not another attention implementation.",
+        "For whole-head sharding without KV replication, TP degree \\(p\\) divides both \\(H_q\\) and \\(H_{\\mathrm{kv}}\\), and \\(H_{\\mathrm{kv}}\\) divides \\(H_q\\). Preserve each query's KV mapping when slicing projection rows and output-projection columns.",
+        "When \\(p>H_{\\mathrm{kv}}\\), a different plan may replicate KV heads among ranks. Their shared projection gradients must then be summed across the replica subgroup; the simple equally sharded plan is not legal.",
+        "SwiGLU gate and up projections use identical intermediate-feature boundaries. Their product remains sharded; the down projection produces partial residual-width outputs."
+      ],
+      "reproduce": "Run the two named CPU examples below, then redraw their local projection and head shapes without notes. Extend a deterministic simulation to \\(H_q=8\\), \\(H_{\\mathrm{kv}}=2\\), head width 4 and TP degree 2: each rank owns four contiguous query heads and their one KV head. With identical seed-0 `torch.float64` inputs and zero dropout, concatenated local attention must match the full GQA oracle. Reject degree 4 under the no-KV-replication policy.",
+      "traps": [
+        "Splitting channels through the middle of a head and using the original softmax as if each shard had a complete query/key dot product.",
+        "Dividing query heads but forgetting KV-head constraints. Shapes may be divisible while query-to-KV ownership is wrong.",
+        "Pairing differently ordered gate and up shards. Their elementwise product then changes the MLP."
+      ],
+      "selfTest": [
+        {
+          "q": "Can eight query heads and two KV heads use four equally KV-sharded ranks?",
+          "a": "Not with complete KV heads and no replication. Two KV heads cannot give every rank one shard. A replicated-KV implementation is a separate plan with shared-gradient reduction."
+        },
+        {
+          "q": "Why is an output-projection reduction still needed after local head attention?",
+          "a": "Each head subset contributes through a different set of output-projection input columns to the same residual-width output. Those partial contributions must be summed."
+        },
+        {
+          "q": "Which intermediate dimension must both SwiGLU branches shard identically?",
+          "a": "The expanded feedforward feature dimension. Each gate value must multiply the up value for the same feature before the row-parallel down projection."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TorchFeather: tensor-parallel SwiGLU and attention minimal examples",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_attention.py",
+          "locator": "Run `torchrun --nproc-per-node 2 --master-port 29652 minimal_examples/tp_attention.py` and `torchrun --nproc-per-node 2 --master-port 29651 minimal_examples/tp_swiglu.py` from the repository root at commit c416ab1",
+          "note": "Both use Gloo on CPU and compare outputs, loss, input gradients, norm gradients and projection gradients with ordinary tensors. They cover MHA, not GQA. The section mini-project covers the GQA ownership variation in `trainlab`."
+        }
+      ],
+      "stopWhen": "Both named examples pass, your GQA reconstruction passes, and you identify illegal head plans before launching collectives.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook covers GQA constraints, Megatron derives whole-head TP, and the two CPU examples supply forward/backward practice; the mini-project covers the shared-KV variation."
+      }
+    },
+    {
+      "id": "sequence-parallel-norm-residual",
+      "title": "Sequence-parallel normalization and residual layouts",
+      "hours": 3,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "sequence-parallel-normalization-and-residual-layouts"
+      ],
+      "outcomes": [
+        "Derive the all-gather/reduce-scatter boundaries between sequence-parallel norms and tensor-parallel projections in both passes.",
+        "Keep residual additions on matching token shards and sum replicated norm-parameter gradients.",
+        "Explain which saved activations shrink and which full-shaped temporary tensors remain."
+      ],
+      "why": "Plain TP leaves the residual stream replicated. Sequence parallelism reduces its saved activation footprint while preserving full feature vectors for each local token.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/dtensor-placements-redistribution",
+          "note": "Express these transitions as placement changes."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-memory-communication-volume",
+          "note": "Separate saved-activation savings from temporary peaks."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Sequence-parallel regions and norm gradients",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#sequence_parallelism",
+          "locator": "Sequence parallelism: region-transition diagram, TP versus TP+SP layout table and closing LayerNorm-gradient note",
+          "depth": "Skip benchmark plots. Do not adopt the claim that every maximum activation is divided by TP degree: the all-gathered input and full-shaped partial output remain live temporaries."
+        },
+        {
+          "resource": "sp-recompute-paper-dt5",
+          "title": "Sequence-parallel forward and backward derivation",
+          "url": "https://arxiv.org/abs/2205.05198v1",
+          "locator": "arXiv:2205.05198v1, Section 4.2.2, Figures 5 and 6, equations 3 and 4, including the saved-input/re-gather paragraph",
+          "depth": "Stop before Pipeline Parallelism. The equal ring-byte argument is not a guarantee of equal runtime or zero overhead; extra saved-input re-gathers must be counted when enabled."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Sequence-parallel normalization and residual contract",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/TP_tutorial.html#apply-sequence-parallel-to-layernorm-rmsnorm-layers",
+          "locator": "Apply Sequence Parallel to LayerNorm/RMSNorm layers: block forward and adjusted parallelization plan (page read 2026-10-14)",
+          "depth": "Check `SequenceParallel` at https://docs.pytorch.org/docs/2.14/distributed.tensor.parallel.html#torch.distributed.tensor.parallel.SequenceParallel for sequence-axis defaults and the custom-initialization warning."
+        }
+      ],
+      "focus": [
+        "For \\([B,S,D]\\) activations, each SP rank keeps \\([B,S/p,D]\\). Normalization reduces over features within each token, so it needs no cross-token statistics.",
+        "All-gather the normalized token shards before the column projection. Reduce-scatter the row projection's partial output along sequence before residual addition. Both operands then own the same tokens.",
+        "In backward, the forward all-gather has a reduce-scatter adjoint under this logical tensor contract; the forward reduce-scatter has an all-gather adjoint. Replicated norm weights receive different token contributions that must be summed.",
+        "The paper's activation formula counts saved tensors under its storage/recomputation choices. A transient replicated input does not disappear merely because the block's boundary layout is sharded."
+      ],
+      "reproduce": "Return to TorchFeather's `tp_swiglu.py` from the previous unit. Without notes, trace `x`, `normalized`, `replicated`, `hidden`, `down_partial`, `down_sequence` and the residual output through both passes. With its two-rank settings, the residual shards are \\([2,2,8]\\), the gathered input and partial down output are \\([2,4,8]\\), and the intermediate features are logically \\([2,4,16]\\), held as \\([2,4,8]\\) local shards. Confirm these layouts and the norm-gradient oracle on CPU.",
+      "traps": [
+        "Normalizing across the sharded sequence axis instead of the complete feature axis. That changes the model and may leak future tokens.",
+        "Adding two equal-shaped local tensors that own different token ranges. Shape equality is not layout equality.",
+        "Leaving custom-initialized norm gains different across ranks. `SequenceParallel` assumes the usual unit initialization; synchronize custom gains explicitly."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can SP normalization be local while feature-sharded normalization may not be?",
+          "a": "An SP shard contains every feature for its tokens. A feature shard lacks part of each token's normalization statistics."
+        },
+        {
+          "q": "Why do norm weights need gradient reduction under SP but not necessarily under replicated plain TP?",
+          "a": "SP ranks process different tokens, so each gradient is a contribution to the shared weight. Plain TP replicated norms can compute identical complete gradients under identical input and loss semantics."
+        },
+        {
+          "q": "Does replacing an all-reduce with an all-gather plus reduce-scatter guarantee equal step time?",
+          "a": "No. Ideal ring payloads can match, but launch count, ordering, buffers, kernel shapes and extra re-gathers can differ."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: sequence-sharded norms and residuals, replicated gain-gradient sums, layout assertions and saved-versus-temporary tensor accounting in `trainlab`.",
+      "stopWhen": "Your forward/backward layout table matches the CPU example, the residual and norm gradients match the unsharded oracle, and the table includes gathered and partial temporaries.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook, verified paper derivation and current tutorial cover the SP contract; the earlier CPU example and the mini-project cover norm/residual practice in three hours."
+      }
+    },
+    {
+      "id": "dtensor-placements-redistribution",
+      "title": "DTensor placements and redistribution as collectives",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "dtensor-placements-replicate-shard-and-partial",
+        "redistribution-as-collective-communication"
+      ],
+      "outcomes": [
+        "Explain Replicate, Shard and Partial as ownership states of one logical tensor.",
+        "Implement redistribution checks and predict which transitions require communication.",
+        "Distinguish a logical layout transition from the backend algorithm used to execute it."
+      ],
+      "why": "DTensor automates communication from layout metadata. Incorrect metadata can silently turn a valid local tensor into the wrong logical tensor.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/device-mesh-layout-contracts",
+          "note": "Attach those placements to the intended rank groups and module boundaries."
+        }
+      ],
+      "study": [
+        {
+          "resource": "jax-sharding-dt5",
+          "title": "Sharded contractions and unreduced results",
+          "url": "https://jax-ml.github.io/scaling-book/sharding#computation-with-sharded-arrays",
+          "locator": "Chapter 3, Computation With Sharded Arrays: Cases 1, 2 and 3",
+          "depth": "Stop before Case 4. Translate unreduced outputs to `Partial()` rather than copying JAX syntax into PyTorch."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "PyTorch 2.14 placement and redistribution reference",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.DTensor.redistribute",
+          "locator": "DTensor Placement Types: `Shard`, `Replicate`, `Partial`; `DTensor.redistribute` transition list; `DTensor.from_local`, `to_local`, `full_tensor` and `distribute_tensor`",
+          "depth": "Stay on one DeviceMesh. Skip private placement types and tensor factory functions."
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "A real Partial result before reduction",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_swiglu.py",
+          "locator": "`main`: `down_partial` placement assertion, `partial_to_sequence` redistribution and `describe` output"
+        }
+      ],
+      "focus": [
+        "`Replicate()` means identical complete values; `Shard(dim)` means distinct indexed pieces; `Partial()` means full-shaped contributions awaiting a sum by default. Equal local shapes do not imply equal ownership.",
+        "On one mesh axis, shard-to-replicate is an all-gather, partial-to-replicate an all-reduce, and partial-to-shard a reduce-scatter. Replicate-to-shard needs local slicing only.",
+        "Changing the sharded tensor dimension requires a logical all-to-all. In PyTorch 2.14.1 CPU DTensor execution can fall back to all-gather plus chunking; do not assign the ideal all-to-all byte count to that fallback.",
+        "`distribute_tensor` starts from a global leaf tensor. `DTensor.from_local` declares ownership of existing local values and is differentiable; with `run_check=False`, correctness is your responsibility. `full_tensor()` can communicate."
+      ],
+      "reproduce": "On four CPU processes with Gloo, distribute `torch.arange(16, dtype=torch.float64).reshape(4, 4)` with `Shard(0)`. Reconstruct it, redistribute to `Shard(1)`, and reconstruct again. Separately wrap full-shaped local matrices filled with rank plus one using `DTensor.from_local` and `Partial()`: reduction must give 10 in every entry. Obtain both replicated and row-sharded reduced layouts and verify the same logical value. Predict each collective before executing it.",
+      "traps": [
+        "Wrapping different complete values as replicas without synchronizing them. Metadata does not make unequal data identical.",
+        "Gathering Partial values as if they were distinct output features. Partial values must be reduced, not concatenated.",
+        "Calling `full_tensor()` only on rank zero. Every participating rank must execute the required collective in the same order."
+      ],
+      "selfTest": [
+        {
+          "q": "A local row-parallel matmul has the full output shape. Is it replicated?",
+          "a": "Not before reduction. Each rank used only part of the contracting dimension, so its result is a Partial contribution."
+        },
+        {
+          "q": "Which placement change can avoid communication in forward?",
+          "a": "Replicate-to-Shard: every rank already has all values and can keep its own slice. Backward still follows the chosen gradient-layout contract."
+        },
+        {
+          "q": "Does `to_local()` return the global tensor?",
+          "a": "Only when the placement is already replicated. For Shard it returns a shard; for Partial it returns an unreduced contribution."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a CPU placement-transition suite with logical reconstruction, rank-owned metadata and backend-aware collective records in `trainlab`.",
+      "stopWhen": "Every reconstruction agrees, your transition table predicts local versus communicating operations, and your logs distinguish logical all-to-all from the CPU fallback.",
+      "fit": {
+        "verdict": "kept",
+        "note": "JAX gives contraction semantics and the pool's explicitly linked 2.14 DTensor reference gives current placements and redistributions; the mini-project supplies CPU transition practice."
+      }
+    },
+    {
+      "id": "device-mesh-layout-contracts",
+      "title": "DeviceMesh, tensor-parallel groups and input, output and gradient layouts",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "devicemesh-and-tensor-parallel-process-groups",
+        "input-output-and-gradient-layout-contracts"
+      ],
+      "outcomes": [
+        "Construct named CPU device meshes and verify the membership and order of tensor-parallel subgroups.",
+        "Implement explicit module input/output layout contracts and inspect parameter and gradient placements.",
+        "Diagnose wrong input ownership, group membership and local-versus-global shape assumptions before they become numerical mismatches."
+      ],
+      "why": "A mesh names who participates; placements name what they own. Both must agree with the module's local computation and backward contract.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-divisibility-oracles",
+          "note": "Turn boundary and group assumptions into executable preflight checks."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/named-mesh-rank-coordinates",
+          "note": "Extend the verified TP subgroups to composed plans."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Mesh construction and SPMD agreement",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.html#torch.distributed.device_mesh.init_device_mesh",
+          "locator": "`init_device_mesh`: SPMD notes and parameters; `DeviceMesh` methods `get_coordinate`, `get_local_rank` and `get_group`",
+          "depth": "Use CPU meshes and Gloo first. Read only these mesh entries, not the full communication reference. For named-axis slicing, use the DP/TP mesh example in the input-ownership guide below."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Parallel styles are boundary contracts",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.parallel.html#torch.distributed.tensor.parallel.parallelize_module",
+          "locator": "`parallelize_module`, `ColwiseParallel`, `RowwiseParallel` and `PrepareModuleInput`: input/output layouts, `use_local_output` and source-rank semantics"
+        },
+        {
+          "resource": "lambda-tp-dt5",
+          "title": "Same inputs within a tensor group",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/06-tensor-parallel/README.md#ensure-all-gpus-on-a-node-get-the-same-input",
+          "locator": "Ensure all GPUs on a node get the same input: named DP/TP mesh, four-rank table and sampler arguments; Computing throughput with our new world size",
+          "depth": "Read the ownership example, not the GPU training script. TP is not inherently node-local: the example chooses that placement."
+        }
+      ],
+      "focus": [
+        "A named mesh axis identifies ordered process groups, not a tensor dimension. `Shard(1)` refers to a tensor axis; `mesh['tp']` chooses a communicator axis.",
+        "`parallelize_module` accepts a one-dimensional mesh. Slice a composed mesh before passing the TP submesh. All ranks must agree on mesh construction and module plans.",
+        "The default column style interprets ordinary inputs as replicated and returns local feature shards. The default row style interprets ordinary inputs as feature shards and returns replicated outputs. Use `use_local_output=False` while inspecting logical shapes and placements.",
+        "TP partners process the same logical examples. Their distinct weight shards contribute to one model result; do not count them as separate data replicas or multiply token throughput by TP degree."
+      ],
+      "reproduce": "Launch four CPU processes with Gloo and construct `init_device_mesh('cpu', (2, 2), mesh_dim_names=('dp', 'tp'))`. Verify TP groups `[0, 1]` and `[2, 3]`, and DP groups `[0, 2]` and `[1, 3]`. On each TP submesh, parallelize an MLP containing `Linear(4, 8)`, GELU and `Linear(8, 4)` with column then row styles and DTensor outputs. Transfer identical seed-0 weights and inputs to an ordinary MLP; compare output, input gradient and reconstructed parameter gradients for squared-output mean loss.",
+      "traps": [
+        "Using global rank as the sampler's data-replica rank. TP partners then consume different inputs while trying to compute one layer.",
+        "Treating a plain local output shape as the global shape in a head reshape. Keep DTensor metadata or adjust the local reshape explicitly.",
+        "Passing a two-dimensional mesh directly to `parallelize_module`. The TP API requires its one-dimensional submesh."
+      ],
+      "selfTest": [
+        {
+          "q": "On the reproduced mesh, which ranks share rank 2's TP computation?",
+          "a": "Ranks 2 and 3. Rank 0 is rank 2's DP partner for the same TP-coordinate weight shard, not its TP partner."
+        },
+        {
+          "q": "Can a local tensor prove that its claimed replica is identical elsewhere?",
+          "a": "No. Validate or synchronize the data across its group. Declaring a replicated layout is a contract, not evidence."
+        },
+        {
+          "q": "Why keep input-gradient placement in the boundary table?",
+          "a": "The caller must receive the derivative of the intended logical input. A correct forward shard can still return a partial or duplicated gradient incorrectly."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: named mesh/group manifests, TP module-boundary assertions and forward/backward oracle comparisons in `trainlab`.",
+      "stopWhen": "Every rank's group manifest matches the hand table, the MLP oracle passes, and each boundary records logical shape, local shape, placement and expected gradient ownership.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The pool's DeviceMesh-linked references and current TP contracts cover the APIs; the input-ownership guide supplies a concrete rank table, and the mini-project supplies CPU mesh/layout checks."
+      }
+    },
+    {
+      "id": "tp-memory-communication-volume",
+      "title": "Tensor-parallel memory and communication volume by layer",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "activation-and-parameter-memory-accounting",
+        "tensor-parallel-communication-volume-by-layer"
+      ],
+      "outcomes": [
+        "Derive per-rank parameter, gradient, optimizer and activation bytes from actual TP/SP ownership and dtypes.",
+        "Count forward and backward collective payloads by layer, separating logical payload from per-rank ring traffic.",
+        "Explain memory-model residuals caused by saved inputs, re-gathers, partial outputs and temporary buffers."
+      ],
+      "why": "A parameter shard can shrink while activation or communication buffers still dominate the peak. A byte ledger makes the degree choice testable.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-degree-choice-async",
+          "note": "Use the ledger to compare feasible degrees and exposed communication."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-activation-memory",
+          "note": "Compose these lifetimes with other dimensions."
+        }
+      ],
+      "study": [
+        {
+          "resource": "sp-recompute-paper-dt5",
+          "title": "Saved activations, not a universal peak formula",
+          "url": "https://arxiv.org/abs/2205.05198v1",
+          "locator": "arXiv:2205.05198v1, Sections 4.1, 4.2.1 and 4.2.2, equations 1, 2 and 4; Section 5 and Table 2",
+          "depth": "Keep the stated two-byte activations, one-byte dropout masks and GPT-style architecture assumptions. Re-derive the ledger for SwiGLU, GQA or memory-efficient attention instead of applying its coefficients unchanged."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "The transformer-block collective count",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, Figure 4 and its four-operation caption"
+        },
+        {
+          "resource": "jax-sharding-dt5",
+          "title": "Communication follows the sharded contraction",
+          "url": "https://jax-ml.github.io/scaling-book/training#tensor-parallelism",
+          "locator": "Chapter 5, Tensor Parallelism: forward/backward algorithm and compute/communication model",
+          "depth": "Stop before Combining FSDP and Tensor Parallelism. Its boundaries shard hidden features, not the SP token layout. Retain the topology and overlap assumptions; its TPU constants are not measurements of your machine."
+        }
+      ],
+      "focus": [
+        "For a bias-free SwiGLU with model width \\(D\\), expanded width \\(F\\) and TP degree \\(p\\), sharded weights total \\(3DF/p\\) elements per rank. Replicated norm gains add \\(D\\). Count gradients and each optimizer tensor at their own dtype, with no automatic master-weight assumption.",
+        "For batch \\(B\\), sequence \\(S\\) and bytes per activation \\(q\\), a full residual has \\(n=q \\times B \\times S \\times D\\) bytes. A ring all-reduce sends \\(2(p-1)n/p\\) bytes per rank; a ring all-gather or reduce-scatter sends \\((p-1)n/p\\). Receive traffic is equal and is not included in these send counts.",
+        "A plain Megatron attention-plus-MLP block has two forward and two backward activation all-reduces. TP+SP replaces those with four all-gathers and four reduce-scatters across both passes; norm-gradient sums, loss traffic and optional saved-input re-gathers are additional.",
+        "Record unique storage and lifetimes, not just tensor names. Views can share storage; all-gathered inputs, full-shaped partial outputs, receive buffers and allocator reserve can make peak memory exceed saved-activation estimates."
+      ],
+      "reproduce": "Derive a byte ledger for TorchFeather's bias-free RMSNorm-SwiGLU at \\(B=2\\), \\(S=4\\), \\(D=8\\), \\(F=16\\), \\(p=2\\), with `torch.float32` weights and activations. Each rank's three weight shards plus norm gain occupy 800 bytes; a replicated residual occupies 256 bytes and its sequence shard 128 bytes. Separately derive 1024 sent bytes per rank for the four ring activation all-reduces of a plain attention-plus-MLP training block at those residual dimensions. TP+SP's corresponding eight collectives have the same ideal send volume, excluding the extra operations listed in Focus. Check the storage counts against local tensors and label the ring traffic as analytical, not measured backend traffic.",
+      "traps": [
+        "Dividing the entire optimizer or activation footprint by TP degree. Replicated gains, temporaries and optional full-precision copies need separate terms.",
+        "Confusing all-reduce payload bytes with sent-plus-received traffic. State the counting convention before comparing formulas.",
+        "Treating a saved-activation equation as a GPU memory-peak prediction, especially after replacing materialized attention with a tiled kernel."
+      ],
+      "selfTest": [
+        {
+          "q": "Where do the 800 parameter bytes in Reproduce come from?",
+          "a": "Three matrices of shape \\(8 \\times 16\\) split over two ranks give 192 elements, plus eight replicated gains. At four bytes per element, 200 elements occupy 800 bytes."
+        },
+        {
+          "q": "For two ranks and a 256-byte payload, how much does one ideal ring all-reduce send per rank?",
+          "a": "256 bytes: \\(2(2-1)256/2\\). It also receives 256 bytes, so sent-plus-received traffic is 512 bytes."
+        },
+        {
+          "q": "Can matching ideal ring bytes establish matching TP and TP+SP runtime?",
+          "a": "No. Startup costs, backend algorithms, re-gathers, kernel shapes and overlap differ. The byte equality covers only the specified collective payloads."
+        }
+      ],
+      "practice": [
+        {
+          "name": "How to Scale Your Model: Chapter 3, Question 4 [matmul strategies]",
+          "url": "https://jax-ml.github.io/scaling-book/sharding#some-problems-to-work",
+          "locator": "Some Problems to Work: Question 4 [matmul strategies]",
+          "note": "Answer before opening the printed solution. Derive local FLOPs and communication for gather-before-matmul versus partial-matmul-then-reduce. Distinguish the book's bandwidth-dominated TPU model from finite-degree ring send counts and from serial dependency bounds. The section mini-project covers the layer ledger and collective records."
+        }
+      ],
+      "stopWhen": "Your ledger reconciles local parameter and boundary-activation storage, accounts for both passes and extra collectives, and labels payload, send traffic, saved memory and peak memory separately.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The recomputation paper supplies scoped memory equations, Megatron supplies collective counts, and the JAX named worked problem plus mini-project ledger supply derivation practice."
+      }
+    },
+    {
+      "id": "context-parallel-ring-attention",
+      "title": "Context-parallel sequence ownership and ring attention",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "context-parallel-sequence-ownership",
+        "ring-attention-block-exchange-and-online-softmax-state"
+      ],
+      "outcomes": [
+        "Derive query ownership, KV visits and per-rank forward communication for a context-parallel ring.",
+        "Implement a deterministic ring-attention simulation with dense output and gradient oracles.",
+        "Explain causal load imbalance and distinguish streamed KV storage from gathering all KV."
+      ],
+      "why": "CP keeps tokens partitioned through the block instead of gathering the full sequence for TP. Attention must still combine every allowed remote key with each local query.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/cp-masks-positions-rng",
+          "note": "Preserve token identity, positions and randomness across the ring."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-degree-choice-async",
+          "note": "Compare communication time with local attention work."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Context ownership, ring exchange and causal imbalance",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#context_parallelism",
+          "locator": "Context Parallelism; Ring Attention; Zig-Zag Ring Attention - A balanced compute implementation",
+          "depth": "Read the ownership and KV-exchange diagrams, not the benchmark plots. The rendered zig-zag heading uses a long dash; locate it by title."
+        },
+        {
+          "resource": "ring-attention-paper-dt5",
+          "title": "Incremental attention across a ring",
+          "url": "https://arxiv.org/abs/2310.01889v4",
+          "locator": "arXiv:2310.01889v4, Section 3, Ring-Based Blockwise Attention; Algorithm 1; Appendix A, `scan_kv_block` and the forward `lax.scan`",
+          "depth": "Algorithm 1 prints only \\(N_h-1\\) compute iterations before feedforward and omits the final received block's attention evaluation. Use Appendix A's \\(N_h\\) visits as the coverage contract; an optimized forward ring needs \\(N_h-1\\) transfers. Leave fused kernels to depth work."
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Four-rank causal ring on CPU",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/ring_attention.py",
+          "locator": "`rotate_tensors`, `apply_local_causal_mask`, `ring_attention`, `format_ring_schedule` and `main` output comparison",
+          "depth": "This example checks forward output only and waits for communication before the next compute. It is not gradient or overlap evidence. Its final rotation is redundant for forward output."
+        }
+      ],
+      "focus": [
+        "Keep queries and outputs local; stream KV shards past each query shard. With contiguous sequence ownership, a rank skips wholly future KV blocks and masks its own diagonal block. Reordered ownership requires actual global token indices.",
+        "Reuse Online softmax state, query and key-value tiling and output tolerance. Carry the running maximum, exponential denominator and weighted numerator across KV visits; never softmax each block independently and sum normalized outputs.",
+        "For CP degree \\(c\\), batch \\(B\\), sequence \\(S\\), KV heads \\(H_{\\mathrm{kv}}\\), head width \\(d\\) and element bytes \\(q\\), one equal KV shard is \\(2qB(S/c)H_{\\mathrm{kv}}d\\) bytes. A forward ring without the redundant return sends \\((c-1)\\) shards per rank, excluding metadata. Backward requires its own communication ledger.",
+        "Remote keys accumulate gradient contributions from multiple query owners. A differentiable simulation can retain that graph; a real P2P implementation must explicitly return and sum remote KV gradients. CP parameter replicas also need globally weighted gradient sums."
+      ],
+      "reproduce": "Closed-book, draw four ranks' KV-owner visits for an eight-token causal sequence, then simulate the same visits on CPU with seed-0 `torch.float64` query, key and value tensors shaped \\([1,2,8,4]\\). Compare outputs and all three input gradients under squared-output sum loss with dense causal attention, at a stated tolerance. Skip wholly masked blocks safely. For the named `torch.float32` example, count 128 bytes per KV shard: four rotations send 512 bytes per rank, while three sufficient rotations send 384 bytes. Removing only the final rotation must preserve output.",
+      "traps": [
+        "Summing per-block normalized attention. Each block used a different denominator; merge unnormalized statistics instead.",
+        "Assuming a correct P2P forward pass gives remote KV gradients automatically. Ordinary send/receive calls do not create that distributed autograd path.",
+        "Calling contiguous causal partitioning balanced. Early query shards have fewer allowed KV blocks than late shards; zig-zag placement changes this work distribution."
+      ],
+      "selfTest": [
+        {
+          "q": "How many KV visits and transfers are needed for a noncausal forward ring on four ranks?",
+          "a": "Four visits, including the local shard, and three transfers per rank. Returning the last shard to its original owner is unnecessary for the forward output."
+        },
+        {
+          "q": "Under contiguous causal ownership, which rank has more useful work: the first or last?",
+          "a": "The last. Its queries can use all earlier blocks; the first rank can use only its own causally masked block."
+        },
+        {
+          "q": "Does CP alone divide parameter memory by its degree?",
+          "a": "No. It partitions sequence activations and work while parameters remain replicated over the CP group unless another sharding dimension is added."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TorchFeather: ring-attention minimal example",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/ring_attention.py",
+          "locator": "At commit c416ab1, run `torchrun --nproc-per-node 4 --master-port 29653 minimal_examples/ring_attention.py` from the repository root",
+          "note": "It uses Gloo on CPU, prints KV-owner schedules and checks output against ordinary causal SDPA. Remove the redundant final rotation and recheck. The section mini-project covers remote-gradient ownership and mask variations in `trainlab`; the public example does not test them."
+        }
+      ],
+      "stopWhen": "The CPU example and your dense forward/gradient simulation agree, every allowed KV block is visited once, and your byte count distinguishes four shipped rotations from three necessary transfers.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook supplies CP and imbalance, the verified paper supplies incremental ring semantics with a pseudocode correction, and TorchFeather plus the mini-project supply CPU output and gradient practice."
+      }
+    },
+    {
+      "id": "cp-masks-positions-rng",
+      "title": "Causal masks, document boundaries, positions and RNG across shards",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "causal-masks-document-boundaries-and-position-offsets-under-cp",
+        "dropout-and-initialization-rng-consistency-across-shards"
+      ],
+      "outcomes": [
+        "Preserve causal visibility, document isolation and position IDs when tokens cross CP shard boundaries.",
+        "Implement initialization and dropout checks that distinguish replicas from disjoint shards.",
+        "Diagnose mask-offset, rotary-table and RNG mismatches with a partition-independent CPU oracle."
+      ],
+      "why": "A shard-local index is not a token's logical position. Correct shapes and collectives can still compute a different objective if masking, rotation or randomness changes with partitioning.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-divisibility-oracles",
+          "note": "Keep these cases in the reconstruction and failure suite."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/recoverable-training-state",
+          "note": "Persist the random streams and token lineage needed for replay."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-cp-dt5",
+          "title": "Sequence buffers and the rotary-frequency trap",
+          "url": "https://docs.pytorch.org/tutorials/unstable/context_parallel.html#introduction",
+          "locator": "Introduction: `buffers`, `buffer_seq_dims` and missing `freq_cis` warning; Enable Context Parallel: sharding/restoration and output comparison (page read 2026-10-14)",
+          "depth": "Read on any machine. With two or more GPUs, run the example with one NCCL rank per GPU and a matching process count. On CPU, use the ring simulation instead. The tutorial compares outputs only, not gradients or dropout replay."
+        },
+        {
+          "resource": "pytorch-sdpa-masks-dt5",
+          "title": "Explicit packed-document visibility",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html",
+          "locator": "Equivalent implementation; boolean mask note; parameters `attn_mask`, `is_causal` and `dropout_p`",
+          "depth": "Build the CPU oracle with an explicit allowed-entry mask and zero SDPA dropout. Apply the document-boundary policy from From documents to training examples: packing and loss masks. Do not pass a custom mask to the CP wrapper without separately verifying its support."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "Replicated versus model-parallel random streams",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Appendix B.2, Model Parallel Random Number Generation"
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Initialize globally, then select the intended shard",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py",
+          "locator": "`ColumnParallelLinear.reset_parameters`, `RowParallelLinear.reset_parameters` and `VocabParallelEmbedding.reset_parameters`",
+          "depth": "Inspect the master-weight generation and shard selection. This depends on matching RNG state across ranks; it is not a broadcast or a guarantee for independently initialized ranks."
+        }
+      ],
+      "focus": [
+        "Build on RoPE and From documents to training examples: packing and loss masks. Carry global token indices, document IDs, declared position IDs and validity with each shard. For isolated causal documents, allow only valid keys from the same document no later than the query.",
+        "Slice masks by query and KV ownership, not local triangular indices alone. Slice rotary frequencies using the same position IDs as the unsharded path; zig-zag placement needs index selection rather than one contiguous offset.",
+        "Replicated values must use identical initialization and replicated dropout masks. Disjoint head/token shards need their own logical random entries, not repeated same-seed local masks. A global mask sliced by logical indices is a small partition-independent oracle, not a scalable implementation.",
+        "Attention-probability dropout acts on the normalized weights, not on the softmax denominator. For exact replay, key mask entries by logical query/key/head identity or slice one global mask. Same seed alone does not align different draw shapes and orders."
+      ],
+      "reproduce": "On CPU, use seed-0 `torch.float64` inputs shaped \\([1,2,8,4]\\), document IDs `[0, 0, 0, 1, 1, 1, 1, 1]` and position IDs 0 through 7. Split the sequence into four shards; compare explicit masked attention and gradients against the dense isolated-document oracle. Apply your existing RoPE with the same position IDs and verify sharded reconstruction, then reset each shard's positions to zero and catch the mismatch. For output dropout probability 0.25, generate one global keep mask and scale by \\(1/0.75\\); slicing and reconstructing it must reproduce the dense masked output. Changing a value in the first document must not change the second document's output.",
+      "traps": [
+        "Using `is_causal=True` on a rectangular local-query/global-key block. SDPA's upper-left alignment does not supply the shard's position offset.",
+        "Assuming EOS isolates documents or that a loss mask changes attention visibility. The two masks preserve different semantics.",
+        "Restarting the same seed for each disjoint shard. This can repeat dropout patterns and cannot establish equality with a global random stream."
+      ],
+      "selfTest": [
+        {
+          "q": "A query in the second document follows a key from the first. Is the key allowed under the isolated policy?",
+          "a": "No. Causal order is necessary but not sufficient; document identity must also match."
+        },
+        {
+          "q": "Why is rank-local `arange` insufficient for rotary positions?",
+          "a": "It loses logical offsets or reordered indices. Each token must receive the same rotation as in the declared unsharded position policy."
+        },
+        {
+          "q": "Do distinct rank seeds guarantee partition-independent dropout?",
+          "a": "No. They can provide distinct streams for a fixed layout, but changing ownership changes which random entry reaches a logical element. Exact oracle replay needs explicit logical indexing."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: packed-document masks, rotary position alignment, replicated initialization and indexed dropout replay with negative cases in `trainlab`.",
+      "stopWhen": "Your dense/sharded mask, position and dropout checks pass, and reset-position, repeated-mask and cross-document-visibility mutations each fail the intended invariant.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for an explicit packed-document mask contract in the pool's CP examples. One bounded search found the verified 2.14 SDPA reference; CP buffer guidance and Megatron RNG remain the main companions."
+      }
+    },
+    {
+      "id": "tp-cp-divisibility-oracles",
+      "title": "Divisibility failures and single-process reconstruction oracles",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "uneven-sequence-and-head-divisibility-failures",
+        "single-process-reconstruction-and-gradient-oracle-tests"
+      ],
+      "outcomes": [
+        "Validate sequence, feature and head ownership under an explicit equal-shard, uneven-shard or padding policy.",
+        "Implement independent single-process forward, loss and gradient oracles for TP and CP layouts.",
+        "Catch wrong shard order, repeated bias, invalid targets and missing gradient sums with negative tests."
+      ],
+      "why": "A divisible shape does not prove correct ownership, and an uneven shape is not automatically illegal. Explicit policies and independent oracles separate implementation limits from mathematical limits.",
+      "next": [
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-degree-choice-async",
+          "note": "Reject incorrect plans before comparing their performance."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Uneven DTensor shards and metadata checks",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.placement_types.Shard",
+          "locator": "`Shard`: `torch.chunk` semantics and experimental uneven-sharding note; `DTensor.from_local`: `run_check`, `shape` and `stride`",
+          "depth": "Read these entries only. Uneven placement support does not imply every module or collective accepts ragged inputs."
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Equal-shard assertions and a linear oracle suite",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/tests/test_tensor_parallel.py",
+          "locator": "Reference weight transfer; forward comparisons; backward weight, bias and input-gradient checks",
+          "depth": "Also inspect constructor divisibility assertions in https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py . Port the CUDA/NCCL harness to CPU/Gloo as described in Practice."
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Dense CP reconstruction and its missing checks",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/ring_attention.py",
+          "locator": "`main`: sequence partition, dense causal SDPA reference and output comparison",
+          "depth": "Reuse the dense reference, not the ring implementation, as the oracle. Add gradients and uneven-token cases in your deterministic simulation; the shipped suite checks neither."
+        }
+      ],
+      "focus": [
+        "Record the ownership policy before launching. Picotron requires equal linear/vocabulary shards. Whole-head GQA without KV replication requires TP degree to divide query and KV head counts; retain the mapping checks from the attention unit.",
+        "DTensor uneven sharding follows `torch.chunk`, not a balanced remainder policy. On four ranks, ten elements have lengths `[3, 3, 3, 1]`. A custom CP simulation may use different boundaries if it preserves every logical token exactly once.",
+        "Reconstruct by logical indices and compare against ordinary PyTorch with the same global weights, inputs, masks, positions and loss denominator. Reusing the sharded mask builder in both paths can hide the same bug.",
+        "Compare input and reconstructed parameter gradients, not only output. Start with zero dropout and `torch.float64`; then add indexed RNG replay and justify lower-precision tolerances separately."
+      ],
+      "reproduce": "Closed-book, simulate causal attention for ten tokens over four CPU shards with boundaries `[0, 3, 6, 9, 10]`. Compare outputs and query/key/value gradients against dense attention under squared-output sum loss. Separately reconstruct `torch.arange(10.)` from four Gloo DTensor shards and check lengths `[3, 3, 3, 1]`. Reject four-way equal KV-head sharding for eight query heads and two KV heads. Swap two output shards and remove one gradient contribution; each mutation must fail a specific oracle assertion rather than hang in a collective.",
+      "traps": [
+        "Assuming `torch.chunk` assigns the remainder one element at a time. Its shard boundaries can differ from a balanced split.",
+        "Padding tokens without excluding padded keys and padded loss entries. The padded execution then changes the objective.",
+        "Testing only all-ones upstream gradients. Add a nonuniform or nonlinear scalar loss to expose indexing errors."
+      ],
+      "selfTest": [
+        {
+          "q": "Must a ten-token sequence be rejected on four CP ranks?",
+          "a": "Only if the implementation requires equal shards and has no padding policy. An uneven implementation can be correct with explicit boundaries, valid masks and compatible communication."
+        },
+        {
+          "q": "Why can a correct output hide an incorrect backward pass?",
+          "a": "Missing input-gradient sums or remote KV-gradient returns do not change forward values. Compare each derivative under the same logical loss."
+        },
+        {
+          "q": "What makes the dense path an independent oracle?",
+          "a": "It uses ordinary full tensors and independently declared global visibility and positions. It does not reproduce the partitioned algorithm's ownership logic."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Picotron: tensor-parallel linear forward/backward tests",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/tests/test_tensor_parallel.py",
+          "locator": "At commit 59714b1, port `tests/test_tensor_parallel.py` and run it with four CPU processes",
+          "note": "Use CPU tensors, Gloo and `torch.manual_seed(42)` instead of the utility import; replace the column test's exact `torch.eq` with `torch.testing.assert_close`. Keep identical reference weights and inputs across TP partners. Run the port with `torchrun --nproc-per-node 4` and your file path. The section mini-project covers uneven CP, invalid targets, padding and ownership mutations in `trainlab`."
+        }
+      ],
+      "stopWhen": "The CPU linear suite and uneven attention output/gradient oracle pass, and each declared illegal layout or injected ownership error fails before performance measurement.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The current DTensor reference distinguishes uneven semantics from Picotron's equal-shard limits; named linear tests and the mini-project supply independent reconstruction and failure practice."
+      }
+    },
+    {
+      "id": "tp-cp-degree-choice-async",
+      "title": "Choosing TP and CP degrees, and asynchronous tensor parallelism",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "tp-or-cp-degree-choice-under-link-bandwidth-and-sequence-length",
+        "asynchronous-tensor-parallelism-and-collective-overlap"
+      ],
+      "outcomes": [
+        "Derive feasible TP and CP degree candidates from head policy, memory, sequence length and link bandwidth.",
+        "Measure synchronous and asynchronous CPU correctness paths without claiming GPU overlap from their timings.",
+        "Distinguish an asynchronous launch from hidden communication using a dependency model and, when hardware permits, a GPU trace."
+      ],
+      "why": "Increasing a degree shrinks local work but adds communication and can worsen kernel efficiency. Choose a correct, memory-feasible plan before testing whether overlap reduces its critical path.",
+      "next": [
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallelism-tradeoffs-context-batch",
+          "note": "Compose TP and CP candidates with batch, state sharding and pipeline choices."
+        }
+      ],
+      "study": [
+        {
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Degree choice depends on the workload and links",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#tensor_parallelism_in_a_transformer_block",
+          "locator": "Closing TP throughput/memory trade-off; Sequence parallelism closing benchmark summary; Context Parallelism and Ring Attention overlap discussion",
+          "depth": "Use the trends and dependencies, not the plotted throughput as a target. The node boundary and eight-GPU threshold describe the authors' topology, not a universal TP limit."
+        },
+        {
+          "resource": "jax-sharding-dt5",
+          "title": "Chunked communication and matmul overlap",
+          "url": "https://jax-ml.github.io/scaling-book/sharding#how-to-overlap-matmul-communication-with-compute",
+          "locator": "Chapter 3, How to overlap matmul communication with compute: collective-matmul animation and chunked matmul/ring-reduction explanation",
+          "depth": "Read this subsection only. Transfer the dependency reasoning; TPU bandwidth and tiled-kernel behavior are not GPU measurements."
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Input-gradient reduction beside weight-gradient compute",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tp_communications.py",
+          "locator": "`LinearWithAsyncAllReduce.backward`; `linear_with_all_reduce` and `linear_with_async_all_reduce`",
+          "depth": "Trace launch, independent weight/bias work and final wait. This is backward overlap at one column layer, not a tiled forward asynchronous-TP implementation."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Asynchronous results still need completion",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.DTensor.redistribute",
+          "locator": "`DTensor.redistribute`: `async_op`; `DTensor.to_local`: `AsyncCollectiveTensor` return and `wait` contract"
+        }
+      ],
+      "focus": [
+        "TP shards large weights and feature work but communicates at projection boundaries. CP partitions tokens and attention work without sharding parameters by itself. Longer sequences supply more attention compute per streamed KV byte, but causal imbalance and small local blocks can limit that advantage.",
+        "Enumerate legal degrees, keep global valid tokens and model semantics fixed, and combine the earlier storage/traffic ledger with launch latency and effective bandwidth. Local GEMM efficiency and temporary-buffer peaks can invalidate an otherwise attractive byte-only plan.",
+        "Picotron computes the input gradient, launches its all-reduce, computes independent weight/bias gradients, then waits before returning. Tiled forward asynchronous TP instead overlaps partial matmuls with communication chunks; it requires additional scheduling and buffer dependencies.",
+        "For ideal independent compute and communication durations, an overlap window costs \\(\\max(T_{\\text{compute}},T_{\\text{comm}})\\), not their sum. Startup, final drain and contention remain. CPU timings and a host's early return establish neither this ideal nor real GPU overlap."
+      ],
+      "reproduce": "Without notes, draw Picotron's synchronous and asynchronous backward dependencies. On four CPU/Gloo processes, run the previous linear oracle with `async_all_reduce=False` and `async_all_reduce=True`, keeping inputs and weights fixed. Compare all gradients and record warmed-up wall-clock backward samples with communication complete before stopping the timer; label them CPU execution, not GPU overlap evidence. In a deterministic timing model with independent 3 ms compute and 2 ms communication, compare a 5 ms serial window with a 3 ms ideal overlapped window. Sweep hypothetical bandwidth and sequence length for legal TP/CP candidates using the earlier ledger. With two or more GPUs, optionally repeat the matched NCCL variants with synchronized timing and a profiler trace; report exposed communication and any regression, not an assumed speedup.",
+      "traps": [
+        "Timing only the asynchronous launch or reading a collective output before completion. Neither measures the completed operation.",
+        "Increasing TP until local matmuls become too small, or choosing CP to solve parameter memory that remains replicated.",
+        "Claiming overlap because compute and communication appear on different streams. Their actual intervals, dependencies and contention determine the exposed tail."
+      ],
+      "selfTest": [
+        {
+          "q": "Which work can Picotron place beside the input-gradient all-reduce?",
+          "a": "Weight- and bias-gradient computation. They use saved input and upstream gradient, not the reduced input gradient. The caller still needs completion before consuming that input gradient."
+        },
+        {
+          "q": "Does a longer sequence always make a larger CP degree faster?",
+          "a": "No. It can improve compute per KV byte, but local block size, imbalance, launch latency and link contention still constrain useful degrees."
+        },
+        {
+          "q": "Can an asynchronous variant pass every oracle and still be slower?",
+          "a": "Yes. Correct scheduling may add launches, waits, buffers or contention without hiding enough communication. Preserve correctness and report the measured regression."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: legal TP/CP candidate tables, bandwidth-sensitive timing models and matched synchronous/asynchronous correctness and timing records in `trainlab`. GPU overlap traces are conditional on two or more GPUs; CPU results remain explicitly CPU-only.",
+      "stopWhen": "Your legal candidate table names memory and communication limits, both CPU variants match the gradient oracle, and your model or available GPU trace distinguishes launch, useful overlap and exposed communication.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The Playbook supplies workload/topology trade-offs, JAX supplies tiled-overlap reasoning, and Picotron plus the 2.14 completion contract supply a CPU-testable asynchronous operator; GPU performance work remains conditional."
+      }
+    }
+  ]
+}
