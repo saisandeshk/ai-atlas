@@ -310,47 +310,64 @@
         "per-rank-activation-and-temporary-memory"
       ],
       "outcomes": [
-        "TODO"
+        "Derive saved activation bytes from local layouts and the number of live pipeline microbatches.",
+        "Separate saved tensors from attention, routing and collective workspaces.",
+        "Revise a plan's activation estimate when recomputation, SP or CP changes."
       ],
-      "why": "TODO",
+      "why": "Training-step operation, activation and communication arithmetic gave a whole-model estimate. A composed plan needs the peak lifetime on each stage, not that estimate divided by world size.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/bubble-critical-path-overlap",
+          "note": "Connect live microbatches to the schedule's time cost."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-math-dt8",
+          "title": "Which activations really shrink with TP?",
+          "url": "https://blog.eleuther.ai/transformer-math/",
+          "locator": "Training: Activations and Batch Size, including the three recomputation formulas and their assumptions",
+          "depth": "Use this as an FP16, no-SP reference model. Do not apply its materialized-attention term to a fused attention implementation without checking what is saved."
+        },
+        {
+          "resource": "ultrascale-5d-dt8",
+          "title": "Schedule changes activation lifetime",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#one_forward,_one_backward_and_llama_3.1_schemes",
+          "locator": "One forward, one backward and Llama 3.1 schemes: stored activations and the comparison with all-forward-all-backward",
+          "depth": "Use your DT-6 schedules rather than rebuilding them. Track saved tensors at stage boundaries and within stages."
         }
       ],
       "focus": [
-        "TODO"
+        "Count each saved tensor from its local shape and dtype. Residuals may be replicated while MLP intermediates are TP-sharded; SP changes only the regions where its layout is active.",
+        "At a stage, multiply per-microbatch saved bytes by the schedule's live microbatch count, then add temporary storage at that event. GPipe and 1F1B need not have the same peak.",
+        "CP shards queries and sequence-local tensors, but remote KV blocks or all-gathered KV storage add temporary memory. EP needs routing indices, packed tokens and padding for the actual capacity policy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In a deterministic simulation, let a stage retain one BF16 boundary tensor per live microbatch, with local shape 2 examples by 1024 tokens by hidden width 256. Derive 1,048,576 bytes per tensor. Replay your DT-6 GPipe and 1F1B event lists, allocating at forward completion and freeing after the matching backward. Check the peak against the maximum number of live tensor identities, then add a temporary receive buffer at its actual lifetime.",
       "traps": [
-        "TODO"
+        "Dividing all activation memory by TP. Replicated residuals and normalization inputs can remain unchanged without SP.",
+        "Calling activation checkpointing a durable training checkpoint. Here it trades saved tensors for recomputation, not recovery storage.",
+        "Charging a quadratic attention matrix when the chosen fused kernel does not save it, or forgetting its linear-size statistics and workspace."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Eight synthetic boundary tensors are live. What storage do they occupy?",
+          "a": "8,388,608 bytes, or 8 MiB. This counts only the stated boundary tensors."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does increasing accumulation always increase activation memory?",
+          "a": "No. Sequential microbatches can release activations before the next starts. A pipeline schedule can keep several microbatches live, so use its lifetime trace."
+        },
+        {
+          "q": "Why does full recomputation not make activation memory zero?",
+          "a": "It retains recomputation boundaries and still needs current-layer intermediates, outputs and workspaces."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's activation lifetime simulation and per-stage temporary-memory accounting.",
+      "stopWhen": "The simulated live-set maximum agrees with your byte ledger for both schedules, and changing recomputation or layout changes only the tensors it actually affects.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The activation formulas state their precision and layout assumptions; the Playbook supplies schedule-dependent retention. Trainlab tests the composed live-set estimate."
       }
     },
     {
