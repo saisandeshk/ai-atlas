@@ -457,47 +457,90 @@
         "canary-blue-green-and-rollback-workflows"
       ],
       "outcomes": [
-        "TODO"
+        "Write the compatibility checklist (model, tokenizer, chat template, sampling config, engine version) that gates any rollout.",
+        "Run a staged canary with automatic rollback on error and p99 gates.",
+        "Explain when blue-green beats canary and what the extra GPUs cost."
       ],
-      "why": "TODO",
+      "why": "Most serving outages ship as version skew, not bad weights: a new template, a changed default or a half-rolled fleet. Rollout discipline is the reliability control.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/autoscaling-failure-reserve",
+          "note": "Hold headroom so the canary pool never queues."
+        },
+        {
+          "unit": "inference/production-serving-reliability/incident-runbooks-recovery-tests",
+          "note": "Turn the rollback path into a rehearsed runbook."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "inference-engineering-inf8",
+          "title": "Zero-downtime deployment",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 7.4.1 (printed p. 200): blue-green with full cutover and its 2x cost, the four-step canary (build, small live slice, monitor or revert, ramp), and the minimum-replica queue warning for the new pool"
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 26 blue-green, canary and drain notebook",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
+          "locator": "Part 1 `BlueGreenDeployment` shifting 10% to 50% to 100%; Part 2 `CanaryDeployment` over `[0.01, 0.05, 0.10, 0.25, 0.50, 1.00]` with gates error below twice 0.005 and p99 below 1.5 times 500ms, Scenario A advancing and Scenario B rolling back at 5%; Part 4 `GracefulShutdown` drain demo"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM template and tokenizer compatibility surfaces",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
+          "locator": "Chat Template: `--chat-template` and `--chat-template-content-format`, with chat requests erroring when no template exists; Tokenize APIs: `/tokenizer_info`; Basic APIs: `/version` for pinning the engine beside the model"
+        },
+        {
+          "resource": "mlsys-inference-inf8",
+          "title": "Version synchronization during rollouts",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 10.8.8 version discussion: push versus pull propagation, the brief inconsistency window during rolling updates, and the invariant that no region proceeds until the prior one holds healthy",
+          "depth": "Read the version-sync paragraphs only. Multi-region failover design belongs to the distributed section."
         }
       ],
       "focus": [
-        "TODO"
+        "Compatibility is a tuple: weights, tokenizer, chat template, sampling defaults and engine version. Changing one element without the rest is a new system, and the canary must compare full tuples.",
+        "Canary gates need both errors and tails: the day26 gates (error below twice baseline, p99 below 1.5 times baseline) catch the regression scenario that pure error rates miss.",
+        "The new pool needs real capacity from step one. A canary sized at default minimum replicas queues immediately, and the queue looks like a model regression.",
+        "Blue-green buys instant rollback with a full duplicate fleet for 15 to 30 minutes. Canary buys cheap gradual proof over 30 to 60 minutes. Pick by blast radius, not by fashion."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Rerun the day26 canary scenarios from a blank notebook: the healthy build advances 1% to 100%, while the p99 regression (820ms against a 500ms baseline at the 5% step) rolls back to 0%. Write out both gate evaluations by hand.",
       "traps": [
-        "TODO"
+        "Rolling back weights but not the template. A chat-template change alters every prompt rendering; rollback must restore the full tuple.",
+        "Judging a canary on error rate alone. The day26 Scenario B keeps errors flat while p99 nearly doubles; without the tail gate it promotes.",
+        "Assuming identical latency means identical behavior across a tokenizer change. Token IDs shift under the same text, so compare `/tokenizer_info` and sampled outputs, not just TTFT."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Scenario B shows p99 820ms at the 5% step against a 500ms baseline with flat errors. Promote or roll back?",
+          "a": "Roll back to 0%. The p99 gate allows at most 1.5 times 500ms (750ms); 820ms exceeds it even though errors stay under twice baseline."
+        },
+        {
+          "q": "Why is blue-green called unsuited for large inference despite its instant rollback?",
+          "a": "It needs a full duplicate fleet (2x GPUs for 15 to 30 minutes). At 100-GPU scale that is 100 idle GPUs; canary plus autoscaling proves the same build far cheaper."
+        },
+        {
+          "q": "A rollout keeps weights fixed but updates the chat template. Which compatibility check fires first?",
+          "a": "The template-version check: rendered prompts change, so prompt token IDs and behavior shift with identical weights. Pin and canary the template with the weights."
+        },
+        {
+          "q": "When is brief cross-region version inconsistency acceptable?",
+          "a": "When all regions pin versions, the window is bounded, and no region advances until the prior one holds healthy. Strict workloads pin routing instead of tolerating the window."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days day26: canary scenarios and drain",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
+          "locator": "Part 2 `CanaryDeployment` Scenarios A and B with the error and p99 gates; Part 4 `GracefulShutdown` with `drain_timeout=60` over 25 requests",
+          "note": "Rerun both scenarios, then change one gate at a time and record which change flips Scenario B. Finish by draining the old pool after promotion."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can hand-evaluate both canary gates on fresh numbers, and your rollback checklist restores weights, template, config and routing together.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Inference Engineering zero-downtime, the day26 runnable canary and drain, vLLM template surfaces and the MLSys version-sync rule cover compatibility and rollout at implement depth."
       }
     },
     {
@@ -512,47 +555,90 @@
         "capacity-headroom-and-failure-reserve"
       ],
       "outcomes": [
-        "TODO"
+        "Derive desired replicas from queue depth, latency ratio and Little's law for one declared workload.",
+        "Size warm pools and failure reserve from startup lag and replica availability math.",
+        "Explain why CPU-based autoscaling misfires on LLM serving and which signals replace it."
       ],
-      "why": "TODO",
+      "why": "Replicas arrive minutes after the spike that needs them. Capacity math done before the incident is the only autoscaling that works on GPU cold starts.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/overload-shedding-retry-budgets",
+          "note": "Shed explicitly while new replicas warm."
+        },
+        {
+          "unit": "inference/production-serving-reliability/serving-slis-error-budgets",
+          "note": "Turn the latency and error thresholds into SLOs."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-inference-inf8",
+          "title": "Autoscaling, warm pools and availability",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Sections 10.8.1 to 10.8.6: Table 10.38 scaling dimensions, reactive Listing 10.3 with the queue-depth and P99-ratio desired-replica rules, predictive Listings 10.4 and 10.5 with `Target = max(Predicted, Reactive) + Buffer`, Table 10.43 warm tiers, Eq 10.15 with Table 10.44; Section 7.9.2.1 availability Eq 7.11 with the 99% to 99.99% worked example"
+        },
+        {
+          "resource": "inference-engineering-inf8",
+          "title": "Autoscaling signals and scale-to-zero",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 7.2 (printed pp. 183-186): utilization versus traffic signals and the five autoscaling factors; Section 7.2.1 (printed pp. 186-188): concurrency target matched to batch size; Section 7.2.4 (printed p. 192): scale-to-zero prerequisites; Section 7.2.5 (printed p. 192): per-component scaling with the 10ms in-cluster versus 50ms cross-cluster example"
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 23 autoscaling simulator",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day23/autoscaling-concurrency-cold-starts.ipynb",
+          "locator": "Part 1 `simulate_autoscaling` with `min_replicas=2`, `max_replicas=20`, `concurrency_target=5`, `scale_down_delay_sec=300`; the throughput model flattening near batch 299; Try These Experiments 1, 2, 4 and 5 (delay sweep, concurrency sweep, predictive pre-warm, cheapest `min_replicas`)",
+          "depth": "The README (~90 concurrent) and the notebook cell (230) disagree on Llama-3-8B H100 capacity at 2048 context. Recompute KV bytes per token for your own model and context instead of quoting either number."
+        },
+        {
+          "resource": "infra-llm-project-inf8",
+          "title": "Project 103 HPA and scaling guidance",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/kubernetes/hpa.yaml",
+          "locator": "`hpa.yaml`: `minReplicas: 1`, `maxReplicas: 3`, CPU 70% and memory 80% signals, scale-down stabilization 300s, commented per-second custom metric; `docs/TROUBLESHOOTING.md` section 9: replacing CPU with `vllm:num_requests_waiting` through the Prometheus adapter or KEDA"
         }
       ],
       "focus": [
-        "TODO"
+        "Three replica rules must agree: Little's law \\(L = \\lambda W\\) for the workload, queue-depth \\(Desired = \\lceil Queue/target \\times Current \\rceil\\) for the backlog, and the P99-ratio rule for SLO defense. When they disagree, the pool is either cold or saturated.",
+        "Response time is \\(T_{response} = T_{detect} + T_{decide} + T_{provision} + T_{warmup}\\), and provisioning dominates by an order of magnitude. Warm pools buy down the dominant term; faster metrics never will.",
+        "CPU at 70% is the wrong signal for decode-bound serving: a few long prefills saturate HBM while CPUs idle. Scale on `vllm:num_requests_waiting`, queue depth and TTFT, not on CPU.",
+        "Availability \\(A_{system} = 1 - (1 - A_{single})^k\\) assumes independent failures. Shared power, networking or a fleet-wide bad config removes the exponent, so failure reserve also needs failure diversity."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For arrivals \\(\\lambda = 30\\) requests/s and service time \\(W = 3\\)s, Little's law gives \\(L = 90\\) in flight. At 5 concurrent requests per replica that is 18 replicas at full load, or 23 under the 80% headroom rule. Recompute with the queue-depth rule for a backlog of 60 against a target of 10 per replica and explain the gap.",
       "traps": [
-        "TODO"
+        "Shipping the Project 103 default HPA unchanged. CPU and memory signals miss GPU-bound decode pressure; add the waiting-requests custom metric before trusting it.",
+        "Setting a short scale-down delay to save money. It oscillates: replicas leave, the queue rebuilds, cold replicas return. The 300s stabilization window exists for this cycle.",
+        "Putting SLO-critical traffic on spot. Thirty seconds to two minutes of termination notice cannot drain long decodes; keep spot to best-effort classes behind the same drain path."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Arrivals run 10 requests/s with 3s service time and 5 concurrency per replica. How many replicas at the 80% rule?",
+          "a": "In flight \\(L = 10 \\times 3 = 30\\), which needs 6 replicas at full load and \\(\\lceil 6/0.8 \\rceil = 8\\) under the 80% headroom rule."
+        },
+        {
+          "q": "Latency is fine at 70% utilization but p99 explodes at 95%. Why is the ratio not 95/70?",
+          "a": "Queueing is nonlinear near saturation: at 95% there is almost no idle time to absorb variance, so tails grow 5 to 10 times while the mean barely moves. Size to 70 to 80% headroom."
+        },
+        {
+          "q": "One replica is 99% available (3.65 days down per year). What do two give, and when does the math lie?",
+          "a": "\\(1 - 0.01^2 = 99.99\\)%, about 52.6 minutes per year. It lies when failures correlate: shared power, network, zone or a bad fleet-wide rollout fails both together."
+        },
+        {
+          "q": "Traffic is flat but TTFT climbs steadily. Which autoscaling signal fires, and what does it mean?",
+          "a": "The P99-ratio and waiting-requests signals fire while CPU stays flat. It means per-request work grew (longer prompts, colder cache), not request count; add replicas or shed by work, not by rate."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days day23: autoscaling sweeps",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day23/autoscaling-concurrency-cold-starts.ipynb",
+          "locator": "Try These Experiments 1 (sweep `scale_down_delay_sec` over 60 to 900 keeping violations under 5%), 2 (sweep `concurrency_target` 2 to 20 on p50/p99), 4 (predictive 15-minute pre-warm versus reactive) and 5 (cheapest `min_replicas` with p99 cold start under 1s)",
+          "note": "Run the sweeps in the notebook, then recompute the concurrency bound from your own model's KV bytes per token instead of the notebook's 230."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your three replica rules agree on one declared workload, and you can price the warm pool that covers one startup lag.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MLSys scaling and availability derivations, day23 runnable sweeps and the Project 103 HPA manifest cover signals, lag, headroom and reserve at derive depth."
       }
     },
     {
