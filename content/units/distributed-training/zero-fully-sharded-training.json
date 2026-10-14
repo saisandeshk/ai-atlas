@@ -85,47 +85,87 @@
         "zero-3-parameter-gradient-and-optimizer-state-partitioning"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-rank model-state memory for ZeRO-1, ZeRO-2 and ZeRO-3 from ownership, including the unsharded floor.",
+        "Explain which rank updates each shard and how all ranks obtain the next parameter version.",
+        "Distinguish the assignment's whole-parameter optimizer partition from ideal evenly pooled sharding."
       ],
-      "why": "TODO",
+      "why": "Each ZeRO stage removes a different replicated category. That distinction predicts both the memory floor and the communication needed to preserve data-parallel updates.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-gather-reduce-scatter",
+          "note": "Turn ownership diagrams into a fully sharded step."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-zero-dt4",
+          "title": "The three ZeRO stages",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#zero_redundancy_optimizer_(zero)",
+          "locator": "Zero Redundancy Optimizer (ZeRO): ZeRO-1: Partitioning optimizer states; ZeRO-2: Adding gradient partitioning; ZeRO-3: Adding parameter partitioning (FSDP)",
+          "depth": "Stop before Tensor Parallelism. Read the 'two times faster' aside as an equal-payload ring byte comparison, not a measured latency guarantee."
+        },
+        {
+          "resource": "zero-paper-dt4",
+          "title": "Ownership and memory savings",
+          "url": "https://arxiv.org/abs/1910.02054v3",
+          "locator": "arXiv:1910.02054v3, Sections 5.1 to 5.3, Deep Dive into ZeRO-DP; Figure 1 and Table 1"
+        },
+        {
+          "resource": "cs336-sharding-dt4",
+          "title": "Optimizer-state sharding contract",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 6, problems `optimizer_state_sharding` and `optimizer_state_sharding_accounting`, printed pp. 37 to 38",
+          "depth": "Implement the CPU correctness part now. For accounting parts (a) and (b), use a CPU tensor ledger first; with two or more GPUs, measure a model that fits your GPUs rather than requiring the handout's xl configuration."
         }
       ],
       "focus": [
-        "TODO"
+        "Let \\(P\\), \\(G\\) and \\(O\\) be total parameter, gradient and optimizer bytes, and \\(R\\) the rank count. Ideal even-shard persistent totals are \\(P+G+O\\), \\(P+G+O/R\\), \\(P+(G+O)/R\\) and \\((P+G+O)/R\\) for DDP through ZeRO-3.",
+        "In the paper's layout, \\(P=2N\\), \\(G=2N\\) and \\(O=12N\\). The advertised fourfold and eightfold stage-1 and stage-2 savings are large-degree limits, not exact savings at every rank count.",
+        "The assignment retains replicated parameters and gradients, updates only owned whole parameters, then broadcasts them. Its public test supplies matching gradients on both ranks; gradient averaging on disjoint data remains your trainer's responsibility.",
+        "Whole-parameter ownership, per-tensor dim-0 sharding, padding and pooled-byte ceilings are different allocation models. Write down which one your calculation uses."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the four memory expressions without looking. For the paper's layout with \\(N=1{,}000{,}000\\) and \\(R=4\\), obtain 16,000,000, 7,000,000, 5,500,000 and 4,000,000 persistent bytes per rank. Then draw which rank owns a parameter's moments, reduced gradient and stored weight at each stage; add the transient full weight needed by stage 3.",
       "traps": [
-        "TODO"
+        "Calling optimizer-state sharding gradient synchronization. Ownership of moments does not itself average different ranks' gradients.",
+        "Assigning tied parameter aliases to different owners and applying the update twice.",
+        "Using the ideal persistent ZeRO-3 total as an OOM prediction without a gather window."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What memory floor remains as the rank count grows under ZeRO-2?",
+          "a": "The full replicated parameter storage. Gradients and optimizer state shrink ideally, but parameters do not."
+        },
+        {
+          "q": "Does ZeRO-3 split a layer's matrix multiplication across the ranks?",
+          "a": "No. It splits stored model state; each rank gathers the required weights and computes on its own data. Tensor parallelism splits the layer computation."
+        },
+        {
+          "q": "Why does the assignment need broadcasts after the optimizer step?",
+          "a": "Each owner changes only its parameters. Broadcasting those updates restores a consistent full parameter replica for the next forward on every rank."
+        },
+        {
+          "q": "Do equal-payload reduce-scatter and all-gather always cost exactly the same as an all-reduce?",
+          "a": "Their total ring send volume equals a bandwidth-optimal ring all-reduce. Different dtypes, launch counts, topology, implementation and overlap can change elapsed time."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Account for ZeRO Memory by Stage",
+          "url": "https://www.tensortonic.com/problems/cs336-l08-zero-memory-accounting",
+          "locator": "Implement `zero_memory_accounting(parameter_bytes, gradient_bytes, optimizer_bytes, world_size)`",
+          "note": "Free. Public cases cover even four-way sharding, an uneven three-way byte pool and one rank. Follow its pooled-byte ceilings; they are not PyTorch's per-tensor allocation rule."
+        },
+        {
+          "name": "CS336 Assignment 2: `optimizer_state_sharding`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_sharded_optimizer.py",
+          "locator": "Section 6; implement `get_sharded_optimizer` in `tests/adapters.py`, then run `pytest tests/test_sharded_optimizer.py`",
+          "note": "The two-process CPU Gloo tests compare AdamW final parameters after ten updates, including tied weights. They do not check disjoint-data gradient reduction or memory savings; add those checks in trainlab."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive each stage's persistent-state ledger, pass both named practice suites and explain what their tests leave unproved.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook and paper cover all three stages at derive depth; TensorTonic checks accounting and CS336 checks optimizer ownership with tied weights."
       }
     },
     {
