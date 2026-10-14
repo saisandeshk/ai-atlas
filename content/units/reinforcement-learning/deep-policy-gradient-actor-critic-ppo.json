@@ -10,6 +10,16 @@
       "access": "Free",
       "use": "Appendix C, Enforcing Action Bounds, Equations 20 and 21 in arXiv:1801.01290v2. Supplies the change-of-variables derivation missing from the pool's action-clipping checklist; do not study SAC training here.",
       "url": "https://arxiv.org/abs/1801.01290v2"
+    },
+    {
+      "id": "rl4-farama-vector-autoreset",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "Gymnasium vector autoreset modes",
+      "provider": "Farama Foundation",
+      "access": "Free",
+      "use": "Read Next-Step Mode, Same-Step Mode and Disabled Mode in the official autoreset explainer, then SyncVectorEnv's reset and step API. Check against Gymnasium 1.4.0; pages read 2026-10-14. Supplies current rollout semantics missing from the older PPO examples.",
+      "url": "https://farama.org/Vector-Autoreset-Mode"
     }
   ],
   "units": [
@@ -770,47 +780,81 @@
         "rl-4-fixed-trajectory-loss-ratio-gae-and-gradient-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a vector rollout buffer with immutable behavior-policy identity and explicit valid-transition masks.",
+        "Handle reset-only steps, final observations and nonterminal segment cuts without cross-episode advantage leakage.",
+        "Test log probabilities, GAE, ratios, clipped losses and gradients against independent fixed-batch oracles."
       ],
-      "why": "TODO",
+      "why": "PPO depends on the identity of the policy that generated each action. Vectorization must preserve that identity and the trajectory boundary, not just produce correctly shaped tensors.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/policy-gradient-failures-evaluation",
+          "note": "Use these invariants to diagnose failed training."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "rl4-cleanrl-ppo",
+          "title": "CleanRL: rollout storage and flattening",
+          "url": "https://github.com/vwxyzjn/cleanrl/blob/fe8d8a03c41a7ef5b523e2e354bd01c363e786bb/cleanrl/ppo.py#L170-L239",
+          "locator": "`ppo.py`, lines 170 to 239: storage setup, collection, GAE and batch flattening",
+          "depth": "Audit rather than copy its boundary handling. It merges termination and truncation, cuts both bootstraps, and assumes episode information under `final_info`. With Gymnasium 1.4.0 next-step autoreset, reset-only steps also need masking; pinning 0.29.1 alone does not repair truncated targets."
+        },
+        {
+          "resource": "rl4-farama-vector-autoreset",
+          "title": "Farama: vector autoreset contract",
+          "url": "https://farama.org/Vector-Autoreset-Mode",
+          "locator": "Next-Step Mode, Same-Step Mode and Disabled Mode (page read 2026-10-14)",
+          "depth": "Use the mode descriptions, not the example loops as finished PPO collectors. In Disabled Mode, remember that `reset()` returns observations and information as a pair."
+        },
+        {
+          "resource": "rl4-farama-vector-autoreset",
+          "title": "Gymnasium: SyncVectorEnv API",
+          "url": "https://gymnasium.farama.org/api/vector/sync_vector_env/",
+          "locator": "SyncVectorEnv constructor, `reset()` and `step()` documentation; checked against Gymnasium 1.4.0 (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl4-reinforcement-learning-control-laboratory-policy-core",
+          "title": "Control Laboratory: update and identity tests",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/reinforcement-learning-control-laboratory.md",
+          "locator": "Architecture constraints; Milestone C, Main implementation; Milestone D, Failure handling; Correctness requirements"
         }
       ],
       "focus": [
-        "TODO"
+        "Extend Trajectory schemas with environment, policy, seed and version identity. Store behavior log probabilities, critic values, observations, actions, rewards, both ending flags, final bootstrap observations and a policy-version identifier.",
+        "Keep time and environment axes until GAE is complete. Flatten every field with the same ordering and exclude reset-only entries from policy, critic, entropy and metric reductions.",
+        "In Gymnasium 1.4.0 next-step mode, the ending step returns the final observation. The following step ignores that lane's action and returns a reset observation with zero reward and false ending flags; it is not experience from that action.",
+        "Separate rollout snapshots from learner state. Re-evaluate stored actions under the unchanged snapshot before the first update; ratios should be 1 within tolerance. Use independent residual sums and finite differences away from clipping kinks as test oracles."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with Gymnasium 1.4.0, construct `gym.vector.SyncVectorEnv([lambda: gym.make('CartPole-v1', max_episode_steps=1)])` and call `envs.reset(seed=0)` after assigning it to `envs`. Step with `numpy.array([0])`, then `numpy.array([1])`. The first call has reward 1, `terminated=False` and `truncated=True`; the second has reward 0 and both flags false. Store only the first as a valid transition. Add a second lane with a different time limit and check that masking and GAE remain lane-local.",
       "traps": [
-        "TODO"
+        "Storing a reset-only vector step as if its sampled action caused the reset. It creates a fake transition and changes the denominator of loss means.",
+        "Recording a policy version without binding observation normalization and action transforms to it. Those can change log probabilities even with unchanged network weights.",
+        "Checking only scalar loss equality. Ratio inversion, broadcasting or target detachment defects can require per-sample and gradient tests to expose."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why are two ending masks still needed with a valid-transition mask?",
+          "a": "Validity excludes reset-only records. Termination determines whether to bootstrap; episode boundaries determine whether the advantage trace may continue. They answer different questions."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can a vector step contain both real transitions and reset-only entries?",
+          "a": "Yes. Lanes end independently, so validity must be tracked per lane, not with one batch-wide flag."
+        },
+        {
+          "q": "How do you test that flattening preserves the record?",
+          "a": "Give every time-lane pair a unique label and check that all flattened fields preserve the same label order. Then recover the original axes."
+        },
+        {
+          "q": "What must stay fixed during a finite-difference policy-loss check?",
+          "a": "Observations, actions, old log probabilities, advantages and transforms. Perturb only current policy parameters, and avoid nondifferentiable clip boundaries."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab immutable vector rollouts, identity-ratio checks, lane-local GAE and fixed-batch loss and gradient regressions.",
+      "stopWhen": "Your collector excludes reset-only entries, preserves final bootstrap observations and policy identity, and passes independent per-sample, shape and gradient tests.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Currency failed for vector reset semantics in the pool examples. The opened Farama mode explainer and current API documentation repair that gap; CleanRL remains the storage audit."
       }
     },
     {
