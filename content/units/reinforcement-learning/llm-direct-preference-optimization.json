@@ -319,47 +319,71 @@
         "rl-10-tokenizer-chat-template-and-truncation-consistency"
       ],
       "outcomes": [
-        "TODO"
+        "Implement shifted completion-only sequence scoring with explicit EOS and padding rules.",
+        "Demonstrate that replacing token sums with token means changes the preference objective.",
+        "Audit prompt-token identity, chat templates and truncation before comparing policy and reference scores."
       ],
-      "why": "TODO",
+      "why": "DPO operates on conditional completion probabilities. Reuse The next-token objective: shifts, masks and perplexity and From documents to training examples: packing and loss masks; the new work is preserving that contract across four scores and two response lengths.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-reference-support",
+          "note": "Bind each reference score to the exact tokenized completion."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "Sequence scoring helper",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/direct_alignment/loss.py#L19-L54",
+          "locator": "`compute_logprobs`: shifted logits, labels and mask; `average_log_prob` branches",
+          "depth": "Pass a completion loss mask, not just the attention mask described in the docstring. Keep prompt tokens visible as context. Reject empty scored completions rather than letting the clamped mean denominator hide them."
+        },
+        {
+          "resource": "rl10-trl-dpo-trainer",
+          "title": "TRL 1.15.0: data and preprocessing contract",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/dpo_trainer#expected-dataset-type-and-format",
+          "locator": "Expected dataset type and format; Preprocessing and tokenization; DPOConfig parameters `max_length` and `truncation_mode`",
+          "depth": "Inspect the data contract only. Do not run the full quick start or assume its truncation matches the book's collator."
+        },
+        {
+          "resource": "rl10-simpo",
+          "title": "SimPO: changing the sequence score",
+          "url": "https://arxiv.org/abs/2405.14734v3",
+          "locator": "arXiv:2405.14734v3, Section 2.2 equations 3 to 4"
         }
       ],
       "focus": [
-        "TODO"
+        "For each completion, sum \\(\\log\\pi(y_t\\mid x,y_{<t})\\) over scored target positions. Shift the completion mask with the labels exactly once.",
+        "A common prompt's joint log probability cancels algebraically in a same-prompt difference. Different templates, token boundaries or per-response prompt truncation invalidate that argument; compare actual prompt token IDs.",
+        "Token means are not sequence log probabilities. Unequal lengths change the adjusted margin and the gradient weighting, even when both policy and reference are normalized consistently.",
+        "Declare whether EOS is scored, where completion starts, how padding is excluded and what overlength pairs lose. Inspect rendered text and token IDs for both branches; do not silently train after truncation removes the preferred distinction."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch `torch.float64`, use zero logits of shape `(1, 4, 2)`, token IDs `[[0, 1, 0, 1]]` and an unshifted completion mask `[[0, 0, 1, 1]]`. Derive the shifted selected targets, score \\(-2\\log 2\\), and mean \\(-\\log 2\\). Match `compute_logprobs` to absolute tolerance \\(10^{-12}\\). Only scoring-logit positions 1 and 2 receive gradients. Give the rejected branch one scored token: with identical policy and reference, adjusted margin stays zero although the raw policy gap is \\(-\\log 2\\). Then test an actual template's completion boundary and an overlength pair in your scorer.",
       "traps": [
-        "TODO"
+        "Removing prompt tokens from attention to achieve completion-only loss. They remain necessary conditioning context.",
+        "Masking by token ID when padding reuses EOS. That can remove real EOS targets; mask by position and sequence ownership instead.",
+        "Comparing separately tokenized prompt lengths without checking the full sequence prefix. Tokenization at a text boundary can change IDs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Can changing prompt input tokens change a completion-only loss?",
+          "a": "Yes. Prompt targets are excluded, but prompt inputs still condition completion predictions. Only excluded scoring logits can be perturbed independently without affecting the score."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why does replacing sums by means not simply rescale the whole batch?",
+          "a": "Chosen and rejected lengths can differ within a pair and across pairs. Each score then gets a different divisor."
+        },
+        {
+          "q": "What should happen if truncation leaves no scored completion tokens?",
+          "a": "Reject or explicitly classify the record as invalid and count it. A zero sum or clamped denominator is not a meaningful preference example."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `policylab` completion-scoring oracles for shifts, unequal lengths, EOS-as-padding, templates, empty responses and truncation, with token-level evidence for each policy-reference pair.",
+      "stopWhen": "Your scorer passes the fixed-logit oracle and boundary tests, and you can exhibit an unequal-length pair whose adjusted margin changes under token means.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The scoring helper, versioned trainer contract and SimPO score definition cover masks, lengths and templates; mini-project boundary tests provide implementation practice."
       }
     },
     {
