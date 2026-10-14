@@ -249,47 +249,70 @@
         "rope-position-and-offset-handling"
       ],
       "outcomes": [
-        "TODO"
+        "Implement append and gather over page boundaries while preserving untouched KV slots.",
+        "Preserve absolute RoPE positions through cached chunks, request compaction and slot reuse.",
+        "Trace where the model rotates keys and where the backend stores them to prevent double rotation."
       ],
-      "why": "TODO",
+      "why": "Key-value append, gather, layout conversion and quantized loads already established the storage primitives. Serving adds a lifecycle: reuse of a physical slot must not reuse the previous request's position or key state.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/kernel-oracle-differential-tests",
+          "note": "Turn append and position invariants into the integration matrix."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-docs-inf5",
+          "title": "Caller-owned append metadata",
+          "url": "https://docs.flashinfer.ai/generated/flashinfer.page.append_paged_kv_cache.html",
+          "locator": "FlashInfer 0.7.1 documentation: Parameters, Example and Note of `append_paged_kv_cache`"
+        },
+        {
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "Rotation before backend dispatch",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/layers/attention.py",
+          "locator": "`AttentionLayer.forward`: projection split, optional head norms, rotation using `ctx.batch.positions`, then attention-backend call"
+        },
+        {
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "KV storage and rotation conventions",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/kvcache/mha_pool.py",
+          "locator": "`MHAKVCache.__init__` and `store_kv`; then `RotaryEmbedding.__init__` and `forward` in the linked rotation implementation",
+          "depth": "Open https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/layers/rotary.py for the second locator. Stop before model-specific scaling branches in `_get_rope`."
         }
       ],
       "focus": [
-        "TODO"
+        "The append API assumes allocation and final page metadata already include the new tokens. Validate capacity before writing; it neither allocates pages nor protects shared-prefix ownership for you.",
+        "Cache addresses and RoPE positions are separate mappings. A compacted batch index, physical page or recycled slot cannot replace a request's logical position.",
+        "Mini-SGLang rotates queries and keys before storing keys; its FlashInfer path uses `pos_encoding_mode=\"NONE\"`. In another integration, inspect this boundary before enabling rotation inside attention.",
+        "Keep the model's pairing, frequency base, scaling and rotary width fixed. Layout conversion changes storage, not those conventions; test full-prefix and chunked execution on the same represented inputs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU, use page size 4 and physical pages `[3, 1]` for a request growing from length 3 to 5. With seed 0 standard-normal double-precision keys and values, rotate new keys at logical positions 3 and 4 using a half-split RoPE reference with width 8 and base 10000. Append across the page boundary, gather and compare with rotating the full five-token prefix once at `rtol=1e-12, atol=1e-12`. Verify every untouched slot exactly. Recycle the pages for a new request beginning at position 0 and repeat; do not inherit the old position offset.",
       "traps": [
-        "TODO"
+        "Using chunk-local positions starting at zero for a suffix that follows a cached prefix.",
+        "Rotating stored keys again on every decode step, or rotating both before append and inside attention.",
+        "Writing into a shared page before the allocator has made the destination private. Kernel correctness cannot repair an ownership violation."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A request has three cached tokens. What positions belong to its next two tokens?",
+          "a": "3 and 4 under zero-based absolute positions, regardless of physical pages or batch order."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What metadata does append consume: old lengths or lengths after append?",
+          "a": "Lengths and page lists after append. All destination space must already be allocated."
+        },
+        {
+          "q": "Is RoPE norm preservation enough to verify positions?",
+          "a": "No. A rotation at the wrong position also preserves norm. Compare against the correct absolute-position reference and cached/full-prefix outputs."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` append/gather and RoPE checks across cached chunks, page boundaries, compaction and cancellation followed by slot reuse.",
+      "stopWhen": "Chunked and full-prefix keys agree under the position contract, untouched slots are preserved, and a recycled-slot test detects a deliberately stale offset.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the append contract and pinned model/storage path expose allocation, layout and rotation boundaries; CPU lifecycle tests provide the serving practice."
       }
     },
     {
