@@ -95,47 +95,82 @@
         "topology-aware-moe-expert-placement"
       ],
       "outcomes": [
-        "TODO"
+        "Derive a forward-only pipeline timeline and identify the concurrency and stage balance needed to fill it.",
+        "Map MoE dispatch and combine to serving ranks, preserving the selected experts and routing weights.",
+        "Distinguish layer, expert, head and context-position partitioning, including the communication exact attention still needs."
       ],
-      "why": "TODO",
+      "why": "PP, EP and context parallelism partition different axes. Their serving value depends on available concurrency, expert skew and context length, not just whether the model fits.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/inference-comm-topology-latency",
+          "note": "Price each dependency on the topology that carries it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-ch15-17-inf7",
+          "title": "Pipeline and expert serving paths",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Pipeline Parallelism; Expert Parallelism; Dynamic Routing Strategies for MoE Inference - Expert Communication Optimization and Load Balancing, Capacity Factor, and Expert Replication",
+          "depth": "Focus on serving dependencies and placement. Do not change the model's chosen experts to fix load: rerouting or dropping expert work changes outputs."
+        },
+        {
+          "resource": "tushar-dist-inf7",
+          "title": "Partitioning cached positions",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#concept-3",
+          "locator": "Module 09, Decode context parallelism: shard the cache by position, not by head - The mechanism, one decode step and Why decode specifically",
+          "depth": "Stop before the version-specific vLLM constraints and reported benchmark. Use the online-softmax merge from Stable and online softmax, normalization and fused residual paths, not a plain sum of locally normalized attention."
+        },
+        {
+          "resource": "hundred-days-dist-inf7",
+          "title": "A forward pipeline bubble exercise",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/b8343f8873b7bdd8bd8739a42aa7557d5644cf48/day17/model-parallelism.ipynb",
+          "locator": "Day 17, Pipeline Parallelism: layer blocks + the bubble; Try These Experiments, item 4, PP bubble break-even",
+          "depth": "Only this timeline and exercise. Assume equal forward stage times and independent microbatches; do not import a training backward schedule."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse All-to-all and MoE dispatch, combine and load balance. In serving, small decode batches can expose startup and hot-expert delay even when the aggregate dispatch byte count is small.",
+        "With \(p\) equal stages, \(m\) ready independent microbatches and stage time \(t\), a transfer-free forward pipeline finishes in \((m+p-1)t\). Idle fraction is \((p-1)/(m+p-1)\); autoregressive feedback and uneven stage times invalidate that simple schedule.",
+        "Expert placement changes which assignments cross a slow link. Replicating the same expert preserves its function; changing top-k choices or overflow semantics does not automatically preserve model quality.",
+        "Context parallelism partitions positions; TP commonly partitions heads. Exact global attention still incorporates every permitted position using communicated KV blocks or partial softmax statistics. Sequence parallelism can instead mean partitioning intermediate activations around TP - state the axis, not just the acronym."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw the transfer-free forward timeline for four equal 2 ms stages and eight ready independent microbatches. Recover a 22 ms makespan and idle fraction \(3/11\). Then add the dependency from the final sampled token to the same request's next decode pass and explain why eight successive tokens of one request cannot fill the pipeline like eight independent microbatches.",
       "traps": [
-        "TODO"
+        "Using a full-training pipeline bubble formula for forward-only inference, or treating future tokens of one request as already available microbatches.",
+        "Placing paired hot experts together without checking compute imbalance. Fewer remote bytes can still leave one rank on the critical path.",
+        "Summing locally normalized attention outputs. Each slice has a different softmax normalizer; exact merging must reweight them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does PP make four equal stages execute one isolated request simultaneously?",
+          "a": "No. Its activations traverse all four stages in order. Other independent requests can occupy the remaining stages; the isolated request retains the full dependency chain."
+        },
+        {
+          "q": "Why is an expert replica different from rerouting to another expert?",
+          "a": "A replica computes the same expert function with the same weights. A different expert generally computes a different function, changing the model output."
+        },
+        {
+          "q": "Do position shards let exact causal attention ignore distant earlier positions?",
+          "a": "No. Those positions remain legal keys. Their contributions must reach the query through KV exchange or a correctly normalized partial-result merge."
+        },
+        {
+          "q": "What does a slow PP stage do to steady-state capacity?",
+          "a": "It limits the rate at which microbatches can leave the pipeline. More stages or a low average stage time cannot remove that bottleneck."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of Inference, Day 17: PP bubble break-even",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/b8343f8873b7bdd8bd8739a42aa7557d5644cf48/day17/model-parallelism.ipynb",
+          "locator": "Try These Experiments, item 4: find the minimum microbatch count for idle fraction strictly below 10 percent with 4, 8 and 16 stages",
+          "note": "Check your integer boundary by enumerating the forward timeline on CPU. The notebook has no public grader; add your own tests. The section mini-project covers expert skew and context-partition accounting."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your timeline agrees with the hand makespan and each integer bubble boundary, and you can name the partition axis, communication dependency and serving bottleneck for PP, EP and context parallelism.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book covers PP, EP and topology-aware expert placement, Module 09 supplies exact position-shard merging, and the named Day 17 exercise gives CPU timeline practice."
       }
     },
     {
