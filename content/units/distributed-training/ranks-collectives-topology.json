@@ -323,47 +323,95 @@
         "all-gather-and-reduce-scatter-duality"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-rank bytes and steps for the ring forms of all-reduce, all-gather and reduce-scatter.",
+        "Implement all three on several CPU processes and check every rank against a single-process oracle.",
+        "Explain gradient averaging as a sum followed by a division, and state where each part happens."
       ],
-      "why": "TODO",
+      "why": "Data-parallel training is one repeated all-reduce. The ring duality also decides how sharded training later splits one average into two cheaper halves.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Use the average in a minimal data-parallel step."
+        },
+        {
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-gather-reduce-scatter",
+          "note": "Split the same average into gather before compute and scatter after backward."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-vol2-comms-dt2",
+          "title": "Six primitives, the bandwidth lower bound and ring all-reduce",
+          "url": "https://mlsysbook.ai/vol2/collective_communication/collective_communication.html",
+          "locator": "Choosing the Vehicle with The six core primitives, then Engineering the Flow with The bandwidth-optimal lower bound and Ring AllReduce"
+        },
+        {
+          "resource": "pytorch-dist-dt2",
+          "title": "Gradient averaging and the ring challenge (page read 2026-10-14)",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "Distributed Training: the average_gradients function with dist.all_reduce and division by world size, then Our Own Ring-Allreduce with the torch.chunk exercise"
+        },
+        {
+          "resource": "cs336-lecture8-dt2",
+          "title": "Collective decomposition demo",
+          "url": "https://github.com/stanford-cs336/spring2025-lectures/blob/b98b08a98d9d47a69bbdcb4e96a58aa48ee4d13b/lecture_08.py",
+          "locator": "collective_operations plus torch_distributed with collective_operations_main: the live all_reduce, reduce_scatter_tensor and all_gather_into_tensor sequence that proves the decomposition"
+        },
+        {
+          "resource": "cs336-comms-dt2",
+          "title": "Ring costs for all-gather, reduce-scatter and all-reduce",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.1, Communication Primitives (pp. 40 to 41): the ring all-gather, ring reduce-scatter and ring all-reduce costs in the rendered equations"
         }
       ],
       "focus": [
-        "TODO"
+        "Ring all-reduce is a reduce-scatter followed by an all-gather. With \\(N\\) ranks and payload \\(S\\), each half moves \\(\\frac{N-1}{N} S\\) bytes per rank, so all-reduce moves \\(2 \\frac{N-1}{N} S\\).",
+        "Gradient averaging is `dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)` on every rank, then division by the world size. The sum is collective; the division is local.",
+        "All-gather takes one tensor per rank and returns a length-\\(N\\) list on every rank. Reduce-scatter takes a list of per-rank inputs and returns one shard per rank.",
+        "The tutorial ring challenge sends full buffers, not chunks. Chunking into \\(N\\) pieces is what turns its \\((N-1) S\\) cost into the ring cost above."
       ],
-      "reproduce": "TODO",
+      "reproduce": "By hand, take 4 ranks and a 1 GB payload: reduce-scatter moves 0.75 GB per rank, all-gather moves 0.75 GB per rank, and ring all-reduce moves 1.5 GB per rank. Then run all three on 4 gloo CPU processes and match every rank against the single-process sums.",
       "traps": [
-        "TODO"
+        "Passing one stacked tensor to dist.reduce_scatter. It takes a list of per-rank input tensors and raises a type error otherwise.",
+        "Forgetting the division by world size after a SUM all-reduce. Every update then silently uses a learning rate scaled by the worker count.",
+        "Treating reduce-scatter as a cheaper drop-in for all-reduce. It returns only one shard per rank; the all-gather half is still owed."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Four ranks all-reduce a 1 GB gradient buffer. How many payload bytes cross each rank, and how does that compare with a naive full-buffer ring?",
+          "a": "Ring all-reduce moves \\(2 \\times 3/4 \\times 1\\) GB = 1.5 GB per rank. A naive ring that forwards full buffers moves \\((4-1) \\times 1\\) GB = 3 GB per rank, twice as much."
+        },
+        {
+          "q": "Why does the tutorial divide by size after the all-reduce instead of before it?",
+          "a": "The collective must sum identical-scale local gradients first so every rank holds the same total. Division is then a local rescale on each rank; dividing before would still work arithmetically but the shared pattern is sum collectively, rescale locally."
+        },
+        {
+          "q": "Two ranks hold [1, 2, 3, 4] and [10, 20, 30, 40]. What does each rank hold after reduce-scatter with SUM?",
+          "a": "Rank 0 holds [11, 22] and rank 1 holds [33, 44]: chunk 0 and chunk 1 of the elementwise sum."
+        },
+        {
+          "q": "All-gather and reduce-scatter each move about half the bytes of all-reduce. When does that factor of 2 fail?",
+          "a": "For small latency-bound messages, where startup cost dominates bytes moved. The factor of 2 holds in the bandwidth-bound regime with equal payloads."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Simulate Distributed Collectives",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-simulate-collectives",
+          "locator": "The all_gather and reduce_scatter public cases: rank-ordered concatenation and equal contiguous chunks of the sum",
+          "note": "The all_to_all case belongs to the token-exchange unit; solve it there."
+        },
+        {
+          "name": "Writing Distributed Applications with PyTorch: gradient averaging",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "The average_gradients function on 4 gloo CPU processes: compare every parameter gradient against a single-process run on the joined batch",
+          "note": "Keep the MNIST data lines for the data-parallelism section; here a small fixed tensor batch is enough."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand bytes match the ring formulas, the TensorTonic cases pass, and all three gloo collectives match the single-process oracle on every rank.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book chapter plus the tutorial averaging, the lecture decomposition demo and the CS336 ring costs cover both topics at derive and implement depth."
       }
     },
     {
@@ -377,47 +425,84 @@
         "all-to-all-and-token-exchange-semantics"
       ],
       "outcomes": [
-        "TODO"
+        "Explain all-to-all from input and output ownership on each rank.",
+        "Implement all-to-all on several CPU processes and check the per-rank mix against an oracle.",
+        "Contrast token exchange with gradient averaging and state which later layers route tokens."
       ],
-      "why": "TODO",
+      "why": "Expert and sequence-parallel designs move distinct data to distinct destinations. That pattern is all-to-all, and it stresses the network in the opposite way from an average.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-token-packing-dispatch",
+          "note": "Dispatch tokens to experts with the same primitive."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/context-parallel-ring-attention",
+          "note": "Exchange sequence shards between context-parallel ranks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "stas-comms-dt2",
+          "title": "All-to-all",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/network/comms.md",
+          "locator": "All-to-all with the dist.all_to_all call and the Ulysses sequence-parallel and MoE expert-parallel uses"
+        },
+        {
+          "resource": "mlsys-vol2-comms-dt2",
+          "title": "All-to-all contention and the MoE example",
+          "url": "https://mlsysbook.ai/vol2/collective_communication/collective_communication.html",
+          "locator": "Choosing the Vehicle with The six core primitives: the all-to-all row with its O(N squared) contention note, plus the MoE message-size example"
+        },
+        {
+          "resource": "umar-framework-dt2",
+          "title": "All-to-all meaning and the two-step exchange",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=35875s",
+          "locator": "Minutes 9:57 to 10:00 for the all-to-all meaning, then minutes 19:22 to 19:24 for why one exchange carries counts and a second carries data",
+          "depth": "Watch the semantics segments only. Skip the expert-parallel implementation around them; it belongs to the MoE section."
         }
       ],
       "focus": [
-        "TODO"
+        "All-to-all takes a list of per-destination inputs on each rank. Rank \\(r\\) receives chunk \\(r\\) from every source, concatenated in source-rank order, so each rank ends with a different mix.",
+        "All-reduce gives every rank the same aggregate. All-to-all gives each rank a different slice. Token routing needs the second pattern.",
+        "All-to-all fan-out grows as \\(O(N^2)\\) logical pairs, so contention bounds it where per-node bytes bound all-reduce. Small routed messages are latency-bound.",
+        "The gloo backend runs `dist.all_to_all` on CPU in PyTorch 2.14, although the backends table marks it unsupported. Test it instead of routing around it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "By hand, take rank inputs [[1, 2, 3, 4], [5, 6, 7, 8]]: rank 0 receives [1, 2, 5, 6] and rank 1 receives [3, 4, 7, 8]. Then run dist.all_to_all on 2 gloo CPU processes and match both ranks.",
       "traps": [
-        "TODO"
+        "Assuming all-to-all concatenates like all-gather. All-gather gives every rank the same concatenation; all-to-all gives each rank its own chunk from each source.",
+        "Passing single tensors instead of per-rank lists. Both the input and the output of dist.all_to_all are lists with one entry per rank.",
+        "Planning uneven token splits without padding. Equal-size chunks are the CPU contract; ragged routing needs explicit padding or a dedicated layout later."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two ranks hold [1, 2, 3, 4] and [5, 6, 7, 8]. What does each rank hold after all-to-all?",
+          "a": "Rank 0 holds [1, 2, 5, 6] and rank 1 holds [3, 4, 7, 8]: chunk 0 from each source lands on rank 0, chunk 1 on rank 1."
+        },
+        {
+          "q": "Why does expert routing use all-to-all rather than all-reduce?",
+          "a": "Each token must reach one specific expert rank, so destinations need distinct payloads. All-reduce would give every rank the same sum, which cannot route."
+        },
+        {
+          "q": "Why is all-to-all contention-sensitive while ring all-reduce keeps constant per-node bytes?",
+          "a": "All-to-all opens a logical pair per rank pair, so pairs grow quadratically while all-reduce only talks to ring neighbours with constant bytes per node."
+        },
+        {
+          "q": "The backends table marks gloo all-to-all unsupported. What should you do on CPU in PyTorch 2.14?",
+          "a": "Run it anyway. A 4-process gloo run of dist.all_to_all passes on 2.14.1, so the table entry is stale for CPU."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Simulate Distributed Collectives",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-simulate-collectives",
+          "locator": "The all_to_all public case: chunk r from each source concatenated in source-rank order",
+          "note": "Solve the all_gather and reduce_scatter cases in the duality unit first, then finish with this case."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand result, the TensorTonic case and the gloo run all agree on both ranks, and you can contrast the all-to-all mix with the all-reduce aggregate without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Stas signature plus the book contention analysis and the verified video segments cover token-exchange semantics at implement depth."
       }
     },
     {
@@ -433,47 +518,91 @@
         "collective-ordering-and-shape-or-dtype-agreement"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why every member of a group must issue the same collective sequence.",
+        "Predict hang or corruption from conditional, reordered or shape-mismatched collectives.",
+        "Use barriers and short timeouts to localize an ordering fault to the guilty rank."
       ],
-      "why": "TODO",
+      "why": "Most distributed hangs are ordering faults, not network faults. The fix is a discipline about call order and metadata agreement, applied before any debugging tool.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/pipeline-parallelism/pipeline-p2p-protocols",
+          "note": "Apply the same ordering discipline to stage send and receive pairs."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/rank-crash-elastic-restart",
+          "note": "Separate an ordering hang from a genuinely dead rank."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dist-api-dt2",
+          "title": "Ordering, barriers and debug entries",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.html",
+          "locator": "The batch_isend_irecv ordering rule, the barrier and monitored_barrier entries, and TORCH_DISTRIBUTED_DEBUG with OFF, INFO and DETAIL"
+        },
+        {
+          "resource": "ultrascale-crash-course-dt2",
+          "title": "A0 Barrier section",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#a0:_parallel_programming_crash_course",
+          "locator": "A0 Parallel Programming Crash Course, the Barrier section with the sleep demonstration and dist.barrier",
+          "depth": "Read the arrival semantics only. The sleep demo shows waiting, not data movement."
+        },
+        {
+          "resource": "picotron-groups-dt2",
+          "title": "Pipeline communicate ordering",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pp_communications.py",
+          "locator": "pipeline_communicate with recv_forward, send_forward, recv_backward and send_backward through batch_isend_irecv",
+          "depth": "Read how operations pair sends with receives in a fixed order. Leave the stage schedule for the pipeline section."
+        },
+        {
+          "resource": "umar-framework-dt2",
+          "title": "Barrier as a rendezvous point",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=47874s",
+          "locator": "Minutes 13:17 to 13:19: all devices wait until every rank arrives at the barrier"
         }
       ],
       "focus": [
-        "TODO"
+        "Every rank in a group must invoke the same collectives in the same order with agreeing shapes and dtypes. Any deviation hangs or corrupts, because there is no central scheduler to reconcile the calls.",
+        "`dist.barrier` blocks until all ranks in the group arrive. It synchronizes arrival only; it moves no tensors and fixes no data skew.",
+        "Conditional collectives, where only some ranks enter the call, are the classic hang. So are swapped orders, such as rank 0 calling all-reduce then broadcast while rank 1 calls broadcast then all-reduce.",
+        "`dist.monitored_barrier` with a short timeout plus `TORCH_DISTRIBUTED_DEBUG=DETAIL` names the rank that never arrived. The default 30-minute gloo timeout turns every hang into a long silence."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the order-swap drill on 2 gloo CPU processes with a 20-second timeout: rank 0 calls all-reduce then broadcast while rank 1 calls broadcast then all-reduce. Predict the timeout, then fix the order and show both calls pass.",
       "traps": [
-        "TODO"
+        "Using a barrier as if it synchronizes data. Ranks can arrive together and still hold different tensors.",
+        "Running hang drills with the default timeout. Set a timeout of seconds for drills; the 30-minute default is for production patience, not debugging.",
+        "Blaming the network for a shape mismatch hang. Agree shapes and dtypes first, then suspect links."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Rank 0 calls all-reduce then broadcast; rank 1 calls broadcast then all-reduce with matching shapes. What happens?",
+          "a": "Both hang. Rank 0 waits for a broadcast partner while rank 1 waits for an all-reduce partner, and neither call can complete."
+        },
+        {
+          "q": "All ranks call dist.barrier and proceed. Does that prove their tensors agree?",
+          "a": "No. The barrier only proves every rank arrived. Tensor agreement needs the right collectives with matching data, not arrival."
+        },
+        {
+          "q": "A job hangs at a collective with the default gloo timeout. How long until it fails, and what finds the guilty rank faster?",
+          "a": "About 30 minutes. A short explicit timeout plus monitored_barrier and DETAIL debug output names the rank that never arrived within seconds."
+        },
+        {
+          "q": "Only ranks with nonzero loss call all-reduce. Why is that unsafe even when the math looks conditional-safe?",
+          "a": "Collectives are group operations, not local branches. Ranks that skip the call leave the others waiting, so the condition must be reduced to all ranks first or every rank must enter the call."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Writing Distributed Applications with PyTorch: barrier plus ordering drill",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html",
+          "locator": "The dist.barrier bullet in Collective Communication, extended with the order-swap drill from Reproduce on 2 gloo CPU processes with a 20-second timeout",
+          "note": "Run the hanging order first to see the timeout fire, then the fixed order. Log the collective sequence number on each rank."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The swapped order times out on a short fuse, the fixed order passes, and you can name the order, membership and metadata mismatch classes without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for barrier debugging entries in the tutorial alone; the torch.distributed reference fills that gap beside the crash-course and Picotron ordering examples."
       }
     },
     {
