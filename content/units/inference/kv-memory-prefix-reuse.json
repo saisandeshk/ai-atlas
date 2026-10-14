@@ -401,47 +401,71 @@
         "cancellation-and-terminal-cleanup"
       ],
       "outcomes": [
-        "TODO"
+        "Implement distinct transitions for cache eviction, request preemption and terminal release.",
+        "Resume a preempted request from retained token history without resampling its past.",
+        "Prove cancellation is idempotent and cannot free another owner's state."
       ],
-      "why": "TODO",
+      "why": "A request can stop owning KV while the prefix cache retains it. Cleanup must distinguish safe reuse from a leak, and preemption must preserve enough history to resume correctly.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/kv-memory-prefix-reuse/prefix-hash-radix-lookup",
+          "note": "Connect reclaimable state to a prefix index."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pagedattention-inf3",
+          "title": "PagedAttention: recovering preempted state",
+          "url": "https://arxiv.org/html/2309.06180v1#S4.SS5",
+          "locator": "arXiv:2309.06180v1, Section 4.5, Scheduling and Preemption; Section 7.3, Comparing Recomputation and Swapping",
+          "depth": "Read recomputation and swap as the paper's alternatives, not claims about today's vLLM scheduler defaults."
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: preempt and finish",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`preempt` and `postprocess`, including deallocation on end-of-sequence or output limit"
+        },
+        {
+          "resource": "mini-sglang-inf3",
+          "title": "Mini-SGLang: protection and leaf eviction",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/kvcache/radix_cache.py",
+          "locator": "`lock_handle`, `evict` and `_collect_leave_nodes_for_evict`; follow protected and evictable sizes",
+          "depth": "Trace the state transitions. Add cancellation in your own model; neither small engine is a complete cancellation specification."
         }
       ],
       "focus": [
-        "TODO"
+        "Eviction removes reusable index entries and makes unpinned storage reclaimable. Preemption pauses a live request and releases or moves its KV. Terminal cleanup removes request ownership permanently.",
+        "Recomputation replays the original prompt plus committed generated tokens as inputs. It does not regenerate those tokens or advance the sampling RNG for them.",
+        "A radix leaf may be evictable only when no active handle protects it. Remove descendants before ancestors so remaining prefix paths stay valid.",
+        "Cancellation releases each owner once and invalidates future work for that request generation. Pending readers, writers or transfers must complete or acknowledge cancellation before their blocks can be overwritten."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw and execute a deterministic CPU history: allocate a request, fork it, cancel one branch twice, preempt the survivor, recompute its committed token history, then finish it. Keep a separate token-list oracle and an ownership ledger after each event. With prefix retention enabled, request references must end at zero while retained blocks remain reclaimable; explicitly evict them and require full pool recovery. Inject a late completion from the cancelled generation and reject it without releasing storage again.",
       "traps": [
-        "TODO"
+        "Calling every retained block a leak. A leak has no valid owner or bounded reclamation path; a cached prefix can legitimately outlive its request.",
+        "Resampling old output during recomputation. The resumed history and sampling state then differ from the original request.",
+        "Treating a duplicate cancellation or late callback as a second release. Guard terminal state and request generation before decrementing references."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Can a request be finished while a prefix derived from it remains cached?",
+          "a": "Yes. Request ownership has ended, but a reusable index can retain reclaimable state. It must remain bounded and evictable when unpinned."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does preemption always reclaim every page in the request table?",
+          "a": "No. Other requests or pending operations may still pin shared pages. Release this request's references and count only newly reclaimable physical pages."
+        },
+        {
+          "q": "Which past tokens are fed to recomputation after a decode preemption?",
+          "a": "The prompt and already committed generated tokens, with their original positions and model state contract. Past sampling decisions are retained, not repeated."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` eviction, recompute, cancellation and terminal cleanup histories, including duplicate cancellation and late-event rejection.",
+      "stopWhen": "The history preserves surviving tokens, releases each owner exactly once, rejects stale events and recovers the full pool after retained entries are explicitly evicted.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The paper and pinned engines expose recovery, release and protected eviction. Servelab supplies the cancellation and late-event contract rather than assuming unsupported engine APIs."
       }
     },
     {
