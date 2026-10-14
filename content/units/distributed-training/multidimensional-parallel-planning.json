@@ -382,47 +382,76 @@
         "collective-volume-for-every-parallel-dimension"
       ],
       "outcomes": [
-        "TODO"
+        "Derive local matmul shapes and forward, backward and recomputation FLOPs for each stage.",
+        "List every DP, FSDP, TP, SP, CP, PP and EP transfer with group, dtype, payload and frequency.",
+        "Keep logical payload, per-rank transmitted bytes and critical-path time distinct."
       ],
-      "why": "TODO",
+      "why": "Use Counting parameters and FLOPs and Operation counts for projections, MLPs, output and attention as inputs. The new task is to distribute those operations and count the communication that makes them valid.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/link-contention-placement",
+          "note": "Map the byte ledger onto physical links."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-calcs-dt8",
+          "title": "A gated FFN with explicit forward and backward communication",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Sections 8.1 to 8.4, Communication Primitives through Analyzing Tensor Parallel, printed pp. 40 to 45"
+        },
+        {
+          "resource": "jax-plan-dt8",
+          "title": "Transformer terms beyond the FFN",
+          "url": "https://jax-ml.github.io/scaling-book/transformers/",
+          "locator": "Global FLOPs and Params Calculation: MLPs, Attention, Other Operations and Fractional cost of attention with context length"
+        },
+        {
+          "resource": "ultrascale-5d-dt8",
+          "title": "Sequence, context, pipeline and expert transfers",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#5d_parallelism_in_a_nutshell",
+          "locator": "Summarizing it all, the combined MoE-layer diagram; follow back to Sequence parallelism, Ring Attention and Expert Parallelism for the transfer paths",
+          "depth": "Use the diagrams to enumerate transfers. Do not use Appendix A3's shard-size lines as transmitted bytes: an input shard is not the total traffic, and element counts need their dtype multiplier."
         }
       ],
       "focus": [
-        "TODO"
+        "For a gated FFN with token rows \(n\), hidden width \(h\) and MLP width \(f\), three projections cost \(6nhf\) forward FLOPs and about \(12nhf\) backward FLOPs. Distribute rows and weights according to actual layouts, not every mesh degree blindly.",
+        "For a ring on \(q\) ranks and full logical tensor size \(S\) bytes, all-gather or reduce-scatter sends \((q-1)S/q\) per rank; all-reduce sends twice that. At degree 1 all three have zero network traffic.",
+        "DP reduces gradients once per synchronization; FSDP gathers each live parameter unit and scatters gradients; TP/SP moves activations at layout boundaries. PP sends boundary activations and their gradients. CP exchanges attention blocks; EP dispatches and combines routed tokens, including backward transfers.",
+        "Include attention score/value matmuls, vocabulary projection, recomputation and replicated operations. CP and EP counts depend on algorithm, masks, routing and padding; count the actual messages rather than assuming uniform traffic."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the three CS336 FFN strategies from tensor shapes without notes. For a separate synthetic four-rank ring all-reduce with a 1 MiB logical tensor, derive 1,572,864 transmitted bytes per rank, excluding protocol overhead. Extend one composed-plan ledger with every transfer type in the combined MoE diagram; record forward/backward frequency and explicitly mark any inactive dimension as zero.",
       "traps": [
-        "TODO"
+        "Treating FLOPs divided by peak FLOP/s as a measured kernel time. Local shard shapes can reduce attainable throughput.",
+        "Adding send and receive bytes and then dividing by an egress-only bandwidth. Keep the byte and bandwidth convention consistent.",
+        "Counting only EP forward dispatch. Combine and the backward routing paths also move tensors."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is the gated FFN forward count larger than a two-matrix MLP count?",
+          "a": "It has gate, up and down projections rather than just up and down. Each costs twice token rows times the two weight dimensions."
+        },
+        {
+          "q": "What happens to FSDP traffic if parameters are retained across the forward/backward boundary?",
+          "a": "A backward parameter gather may be avoided for retained units, but memory rises. Count gathers from the retention policy, not a fixed slogan."
+        },
+        {
+          "q": "Why is the 1 MiB ring input not the per-rank all-reduce traffic?",
+          "a": "Each rank sends three quarters of the tensor in reduce-scatter and again in all-gather. That totals 1.5 MiB."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `data_parallel_calcs`, `fsdp_calcs` and `tp_calcs`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.2 problem on p. 42, Section 8.3 problem on pp. 43 to 44 and Section 8.4 problem on pp. 44 to 45",
+          "note": "These are written derivations, not public autograded tests. Retain the finite-rank ring factors and the handout's FP16 and egress-bandwidth assumptions. The section mini-project extends your transfer ledger to CP, PP and EP."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your three written solutions agree with an independent shape-and-message count, and the composed ledger names every active transfer and its units.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies checked-by-derivation practice, the scaling book supplies transformer terms and the Playbook diagrams expose the remaining dimensions. Trainlab completes the transfer ledger."
       }
     },
     {
