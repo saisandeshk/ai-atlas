@@ -189,47 +189,82 @@
         "tensor-parallel-mlp-partitioning"
       ],
       "outcomes": [
-        "TODO"
+        "Partition complete attention heads and matching output-projection columns, preserving forward and backward semantics.",
+        "Derive legal GQA head layouts and distinguish KV sharding from KV replication.",
+        "Implement matching gate/up feature shards for a tensor-parallel SwiGLU block."
       ],
-      "why": "TODO",
+      "why": "Attention heads and MLP features supply independent work, but shared KV heads and paired gates constrain which shards may be kept local.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/sequence-parallel-norm-residual",
+          "note": "Shard the residual and normalization regions around these blocks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Transformer TP and the GQA qualification",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#tensor_parallelism_in_a_transformer_block",
+          "locator": "Tensor parallelism in a transformer block: feedforward and multi-head attention diagrams, MQA/GQA paragraph and KV-head synchronization example",
+          "depth": "Stop before the throughput plots. The stated head limit describes whole-head partitioning, not every possible tensor-parallel algorithm."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "Whole-head attention partitioning",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, Figure 3b and Figure 4"
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Tensor-parallel attention oracle",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_attention.py",
+          "locator": "`split_heads`, `merge_heads`, `local_attention` and `main`: projection placements through output and all gradient comparisons"
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Aligned SwiGLU shards",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_swiglu.py",
+          "locator": "`swiglu`; `main` from gate/up/down distribution through reconstruction and gradient assertions"
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Multi-head attention: split, merge and gradients, MQA and GQA: sharing keys and values, and The modern decoder block. The new task is ownership and communication, not another attention implementation.",
+        "For whole-head sharding without KV replication, TP degree \(p\) divides both \(H_q\) and \(H_{\mathrm{kv}}\), and \(H_{\mathrm{kv}}\) divides \(H_q\). Preserve each query's KV mapping when slicing projection rows and output-projection columns.",
+        "When \(p>H_{\mathrm{kv}}\), a different plan may replicate KV heads among ranks. Their shared projection gradients must then be summed across the replica subgroup; the simple equally sharded plan is not legal.",
+        "SwiGLU gate and up projections use identical intermediate-feature boundaries. Their product remains sharded; the down projection produces partial residual-width outputs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run the two named CPU examples below, then redraw their local projection and head shapes without notes. Extend a deterministic simulation to \(H_q=8\), \(H_{\mathrm{kv}}=2\), head width 4 and TP degree 2: each rank owns four contiguous query heads and their one KV head. With identical seed-0 `torch.float64` inputs and zero dropout, concatenated local attention must match the full GQA oracle. Reject degree 4 under the no-KV-replication policy.",
       "traps": [
-        "TODO"
+        "Splitting channels through the middle of a head and using the original softmax as if each shard had a complete query/key dot product.",
+        "Dividing query heads but forgetting KV-head constraints. Shapes may be divisible while query-to-KV ownership is wrong.",
+        "Pairing differently ordered gate and up shards. Their elementwise product then changes the MLP."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Can eight query heads and two KV heads use four equally KV-sharded ranks?",
+          "a": "Not with complete KV heads and no replication. Two KV heads cannot give every rank one shard. A replicated-KV implementation is a separate plan with shared-gradient reduction."
+        },
+        {
+          "q": "Why is an output-projection reduction still needed after local head attention?",
+          "a": "Each head subset contributes through a different set of output-projection input columns to the same residual-width output. Those partial contributions must be summed."
+        },
+        {
+          "q": "Which intermediate dimension must both SwiGLU branches shard identically?",
+          "a": "The expanded feedforward feature dimension. Each gate value must multiply the up value for the same feature before the row-parallel down projection."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TorchFeather: tensor-parallel SwiGLU and attention minimal examples",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_attention.py",
+          "locator": "Run `torchrun --nproc-per-node 2 --master-port 29652 minimal_examples/tp_attention.py` and `torchrun --nproc-per-node 2 --master-port 29651 minimal_examples/tp_swiglu.py` from the repository root at commit c416ab1",
+          "note": "Both use Gloo on CPU and compare outputs, loss, input gradients, norm gradients and projection gradients with ordinary tensors. They cover MHA, not GQA. The section mini-project covers the GQA ownership variation in `trainlab`."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both named examples pass, your GQA reconstruction passes, and you identify illegal head plans before launching collectives.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook covers GQA constraints, Megatron derives whole-head TP, and the two CPU examples supply forward/backward practice; the mini-project covers the shared-KV variation."
       }
     },
     {
