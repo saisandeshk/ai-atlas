@@ -59,54 +59,73 @@ import unitFile56 from './gpu/gpu-triton-cute-compilers.json';
 import unitFile57 from './gpu/gpu-triton-cute-compilers.project.json';
 import unitFile58 from './gpu/gpu-workload-arithmetic-contracts.json';
 import unitFile59 from './gpu/gpu-workload-arithmetic-contracts.project.json';
-import unitFile60 from './llm-foundations/_route.json';
-import unitFile61 from './llm-foundations/causal-training-generation.json';
-import unitFile62 from './llm-foundations/causal-training-generation.project.json';
-import unitFile63 from './llm-foundations/decoder-transformer-mechanics.json';
-import unitFile64 from './llm-foundations/decoder-transformer-mechanics.project.json';
-import unitFile65 from './llm-foundations/evaluation-model-arithmetic.json';
-import unitFile66 from './llm-foundations/evaluation-model-arithmetic.project.json';
-import unitFile67 from './llm-foundations/kv-cache-prefill-decode.json';
-import unitFile68 from './llm-foundations/kv-cache-prefill-decode.project.json';
-import unitFile69 from './llm-foundations/tokenization-corpus-data.json';
-import unitFile70 from './llm-foundations/tokenization-corpus-data.project.json';
-import unitFile71 from './math-foundations/_route.json';
-import unitFile72 from './math-foundations/calculus-autodiff.json';
-import unitFile73 from './math-foundations/calculus-autodiff.project.json';
-import unitFile74 from './math-foundations/linear-algebra-proof.json';
-import unitFile75 from './math-foundations/linear-algebra-proof.project.json';
-import unitFile76 from './math-foundations/optimization-numerics.json';
-import unitFile77 from './math-foundations/optimization-numerics.project.json';
-import unitFile78 from './math-foundations/probability-information-bayes.json';
-import unitFile79 from './math-foundations/probability-information-bayes.project.json';
-import unitFile80 from './math-foundations/statistics-experimentation-causality.json';
-import unitFile81 from './math-foundations/statistics-experimentation-causality.project.json';
-import unitFile82 from './programming/_route.json';
-import unitFile83 from './programming/concurrency-profiling-operations.json';
-import unitFile84 from './programming/concurrency-profiling-operations.project.json';
-import unitFile85 from './programming/interfaces-data-apis.json';
-import unitFile86 from './programming/interfaces-data-apis.project.json';
-import unitFile87 from './programming/native-systems-literacy.json';
-import unitFile88 from './programming/native-systems-literacy.project.json';
-import unitFile89 from './programming/python-execution-model.json';
-import unitFile90 from './programming/python-execution-model.project.json';
-import unitFile91 from './programming/testing-debugging-reproducibility.json';
-import unitFile92 from './programming/testing-debugging-reproducibility.project.json';
-import unitFile93 from './systems/_route.json';
-import unitFile94 from './systems/concurrency-bounded-work.json';
-import unitFile95 from './systems/concurrency-bounded-work.project.json';
-import unitFile96 from './systems/databases-durable-storage.json';
-import unitFile97 from './systems/databases-durable-storage.project.json';
-import unitFile98 from './systems/distributed-state-streams.json';
-import unitFile99 from './systems/distributed-state-streams.project.json';
-import unitFile100 from './systems/machine-process-memory-io.json';
-import unitFile101 from './systems/machine-process-memory-io.project.json';
-import unitFile102 from './systems/networking-rpc.json';
-import unitFile103 from './systems/networking-rpc.project.json';
-import unitFile104 from './systems/observability-reliability-design.json';
-import unitFile105 from './systems/observability-reliability-design.project.json';
-import unitFile106 from './systems/security-privacy-evolution.json';
-import unitFile107 from './systems/security-privacy-evolution.project.json';
+import unitFile60 from './inference/_route.json';
+import unitFile61 from './inference/batching-scheduling-admission.json';
+import unitFile62 from './inference/batching-scheduling-admission.project.json';
+import unitFile63 from './inference/capacity-economics-engine-extension.json';
+import unitFile64 from './inference/capacity-economics-engine-extension.project.json';
+import unitFile65 from './inference/distributed-disaggregated-inference.json';
+import unitFile66 from './inference/distributed-disaggregated-inference.project.json';
+import unitFile67 from './inference/inference-kernels-graph-execution.json';
+import unitFile68 from './inference/inference-kernels-graph-execution.project.json';
+import unitFile69 from './inference/kv-memory-prefix-reuse.json';
+import unitFile70 from './inference/kv-memory-prefix-reuse.project.json';
+import unitFile71 from './inference/model-workload-request-arithmetic.json';
+import unitFile72 from './inference/model-workload-request-arithmetic.project.json';
+import unitFile73 from './inference/prefill-decode-baseline-measurement.json';
+import unitFile74 from './inference/prefill-decode-baseline-measurement.project.json';
+import unitFile75 from './inference/production-serving-reliability.json';
+import unitFile76 from './inference/production-serving-reliability.project.json';
+import unitFile77 from './inference/quantization-speculative-decoding.json';
+import unitFile78 from './inference/quantization-speculative-decoding.project.json';
+import unitFile79 from './llm-foundations/_route.json';
+import unitFile80 from './llm-foundations/causal-training-generation.json';
+import unitFile81 from './llm-foundations/causal-training-generation.project.json';
+import unitFile82 from './llm-foundations/decoder-transformer-mechanics.json';
+import unitFile83 from './llm-foundations/decoder-transformer-mechanics.project.json';
+import unitFile84 from './llm-foundations/evaluation-model-arithmetic.json';
+import unitFile85 from './llm-foundations/evaluation-model-arithmetic.project.json';
+import unitFile86 from './llm-foundations/kv-cache-prefill-decode.json';
+import unitFile87 from './llm-foundations/kv-cache-prefill-decode.project.json';
+import unitFile88 from './llm-foundations/tokenization-corpus-data.json';
+import unitFile89 from './llm-foundations/tokenization-corpus-data.project.json';
+import unitFile90 from './math-foundations/_route.json';
+import unitFile91 from './math-foundations/calculus-autodiff.json';
+import unitFile92 from './math-foundations/calculus-autodiff.project.json';
+import unitFile93 from './math-foundations/linear-algebra-proof.json';
+import unitFile94 from './math-foundations/linear-algebra-proof.project.json';
+import unitFile95 from './math-foundations/optimization-numerics.json';
+import unitFile96 from './math-foundations/optimization-numerics.project.json';
+import unitFile97 from './math-foundations/probability-information-bayes.json';
+import unitFile98 from './math-foundations/probability-information-bayes.project.json';
+import unitFile99 from './math-foundations/statistics-experimentation-causality.json';
+import unitFile100 from './math-foundations/statistics-experimentation-causality.project.json';
+import unitFile101 from './programming/_route.json';
+import unitFile102 from './programming/concurrency-profiling-operations.json';
+import unitFile103 from './programming/concurrency-profiling-operations.project.json';
+import unitFile104 from './programming/interfaces-data-apis.json';
+import unitFile105 from './programming/interfaces-data-apis.project.json';
+import unitFile106 from './programming/native-systems-literacy.json';
+import unitFile107 from './programming/native-systems-literacy.project.json';
+import unitFile108 from './programming/python-execution-model.json';
+import unitFile109 from './programming/python-execution-model.project.json';
+import unitFile110 from './programming/testing-debugging-reproducibility.json';
+import unitFile111 from './programming/testing-debugging-reproducibility.project.json';
+import unitFile112 from './systems/_route.json';
+import unitFile113 from './systems/concurrency-bounded-work.json';
+import unitFile114 from './systems/concurrency-bounded-work.project.json';
+import unitFile115 from './systems/databases-durable-storage.json';
+import unitFile116 from './systems/databases-durable-storage.project.json';
+import unitFile117 from './systems/distributed-state-streams.json';
+import unitFile118 from './systems/distributed-state-streams.project.json';
+import unitFile119 from './systems/machine-process-memory-io.json';
+import unitFile120 from './systems/machine-process-memory-io.project.json';
+import unitFile121 from './systems/networking-rpc.json';
+import unitFile122 from './systems/networking-rpc.project.json';
+import unitFile123 from './systems/observability-reliability-design.json';
+import unitFile124 from './systems/observability-reliability-design.project.json';
+import unitFile125 from './systems/security-privacy-evolution.json';
+import unitFile126 from './systems/security-privacy-evolution.project.json';
 
 export const unitFiles: Array<{ route: string; name: string; data: unknown }> = [
   { route: 'algorithms', name: '_route', data: unitFile0 },
@@ -169,52 +188,71 @@ export const unitFiles: Array<{ route: string; name: string; data: unknown }> = 
   { route: 'gpu', name: 'gpu-triton-cute-compilers.project', data: unitFile57 },
   { route: 'gpu', name: 'gpu-workload-arithmetic-contracts', data: unitFile58 },
   { route: 'gpu', name: 'gpu-workload-arithmetic-contracts.project', data: unitFile59 },
-  { route: 'llm-foundations', name: '_route', data: unitFile60 },
-  { route: 'llm-foundations', name: 'causal-training-generation', data: unitFile61 },
-  { route: 'llm-foundations', name: 'causal-training-generation.project', data: unitFile62 },
-  { route: 'llm-foundations', name: 'decoder-transformer-mechanics', data: unitFile63 },
-  { route: 'llm-foundations', name: 'decoder-transformer-mechanics.project', data: unitFile64 },
-  { route: 'llm-foundations', name: 'evaluation-model-arithmetic', data: unitFile65 },
-  { route: 'llm-foundations', name: 'evaluation-model-arithmetic.project', data: unitFile66 },
-  { route: 'llm-foundations', name: 'kv-cache-prefill-decode', data: unitFile67 },
-  { route: 'llm-foundations', name: 'kv-cache-prefill-decode.project', data: unitFile68 },
-  { route: 'llm-foundations', name: 'tokenization-corpus-data', data: unitFile69 },
-  { route: 'llm-foundations', name: 'tokenization-corpus-data.project', data: unitFile70 },
-  { route: 'math-foundations', name: '_route', data: unitFile71 },
-  { route: 'math-foundations', name: 'calculus-autodiff', data: unitFile72 },
-  { route: 'math-foundations', name: 'calculus-autodiff.project', data: unitFile73 },
-  { route: 'math-foundations', name: 'linear-algebra-proof', data: unitFile74 },
-  { route: 'math-foundations', name: 'linear-algebra-proof.project', data: unitFile75 },
-  { route: 'math-foundations', name: 'optimization-numerics', data: unitFile76 },
-  { route: 'math-foundations', name: 'optimization-numerics.project', data: unitFile77 },
-  { route: 'math-foundations', name: 'probability-information-bayes', data: unitFile78 },
-  { route: 'math-foundations', name: 'probability-information-bayes.project', data: unitFile79 },
-  { route: 'math-foundations', name: 'statistics-experimentation-causality', data: unitFile80 },
-  { route: 'math-foundations', name: 'statistics-experimentation-causality.project', data: unitFile81 },
-  { route: 'programming', name: '_route', data: unitFile82 },
-  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile83 },
-  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile84 },
-  { route: 'programming', name: 'interfaces-data-apis', data: unitFile85 },
-  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile86 },
-  { route: 'programming', name: 'native-systems-literacy', data: unitFile87 },
-  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile88 },
-  { route: 'programming', name: 'python-execution-model', data: unitFile89 },
-  { route: 'programming', name: 'python-execution-model.project', data: unitFile90 },
-  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile91 },
-  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile92 },
-  { route: 'systems', name: '_route', data: unitFile93 },
-  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile94 },
-  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile95 },
-  { route: 'systems', name: 'databases-durable-storage', data: unitFile96 },
-  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile97 },
-  { route: 'systems', name: 'distributed-state-streams', data: unitFile98 },
-  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile99 },
-  { route: 'systems', name: 'machine-process-memory-io', data: unitFile100 },
-  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile101 },
-  { route: 'systems', name: 'networking-rpc', data: unitFile102 },
-  { route: 'systems', name: 'networking-rpc.project', data: unitFile103 },
-  { route: 'systems', name: 'observability-reliability-design', data: unitFile104 },
-  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile105 },
-  { route: 'systems', name: 'security-privacy-evolution', data: unitFile106 },
-  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile107 },
+  { route: 'inference', name: '_route', data: unitFile60 },
+  { route: 'inference', name: 'batching-scheduling-admission', data: unitFile61 },
+  { route: 'inference', name: 'batching-scheduling-admission.project', data: unitFile62 },
+  { route: 'inference', name: 'capacity-economics-engine-extension', data: unitFile63 },
+  { route: 'inference', name: 'capacity-economics-engine-extension.project', data: unitFile64 },
+  { route: 'inference', name: 'distributed-disaggregated-inference', data: unitFile65 },
+  { route: 'inference', name: 'distributed-disaggregated-inference.project', data: unitFile66 },
+  { route: 'inference', name: 'inference-kernels-graph-execution', data: unitFile67 },
+  { route: 'inference', name: 'inference-kernels-graph-execution.project', data: unitFile68 },
+  { route: 'inference', name: 'kv-memory-prefix-reuse', data: unitFile69 },
+  { route: 'inference', name: 'kv-memory-prefix-reuse.project', data: unitFile70 },
+  { route: 'inference', name: 'model-workload-request-arithmetic', data: unitFile71 },
+  { route: 'inference', name: 'model-workload-request-arithmetic.project', data: unitFile72 },
+  { route: 'inference', name: 'prefill-decode-baseline-measurement', data: unitFile73 },
+  { route: 'inference', name: 'prefill-decode-baseline-measurement.project', data: unitFile74 },
+  { route: 'inference', name: 'production-serving-reliability', data: unitFile75 },
+  { route: 'inference', name: 'production-serving-reliability.project', data: unitFile76 },
+  { route: 'inference', name: 'quantization-speculative-decoding', data: unitFile77 },
+  { route: 'inference', name: 'quantization-speculative-decoding.project', data: unitFile78 },
+  { route: 'llm-foundations', name: '_route', data: unitFile79 },
+  { route: 'llm-foundations', name: 'causal-training-generation', data: unitFile80 },
+  { route: 'llm-foundations', name: 'causal-training-generation.project', data: unitFile81 },
+  { route: 'llm-foundations', name: 'decoder-transformer-mechanics', data: unitFile82 },
+  { route: 'llm-foundations', name: 'decoder-transformer-mechanics.project', data: unitFile83 },
+  { route: 'llm-foundations', name: 'evaluation-model-arithmetic', data: unitFile84 },
+  { route: 'llm-foundations', name: 'evaluation-model-arithmetic.project', data: unitFile85 },
+  { route: 'llm-foundations', name: 'kv-cache-prefill-decode', data: unitFile86 },
+  { route: 'llm-foundations', name: 'kv-cache-prefill-decode.project', data: unitFile87 },
+  { route: 'llm-foundations', name: 'tokenization-corpus-data', data: unitFile88 },
+  { route: 'llm-foundations', name: 'tokenization-corpus-data.project', data: unitFile89 },
+  { route: 'math-foundations', name: '_route', data: unitFile90 },
+  { route: 'math-foundations', name: 'calculus-autodiff', data: unitFile91 },
+  { route: 'math-foundations', name: 'calculus-autodiff.project', data: unitFile92 },
+  { route: 'math-foundations', name: 'linear-algebra-proof', data: unitFile93 },
+  { route: 'math-foundations', name: 'linear-algebra-proof.project', data: unitFile94 },
+  { route: 'math-foundations', name: 'optimization-numerics', data: unitFile95 },
+  { route: 'math-foundations', name: 'optimization-numerics.project', data: unitFile96 },
+  { route: 'math-foundations', name: 'probability-information-bayes', data: unitFile97 },
+  { route: 'math-foundations', name: 'probability-information-bayes.project', data: unitFile98 },
+  { route: 'math-foundations', name: 'statistics-experimentation-causality', data: unitFile99 },
+  { route: 'math-foundations', name: 'statistics-experimentation-causality.project', data: unitFile100 },
+  { route: 'programming', name: '_route', data: unitFile101 },
+  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile102 },
+  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile103 },
+  { route: 'programming', name: 'interfaces-data-apis', data: unitFile104 },
+  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile105 },
+  { route: 'programming', name: 'native-systems-literacy', data: unitFile106 },
+  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile107 },
+  { route: 'programming', name: 'python-execution-model', data: unitFile108 },
+  { route: 'programming', name: 'python-execution-model.project', data: unitFile109 },
+  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile110 },
+  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile111 },
+  { route: 'systems', name: '_route', data: unitFile112 },
+  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile113 },
+  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile114 },
+  { route: 'systems', name: 'databases-durable-storage', data: unitFile115 },
+  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile116 },
+  { route: 'systems', name: 'distributed-state-streams', data: unitFile117 },
+  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile118 },
+  { route: 'systems', name: 'machine-process-memory-io', data: unitFile119 },
+  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile120 },
+  { route: 'systems', name: 'networking-rpc', data: unitFile121 },
+  { route: 'systems', name: 'networking-rpc.project', data: unitFile122 },
+  { route: 'systems', name: 'observability-reliability-design', data: unitFile123 },
+  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile124 },
+  { route: 'systems', name: 'security-privacy-evolution', data: unitFile125 },
+  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile126 },
 ];
