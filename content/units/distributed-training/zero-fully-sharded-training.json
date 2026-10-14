@@ -570,47 +570,71 @@
         "meta-device-and-deferred-parameter-initialization"
       ],
       "outcomes": [
-        "TODO"
+        "Construct a meta model, shard it before materializing storage and initialize or load every parameter and buffer.",
+        "Distinguish metadata-only construction from deferred replay of initialization operations.",
+        "Verify shard initialization against an explicitly defined full-model oracle rather than relying on seeds alone."
       ],
-      "why": "TODO",
+      "why": "A model may fail before its first step if initialization materializes the whole model on each device. Shard-first initialization avoids that peak but makes initialization and buffer completeness part of the correctness contract.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/sharded-state-dicts",
+          "note": "Load initialized destination shards from a checkpoint."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Shard first, materialize second",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#fsdp1-to-fsdp2-migration-guide",
+          "locator": "FSDP1-to-FSDP2 migration guide, New fully_shard() usage and Migration Steps (page read 2026-10-14)"
+        },
+        {
+          "resource": "lambda-fsdp-dt4",
+          "title": "Meta initialization and buffers",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/04-fully-sharded-data-parallel/README.md",
+          "locator": "Delayed initialization - the meta device; Sharding the meta model; Initializing the model, including the rotary-buffer example",
+          "depth": "Read these initialization subsections only, not the Run Command. Meta avoids tensor data storage, not all Python memory. The overview's claim that each layer gathers optimizer state is incorrect; only weights are needed for layer compute."
+        },
+        {
+          "resource": "fsdp-paper-dt4",
+          "title": "Deferred initialization is a different mechanism",
+          "url": "https://arxiv.org/abs/2304.11277v2",
+          "locator": "arXiv:2304.11277v2, Section 3.1, Model Initialization",
+          "depth": "Use this to distinguish recorded initialization replay from the current meta flow, not as an FSDP2 API recipe."
         }
       ],
       "focus": [
-        "TODO"
+        "A meta tensor has shape and dtype but no data to copy. `to_empty` allocates uninitialized destination storage; it does not restore values or replay random initialization.",
+        "Create the module under `torch.device('meta')`, apply bottom-up FSDP2 sharding with the intended mesh, then materialize only the stored shards. Initialize them or load a compatible checkpoint before any compute or optimizer step.",
+        "Initialize buffers too. A module-specific `reset_parameters()` may not rebuild position or rotary buffers. Enumerate parameters and buffers and give each an initialization or load path.",
+        "An identical seed alone is not an initialization specification across shard layouts. Check reconstructed values against a full tensor, or define a global-index-based initializer that is independent of rank count."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In two CPU Gloo processes, construct `torch.nn.Linear(8, 4)` under `torch.device('meta')`, shard it on `init_device_mesh('cpu', (2,))`, and check that its parameters remain meta. Call `to_empty(device='cpu')`; under `torch.no_grad()`, fill the stored weight with 0.25 and bias with zero. For `torch.ones(2, 8)`, obtain a two-by-four output filled with 2 on each rank, matching an ordinary CPU linear layer initialized identically. Add a buffer and show that it also requires explicit initialization.",
       "traps": [
-        "TODO"
+        "Calling `.to('cpu')` on a meta tensor and expecting its values. There are no values to copy.",
+        "Materializing the full model before applying sharding, defeating the initialization memory saving.",
+        "Assuming the base `nn.Module` implements recursive `reset_parameters()`. Initialization is model-specific."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does meta construction preserve the random parameter values that construction would have generated?",
+          "a": "No. It produces metadata without tensor data. Deferred initialization that records and replays operations is a separate mechanism."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What must be true before the first forward after `to_empty`?",
+          "a": "Every parameter and buffer the forward reads must have valid initialized or loaded values on the intended device and with a consistent distributed layout."
+        },
+        {
+          "q": "Why is constant initialization useful in the tiny check?",
+          "a": "Its full-tensor meaning is independent of RNG and partitioning, so it isolates meta materialization and shard reconstruction from random-initializer behavior. It is not a recommended training initializer."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab meta-to-shard initialization test, including a buffer inventory and reconstruction oracle.",
+      "stopWhen": "The tiny meta-initialized model matches the ordinary model, no meta or uninitialized tensor reaches compute, and each buffer has a checked initialization path.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The current migration guide and Lambda initialization subsections cover the implementation; the paper distinguishes deferred replay and trainlab checks values and buffers."
       }
     },
     {
