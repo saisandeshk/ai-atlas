@@ -145,7 +145,7 @@
         },
         {
           "resource": "picotron-pp-dt6",
-          "title": "grad_acc_steps as the microbatch count",
+          "title": "`grad_acc_steps` as the microbatch count",
           "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/train.py",
           "locator": "`pp_engine` branch calling the AFAB or 1F1B step with `grad_acc_steps` microbatches, and `MicroBatchDataLoader` with `global_batch_size` equal to microbatch size times `grad_acc_steps` times `dp_world_size`"
         },
@@ -188,7 +188,7 @@
       ],
       "practice": [
         {
-          "name": "TorchFeather pp_gpipe: microbatch-count variation with reference check",
+          "name": "TorchFeather `pp_gpipe.py`: microbatch-count variation with reference check",
           "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
           "locator": "Run the stock 8-rank CPU launch with `MICRO_BATCH_SIZE` 2 and again with 4; both runs must print the GPipe PASS line",
           "note": "Change only the microbatch constant and recompute the expected per-microbatch loss scaling. CPU gloo timings are not interconnect evidence; the reference match is the gate."
@@ -286,7 +286,7 @@
       ],
       "practice": [
         {
-          "name": "TorchFeather pp_gpipe stock run on CPU",
+          "name": "TorchFeather `pp_gpipe.py` stock run on CPU",
           "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
           "locator": "`torchrun --standalone --nproc-per-node=8 ./minimal_examples/pp_gpipe.py` on CPU with gloo; every rank must reach the GPipe PASS line",
           "note": "Run from the pinned commit with 8 processes. The script pins the gloo backend on CPU, so one GPU or none both work; then break one tag on purpose and read which rank stalls."
@@ -793,47 +793,89 @@
         "pipeline-groups-combined-with-data-or-tensor-groups"
       ],
       "outcomes": [
-        "TODO"
+        "Apply activation checkpointing inside a stage and state the alive-versus-recomputed contract.",
+        "Build pipeline-by-data group membership and place gradient averaging on the replicate group.",
+        "Explain the ZeRO-1 versus ZeRO-3 pairing choice under microbatching."
       ],
-      "why": "TODO",
+      "why": "Stages compose: recompute trades memory inside a stage, and data parallelism replicates stages across groups. Both change what the backward communicates, so both need oracle checks.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-tradeoffs",
+          "note": "Measure recompute and composition choices as schedule trade-offs."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Compose pipeline with data and tensor degrees in the plan search."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gpipe-paper-dt6",
+          "title": "Re-materialization design",
+          "url": "https://arxiv.org/abs/1811.06965",
+          "locator": "Section 3 (arXiv:1811.06965v5): re-materialization recomputing forward activations in the backward pass to trade compute for memory; pair with the activation-lifetime numbers from the bubble unit"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Selective and full checkpoint policies",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/activation_checkpoint.py",
+          "locator": "`apply_ac` with the selective custom policy and `_apply_full_ac` per transformer block as the policy menu for checkpointing inside stages"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Pipeline stages composed with other parallelism",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/pipeline_parallel.py",
+          "locator": "`pipeline_llm`: stages per rank from the schedule class, per-part `parallelize_fn` applying tensor or data parallelism inside each pipeline group, and `build_pipeline_schedule` warning when microbatches undercount stages"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "Composability contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.pipelining.html",
+          "locator": "What is `torch.distributed.pipelining` (page read 2026-10-14): composability with DDP, FSDP and tensor parallelism with the TorchTitan 3D reference, and the `PipelineStage` group argument carrying the pipeline subgroup"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Pipeline plus sharding pairing costs",
+          "url": "https://jax-ml.github.io/scaling-book/gpus",
+          "locator": "Pipeline Parallelism difficulty 2: per-microbatch weight all-gathers and delayed gradient reduction as the composition costs, with ZeRO-1 style replication as the workable pairing"
         }
       ],
       "focus": [
-        "TODO"
+        "Checkpoint regions must sit inside one stage: only the region inputs stay alive and the rest recomputes, following the activation-checkpointing unit's contract.",
+        "Pipeline groups move activations while replicate groups average gradients: same-stage ranks across data coordinates form the averaging group, and pipeline peers never average each other's parameters.",
+        "Microbatching shrinks the compute that amortizes a ZeRO-3 all-gather to one microbatch share, which is why replication-style ZeRO-1 pairs better with pipelines.",
+        "Picotron holds data-parallel sync until the last microbatch's backward through `require_backward_grad_sync`; syncing every microbatch would pay a full all-reduce per microbatch."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, state what stays alive and what recomputes when one stage is checkpointed, and draw pipeline-by-data group membership for 8 processes with pipeline degree 2 and data degree 4, marking which group averages gradients.",
       "traps": [
-        "TODO"
+        "Checkpointing across a stage boundary. The recompute region must sit inside one stage, or the backward needs activations from another rank.",
+        "Composing pipeline with ZeRO-3 naively. Per-microbatch all-gathers amortize over a microbatch share of the batch, so prefer replication inside pipeline groups.",
+        "Forgetting RNG determinism under recompute. State the seed-preservation policy from the activation-checkpointing unit, or dropout diverges between the two passes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What stays alive when one pipeline stage is checkpointed with `torch.utils.checkpoint`?",
+          "a": "Only the region inputs. Region outputs and intermediates recompute in the backward pass, and the recompute region must not cross a stage boundary."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Eight processes run pipeline degree 2 by data degree 4. Which ranks average gradients together?",
+          "a": "Same-stage ranks across data coordinates, in the replicate group. Pipeline peers hold different parameters and never average each other."
+        },
+        {
+          "q": "Why does ZeRO-3 pair badly with pipelines while ZeRO-1 pairs well?",
+          "a": "ZeRO-3 all-gathers weights per microbatch while compute per microbatch shrinks to a batch share. ZeRO-1 replicates parameters and shards only optimizer state, so no per-microbatch gather sits on the critical path."
+        },
+        {
+          "q": "Why does Picotron set `require_backward_grad_sync` false during 1F1B steady state?",
+          "a": "Data-parallel sync waits for the last microbatch's backward. Syncing every microbatch would pay a full gradient all-reduce per microbatch instead of once per step."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: recompute inside one owned stage with equivalence checks, and a pipeline-by-data group composition test against a single-process oracle.",
+      "stopWhen": "You can draw the group grid, place the averaging call, and state the alive set of a checkpointed stage without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "GPipe re-materialization plus TorchFeather checkpoint and mesh code and the PyTorch composability contract cover in-stage recompute and group composition; the JAX note prices the ZeRO pairing."
       }
     },
     {
@@ -847,47 +889,83 @@
         "throughput-latency-and-memory-trade-offs-across-schedules"
       ],
       "outcomes": [
-        "TODO"
+        "Measure bubble, memory, transfer and step time across stages, microbatch counts and schedules on a stated setup.",
+        "Explain why a smaller theoretical bubble can leave measured throughput flat.",
+        "Keep analytical predictions and measured results distinct with residuals stated."
       ],
-      "why": "TODO",
+      "why": "Throughput, latency and memory pull in different directions across schedules. This unit turns the section's derivations into a measurement discipline with stated setups.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/bubble-critical-path-overlap",
+          "note": "Carry measured bubble and overlap numbers into composed-plan analysis."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Use schedule measurements to choose the pipeline degree in the plan search."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-pp-dt6",
+          "title": "Throughput scaling with microbatch count",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Throughput scaling pages with FIG.L: microbatches at or below pipeline degree minus one hurt and fall with more stages, many more microbatches help low degrees, and the target global batch size caps the ratio; the plotted numbers are the authors' cluster results, read them as method"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Cluster recipes with pipeline degrees",
+          "url": "https://jax-ml.github.io/scaling-book/gpus",
+          "locator": "Pipeline Parallelism examples: 16-way pipeline with 2-way ZeRO-1 data parallelism, and 8-way tensor plus 16-way pipeline plus 128-way ZeRO-1 data parallelism, as cited cluster recipes with stated batch sizes"
+        },
+        {
+          "resource": "pipedream-flush-paper-dt6",
+          "title": "What the 20x claim compares",
+          "url": "https://arxiv.org/abs/2006.09503",
+          "locator": "Abstract and Section 5 (arXiv:2006.09503v3): the up-to-20x figure is against a non-pipelined single-device baseline for models that fit on no single device, not a schedule-versus-schedule speedup"
+        },
+        {
+          "resource": "dt-project-pp-dt6",
+          "title": "Measurement contract from the subsystem project",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/distributed-training-subsystem.md",
+          "locator": "Milestone E: predict versus measure bubbles and imbalance, compare candidate layouts on the available tier, and keep analytical and measured results distinct"
         }
       ],
       "focus": [
-        "TODO"
+        "Vary one thing at a time: stages, microbatch count, schedule or recompute, while the global batch, dtype and backend stay fixed and equivalence still passes.",
+        "Report the full row per configuration: predicted bubble, peak live activations, transfer bytes, measured step time, and the equivalence result with its tolerance.",
+        "Name the setup on every number: hardware, PyTorch version, backend, world size, stage and microbatch counts, schedule and settings.",
+        "CPU gloo timings bound nothing about GPU links: they check schedule logic and equivalence, never interconnect behavior."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the measurement table for one schedule comparison with bubble, peak live activations, transfer bytes, step time and equivalence columns, and list the setup each entry needs.",
       "traps": [
-        "TODO"
+        "Reporting CPU gloo step times as interconnect evidence. They say nothing about NVLink or InfiniBand behavior.",
+        "Quoting paper or Playbook speedups as expected learner results. They are author-cluster numbers under fixed recipes.",
+        "Tuning the microbatch count on the simulator and skipping the equivalence gate. A faster schedule with wrong gradients is a bug, not a trade-off."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Microbatches at or below pipeline degree minus one: what does the scaling plot show, and why?",
+          "a": "Low throughput that falls as stages grow. Too few microbatches leave the pipe mostly bubble, so extra stages add idle time without useful work."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What caps the microbatch count in practice?",
+          "a": "The target global batch size: microbatch size times microbatch count times data-parallel degree is fixed by the recipe."
+        },
+        {
+          "q": "A smaller theoretical bubble leaves measured throughput flat. What are the first three suspects?",
+          "a": "Point-to-point transfer sitting on the critical path, small-kernel launch overhead, and host or data starvation stalling the first stage."
+        },
+        {
+          "q": "What must every measurement entry name?",
+          "a": "Hardware, PyTorch version, backend, world size, stage and microbatch counts, schedule, dtype and settings. Measured numbers are labeled examples, never targets."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: bubble, memory, transfer and step-time measurements across stages, microbatch counts and schedules with equivalence kept.",
+      "stopWhen": "Your table fills one full comparison with setups stated, residuals explained, and equivalence passing on every row.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Playbook scaling method plus JAX cluster recipes and the Milestone E measurement contract cover schedule trade-offs; measurement practice lives in the section mini-project."
       }
     }
   ]
