@@ -402,47 +402,88 @@
         "asynchronous-checkpoint-isolation-with-a-separate-process-group"
       ],
       "outcomes": [
-        "TODO"
+        "Explain who must participate in a save and where the barriers go, including the separate-group isolation pattern.",
+        "Measure synchronous pause against asynchronous overlap on CPU and state the staging memory cost of each mode."
       ],
-      "why": "TODO",
+      "why": "Synchronous saves stop the world; asynchronous saves move the cost to host memory and a background thread. Ranks that disagree on participation corrupt the checkpoint either way.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/checkpoint-frequency-objectives",
+          "note": "Feed the measured save cost into the interval model."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "Background uploads interact with retention."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dcp-dt9",
+          "title": "The async DCP recipe",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_async_checkpoint_recipe.html",
+          "locator": "Asynchronous Checkpointing Overview: copy to CPU buffers first, memory rises by per-rank size times ranks, one outstanding request at a time; Fully Asynchronous Staging with `DefaultStager` (new in 2.9): `staging_completion` before `optimizer.step`, `upload_completion` join; Even more performance with Pinned Memory: `FileSystemWriter(cache_staged_state_dict=True)` keeps a persistent buffer (page read 2026-10-14)"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Coordinated async with an isolated group",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`AsyncMode` with `dist.new_group(backend=\"gloo\")` for `async_save_pg` with all ranks participating; `_async_wait` before each new save and in `close`; the last-step save forced synchronous; garbage collection around async saves"
+        },
+        {
+          "resource": "torchtitan-ckpt-dt9",
+          "title": "Async modes and staging waits",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/torchtitan/components/checkpointer/dcp.py",
+          "locator": "`AsyncMode` with `DISABLED`, `ASYNC` and `ASYNC_WITH_PINNED_MEM`; `DefaultStager` with `StagingOptions`; `_maybe_wait_for_staging` separating staging from upload completion"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "All ranks enter every save",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/04-fully-sharded-data-parallel/README.md",
+          "locator": "Saving a sharded checkpoint: `dist.barrier`, then all ranks call `get_state_dict` because every shard is needed"
         }
       ],
       "focus": [
-        "TODO"
+        "Every rank participates in every save. DCP plans across the group, so a rank that skips `save` breaks the plan for all. Barrier before, join the future before the next save.",
+        "Async staging copies parameters to CPU buffers first so training continues. The copy costs per-rank size times ranks of host memory, and pinned buffers persist between saves instead of releasing.",
+        "Two futures, two deadlines: `staging_completion` must resolve before `optimizer.step` mutates the parameters, and `upload_completion` must resolve before the next save reuses the buffers or the job exits.",
+        "Isolate checkpoint collectives on their own process group, as TorchFeather's gloo `async_save_pg` does, so save coordination never interleaves with training collectives."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Time 5 synchronous `dcp.save` calls against 5 `async_save` calls with joining on CPU, and report both totals plus how many staging copies are held at once. Then skip the join before exit and show the last checkpoint is incomplete.",
       "traps": [
-        "TODO"
+        "Queueing a second `async_save` before joining the first. Each outstanding request holds a full staging copy; the recipe's one-at-a-time discipline bounds host memory.",
+        "Calling `optimizer.step` right after `async_save` with a `DefaultStager`. The device-to-host copy may still be in flight, so wait on `staging_completion` first or the checkpoint captures half-updated weights.",
+        "Exiting while the future is pending. `close` must join with `_async_wait` and destroy the group, or the final checkpoint is silently incomplete."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Training continues immediately after `async_save` returns. What protects the checkpoint from the next `optimizer.step`?",
+          "a": "The staging copy: parameters are first copied to CPU buffers, and the step mutates device weights, not the staged copy. With `DefaultStager` the copy itself is asynchronous, so `staging_completion` must resolve before the step."
+        },
+        {
+          "q": "Two ranks save while a third skips the call and keeps training. What happens at load?",
+          "a": "The save plan assumed all ranks, so the checkpoint is missing a shard while `.metadata` disagrees with the files. Every rank must enter every save."
+        },
+        {
+          "q": "Why does TorchFeather create a separate gloo group for async saves instead of reusing the training group?",
+          "a": "So checkpoint coordination traffic and barriers never interleave with training collectives on the default group. The save path gets its own ordering domain."
+        },
+        {
+          "q": "Host memory grows with every checkpoint although each save completes. What was kept, and what releases it?",
+          "a": "The pinned staging buffer from `cache_staged_state_dict=True`, which persists between saves by design. Only destroying the writer releases it; without the cache, buffers release at each save's completion."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "PyTorch async DCP recipe loop, CPU-ported",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_async_checkpoint_recipe.html",
+          "locator": "Port the 10-step `async_save` loop to CPU gloo: one outstanding request with a `.result()` join per step, then add the `DefaultStager` variant with `staging_completion` before `optimizer.step` and `upload_completion` at the end; time the pause against synchronous `dcp.save`",
+          "note": "The recipe uses CUDA devices. On CPU there is no device-to-host copy, so timings compare API overhead and disk writes only. GPU staging overlap needs two or more GPUs; state that condition in your notes."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your CPU port joins exactly one outstanding request per step, separates staging from upload completion, and your timings state which costs transfer to GPUs and which do not.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The async recipe plus the TorchFeather and TorchTitan isolation patterns cover coordination, staging memory and measurement at explain and measure depth."
       }
     },
     {
@@ -458,47 +499,90 @@
         "recovery-point-and-recovery-time-objectives"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the Young-Daly interval from write time and system MTBF and recompute the chapter's worked numbers.",
+        "State RPO and RTO for a job and show how interval, retention and recovery time each move them.",
+        "Use incremental and differential vocabulary precisely: what each reuses and what a restore needs."
       ],
-      "why": "TODO",
+      "why": "Every checkpoint policy is one trade: frequent writes burn throughput, rare writes burn rework. RPO and RTO turn that trade into objectives the schedule must meet.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "Retention depth is part of the RPO."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/scaling-efficiency-goodput",
+          "note": "Restarts and rework enter goodput."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "The interval model",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Checkpointing: Preserving Progress with Definition 7.1; Checkpoint interval from failure analysis with Figure 7.25 and Napkin Math 7.3; Systems Perspective 7.3 on Young-Daly assumptions; Checkpoint overhead analysis; The stop-the-world cost"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Recovery budgets and vocabulary",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Failure Detection and Recovery with equation 7.9 for recovery time; Checkpoint 7.4: Reasoning about the checkpoint tax; appendix Reliability Foundations: Checkpoint Optimization, Recovery Budgets, Strategy Selection"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Frequency arithmetic from production",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md",
+          "locator": "Frequent checkpoint saving: BLOOM-176B wrote 2.3TB in 40 seconds on 384 processes every 3 hours, 720 saves totalling 8 hours (0.37 percent); keep the 2 most recent checkpoints local for fast resume"
+        },
+        {
+          "resource": "llama3-reliability-dt9",
+          "title": "Failure rates to plan against",
+          "url": "https://arxiv.org/abs/2407.21783",
+          "locator": "Section 3.3.4 Reliability and Operational Challenges with Table 5: 466 interruptions over a 54-day snapshot, 47 planned and 419 unexpected; Section 3.3.1 storage on bursty writes and minimizing pause time (arXiv:2407.21783v3)"
         }
       ],
       "focus": [
-        "TODO"
+        "Total waste is write cost plus expected rework: \\(T_{\\text{write}} / \\tau + \\tau / (2 \\cdot \\text{MTBF})\\). The Young-Daly interval \\(\\tau_{\\text{opt}} = \\sqrt{2 \\cdot T_{\\text{write}} \\cdot \\text{MTBF}}\\) sits at its minimum. Derive it by differentiating, not by quoting.",
+        "Restart time is a per-failure term, not a smaller write time. Folding restart into the square root needs a recovery-aware model, as Systems Perspective 7.3 warns.",
+        "RPO is the oldest state you can lose, bounded by interval plus retention gaps. RTO is detect plus restart plus load plus warmup. Interval moves RPO; recovery engineering moves RTO.",
+        "Incremental checkpoints store changes since the last checkpoint of any kind; differential store changes since the last full one. Restore needs the base plus every incremental since, or the base plus the latest differential. Neither replaces a correct full checkpoint."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, recompute Napkin Math 7.3 (37-second writes with 3.69-hour MTBF give a 991-second interval at 7.5 percent total waste) and the BLOOM overhead (720 saves of 40 seconds are 8 hours, 0.37 percent of 90 days).",
       "traps": [
-        "TODO"
+        "Setting the interval from write time alone. Without the fleet MTBF the formula has no second input; Figure 7.25's curve needs both.",
+        "Quoting the chapter's 16.5-minute interval as a recommendation. It belongs to a 10,000-GPU cluster with 37-second writes; your job's MTBF and write time give your interval.",
+        "Trusting the printed Table 5 percentages. The counts sum to 419 but the Faulty GPU share (30.1 percent) disagrees with its count (148 of 419 is 35.3 percent), so plan from counts and recompute shares yourself.",
+        "Calling RTO the checkpoint write time. RTO includes detection, scheduling, loading and warmup, which run 3 to 5 times the write in production."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Derive the Young-Daly interval from the two-sided tax.",
+          "a": "Minimize \\(T_{\\text{write}} / \\tau + \\tau / (2 \\cdot \\text{MTBF})\\) over \\(\\tau\\): \\(-T_{\\text{write}} / \\tau^2 + 1 / (2 \\cdot \\text{MTBF}) = 0\\), so \\(\\tau = \\sqrt{2 \\cdot T_{\\text{write}} \\cdot \\text{MTBF}}\\)."
+        },
+        {
+          "q": "A cluster doubles in size and system MTBF halves with write time fixed. How does the optimal interval move?",
+          "a": "It shortens by \\(\\sqrt{2}\\): the new interval is \\(\\tau / \\sqrt{2}\\), since only the MTBF term changes."
+        },
+        {
+          "q": "Llama 3 saw 419 unexpected interruptions in 54 days. What fleet MTBF does that imply, and what is it for?",
+          "a": "About 3.1 hours (54 times 24 divided by 419). It is the MTBF input to the interval model for a fleet of that scale, not a constant for all jobs."
+        },
+        {
+          "q": "A job keeps hourly checkpoints with a 10-minute RTO and the last two are corrupt. What are the realized RPO and recovery time?",
+          "a": "RPO is 3 hours (the oldest usable checkpoint) plus the 10-minute RTO on top for recovery. Retention depth is part of the RPO, not just the interval."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MLSys Checkpoint 7.4: Reasoning about the checkpoint tax",
+          "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
+          "locator": "Checkpoint 7.4: Young-Daly shift, Two-sided tax, Faster writes, Square-root scaling",
+          "note": "Answer all four boxes on paper first: recompute Napkin Math 7.3 and the Llama 3 fleet MTBF (419 over 54 days) before checking against the text."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the interval from the tax expression without notes, recompute both worked numbers exactly, and can state your own job's RPO and RTO with the input each depends on.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The chapter's interval model, recovery budgets and Checkpoint 7.4 plus the Stas and Llama 3 production numbers cover derivation and objectives at derive depth."
       }
     },
     {
