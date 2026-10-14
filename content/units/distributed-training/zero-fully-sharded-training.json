@@ -260,47 +260,64 @@
         "forward-and-backward-prefetch-ordering"
       ],
       "outcomes": [
-        "TODO"
+        "Predict full-parameter lifetimes and gather counts for reshard-after-forward policies.",
+        "Compare prefetch depth using a live-state timeline and identify communication that remains exposed.",
+        "Explain the memory cost of keeping weights through backward or gathering future groups early."
       ],
-      "why": "TODO",
+      "why": "A policy can save one gather yet retain a large full tensor. Prefetch can hide a gather yet create an OOM. Both choices need a lifecycle timeline, not a universal fastest setting.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-peak-memory-comm-volume",
+          "note": "Count the live windows and bytes introduced by each policy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Reshard policy in PyTorch 2.14",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.fully_shard",
+          "locator": "`fully_shard`, parameter `reshard_after_forward`; `FSDPModule.set_modules_to_forward_prefetch`, `set_modules_to_backward_prefetch` and `unshard`",
+          "depth": "Read the Boolean and default policies first. Use the integer policy only in the simulator unless you have a suitable mesh; it needs a non-trivial divisor of the sharding degree."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Implicit and explicit prefetch",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#forward-backward-with-prefetching",
+          "locator": "Forward/Backward with Prefetching, including both timeline diagrams and explicit-prefetch code (page read 2026-10-14)"
         }
       ],
       "focus": [
-        "TODO"
+        "With `reshard_after_forward=True`, discard the full weight after forward and gather it for backward. With `reshard_after_forward=False`, retain it until backward and avoid that gather.",
+        "In 2.14, `reshard_after_forward=None` resolves to true for non-root modules and false for the forward root. Set the policy explicitly when comparing schedules; do not assume a root-only run has two gathers.",
+        "Backward's default prefetch follows reverse post-forward order. An explicit list overrides it; deeper prefetch increases simultaneous gathered state and is only useful if earlier launch reduces waiting.",
+        "Use a deterministic event simulator first to measure live bytes and dependency stalls. With two or more GPUs, compare synchronized fixed-workload traces, allocated peaks and step times for these policies. CPU Gloo timings do not establish GPU overlap or interconnect performance."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw a three-group forward/backward event trace twice: first release every group's full weights after forward, then retain them until backward. Assume each group needs its weight in both passes, no accumulation and no prefetch. Count two gathers per group in the first trace and one in the second; compute the simultaneous full-weight bytes. Add one-group-ahead prefetch and show the extra live window before testing the schedules in trainlab.",
       "traps": [
-        "TODO"
+        "Treating asynchronous launch as proof of overlap. Only a timeline with concurrent work and satisfied dependencies establishes overlap.",
+        "Copying a fixed prefetch list onto rank-divergent execution. Every group must still execute compatible collectives in the same order.",
+        "Using `unshard()` on the root and assuming it recursively gathers every nested FSDP group. It is not recursive."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What does retaining full parameters after forward buy?",
+          "a": "It removes the backward parameter all-gather for those parameters, at the cost of a longer full-parameter lifetime. Gradient reduction is still required."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can deeper prefetch make a previously fitting model fail?",
+          "a": "Several gathered groups and their staging buffers can coexist with current compute and saved activations. The persistent shards have not changed, but the live peak has."
+        },
+        {
+          "q": "Why might the default keep the root's full parameters?",
+          "a": "The root is needed near the forward/backward boundary. Freeing and immediately gathering its parameters again can add traffic with little lifetime reduction. This is a heuristic, not proof that every root should be retained."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab event timelines for reshard and prefetch policies, with oracle checks and conditional multi-GPU traces.",
+      "stopWhen": "Your policy comparison gives gather counts, peak live bytes and dependency stalls for identical work, and explains one case where more prefetch is worse.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The tutorial's timelines and 2.14 API entries cover both policies at explain and measure depth; trainlab provides CPU simulation and conditional GPU evidence."
       }
     },
     {
