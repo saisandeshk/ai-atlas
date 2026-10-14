@@ -213,47 +213,89 @@
         "rank-failure-stalled-peer-and-timeout-diagnosis"
       ],
       "outcomes": [
-        "TODO"
+        "Send activations forward and gradients backward between two gloo processes with per-microbatch tags and shape assertions.",
+        "Explain tag, shape and ordering agreements and how a mismatch stalls a peer.",
+        "Read a per-rank event trace to name the unmatched send or receive."
       ],
-      "why": "TODO",
+      "why": "Activations move forward and gradients move back over point-to-point links with no collective to hide a mismatch. Tag, shape and order agreements are the contract, and a stalled peer is usually a broken one.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/pipeline-parallelism/gpipe-1f1b-schedules",
+          "note": "Execute GPipe and 1F1B over these send and receive pairs."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-simulator",
+          "note": "Model each transfer as a simulator event with a matching rule."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "torchfeather-pp-dt6",
+          "title": "Tagged microbatch transfers and per-rank schedules",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`run_schedule`: `IRECV_FORWARD` and `ISEND_FORWARD` with `FORWARD_TAG_BASE` plus microbatch, `IRECV_BACKWARD` and `ISEND_BACKWARD` with `BACKWARD_TAG_BASE` plus microbatch, wait-before-use ordering, and the printed per-rank schedule"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "Raw pipeline communicate calls",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pp_communications.py",
+          "locator": "`pipeline_communicate` with `recv_forward`, `send_forward`, `recv_backward` and `send_backward` over `batch_isend_irecv`, `bidirectional_pipeline_communicate` pairing one send with one receive, and the `VERBOSE` step prints"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "The pipeline process group",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "`init_distributed` (page read 2026-10-14): `pp_group` from `dist.new_group` as the send and receive group, `stage_index` equal to rank, `num_stages` equal to world size, with the note that the group can be a subgroup in the N-D parallel case"
+        },
+        {
+          "resource": "umar-pipeline-dt6",
+          "title": "Forward and backward handoffs between devices",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=21977s",
+          "locator": "06:06:14 to 06:11:12: layer groups per GPU, forward activation handoffs to the next device, and backward upstream-gradient handoffs to the previous device"
         }
       ],
       "focus": [
-        "TODO"
+        "Each transfer is identified by direction plus microbatch: TorchFeather adds the microbatch index to a per-direction tag base so in-flight microbatches cannot match the wrong receive.",
+        "Picotron leans the other way: single ops on the default tag pair up in strict program order, so any rank-specific branch in the op sequence deadlocks the pair.",
+        "Shapes and dtypes are agreed out of band: the receiver allocates the buffer from `tensor_shapes` before the transfer, and a mismatch stalls rather than raising.",
+        "First and last stages skip one direction each: the first stage never receives forward, the last stage never receives backward, and the skip must be in the protocol, not just the compute."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write a two-process gloo script where rank 0 sends an activation tensor forward with tag 100 plus microbatch index and rank 1 returns its gradient with tag 200 plus microbatch index, asserting shape and dtype on receipt.",
       "traps": [
-        "TODO"
+        "Reusing one tag for every microbatch and trusting call order. Tag per microbatch as TorchFeather does, or prove every rank runs an identical op sequence as Picotron requires.",
+        "Calling `torch.cuda.synchronize` after a gloo transfer on a CPU-only run. It raises when no GPU is present, so gate device sync on the backend instead of copying GPU code.",
+        "Posting a blocking send before the peer posts its receive on both ranks at once. Pair each send with a receive through one bidirectional call, or keep the recv-first order on both sides."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why do TorchFeather tags add the microbatch index to the base instead of using one tag per direction?",
+          "a": "Several microbatches are in flight at once, so one tag per direction could match a receive with the wrong microbatch's send. Each direction-plus-microbatch pair gets its own tag."
+        },
+        {
+          "q": "Picotron posts single ops with `batch_isend_irecv` and waits immediately. What ordering property does the schedule rely on?",
+          "a": "Every rank calls the same op sequence, so sends and receives pair in program order on the default tag. Any rank-specific branch breaks the pairing and stalls the peer."
+        },
+        {
+          "q": "A run hangs after changing `FORWARD_TAG_BASE` on one rank only. What is the first check?",
+          "a": "Tag agreement across peers, then shape and dtype agreement, then a per-rank event log in the TorchFeather schedule-print style to find the unmatched op."
+        },
+        {
+          "q": "Where does the pipeline group come from when pipeline composes with data parallelism?",
+          "a": "A subgroup over the pipeline ranks, built with `dist.new_group`. Gradient averaging uses the separate replicate group, never the pipeline group."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TorchFeather pp_gpipe stock run on CPU",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`torchrun --standalone --nproc-per-node=8 ./minimal_examples/pp_gpipe.py` on CPU with gloo; every rank must reach the GPipe PASS line",
+          "note": "Run from the pinned commit with 8 processes. The script pins the gloo backend on CPU, so one GPU or none both work; then break one tag on purpose and read which rank stalls."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The stock run prints PASS on all 8 ranks, your two-process tag script round-trips, and you can name the stalled side of a broken-tag run from its event log.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "TorchFeather tagged schedules plus Picotron raw communicate calls and the PyTorch pipeline-group contract cover transfer, protocols and stall diagnosis; the video segment motivates the handoffs."
       }
     },
     {
@@ -269,47 +311,95 @@
         "warmup-steady-state-and-cooldown-phases"
       ],
       "outcomes": [
-        "TODO"
+        "Write the AFAB two-loop schedule and the 1F1B warmup, steady-state and cooldown phases for any rank.",
+        "Derive each stage's warmup count and the FIFO drain order of stored tensors.",
+        "Explain why 1F1B bounds in-flight activations while keeping the same bubble."
       ],
-      "why": "TODO",
+      "why": "GPipe and 1F1B are the two schedules every later variant modifies. Their phases decide which tensors are alive when, which is what the bubble and memory derivations price.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/pipeline-parallelism/pipeline-bubble-activation-lifetime",
+          "note": "Price the bubble and the activation lifetime of both schedules."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/interleaved-zero-bubble-schedules",
+          "note": "See how virtual stages and split backprop modify 1F1B."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-pp-dt6",
+          "title": "AFAB schedule and code",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Splitting layers on various nodes - All forward, all backward with FIG.XLVIII and CODE.VII: the all-forward then all-backward loops, loss on the last stage, and the note that plot numbers are microbatches from here on"
+        },
+        {
+          "resource": "ultrascale-pp-dt6",
+          "title": "1F1B schedule and code",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "One forward, one backward and Llama 3.1 schemes with FIG.XLIX and CODE.VIII parts 1 and 2: warmup forwards, steady state alternating one forward and one backward, cooldown backward drain"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "AFAB and 1F1B step functions",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pipeline_parallel.py",
+          "locator": "`train_step_pipeline_afab` all-forward then all-backward loops with FIFO tensor pops, and `train_step_pipeline_1f1b` with warmup count `min(pp_world_size - pp_rank - 1, grad_acc_steps)`, bidirectional steady-state exchanges and cooldown drain"
+        },
+        {
+          "resource": "picotron-tutorial-dt6",
+          "title": "AFAB then 1F1B as cumulative diffs",
+          "url": "https://github.com/huggingface/picotron_tutorial/tree/master/step7_pipeline_parallel_afab",
+          "locator": "`step7_pipeline_parallel_afab` with `pipeline_parallel.py` and `patch_step_7.diff` for the AFAB step, then `step8_pipeline_parallel_1f1b` with its diff for the 1F1B step; read the step-8 diff as the exact AFAB-to-1F1B change"
+        },
+        {
+          "resource": "umar-pipeline-dt6",
+          "title": "GPipe grid, 1F1B steady state and activation freeing",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=23212s",
+          "locator": "06:26:15 to 06:38:33: GPipe grid inefficiency, 1F1B warmup into alternating steady state, backward costing about twice a forward for matmul-heavy layers, and why 1F1B frees each microbatch's activations earlier"
         }
       ],
       "focus": [
-        "TODO"
+        "AFAB keeps both waves sequential: all \\(m\\) forwards complete before any backward starts, so every stage holds all \\(m\\) microbatches at the wave boundary.",
+        "1F1B starts each microbatch's backward as soon as its loss exists, which alternates one forward with one backward in steady state and frees activations stage by stage.",
+        "Warmup on rank \\(r\\) of \\(p\\) stages is \\(\\min(p - 1 - r, m)\\): the last stage warms up zero forwards and the first stage warms up the most.",
+        "Stored tensors drain first-in first-out: the oldest forward pairs with the incoming gradient, and the cooldown loop exists only to finish the warmup leftovers."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw the 1F1B event grid for 3 stages and 4 microbatches: mark warmup, steady state and cooldown on each stage and count each stage's forwards and backwards.",
       "traps": [
-        "TODO"
+        "Expecting 1F1B to shrink the bubble at fixed microbatch count. The bubble is the same size as AFAB; the win is bounded activation memory that permits more microbatches.",
+        "Starting steady state before microbatch 0 reaches the last stage. No loss exists yet, so early backward calls have no seed gradient.",
+        "Forgetting the cooldown. Warmup forwards leave stored tensors behind, and their backward passes still have to run after the last steady-state step."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A run has 4 stages and 8 microbatches. How many warmup forwards does each rank do?",
+          "a": "\\(\\min(3 - r, 8)\\): ranks 0 to 3 do 3, 2, 1 and 0 warmup forwards."
+        },
+        {
+          "q": "Why does the video draw backward blocks about twice as wide as forward blocks?",
+          "a": "A matmul backward needs two matmuls, one for the input gradient and one for the weight gradient, so it costs about twice one forward matmul."
+        },
+        {
+          "q": "What work remains after the last 1F1B steady-state iteration on a rank with nonzero warmup?",
+          "a": "One backward per warmup forward, drained oldest-first from the stored tensors: the cooldown phase."
+        },
+        {
+          "q": "In the step-8 tutorial diff, what is the structural change from AFAB to 1F1B?",
+          "a": "The single all-backward loop becomes warmup forwards, an alternating forward-backward steady state with paired exchanges, and a cooldown drain of the leftover stored tensors."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "PyTorch pipelining tutorial: GPipe versus 1F1B",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Swap `ScheduleGPipe` for `Schedule1F1B` in the Step 2 script and run both under `torchrun --nnodes 1 --nproc_per_node 2`; compare the rank-1 `losses` lists",
+          "note": "Keep the 8-layer split and 4 microbatches fixed. The gate is matching losses across schedules, not timing."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both schedules print equal rank-1 losses, and you can write any rank's warmup, steady-state and cooldown counts without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Playbook schedule sections with Picotron code, the tutorial AFAB-to-1F1B diff and the video walkthrough cover both schedules and their phases at derive depth."
       }
     },
     {
