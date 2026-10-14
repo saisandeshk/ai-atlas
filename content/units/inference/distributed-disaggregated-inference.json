@@ -185,47 +185,69 @@
         "per-rank-memory-and-local-tensor-ownership"
       ],
       "outcomes": [
-        "TODO"
+        "Derive each rank's weight and KV bytes from the actual layer, head and position ownership rather than dividing everything by device count.",
+        "Explain KV-head replication when TP exceeds the number of KV heads in a head-sharded GQA layout.",
+        "Reject a plan whose busiest rank exceeds memory after runtime buffers, page waste and reserve are included."
       ],
-      "why": "TODO",
+      "why": "Aggregate memory is not admission capacity. One rank can run out of KV space while other ranks have free memory, and replicated state can erase an expected sharding gain.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/kv-transfer-connectors-overlap",
+          "note": "Use the ownership ledger to count source and destination transfer fragments."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tushar-dist-inf7",
+          "title": "Head sharding and the GQA ceiling",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#concept-2",
+          "locator": "Module 09, What TP degree actually does to your numbers - Weights per GPU and KV cache per GPU stops shrinking at TP-8",
+          "depth": "Use the head-ownership argument only. Skip the hardware speed table and Code lab planner: evenly divided weights are an approximation, and its PP latency estimate does not sum the dependent stage service times."
+        },
+        {
+          "resource": "aisys-ch15-17-inf7",
+          "title": "Layer and expert ownership",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Tensor Parallelism, Pipeline Parallelism, Expert Parallelism and Data Parallelism",
+          "depth": "Revisit only which weights each rank holds. Carry forward the runtime-memory categories from Weight memory by dtype and the runtime memory categories."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Per-layer KV layouts and the cache consequences of attention variants. For ordinary full-attention K and V, a rank owning \(L_r\) layers, \(H_r\) KV heads and \(S_r\) cached positions holds \(2L_rH_rd_hbS_r\) logical bytes, where \(d_h\) is head dimension and \(b\) is bytes per element.",
+        "PP assigns KV to the ranks that own its layers. Head-sharded TP assigns local KV heads; if there are more TP ranks than KV heads, a supported layout may replicate heads instead of shrinking each cache further.",
+        "EP partitions expert weights, not automatically attention weights or KV. Sum shared, expert, embedding and output weights according to the chosen layout; include replicated tensors explicitly.",
+        "Admission uses the maximum per-rank allocation, including page rounding, workspace, graphs, communication buffers and reserve. Distinguish logical unique KV from physical copies across ranks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Make a per-rank ledger for a synthetic full-attention model with eight layers, two KV heads, head dimension 16, two-byte KV elements and one 128-token sequence. Its unique KV is 131,072 bytes. Under two-way head-sharded TP each rank holds 65,536 bytes; under four-way TP with each KV head replicated twice, each rank still holds 65,536 bytes. Add two-way PP with four layers per stage and recompute local and aggregate physical bytes. Ignore page waste only for this logical-byte exercise.",
       "traps": [
-        "TODO"
+        "Dividing all memory by the product of TP, PP and EP sizes. Only the tensors actually partitioned along those axes get that divisor.",
+        "Treating a head-count ceiling as a universal limit on usable devices. Position sharding can reduce cache further, but requires its own layout and communication contract.",
+        "Checking total free memory instead of each rank's budget. The first exhausted rank can stop the whole serving group."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "In the four-way TP example, how many physical KV bytes exist across ranks?",
+          "a": "262,144 bytes, twice the unique KV. Each of the two KV heads has two physical copies."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does expert parallelism alone divide dense attention KV by expert count?",
+          "a": "No. Experts belong to the MoE feed-forward path. Attention KV follows attention layer, head and position ownership."
+        },
+        {
+          "q": "How does two-way PP change each TP rank's KV in this equal-layer example?",
+          "a": "It halves local KV to 32,768 bytes because each stage owns four of the eight layers. Aggregate physical KV stays unchanged for the same TP replication pattern."
+        },
+        {
+          "q": "Why is weight bytes divided by rank count insufficient to prove a plan fits?",
+          "a": "Some weights are replicated or unevenly placed, and KV, temporary tensors, communication buffers and runtime reserve also consume local memory."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's rank ownership ledger, replicated-head cases and memory-feasibility tests before admitting requests.",
+      "stopWhen": "Your ledger reconciles unique and physical KV bytes for TP, PP and their combination, and rejects a plan that fails any local memory budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's head-sharding explanation and book ownership sections support the local-byte derivation; servelab checks replicated and uneven layouts without extra devices."
       }
     },
     {
