@@ -560,47 +560,83 @@
         "slo-aware-goodput"
       ],
       "outcomes": [
-        "TODO"
+        "Explain cancellation and client-disconnect handling with cleanup ownership at every request phase.",
+        "Explain early rejection and load shedding as goodput protection under overload.",
+        "Implement an abort path that frees blocks, records a terminal state and keeps goodput accounting honest."
       ],
-      "why": "TODO",
+      "why": "Load always exceeds capacity eventually. Requests that miss their deadline are wasted work, and cancelled requests that leak blocks slowly strangle the server.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/batching-scheduling-admission/saturation-queue-recovery",
+          "note": "Watch rejection and recovery across a full saturation sweep."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/adversarial-scheduler-workloads",
+          "note": "Test cancellation races with a dedicated workload."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-scheduling-inf4",
+          "title": "Early rejection and fault tolerance",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Early Rejection (Admission Control) (p.1144): predicting SLO misses from queue and throughput signals, fail-fast against queue-then-miss, Fig 18-8 instance load; Fault Tolerance (p.1148) with decode-node failover, TTFT and TPOT p99 monitoring and the prefill and decode queue split"
+        },
+        {
+          "resource": "mini-sglang-inf4",
+          "title": "Mini-SGLang abort path",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/prefill.py",
+          "locator": "`PrefillManager.abort_req` in `python/minisgl/scheduler/prefill.py` with `DecodeManager.abort_req` in `python/minisgl/scheduler/decode.py`, dispatched from `_process_one_msg` in `python/minisgl/scheduler/scheduler.py`; trace where each path frees the request's resources"
+        },
+        {
+          "resource": "vllm-online-serving",
+          "title": "vLLM cancellation endpoints",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
+          "locator": "`/abort_requests` for all in-flight or listed request ids without pausing the scheduler; the Responses cancel API at `/v1/responses/{response_id}/cancel`; client-disconnect abort of in-flight requests"
+        },
+        {
+          "resource": "vllm-metrics-design",
+          "title": "Terminal accounting in vLLM metrics",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "`vllm:request_success` with `finished_reason` including abort; the queue-time against inference-time split; TTFT, inter-token and end-to-end latency histograms as the goodput inputs"
         }
       ],
       "focus": [
-        "TODO"
+        "Cancel at any phase: waiting removal, prefill-chunk abandonment and decode eviction must all free blocks and mark a terminal state, or the leak accumulates one request at a time.",
+        "A client disconnect is an implicit cancel. The server cannot rely on the client to say goodbye, so streaming endpoints must watch the connection and abort promptly.",
+        "Early rejection protects the accepted load: refusing work that would miss its SLO keeps TTFT and TPOT for the rest, while queueing everything maximizes completions and minimizes goodput.",
+        "Goodput counts only completions that meet the SLO over offered requests. Aborted, rejected and late requests are not throughput, and retried work multiplies load as the systems overload-control unit shows."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, implement `abort(request_id)` in your simulator: remove the request from whichever set holds it, free its blocks, append a terminal ABORTED record with its phase, and assert no block stays reserved. Then compute goodput for 10 offered requests with 7 on-time completions, 2 late completions and 1 abort: \\(7/10 = 0.7\\), not 9/10.",
       "traps": [
-        "TODO"
+        "Deleting the request from the queue and calling it cancelled. Its KV blocks stay reserved until something frees them, so the leak only shows under sustained cancel load.",
+        "Counting retries as new offered load. Client retries multiply the original overload, which is why rejection must pair with retry budgets rather than replace them.",
+        "Averaging latency over completed requests only. Dropped and late requests vanish from that mean while users still waited, so goodput over offered load is the honest denominator."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A decode request disconnects mid-stream. List what the server must do.",
+          "a": "Abort the in-flight request, free its KV blocks, mark it terminal with an abort reason, and stop scheduling further tokens for it. Anything less leaks memory or burns compute on a gone client."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why does early rejection raise goodput while lowering raw completions?",
+          "a": "It refuses requests predicted to miss their SLO, so the accepted ones meet TTFT and TPOT targets. Raw completions fall by the rejected count, but SLO-meeting completions over offered load rise."
+        },
+        {
+          "q": "Ten requests are offered: 7 on time, 2 late, 1 aborted. What are throughput and goodput denominators telling you?",
+          "a": "9 completions over 10 offered is completion rate, not success. Goodput is 7/10: only on-time completions count, because late outputs already failed the contract."
+        },
+        {
+          "q": "Where does Mini-SGLang route a cancel, and why two paths?",
+          "a": "Through `_process_one_msg` to `PrefillManager.abort_req` or `DecodeManager.abort_req`. A request can sit in either manager, so the cancel must reach whichever one owns it."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: cancellation at every phase with leak checks, overload rejection with retry budgets, and goodput computed over offered load.",
+      "stopWhen": "Your abort path passes a cancel-at-every-phase test with zero leaked blocks, and you compute goodput over offered load without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Practice and currency failed for engine cancellation and terminal accounting; the pinned online-serving and metrics-design references fill both gaps beside the books."
       }
     },
     {
@@ -616,47 +652,78 @@
         "progress-and-bounded-wait-invariants"
       ],
       "outcomes": [
-        "TODO"
+        "Define state, resource, progress and bounded-wait invariants for a continuous-batching scheduler.",
+        "Derive the no-overcommit admission rule from reserved blocks, running growth and free capacity.",
+        "Implement per-iteration invariant checks that catch leaks, double frees and stalled waiters."
       ],
-      "why": "TODO",
+      "why": "Policies change, but the invariants do not. Every admission, preemption, cancel and finish path must preserve the same ownership and progress rules, or one path corrupts the rest.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/batching-scheduling-admission/batching-simulator-replay",
+          "note": "Assert these invariants on every simulated iteration."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Keep the invariants fixed while ablating policy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nano-vllm-inf4",
+          "title": "Nano-vLLM scheduler as a checkable state machine",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`Scheduler` waiting and running deques with `SequenceStatus` in `nanovllm/engine/sequence.py`; allocate, append, share, preempt and free transitions in `nanovllm/engine/block_manager.py`; `postprocess` finishing with `running.remove` and `deallocate`"
+        },
+        {
+          "resource": "mini-sglang-inf4",
+          "title": "Mini-SGLang scheduler structure and lifecycle",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/docs/structures.md",
+          "locator": "docs/structures.md System Architecture with Key Components and the 8-step Data Flow request lifecycle; `Scheduler._schedule_next_batch` with `PrefillManager` and `DecodeManager` in `python/minisgl/scheduler/`",
+          "depth": "Read the rank-0 loop only. Skip the multi-GPU broadcast, ZMQ and NCCL parts on one GPU."
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Orca reservation and progress properties",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 Algorithm 1 reservation of `max_tokens` slots per new request against `n_slots`; the iteration-level FCFS property that an earlier arrival runs the same or more iterations than a later one"
         }
       ],
       "focus": [
-        "TODO"
+        "Ownership: every block is free or held with a positive reference count, and every RUNNING request holds a non-empty block table. Freeing checks the count; shared prefix blocks survive one holder's release.",
+        "No overcommit: reserved plus running growth fits free capacity before any admit. Reservation is the static form; the watermark and full-ISL checks from the budgets unit are its runtime form.",
+        "Progress: every iteration retires finished requests, frees their blocks and advances at least one waiter or token. Steady completions with a never-served waiter still violate progress.",
+        "Bounded wait: aging or reserved capacity turns FCFS order into a wait bound. State the bound as a number of iterations or requests served, not as good intentions."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write `check_invariants` for a Nano-vLLM-style scheduler and run it after every `schedule`, `preempt` and `postprocess` call: reserved plus running blocks fit total blocks, every RUNNING sequence has a non-empty block table, every FINISHED sequence left running with freed blocks, and the longest waiter advances within the stated bound. Show it catching a finish path that forgets `deallocate`.",
       "traps": [
-        "TODO"
+        "Checking invariants only on admission. Preempt, finish and abort paths move the same state, so the check must run after every transition, including the error paths.",
+        "Confusing a positive reference count with exclusive ownership. Shared prefix blocks outlive one holder, so freeing must decrement and test rather than release outright.",
+        "Reading steady throughput as progress. A scheduler can complete easy requests forever while one waiter starves, which throughput hides and the bounded-wait check exposes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "State the no-overcommit rule in one sentence with its three quantities.",
+          "a": "Admit only when reserved blocks plus running growth fits free blocks. The three quantities are current reservations, worst-case growth of running requests, and free capacity."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A finish path removes the sequence from running but skips `deallocate`. Which check catches it?",
+          "a": "The ownership check: total held plus free blocks no longer equals total blocks, and the leaked blocks never return to the free list."
+        },
+        {
+          "q": "Why must the invariant check run after preemption, not just admission?",
+          "a": "Preemption moves blocks back to free and the request back to waiting with reset counters. A wrong requeue or a missed counter reset corrupts the same state admission relies on."
+        },
+        {
+          "q": "Throughput is flat at a healthy value but the longest waiter never advances. Which invariant fails?",
+          "a": "Bounded wait. Progress of completions does not imply progress of every waiter; the wait bound needs its own check with the waiter's age."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-iteration invariant asserts with randomized admit, preempt, cancel and finish histories, including a seeded leak it must catch.",
+      "stopWhen": "Your checks run green on a randomized history and catch an injected missing-free and an injected stuck waiter.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Nano-vLLM, Mini-SGLang and Orca supply the state machine, lifecycle and reservation properties at derive and implement depth, with checks in the mini-project."
       }
     },
     {
