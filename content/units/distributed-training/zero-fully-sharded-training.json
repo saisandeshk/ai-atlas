@@ -412,47 +412,67 @@
         "fsdp2-dtensor-native-configuration"
       ],
       "outcomes": [
-        "TODO"
+        "Apply FSDP2 bottom-up on a CPU device mesh and inspect local DTensor shards before and after a step.",
+        "Choose parameter, reduction and output dtypes separately and account for their storage and communication.",
+        "Construct the optimizer after sharding and verify global gradient clipping against an unsharded oracle."
       ],
-      "why": "TODO",
+      "why": "Build on Precision formats, autocast and gradient scaling. The new issue is where casts occur across ranks: compute weights, reduction payloads and optimizer shards can have three different roles.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-equivalence-failure-modes",
+          "note": "Test precision and ownership failures independently."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "FSDP2 precision and DTensor optimizer",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#enabling-mixed-precision",
+          "locator": "Enabling Mixed Precision; Gradient Clipping and Optimizer with DTensor; revisit Model Initialization's DTensor inspection (page read 2026-10-14)"
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "MixedPrecisionPolicy in PyTorch 2.14",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.MixedPrecisionPolicy",
+          "locator": "`MixedPrecisionPolicy`: `param_dtype`, `reduce_dtype`, `output_dtype` and `cast_forward_inputs`; `fully_shard` user contract"
         }
       ],
       "focus": [
-        "TODO"
+        "Start with FP32 and a 1D CPU mesh on Gloo. Shard blocks before the root, use `model(x)` so hooks run, then construct AdamW from the sharded parameters. Inspect global shapes and `to_local()` separately.",
+        "For original FP32 parameters, `MixedPrecisionPolicy(param_dtype=torch.bfloat16, reduce_dtype=torch.float32)` gathers BF16 weights, computes in BF16 and reduces gradients in FP32. The optimizer updates original FP32 shards; it does not need another FP32 master copy.",
+        "If `reduce_dtype=None` and `param_dtype` is set, reduction uses the compute dtype. `output_dtype` changes floating-point outputs at the module boundary, not the optimizer's state dtype.",
+        "Use `torch.nn.utils.clip_grad_norm_` on the DTensor parameters, not on each rank's local shards separately. A global norm must combine the disjoint gradient contributions without counting replicated copies twice."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Adapt the tutorial to two CPU Gloo processes with `init_device_mesh('cpu', (2,))` and a tiny two-linear-layer model. First match several FP32 AdamW updates and a clipped gradient norm to the single-process global-batch oracle. Then use BF16 parameter compute and FP32 reduction; inspect the full compute weight during a forward pre-hook, the FP32 shard and gradient after backward, and FP32 Adam moments after the update. Compare mixed precision to an oracle with matching casts, not to a bitwise FP32 target.",
       "traps": [
-        "TODO"
+        "Inspecting the weight in a post-forward hook registered after FSDP's hook and expecting the compute dtype. It may already have been resharded to the original dtype; inspect inside forward or after FSDP's pre-hook.",
+        "Passing `model.forward(x)` directly and bypassing the gather hooks.",
+        "Clipping each local shard to the same maximum norm. That implements different scaling from clipping the reconstructed global gradient."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which dtype determines parameter all-gather bytes?",
+          "a": "The unsharded parameter dtype, selected by `param_dtype` when set. The stored optimizer shard can remain FP32."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does FP32 reduction recover precision lost during BF16 compute?",
+          "a": "No. It limits additional rounding during reduction, but cannot recover information already lost in low-precision computations."
+        },
+        {
+          "q": "Why initialize the optimizer after `fully_shard`?",
+          "a": "It must reference the DTensor parameters that the sharded optimizer step will update, with the correct ownership and shape semantics."
+        },
+        {
+          "q": "What should happen when a correct mixed-precision run is compared with FP32?",
+          "a": "Small numerical differences can occur. Validate against a same-policy oracle with explicit tolerances, and report any FP32 comparison as a precision comparison rather than bitwise equivalence."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab FSDP2 CPU configuration, dtype inspections and same-policy update and global-clipping oracles.",
+      "stopWhen": "Your dtype and placement logs agree with the selected policy, and FP32 updates and global clipping match the oracle before you introduce low-precision compute.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The maintained tutorial and 2.14 policy contract cover DTensor configuration and dtype boundaries; trainlab supplies implementation and oracle practice."
       }
     },
     {
