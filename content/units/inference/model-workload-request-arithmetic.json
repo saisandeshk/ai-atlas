@@ -119,7 +119,7 @@
           "resource": "cs336-inference-lecture-inf1",
           "title": "GQA, MLA, CLA, hybrid and state-space vocabulary",
           "url": "https://www.youtube.com/watch?v=fcgPYo3OtV0",
-          "locator": "37:48-43:35 GQA, 43:47-45:47 MLA, 46:01-47:36 CLA, 47:50-50:26 local and hybrid attention, 52:47-1:01:10 SSMs with Mamba and Jamba",
+          "locator": "37:48-43:35 GQA, 43:47-45:47 MLA, 46:01-47:36 CLA, 47:50-50:26 local and hybrid attention, 52:47-1:01:10 SSMs with Mamba and AI21's 52B Mamba-transformer hybrid at 56:43 (named Jamba at 1:03:03)",
           "depth": "Watch for vocabulary only. Skip 1:17:37-1:21:22 continuous batching and PagedAttention here; those return in later sections."
         },
         {
@@ -231,13 +231,13 @@
           "resource": "hands-serving-inf1",
           "title": "Serving arguments that set runtime memory",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 2, Serve the LLM (Qwen) with vLLM (pp 57-59): `LLM` with `swap_space`, `max_model_len`, `block_size`, `max_num_seqs`, `prefix_caching` and `cuda_graph` beside `SamplingParams`",
+          "locator": "Chapter 2, Serve the LLM (Qwen) with vLLM (pp 57-59): `LLM` with `swap_space`, `max_model_len`, `block_size`, `max_num_seqs` and `enable_prefix_caching` beside `SamplingParams` (the book also prints `enable_cuda_graph=True` and `max_num_sequences`, which are not vLLM 0.31.0 arguments; use `enforce_eager` and `max_num_seqs`)",
           "depth": "Read the argument list as the runtime lines to budget. Tuning them belongs to later sections."
         }
       ],
       "focus": [
         "Weight bytes are count times stored bytes per value. Execution precision can differ, as int8 weights with bf16 compute, and changes intensity later, not this line.",
-        "The file holds more than learned params. GPT-2 holds 137,022,720 values (522.7 MiB in fp32) against 124,439,808 learned params; masks and header explain the gap.",
+        "The file holds more than learned params. GPT-2 holds 137,022,720 values (522.7 MiB in fp32) against 124,439,808 learned params; its 12,582,912 causal-mask values explain the gap.",
         "Budget weights first, then KV, then activations, workspace, graphs and allocator. The book reserves about twice model size and still serves one less than theory in Table 5-7.",
         "Activations are megabytes beside gigabytes of cache at long context, but they set the workspace line that stops a theoretical fit from loading."
       ],
@@ -318,7 +318,7 @@
           "title": "Cache tables, GQA cuts and paging",
           "url": "https://jax-ml.github.io/scaling-book/inference/",
           "locator": "What about memory? with 13B bf16 6.7 GB at 8192 context; Modeling throughput and latency for LLaMA 2-13B with both batch tables; Tricks for Improving Generation Throughput and Latency for GQA ratio cuts, quant and PagedAttention; Worked Problems Questions 1 and 2",
-          "depth": "The batch tables label GiB but divide decimal gigabytes. Recompute in bytes. Question 2 with one KV head gives about 56, not 7."
+          "depth": "The batch tables label GiB but divide decimal gigabytes. Recompute in bytes. In Question 2, dropping to one KV head raises the batch from 7 to about 56."
         },
         {
           "resource": "tushar-inference-inf1",
@@ -331,7 +331,7 @@
           "title": "KV sizing notebook",
           "url": "https://github.com/elizabetht/100-days-of-inference",
           "locator": "`day05/kv-cache.ipynb`: Memory Cost with `kv_bytes=2*n_layers*n_embd*seq*bytes`, Benchmark 518 ms to 196 ms at length 200, Try These Experiments for slope versus step and 300 and 500 lengths",
-          "depth": "Verify the slope formula independently; the 16 GB per request line for Llama3-8B at 32K context assumes fp16 and full length, so recompute for your precision and length."
+          "depth": "Verify the slope formula against your own GPT-2 run. The notebook's formula uses `n_embd`, which ignores GQA, so its Llama 3 rows overstate KV by the query-to-KV head ratio (4x for 8B, 8x for 70B); recompute them with KV heads at your precision and length."
         }
       ],
       "focus": [
@@ -361,7 +361,7 @@
         },
         {
           "q": "Why does a 200-token request waste 97.6% in an 8192 reservation?",
-          "a": "The reservation holds 8192 times per-token bytes (about 2.5 GiB for 70B) while 200 tokens use 61 MiB. Paging and exact reservation remove most of this."
+          "a": "The reservation holds 8192 times per-token bytes (about 2.5 GiB for 70B) while 200 tokens use 62.5 MiB. Paging and exact reservation remove most of this."
         }
       ],
       "practice": [
@@ -409,7 +409,7 @@
         {
           "resource": "transformer-arithmetic-inf1",
           "title": "Dense walk: 2P operations per token",
-          "url": "https://kipp.ly/transformer-inference-arithmetic/",
+          "url": "https://kipp.ly/p/transformer-inference-arithmetic",
           "locator": "flops counting with the How many flops in a matmul box in kv cache (qkv, output and MLP sum to about \\(2P\\); 52B example at 51.5B)",
           "depth": "The \\(2P\\) count covers dense weights once per token in prefill and decode alike. Attention comes on top and grows with prompt length in prefill."
         },
@@ -436,12 +436,12 @@
       "focus": [
         "One matmul through all params costs \\(2P\\) by the \\(2 \\times m \\times n \\times p\\) rule. The qkv, output and MLP walk sums to the same within 2%.",
         "Decode attention per token scales with cached length; prefill attention scales with prompt length squared. At 8192 cached tokens the invented model adds \\(1.72 \\times 10^{10}\\) to \\(3.68 \\times 10^{10}\\) dense.",
-        "Softmax, norms, sampling and unembedding are \\(O(d_{\\text{model}})\\) per layer against \\(O(d_{\\text{model}}^2)\\) dense. They matter only when dense shrinks or a profile says so.",
-        "Use KV heads times head dim where they differ from query heads. The count uses \\(K\\) and \\(H\\), not model width."
+        "Softmax and norms are \\(O(d_{\\text{model}})\\) per layer, and sampling plus unembedding run once per step, against \\(O(d_{\\text{model}}^2)\\) dense per layer. They matter only when dense shrinks or a profile says so.",
+        "Attention work uses query heads \\(N\\) times head dim \\(H\\), because every query head scores its group; KV bytes use KV heads \\(K\\) times \\(H\\). Neither uses model width where the heads differ from it."
       ],
       "reproduce": "Closed-book, derive decode operations per token for the invented 18.4e9-param model at cached length 8192: dense \\(2 \\times 18.4 \\times 10^9 = 3.68 \\times 10^{10}\\), attention \\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), total about \\(5.4 \\times 10^{10}\\).",
       "traps": [
-        "Taking \\(2P\\) per token as the whole prefill cost. Prefill pays dense per prompt token plus attention that grows with prompt length squared; at 32k the attention term passes the dense term.",
+        "Taking \\(2P\\) per token as the whole prefill cost. Prefill pays dense per prompt token plus attention that grows with prompt length squared; for Llama-3-8B the attention term passes the dense term near 32k.",
         "Writing the attention scale as division by head dim. The implemented scale is \\(1/\\sqrt{d_{\\text{head}}}\\); the count is unchanged but a later kernel must use the root.",
         "Calling decode attention free because dense dominates. At 8192 it is nearly half the dense count; recompute the share before dropping it."
       ],
@@ -460,7 +460,7 @@
         },
         {
           "q": "Without a cache, how does per-step work grow with length \\(n\\)?",
-          "a": "Each step recomputes keys and values for all \\(n\\) tokens, or \\(n/6\\) of a one-token forward pass, so totals grow quadratically."
+          "a": "Each step reruns the full forward over all \\(n\\) tokens (the KV projections alone are about \\(n/6\\) of a one-token forward pass), so totals grow quadratically."
         }
       ],
       "practice": [
@@ -468,7 +468,7 @@
           "name": "100 Days of LLM Inference Day 06: ops-byte experiments",
           "url": "https://github.com/elizabetht/100-days-of-inference",
           "locator": "`day06/ops-byte-ratio.ipynb`, Try These Experiments: redo intensity with \\(d = 64\\), find the crossover batch with `cuda.get_device_properties`, and the 7B fp16 14GB with 14 GFLOP per token calc",
-          "note": "Show every substitution with prefill and decode kept apart. Verify the 208 versus ridge relation independently because this journal is practice, not authority."
+          "note": "Show every substitution with prefill and decode kept apart. Fix the `matmul_intensity` cell first: a typo (`ompute`) makes its stored batch sweep wrong. Then check the README's batch-64 crossover against the H100 ridge it quotes; this journal is practice, not authority."
         }
       ],
       "stopWhen": "You derive the 5.4e10 decode count at 8192 without notes and complete the \\(d = 64\\) redo with the crossover stated.",
@@ -539,7 +539,7 @@
         "Reuse is a distribution with routing and eviction costs. Affinity routing, LRU trie and DRAM decide whether shared prefixes move TTFT and goodput.",
         "A high-resolution image adds about a thousand visual tokens to prefill and KV. The encoder is small but fragmented runtime support makes engine choice matter."
       ],
-      "reproduce": "Closed-book, write the workload card for \\(P = 4096\\), \\(G = 1024\\), \\(B = 16\\): sequences finishing per step \\(16/1024 = 1/64\\), tokens evicted per step \\(16 \\times 5120/1024 = 80\\), plus medians 417 and 1418, decode median 228, reuse line and image-token line at 1000 per high-resolution image.",
+      "reproduce": "Closed-book, write the workload card with medians 417 and 1418, decode median 228 with spread and \\(n\\), a reuse line and an image-token line at 1000 per high-resolution image. Add the steady-state illustration for \\(P = 4096\\), \\(G = 1024\\), \\(B = 16\\), labeled fixed-length only: sequences finishing per step \\(16/1024 = 1/64\\), tokens evicted per step \\(16 \\times 5120/1024 = 80\\).",
       "traps": [
         "Sweeping batch at fixed length and calling it a workload. Prompts spread widely and decode lengths vary as much, so fix both axes.",
         "Reading hit rate as outcome. Low reuse with lookup, routing, reservation or eviction can lose even at high hit rate; check TTFT and goodput.",
@@ -632,7 +632,7 @@
         "Open-loop sends on a schedule whether replies returned; closed-loop waits for each reply. Past the knee closed-loop self-throttles and reports flat latency while the queue explodes.",
         "Keep every raw sample with \\(n\\). Percentiles come from retained records; the generator log with intended send times is part of the evidence."
       ],
-      "reproduce": "Closed-book, solve all three directions: \\(100 \\text{ rps} \\times 0.05 \\text{ s} = 5\\) requests, \\(5/0.05 = 100\\) rps, \\(5/100 = 0.05\\) s. Then state why open-loop p99 near 759 ms is honest against closed-loop p99 near 540 ms on the same slow server.",
+      "reproduce": "Closed-book, solve all three directions: \\(100 \\text{ rps} \\times 0.05 \\text{ s} = 5\\) requests, \\(5/0.05 = 100\\) rps, \\(5/100 = 0.05\\) s. Then state why, on the load-generator unit's simulated slow server, open-loop p99 near 759 ms is honest against closed-loop p99 near 540 ms.",
       "traps": [
         "Applying \\(L = \\lambda W\\) to percentiles or a draining queue. It relates long-run averages in a stable system only.",
         "Tuning the closed loop until latency looks good. Fewer clients or think time hides the queue; the offered load is no longer the stated load.",
@@ -710,7 +710,7 @@
           "resource": "hands-serving-inf1",
           "title": "Streaming contract with abort",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 2, LLM Streaming Serving Basics (pp 60-61): `llm.generate` blocks, `AsyncLLMEngine` with `SamplingParams(temperature=0.0, max_tokens=128, stop=\"\\n\")`, `engine.generate` with `request_id`, `async for request_output` with `chunk.text`, and `engine.abort(request_id)`"
+          "locator": "Chapter 2, LLM Streaming Serving Basics (pp 60-61): `llm.generate` blocks, `AsyncLLMEngine` with `SamplingParams(temperature=0.0, max_tokens=100, stop=[\"\\n\"])` (the 128-token example with `temperature=0.8` is the earlier blocking call), `engine.generate` with `request_id`, `async for request_output` with `chunk.text`, and `engine.abort(request_id)`"
         },
         {
           "resource": "inference-engineering-book",
@@ -802,7 +802,7 @@
           "resource": "tushar-inference-inf1",
           "title": "Goodput versus throughput",
           "url": "https://inference.tusharamrit.in/modules/roofline.html",
-          "locator": "The four metrics with goodput: batch 256 at 20k tokens per second but TPOT 80 ms against a 50 ms SLO gives zero goodput"
+          "locator": "The four metrics with goodput, and the goodput versus throughput check question: batch 256 at 20k tokens per second but TPOT 80 ms against a 50 ms SLO gives zero goodput"
         },
         {
           "resource": "hands-serving-inf1",
@@ -1076,7 +1076,7 @@
         {
           "resource": "transformer-arithmetic-inf1",
           "title": "Small- and large-batch latency",
-          "url": "https://kipp.ly/transformer-inference-arithmetic/",
+          "url": "https://kipp.ly/p/transformer-inference-arithmetic",
           "locator": "latency calculations with small-batch 260B on 16 GPUs at 22 ms per token and large-batch 512 at 53 ms with 3 ms comms latency; batch sizes with the 208 crossover",
           "depth": "The 62 ms in the same large-batch sentence is a slip; 53 ms is the formula value. The crossover writes `A_bw/A_f` but computes peak operations over bytes per second."
         },
