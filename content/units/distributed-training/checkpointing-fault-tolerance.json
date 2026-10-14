@@ -1,6 +1,17 @@
 {
   "section": "checkpointing-fault-tolerance",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "olmo-core-checkpointer",
+      "role": "reference",
+      "priority": "support",
+      "name": "OLMo-core Checkpointer",
+      "provider": "Ai2",
+      "access": "Free",
+      "use": "Read `src/olmo_core/train/checkpoint.py` (`_temporary_wd`, `_get_tmp_dir`, `_teardown_tmp_dir`, `_save_metadata`) for temp-directory atomic publish with barrier discipline, and `src/test/train/checkpoint_test.py` (`run_checkpointer`) for the save, find and reload assertions.",
+      "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/checkpoint.py"
+    }
+  ],
   "units": [
     {
       "id": "recoverable-training-state",
@@ -14,47 +25,82 @@
         "deterministic-resume-of-sampler-shuffle-and-rng-streams"
       ],
       "outcomes": [
-        "TODO"
+        "List the complete resume state of a distributed job: model, optimizer, scheduler, scaler, every RNG stream, sampler position, and config and code identity.",
+        "Resume a multi-process CPU job mid-epoch and prove the next batches, RNG draws and updates match an uninterrupted run."
       ],
-      "why": "TODO",
+      "why": "A resume that restores weights but not data position or RNG trains a different experiment while the loss looks normal. Every later unit in this section assumes this contract.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/sharded-checkpoint-formats-dcp",
+          "note": "Carry this state set into sharded format with the distributed state-dict contract."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Use this contract as the equivalence bar for every kill test."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "lambda-resume-dt9",
+          "title": "Deterministic resume: RNG states and loader seeding",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/determinism/README.md",
+          "locator": "Code Changes diff: `torch.use_deterministic_algorithms(True)`, a seeded `Generator` with `DistributedSampler`, `worker_init_fn=_seed_worker`, and save plus restore of `rng.pt` holding NumPy, Python, torch and per-device CUDA states"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Crash-and-restart state discipline",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "`_STATE_PATH` load at start, `random.seed(rank + world_size * num_steps)` from the saved step, rank-0 write between two `dist.barrier()` calls; README Elastic Training: all workers restart on one failure and ranks are unstable across restarts"
+        },
+        {
+          "resource": "torchfeather-ckpt-dt9",
+          "title": "Every stream as a Stateful entry",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`CheckpointManager.__init__` states map with `MODEL`, `OPTIMIZER`, `DATALOADER`, `LR_SCHEDULER` plus `additional_states`; `ModelWrapper`, `OptimizersContainer`, `LRSchedulersContainer` and `BaseDataLoader` each implement `Stateful`"
         }
       ],
       "focus": [
-        "TODO"
+        "Resume state is every stream that advances: parameters, optimizer moments and step counters, scheduler position, scaler state, each RNG stream, and the sampler epoch plus consumed offset. Each missing stream replays or skips data.",
+        "Sampler resume needs the epoch and the offset inside it: same seed with `set_epoch`, then fast-forward past consumed batches. Restarting the iterator replays the epoch from batch 0.",
+        "The DCP recipe's `AppState` holds model and optimizer only. Scheduler, scaler, RNG and loader state must be added as further `Stateful` entries, as TorchFeather's states map shows.",
+        "Per-worker RNG needs per-worker construction. A `Generator` built in the `Dataset` constructor is copied identically into every worker and repeats its stream; reseed from `torch.initial_seed()` inside `worker_init_fn`."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with 2 gloo processes, train a tiny model with dropout under a `DistributedSampler` loader for 2 steps, and save model, optimizer, torch RNG state, sampler epoch and consumed count. Continue 2 steps as reference. Resume fresh objects from the save, fast-forward the loader, run 2 steps, and show `torch.equal` on weights. Then restart the loader from batch 0 and show the first batches repeat.",
       "traps": [
-        "TODO"
+        "Saving only model and optimizer. The loss curve looks normal while data order and schedule quietly diverge, so check the next-batch sequence, not just the loss.",
+        "Treating the recipe's `get_state_dict` pattern as full resume. It manages FSDP names for model and optimizer but knows nothing of scheduler, scaler, RNG or loader position.",
+        "Seeding `random.seed(rank + world_size * steps)` once and assuming draws stay aligned. Any extra draw on one rank desynchronizes the streams, so reseed from saved step counts at load."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A resumed run matches the reference loss for 50 steps, then diverges slowly. The checkpoint held model, optimizer and scheduler. Name the two most likely missing pieces and the test that tells them apart.",
+          "a": "Sampler position and RNG state. Log the first batches after resume and compare with the reference batches at that step: repeated or shifted batches point to the sampler, identical batches with diverging updates point to an unrestored RNG stream."
+        },
+        {
+          "q": "Why does rank 0's file write in `toy.py` sit between two `dist.barrier()` calls?",
+          "a": "The first barrier stops rank 0 from writing state for a step some rank has not finished. The second stops every rank from starting the next step before the write lands. Without them a crash leaves state ahead of or behind the slowest rank."
+        },
+        {
+          "q": "Two `DataLoader` workers emit identical augmentation streams. What was built in the wrong place, and where should it be built?",
+          "a": "A `torch.Generator` built in the `Dataset` constructor was copied identically into both workers. Build or reseed it inside `worker_init_fn` from `torch.initial_seed()`."
+        },
+        {
+          "q": "`torch.get_rng_state()` is saved but CUDA draws still diverge after resume. What is missing?",
+          "a": "The CUDA RNG states from `torch.cuda.get_rng_state_all()`, restored per device with `torch.cuda.set_rng_state`, plus the NumPy and Python states if the pipeline draws from them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Lambda guide: elastic-training `toy.py` crash-and-restart loop",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
+          "locator": "Run `toy.py` with two CPU processes with GPUs hidden so it uses gloo: let it crash once, restart, and show `num_steps` continues from the saved state",
+          "note": "The script raises at random with probability 0.001 per step and loops forever, so bound the run: stop after the first crash, and compare post-restart values against a fixed-step uninterrupted reference."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "A mid-epoch resume reproduces the reference run's next batches and weights exactly on CPU, and you can name every stream in the checkpoint plus what breaks when each is dropped.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Lambda determinism diff and crash loop plus TorchFeather's states map cover every stream at implement depth; the DCP recipe's model-only gap is called out, not searched."
       }
     },
     {
@@ -70,47 +116,89 @@
         "distributed-checkpoint-state-dict-contracts"
       ],
       "outcomes": [
-        "TODO"
+        "Explain when each rank writes its own shard versus gathering a full copy, and what the `.metadata` plus one-file-per-rank layout guarantees.",
+        "Save and load a tiny FSDP2 model with `get_state_dict` and `set_state_dict` plus a `Stateful` wrapper on CPU, and convert the result to a single-file torch checkpoint."
       ],
-      "why": "TODO",
+      "why": "Sharded checkpoints are the only format that scales past one device's memory. The state-dict contract of pre-allocated storage plus name management is what later makes resharding possible.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Load the same files onto a new world size."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/checkpoint-manifests-compatibility",
+          "note": "Version the layout this format writes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dcp-dt9",
+          "title": "DCP save and load with FSDP2",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "How DCP works: parallel save, reshard at load, multiple files with at least one per rank, in-place operation, `Stateful` handling; Saving: `AppState`, `get_state_dict`, `dcp.save`; Loading: rebuild model and optimizer first, then `dcp.load`, at the same or a different world size (page read 2026-10-14)"
+        },
+        {
+          "resource": "lambda-resume-dt9",
+          "title": "Sharded save and load in the Lambda guide",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/04-fully-sharded-data-parallel/README.md",
+          "locator": "Sharded Checkpoints with `StateDictOptions(full_state_dict=False, cpu_offload=True)`; Saving a sharded checkpoint: barrier, then all ranks call `get_state_dict` for one file per rank; Loading a sharded checkpoint: `get_state_dict`, `load`, `set_state_dict`; Converting a sharded checkpoint to a full state dict checkpoint"
+        },
+        {
+          "resource": "pytorch-dcp-dt9",
+          "title": "Formats: DCP versus `torch.save`",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html#formats",
+          "locator": "Formats: `dcp_to_torch_save` and `torch_save_to_dcp` with `python -m torch.distributed.checkpoint.format_utils dcp_to_torch <dir> <out>` (page read 2026-10-14)"
+        },
+        {
+          "resource": "picotron-ckpt-dt9",
+          "title": "Per-rank files without DCP",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/checkpoint.py",
+          "locator": "`CheckpointManager._get_checkpoint_path` names files by TP and PP rank; `save_checkpoint` writes model, optimizer, `trained_steps` and `trained_tokens` with `torch.save` from DP and CP rank 0 only; `load_checkpoint` assumes the same topology"
         }
       ],
       "focus": [
-        "TODO"
+        "DCP loads into pre-allocated storage: rebuild the model and optimizer before `dcp.load`, because sharding for the load plan comes from the live objects. `torch.load` needs only a path.",
+        "Sharded means every rank saves. The checkpoint is the set of per-rank files plus `.metadata`; a missing shard is a corrupt checkpoint, not a smaller one.",
+        "`get_state_dict` with `full_state_dict=False` keeps shards local with CPU offload; `True` gathers the full copy on each rank. Choose per use, not per habit: shards for training, full for export.",
+        "Picotron's hand-rolled per-rank `torch.save` files carry no resharding metadata, so restore needs the identical TP and PP layout. That limitation is what DCP's planner plus `.metadata` removes.",
+        "The Lambda guide links the unversioned `stable` reference for `get_state_dict`. Read the 2.14 reference instead, where FSDP2 (`fully_shard`) is current and FSDP1 helpers are legacy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with 2 gloo processes, save a `fully_shard` toy model plus Adam state with the recipe's `AppState`, mutate both, reload, and show all 16 flattened state entries equal with `torch.equal`. Then convert the directory with `dcp_to_torch_save`.",
       "traps": [
-        "TODO"
+        "Expecting `dcp.load` to create the model. It updates the passed state dict in place, so an unbuilt model gives it nothing to write into.",
+        "Saving only on rank 0 with a sharded state dict. Skipped ranks lose their shards and `.metadata` describes files that do not exist.",
+        "Reading one rank's `.distcp` file as a partial model. Shards are planner-assigned ranges, not layers; only `dcp.load` reassembles them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does the DCP loading example rebuild the FSDP model and optimizer before calling `dcp.load`?",
+          "a": "DCP loads in place into pre-allocated storage and takes each rank's sharding from the live objects. Without them it has nowhere to write and no resharding plan."
+        },
+        {
+          "q": "A 4-rank checkpoint directory holds `.metadata` and three `.distcp` files. Is it loadable?",
+          "a": "No. One shard is missing, so the checkpoint is incomplete. Resume must refuse it and fall back to the last known good, never train on three quarters of the state."
+        },
+        {
+          "q": "When should `full_state_dict` be true at save time, and what does it cost?",
+          "a": "Only to export for single-process use such as inference. Every rank gathers the full model, so peak memory holds the whole copy instead of one shard."
+        },
+        {
+          "q": "Picotron saves one `.pth` per TP and PP rank with `torch.save`. What breaks when the job restarts with a different TP degree?",
+          "a": "Each file holds a fixed TP slice with no resharding metadata, and `load_checkpoint` assumes the same topology. The slices no longer match the new layout."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "PyTorch DCP recipe: FSDP save plus load, CPU-ported",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "Port the Saving and Loading examples to CPU with gloo and `torchrun --nproc-per-node 2` (no per-rank CUDA device): save after one step, mutate, reload, and assert bit-exact parameters and optimizer state; then run `dcp_to_torch_save` on the directory",
+          "note": "The recipe targets an 8-GPU server with NCCL but the logic is identical on gloo. Expect `.metadata` plus one `__<rank>_0.distcp` per rank."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your CPU port saves, reloads bit-exactly and converts to a single file, and you can state which half of the contract (`get_state_dict` versus `set_state_dict`) each failure violates.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The DCP recipe, the Lambda sharded save and load, the format converter and the Picotron no-DCP baseline cover both topics at explain and implement depth."
       }
     },
     {
