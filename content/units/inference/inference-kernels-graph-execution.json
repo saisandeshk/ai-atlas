@@ -95,47 +95,65 @@
         "io-aware-attention-and-flashattention"
       ],
       "outcomes": [
-        "TODO"
+        "Derive rectangular attention shapes for uncached prefill, cached chunks and ordinary decode.",
+        "Separate query-head arithmetic from KV-head traffic and identify potential GQA reuse.",
+        "Predict when query tiling or split-KV parallelism is worth testing without assuming a bandwidth bottleneck."
       ],
-      "why": "TODO",
+      "why": "Attention shapes, prefill and decode reuse, and materialized traffic already supplied the square-attention ledger. Serving adds cached suffixes, mixed request lengths and a shape distribution that can invalidate a single-kernel choice.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/paged-decode-gqa-addressing",
+          "note": "Carry logical shapes into physical page addressing."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-paper-inf5",
+          "title": "Serving intensity and tile selection, arXiv:2501.01005v1",
+          "url": "https://arxiv.org/html/2501.01005v1#S2.SS1",
+          "locator": "Section 2.1, FlashAttention; Sections 3.2.1 and 3.2.2, data movement and microkernel tile sizes; Appendix A, Head Group Fusion for Grouped-Query Attention",
+          "depth": "Use the paper's intensity as an attention-only model. Its statement about batching does not apply to weight reuse in the rest of a transformer."
+        },
+        {
+          "resource": "cs336-a2-attn-inf5",
+          "title": "Forward attention state and work",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 4.2.2, Details of the FlashAttention forward pass and Algorithm 1, printed pp. 24 to 25",
+          "depth": "Reuse your completed forward implementation. Skip backward and the training benchmark sweep; extend the shape ledger to rectangular cached attention."
         }
       ],
       "focus": [
-        "TODO"
+        "For one request with \(q\) query tokens, \(s\) visible KV tokens, \(H_q\) query heads and head width \(d\), scores have shape \(H_q\times q\times s\). Uncached prefill has equal lengths; a cached chunk has more keys than queries; ordinary decode has one query.",
+        "Dense score and value products cost \(4H_q qsd\) FLOPs, counting a multiply-add as two. This excludes scaling, masking and softmax; useful causal pairs and executed padded tiles need separate counts.",
+        "An ideal single KV read costs \(2H_{kv}sd b\) bytes for equal key/value widths and \(b\) bytes per element. Reusing these bytes across grouped heads is a schedule property, not a consequence of fewer stored heads alone.",
+        "IO-aware attention removes global score/probability materialization. Short queries still offer little query-row reuse; split-KV adds parallelism but needs partial-state storage and reduction."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw a request with 5 cached tokens and a 3-token chunk, four query heads, two KV heads and width 8. Scores are \(4\times3\times8\); the three query rows allow 6, 7 and 8 keys respectively. Derive 3072 dense-product FLOPs versus 2688 useful causal-product FLOPs, and 512 bytes for one ideal KV read with two-byte storage. Keep query/output bytes, softmax work, metadata and actual reloads outside that KV-only count.",
       "traps": [
-        "TODO"
+        "Using a square or upper-left causal mask for a cached suffix. Its query positions start after the cached prefix.",
+        "Reducing arithmetic by the GQA group size. Query heads still compute distinct scores and outputs.",
+        "Calling a low-intensity attention shape bandwidth-bound without timings and profiler evidence. Launch supply or insufficient parallelism may dominate."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does batching unrelated decode requests create reuse of each request's KV across query tokens?",
+          "a": "No. Ordinary decode still has one query per request. Batching adds parallel work and can improve weight reuse elsewhere, but unrelated requests have different KV."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why distinguish useful causal FLOPs from executed FLOPs?",
+          "a": "A masked tile can still execute dense instructions or padded lanes. A mathematical pair count is not a hardware instruction count."
+        },
+        {
+          "q": "Why can FlashAttention reduce traffic without reducing the attention pair count?",
+          "a": "It streams tiles and retains row state on chip instead of writing quadratic intermediate matrices. It still evaluates the permitted query-key interactions."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` prefill, cached-chunk and decode shape ledgers, with predictions attached to the measured workload matrix.",
+      "stopWhen": "You derive the cached-chunk ledger and mask from absolute positions, then explain a different request mix without confusing useful work, modeled bytes and measured traffic.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: FlashInfer's serving intensity and tile discussion plus the verified forward algorithm reach derive depth; the mini-project supplies the rectangular ledger."
       }
     },
     {
