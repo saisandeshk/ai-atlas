@@ -1,6 +1,27 @@
 {
   "section": "training-pipeline-framework-internals",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-dataloader-docs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch torch.utils.data API - DataLoader, Sampler and multi-process loading",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read Data Loading Order and Sampler, Single- and Multi-process Data Loading with its Randomness subsection, and the DistributedSampler entry for `set_epoch`, `drop_last` padding and worker seeding. Use it to define sampler position and worker sharding for the lineage and resume units.",
+      "url": "https://docs.pytorch.org/docs/2.14/data.html"
+    },
+    {
+      "id": "pytorch-autograd-docs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch Autograd mechanics note",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Read How autograd encodes the history with Saved tensors, Hooks for saved tensors, and Backward Hooks execution (whether each hook fires and in which order). Use it for the autograd graph, saved-tensor and hook-ordering claims.",
+      "url": "https://docs.pytorch.org/docs/2.14/notes/autograd.html"
+    }
+  ],
   "units": [
     {
       "id": "run-identity-launch-contracts",
@@ -15,47 +36,83 @@
         "framework-contracts-for-setup-step-save-load-and-teardown"
       ],
       "outcomes": [
-        "TODO"
+        "Explain what belongs in an immutable run identity and why a seed alone cannot reproduce a run.",
+        "Implement setup, step, save, load and teardown in one script so a relaunch resumes from committed state instead of restarting.",
+        "Capture the launch configuration and environment needed to tell a changed setup apart from a broken resume."
       ],
-      "why": "TODO",
+      "why": "Distributed runs multiply every unspecified choice: one missing flag or untracked code change becomes a different experiment on every rank. A written run contract makes resume and blame possible before any parallelism is added.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/dataset-lineage-sampler-position",
+          "note": "Add sampler position and dataset version to the identity."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/exact-resume-tiny-fixtures",
+          "note": "Prove the contract with an interruption test."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "lambda-single-dt1",
+          "title": "Single-GPU trainer end to end",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "README.md Code explanation from Argument parsing through Checkpoints; `train_llm.py` `_get_parser`, `LocalTimer`, the checkpoint-save block writing `model.pt`, `optimizer.pt`, `lr_scheduler.pt` and `state.json`, and the resume branch reloading them and skipping finished steps"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Pipeline architecture and the benchmark envelope",
+          "url": "https://mlsysbook.ai/vol1/training/training.html",
+          "locator": "Model Training, Pipeline Architecture; Benchmarking Best Practices in https://mlsysbook.ai/vol1/benchmarking/benchmarking.html for the full envelope of commit, checksum, preprocessing, seed plan, versions, precision, batch schedule, topology, power and thermal, and checkpoint behavior"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "Reproducible environment capture",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/reproducibility/README.md",
+          "locator": "`enforce_reproducibility`: seed handling, `CUBLAS_WORKSPACE_CONFIG` set before CUDA init, `torch.use_deterministic_algorithms(True)`, `cudnn.benchmark=False`; Reproduce env: `modules.txt`, `env.txt`, `pip freeze`, `git diff` of local installs"
         }
       ],
       "focus": [
-        "TODO"
+        "The run identity is code version, dataset version, config, seeds, and hardware and software versions together. Logging `os.environ` and args, as the Lambda script does, starts the identity but `pip freeze` and the dataset version complete it.",
+        "`state.json` carries `epoch`, `global_step`, `epoch_step` and `running_loss` beside the three state dicts. Resume restores all of them and skips finished batches; loading weights alone restarts the schedule midstream.",
+        "Process-global flags are environment, not model config. The installed default is `torch.backends.cuda.matmul.allow_tf32` False with `torch.get_float32_matmul_precision` returning `highest`; record both in the manifest.",
+        "Teardown belongs to the contract: workers shut down, barriers complete, and only committed checkpoints are read back."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write a loop that saves model, optimizer, scheduler and a position record every N steps, stops mid-epoch, and relaunches to the same loss trajectory. State which files must exist before the resumed run may continue.",
       "traps": [
-        "TODO"
+        "Treating the random seed as the full identity. Seeding alone still leaves algorithm choice and data position unspecified.",
+        "Reading a checkpoint written by different code or config and calling the mismatch a resume bug. Reject resume under a changed configuration instead.",
+        "Saving only `model.state_dict`. Optimizer, scheduler and data position are state too; without them the trajectory diverges after resume."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A resumed run reproduces the loss values but the learning rate schedule looks shifted by half an epoch. Which state was likely not restored?",
+          "a": "The scheduler state and the position record (`epoch_step` or `global_step`). Weights plus optimizer without scheduler and position restart the schedule at the wrong point."
+        },
+        {
+          "q": "Why is logging `os.environ` and parsed args insufficient as a run identity?",
+          "a": "It misses code version, dataset version, installed package versions and process-global flags. Two runs can share env and args yet differ in code, data or library behavior."
+        },
+        {
+          "q": "Where must `CUBLAS_WORKSPACE_CONFIG` be set, and why?",
+          "a": "Before the CUDA context is created, ahead of the first CUDA call. Set later it is silently ignored and matmul algorithm choice stays nondeterministic."
+        },
+        {
+          "q": "A crash leaves new weight files but no new `state.json`. Should the resumed run load the new weights?",
+          "a": "No. Only a committed checkpoint with its position record is readable. Rebuild or discard the uncommitted shards first."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Lambda guide 01-single-gpu: interrupted and resumed run",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/README.md",
+          "locator": "Outputs and Resuming plus Checkpoints: launch `train_llm.py` on the smallest model your machine fits, stop it mid-epoch, relaunch with the same experiment name and show it resumes from `state.json` instead of restarting",
+          "note": "Keep the timer and memory logs from both halves as the resume evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can list the complete identity for your own loop, and an interrupted run continues its loss trajectory instead of restarting it.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Lambda script plus the MLSys pipeline and envelope sections and the Stas reproducibility checklist cover launch identity and the setup, step, save, load and teardown contract at explain and implement depth."
       }
     },
     {
@@ -70,47 +127,78 @@
         "deterministic-shuffle-shards-workers-and-sampler-position"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a restartable sharded sampler with deterministic shuffle, disjoint coverage and a stated padding or drop policy.",
+        "Trace any batch back to document IDs and a manifest version, and serialize sampler position as epoch plus RNG state.",
+        "Diagnose duplicate or omitted samples and seed collisions across ranks and loader workers."
       ],
-      "why": "TODO",
+      "why": "Data order is optimizer input: a duplicated shard or a reshuffle on resume silently trains a different model. Lineage plus sampler position makes every example accountable before ranks are added.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/batch-token-accounting",
+          "note": "Count the batches the sampler yields."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/exact-resume-tiny-fixtures",
+          "note": "Prove resume restores the exact example sequence."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dataloader-docs",
+          "title": "Sampler order, sharding and worker randomness",
+          "url": "https://docs.pytorch.org/docs/2.14/data.html",
+          "locator": "Data Loading Order and Sampler; Single- and Multi-process Data Loading with Randomness in multi-process data loading; `DistributedSampler` entry: `set_epoch`, `seed`, `drop_last` head padding, `len` reporting the per-rank count",
+          "depth": "Read the sampler contract, not the whole loader reference. Note that `DistributedSampler` has no `state_dict`; position is the epoch integer plus the loop-owned RNG state."
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Determinism and data-loading notes",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/determinism/README.md",
+          "locator": "RNG save and restore (`rng.pt` with torch, NumPy and Python states), `torch.use_deterministic_algorithms(True)`, seeded `Generator` with `_seed_worker`; related-topics `optimizing-data-loading` README for `num_workers`, `prefetch_factor` and the rank-wait timer"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "Deterministic seeding and worker discipline",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/reproducibility/README.md",
+          "locator": "`enforce_reproducibility(seed)`: seeds for `random`, NumPy, torch and CUDA, with the warning that `np.random.default_rng` objects built in `Dataset.__init__` are copied identically into every worker"
         }
       ],
       "focus": [
-        "TODO"
+        "Sampler position is an epoch integer owned by the training loop plus dataset version and RNG state. Call `set_epoch(n)` every epoch or every rank replays the same order.",
+        "With `drop_last=False` an uneven split pads with head indices: 10 items over 3 ranks yield per-rank rows \\([0, 3, 6, 9]\\), \\([1, 4, 7, 0]\\) and \\([2, 5, 8, 1]\\). Padding duplicates examples, so token and sample counts must use the manifest, not the batch count.",
+        "Main-process shuffling assigns indices to loader workers, but an RNG object created in `Dataset.__init__` is fork-copied identically into each worker. Seed inside the worker from `torch.utils.data.get_worker_info().seed` instead.",
+        "Document-to-batch lineage means each batch element records its document ID, shard and position. A manifest fixes ordered shard paths, checksums, counts and recipe version; resume under a changed manifest is rejected."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build a 10-item dataset with a 3-way sampler, print the per-rank index rows with `drop_last` True and False, and show that `set_epoch(0)` and `set_epoch(1)` give different orders while re-setting the same epoch reproduces them. Save and restore the epoch plus RNG state mid-epoch and continue the identical sequence.",
       "traps": [
-        "TODO"
+        "Calling `DistributedSampler.state_dict`. It does not exist; resume restores the epoch integer and the loop-owned RNG and worker state.",
+        "Assuming padding is free. Padded head items are real repeated examples that inflate token counts unless the loss denominator excludes them.",
+        "Seeding only the main process. Since PyTorch 1.9 each worker gets `base_seed + worker_id` for torch, but other libraries and prebuilt RNG objects still duplicate draws across workers."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Ten items, 3 replicas, `shuffle=False`, `drop_last=False`. Which indices does rank 1 yield?",
+          "a": "\\([1, 4, 7, 0]\\). Each rank takes every third index and rank 1 pads with head index 0 to reach length 4."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What must be saved to resume a shuffled sampler exactly?",
+          "a": "The epoch integer passed to `set_epoch`, the dataset and recipe version, and the RNG state feeding shuffle and workers. The sampler object itself holds no serializable position."
+        },
+        {
+          "q": "Two loader workers produce identical augmentations. What is the likely cause on a current PyTorch?",
+          "a": "An RNG object created in `Dataset.__init__` was copied identically into both workers. Build or reseed the generator per worker from the worker seed."
+        },
+        {
+          "q": "Why must resume be rejected when the manifest changed?",
+          "a": "Shard order, counts or recipe changes remap positions to different documents. Continuing from the old cursor silently duplicates some examples and omits others."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: deterministic sampler with disjoint-coverage tests, padding and drop policy, document-to-batch lineage, and interrupted versus uninterrupted record-ID equivalence.",
+      "stopWhen": "Your sampler prints disjoint per-rank rows for both padding policies, and a mid-epoch save and restore continues the identical example sequence.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for sampler position and worker randomness in the pool; the official DataLoader and Sampler reference fills that gap beside the Lambda determinism notes and the Stas seeding checklist."
       }
     },
     {
@@ -126,47 +214,84 @@
         "gradient-accumulation-zeroing-and-optimizer-update-semantics"
       ],
       "outcomes": [
-        "TODO"
+        "Derive global batch and token counts from microbatch size, accumulation steps, packing and data-parallel degree.",
+        "Implement accumulation with correct mean weighting over uneven microbatches and one optimizer step per global batch.",
+        "Explain when accumulation matches a large batch and which padding and zeroing choices break the match."
       ],
-      "why": "TODO",
+      "why": "The global batch sets gradient noise and learning-rate scaling, while the microbatch sets memory. Confusing the two changes the optimized objective without changing any config name.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-global-batch-no-sync",
+          "note": "Extend the batch equation with workers and `no_sync`."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/training-state-ownership",
+          "note": "See which states the single optimizer step updates."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-first-steps-dt1",
+          "title": "Gradient accumulation and the batch equation",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#gradient_accumulation",
+          "locator": "Gradient accumulation through Revisiting global batch size: microbatch size, accumulation steps and \\(gbs = mbs \\times grad\\_acc \\times dp\\); the note that accumulation keeps separate gradient buffers alive across the step"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Accumulation and effective batch size",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/gradient-accumulation/README.md",
+          "locator": "Effective batch as `batch * accum_steps` with `backward` each step and `step` only when `i % accum == 0`; related-topics `effective-batch-size-and-lr` README for linear versus square-root learning-rate scaling with batch size"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Capacity levers: accumulation and checkpointing",
+          "url": "https://mlsysbook.ai/vol1/training/training.html",
+          "locator": "Model Training, Pipeline Optimizations: gradient accumulation and activation checkpointing as the capacity responses when a batch does not fit"
         }
       ],
       "focus": [
-        "TODO"
+        "Global batch is \\(gbs = mbs \\times grad\\_acc \\times dp\\), with tokens \\(gbs \\times seq\\). In LLM reports the batch is quoted in tokens so the count survives a sequence-length change.",
+        "Uneven microbatches need size-weighted averaging. With per-microbatch mean gradients \\(g_1 = [1, -1]\\) over 2 examples and \\(g_2 = [-2, -2]\\) over 1, the full-batch gradient is \\([0, -1.33]\\); averaging the two means gives the wrong \\([-0.5, -1.5]\\).",
+        "Accumulation holds gradient buffers across micro-steps, so peak memory differs from a single large batch even when the update matches. The optimizer steps once per global batch, then gradients are cleared.",
+        "Padding and packing change the denominator. Padded positions and cross-document transitions excluded from the loss must not count as tokens in the batch."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the update for two microbatches of sizes 2 and 1 with the gradients above, showing the size-weighted mean and one SGD step. Then implement accumulation over uneven microbatches and match it against a single full-batch step to 1e-5.",
       "traps": [
-        "TODO"
+        "Averaging per-microbatch losses or gradients instead of weighting by microbatch size. Equal weight per microbatch overweights small ones.",
+        "Stepping the optimizer per microbatch. That trains with the microbatch size while the config claims the global size.",
+        "Counting padded or masked positions as batch tokens. Throughput and scaling rules then use tokens the loss never saw.",
+        "Zeroing with `zero_grad` defaults that leave stale state. Clear accumulated gradients exactly once per global batch, after the step."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Microbatch 8 with seq 4096, 4 accumulation steps, dp 2. What is the global batch in samples and tokens?",
+          "a": "\\(gbs = 8 \\times 4 \\times 2 = 64\\) samples, or \\(64 \\times 4096 = 262{,}144\\) tokens."
+        },
+        {
+          "q": "Why does naive averaging of per-microbatch gradients fail for uneven microbatches?",
+          "a": "Each microbatch gradient is already a mean over its own size. The full-batch mean must weight each by its example count; unweighted averaging gives small microbatches excess influence."
+        },
+        {
+          "q": "Does accumulation with the same global batch always match a large batch numerically?",
+          "a": "It matches when every microbatch uses the same graph, the correctly weighted mean, one step per global batch and identical ordering. It differs when padding, dropout draws, batch statistics or ordering differ."
+        },
+        {
+          "q": "Where does the extra memory of accumulation sit?",
+          "a": "In gradient buffers held across micro-steps plus one microbatch of activations at a time, instead of the full-batch activation peak."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Gradient Accumulation Equivalence",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-gradient-accumulation-step",
+          "locator": "Implement `gradient_accumulation_step`: accumulate the full-batch mean-squared-error gradient over uneven microbatches and return the updated parameter and full gradient; the public cases check uneven sizes, equal sizes and zero loss",
+          "note": "Answer the weighting by hand first: each example contributes equally even when microbatch sizes differ. Then run the same comparison in your own trainer against a full-batch step."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the global batch in samples and tokens for any setting, and your accumulator matches a full-batch step while the naive mean-of-means fails as predicted.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook accumulation sections plus the Lambda accumulation and batch-size notes cover the batch equation at derive depth, and the free TensorTonic equivalence problem gives checked uneven-microbatch practice."
       }
     },
     {
