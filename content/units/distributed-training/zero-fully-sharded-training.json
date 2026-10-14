@@ -277,7 +277,7 @@
           "title": "Reshard policy in PyTorch 2.14",
           "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.fully_shard",
           "locator": "`fully_shard`, parameter `reshard_after_forward`; `FSDPModule.set_modules_to_forward_prefetch`, `set_modules_to_backward_prefetch` and `unshard`",
-          "depth": "Read the Boolean and default policies first. Use the integer policy only in the simulator unless you have a suitable mesh; it needs a non-trivial divisor of the sharding degree."
+          "depth": "Read the Boolean and default policies first. Use the integer policy only in the simulator unless you have a suitable mesh; only a non-trivial divisor of the mesh shard dim size gives distinct behavior: 1 collapses to `False` and the shard size itself to `True`, both without an error."
         },
         {
           "resource": "pytorch-fsdp-dt4",
@@ -440,13 +440,13 @@
       "focus": [
         "Start with FP32 and a 1D CPU mesh on Gloo. Shard blocks before the root, use `model(x)` so hooks run, then construct AdamW from the sharded parameters. Inspect global shapes and `to_local()` separately.",
         "For original FP32 parameters, `MixedPrecisionPolicy(param_dtype=torch.bfloat16, reduce_dtype=torch.float32)` gathers BF16 weights, computes in BF16 and reduces gradients in FP32. The optimizer updates original FP32 shards; it does not need another FP32 master copy.",
-        "If `reduce_dtype=None` and `param_dtype` is set, reduction uses the compute dtype. `output_dtype` changes floating-point outputs at the module boundary, not the optimizer's state dtype.",
+        "If `reduce_dtype=None` and `param_dtype` is set, the reduction payload uses the compute dtype, and the stored gradient shard is cast back to the original parameter dtype. `output_dtype` changes floating-point outputs at the module boundary, not the optimizer's state dtype.",
         "Use `torch.nn.utils.clip_grad_norm_` on the DTensor parameters, not on each rank's local shards separately. A global norm must combine the disjoint gradient contributions without counting replicated copies twice."
       ],
       "reproduce": "Adapt the tutorial to two CPU Gloo processes with `init_device_mesh('cpu', (2,))` and a tiny two-linear-layer model. First match several FP32 AdamW updates and a clipped gradient norm to the single-process global-batch oracle. Then use BF16 parameter compute and FP32 reduction; inspect the full compute weight during a forward pre-hook, the FP32 shard and gradient after backward, and FP32 Adam moments after the update. Compare mixed precision to an oracle with matching casts, not to a bitwise FP32 target.",
       "traps": [
         "Inspecting the weight in a post-forward hook registered after FSDP's hook and expecting the compute dtype. It may already have been resharded to the original dtype; inspect inside forward or after FSDP's pre-hook.",
-        "Passing `model.forward(x)` directly and bypassing the gather hooks.",
+        "Calling `model.forward(x)` directly. It bypasses the pre-forward gather and reads whatever is registered: after resharding it fails with a mixed Tensor and DTensor error, and while full weights are still retained it can silently run, so a passing call proves nothing.",
         "Clipping each local shard to the same maximum norm. That implements different scaling from clipping the reconstructed global gradient."
       ],
       "selfTest": [
@@ -524,7 +524,7 @@
       "focus": [
         "Checkpoint placement relative to the FSDP group decides whether recomputation re-enters gather hooks. Count actual all-gathers rather than assuming every checkpoint adds one or that recomputation is communication-free.",
         "TorchFeather's checkpoint policies use `preserve_rng_state=False`. For a stochastic block, use preserved RNG state in your baseline and test the recomputed gradient; the source's choice is not safe for arbitrary dropout.",
-        "FSDP2 CPU offload keeps parameter and gradient shards and optimizer state on CPU. Copy shards to the training device before gathering, copy reduced gradients back, and run the optimizer on CPU. Full compute weights and activations must still fit on the training device.",
+        "FSDP2 CPU offload keeps parameter and gradient shards and optimizer state on CPU. Copy shards to the training device before gathering, copy reduced gradients back, and run the optimizer on CPU. The gathered weights of the active group and its activations must still fit on the training device.",
         "NVMe adds a storage-to-host tier and staging buffers; `CPUOffloadPolicy` does not implement it. Use a deterministic tiered-transfer model on CPU first. With two or more GPUs, measure checkpoint and per-group CPU-offload variants with host traffic, memory peaks and fixed-workload step times."
       ],
       "reproduce": "On CPU Gloo, compare a tiny block-sharded model with and without non-reentrant activation checkpointing. Keep inputs, weights and precision fixed; check gradients against the no-checkpoint oracle and count block re-execution and gather events. In a separate deterministic transfer simulation, move only selected groups' stored shards to a host or storage tier; record resident bytes and bytes crossing each link, including staging. Predict which tier becomes the bottleneck without claiming CPU timings measure GPU transfers.",
