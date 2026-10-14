@@ -328,47 +328,64 @@
         "fork-beam-and-shared-prefix-ownership"
       ],
       "outcomes": [
-        "TODO"
+        "Implement fork and release with reference counts derived from actual owners.",
+        "Implement copy-on-write before modifying a shared partial block.",
+        "Diagnose beam-pruning and fork bugs using an independent unshared token oracle."
       ],
-      "why": "TODO",
+      "why": "Beyond one cache introduced sharing vocabulary. This unit makes it safe: one request's append or cancellation must not corrupt or release another request's prefix.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/kv-memory-prefix-reuse/eviction-preemption-cleanup",
+          "note": "Separate request release from reclaiming shared cached state."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pagedattention-inf3",
+          "title": "PagedAttention: fork and copy-on-write",
+          "url": "https://arxiv.org/html/2309.06180v1#S4.SS4",
+          "locator": "arXiv:2309.06180v1, Section 4.4, Parallel sampling, Beam search and Shared prefix, with Figures 8 to 10"
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: immutable prefix ownership",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`allocate` cached-block branch and `deallocate`; contrast with `may_append`",
+          "depth": "This revision shares cached full blocks but has no general fork or copy-on-write operation. Use the paper for that extension, not an invented Nano-vLLM API."
         }
       ],
       "focus": [
-        "TODO"
+        "A fork copies the logical table and increments references to its physical blocks. Count all owners under your chosen convention, including any cache or pending-transfer pins; do not count a duplicated table as duplicated payload.",
+        "Before writing a multiply owned tail, allocate a private block, copy valid state across every layer, redirect only the writer and release its old reference. Publish after the copy is ready.",
+        "A full immutable prefix block needs no copy when append starts a fresh page. A shared partial tail does need protection, even if both branches will write the same token.",
+        "Beam selection can create multiple descendants of one parent and prune other parents. Acquire survivor references before releasing old owners, so a transient zero count cannot recycle a still-needed page."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In a CPU model with block size 4, create the five-token sequence `[10, 11, 12, 13, 14]` and fork it once. Both pages initially have two request references. Append `20` to the child: copy its partial tail, leaving the full prefix shared. Require three physical pages, prefix refcount 2 and tail refcounts 1 each; the parent remains length 5. Cancel the child, then the parent, and require all pages free when caching is disabled. Compare both token histories with separately copied Python lists.",
       "traps": [
-        "TODO"
+        "Copying only keys, one layer or the token-ID metadata. Copy-on-write protects the complete stored state used by future attention.",
+        "Assuming an unused slot in a shared page has no owner. Different branches can disagree on the contents and validity of that slot.",
+        "Releasing all old beams before acquiring new beam references. This can recycle a prefix that a survivor still needs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A fork occurs at exactly eight committed tokens with block size 4. Does the next append copy an old page?",
+          "a": "No. Both old pages are full and immutable; each writing branch allocates a fresh tail page."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does cancelling a child free the shared prefix immediately?",
+          "a": "No. It releases the child's references. The parent's references still protect the prefix, as would any other pin."
+        },
+        {
+          "q": "Why is one reference count insufficient to prove correct data?",
+          "a": "It proves ownership only if maintained correctly. A page can have a plausible count yet contain the wrong sequence, generation, layer or position; the token/state oracle checks that separately."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` fork, partial-tail copy-on-write and beam-pruning histories, checked against unshared token/state copies.",
+      "stopWhen": "Forks at partial and full boundaries preserve parent state, reference counts match all owners, and pruning or cancellation restores capacity without invalidating survivors.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Section 4.4 supplies the missing general fork/COW algorithm; Nano-vLLM supplies a narrower full-block sharing baseline. Servelab covers implementation and adversarial ownership checks."
       }
     },
     {
