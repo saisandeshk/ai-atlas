@@ -15,47 +15,69 @@
         "tensor-parallel-inference-shapes-and-collectives"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish independent serving replicas from ranks cooperating on one forward pass, including their request-level fault domains.",
+        "Derive local MLP and attention projection shapes for a tensor-parallel serving plan.",
+        "Place forward collectives and explain why added memory capacity need not reduce small-batch latency."
       ],
-      "why": "TODO",
+      "why": "A router distributes requests across replicas; tensor parallelism distributes one request's model work across ranks. Confusing the two gives the wrong capacity estimate and the wrong recovery boundary.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/weight-kv-sharding-memory",
+          "note": "Turn the shard shapes into per-rank ownership and memory budgets."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-dist-inf7",
+          "title": "Replicas versus model shards",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Data Parallelism, printed pp. 243 to 245; Tensor Parallelism and Pipeline Parallelism, printed pp. 245 to 250",
+          "depth": "Read the replica and TP paths now. Leave the pipeline decision path for the next unit; do not run the multi-GPU launch snippet."
+        },
+        {
+          "resource": "tushar-dist-inf7",
+          "title": "The paired column and row shards",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#concept-0",
+          "locator": "Module 09, Tensor parallelism: split inside the layer - The MLP block and The attention block",
+          "depth": "Stop before Communication volume. Two reductions per layer describes this replicated-activation dense forward schedule, not every TP implementation."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Collective contracts and the latency-bandwidth cost model. Serving replicas do not synchronize gradients; a replica can itself contain a TP group.",
+        "For input \(X\) of shape \(T \times h\), column-shard the first MLP weight of shape \(h \times f\), then row-shard the second of shape \(f \times h\). Each local intermediate has shape \(T \times f/n\) for divisible width and \(n\) ranks.",
+        "An elementwise activation stays local between these shards. The second projection produces same-shaped partial outputs that sum, not concatenate. Add a replicated output bias once after summation.",
+        "Attention head shards can compute independently before the output projection reduction. KV-head replication and vocabulary-parallel output paths need separate ownership accounting."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive a bias-free two-rank ReLU MLP with input shape \(2 \times 4\), first weight shape \(4 \times 6\) and second weight shape \(6 \times 4\). Give each rank three intermediate features, sum its partial output, and check against the unsharded MLP on CPU using small deterministic float64 tensors. State a numerical tolerance rather than demanding bitwise equality.",
       "traps": [
-        "TODO"
+        "Counting replicas as additional memory for a single request. Each independent replica needs the full model and its own admitted KV state.",
+        "Calling every column-sharded output an all-reduce. Disjoint output features concatenate; row-sharded dot-product contributions sum.",
+        "Promising a latency speedup from rank count. Smaller kernels, startup costs and dependencies can consume the extra compute or memory bandwidth."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does inference replica serving require the training gradient all-reduce?",
+          "a": "No. Independent requests run forward passes against fixed weights. Shared routing or cache metadata is a separate control-plane concern."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can the first projection's activation remain local?",
+          "a": "Each rank owns complete values for its output features, and ReLU acts independently on each feature. No partial sum is needed before that activation."
+        },
+        {
+          "q": "What shape does each second-projection partial have in the reproduce example?",
+          "a": "\(2 \times 4\). Each rank multiplies a \(2 \times 3\) intermediate by its \(3 \times 4\) weight rows; the two partials sum to the full output."
+        },
+        {
+          "q": "Can replicas lower endpoint latency without making the forward pass faster?",
+          "a": "Yes. Distributing arrivals can reduce queueing. It does not shorten the isolated forward service time on an unchanged replica."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's replica and TP plans, local-shape ledger and differential checks against an unsharded forward pass.",
+      "stopWhen": "Your paired-shard MLP matches the unsharded reference within the stated tolerance, and your diagram separates replica routing from TP collectives and their fault domains.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book's replica and sharding sections and Module 09's paired MLP cover the serving distinction and forward shapes; servelab supplies CPU differential practice."
       }
     },
     {
