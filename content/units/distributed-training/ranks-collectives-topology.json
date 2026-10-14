@@ -62,13 +62,13 @@
           "title": "A0 opening through Broadcast setup",
           "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#a0:_parallel_programming_crash_course",
           "locator": "A0 Parallel Programming Crash Course, from its opening through the Broadcast setup code with `dist.get_rank`",
-          "depth": "Read for the rank and world-size vocabulary. Do not copy the snippets: the print misspells the init call as `dist.initi_process_group` and passes `dst` to `dist.all_reduce`, which takes no `dst` argument."
+          "depth": "Read for the rank and world-size vocabulary. The prose misspells the init call as `dist.initi_process_group` (the code spells it right), and the snippets assume NCCL with one GPU per rank through `torch.cuda.set_device(dist.get_rank())`. For CPU practice switch the backend to `gloo` and drop the `.cuda()` calls; the Reduce example also prints an undefined `rank`."
         },
         {
           "resource": "umar-framework-dt2",
           "title": "Ranks and the process group",
           "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=18920s",
-          "locator": "Minutes 5:15 to 5:20: what torchrun assigns as global and local rank and why a process group is created"
+          "locator": "From 5:15:20 to about 5:20:00 (hours:minutes:seconds): what torchrun assigns as global and local rank and why a process group is created"
         }
       ],
       "focus": [
@@ -170,7 +170,7 @@
         }
       ],
       "focus": [
-        "A store is a key-value handshake, either `TCPStore` or `FileStore`. The launcher starts the processes, rendezvous introduces them, and `dist.init_process_group` builds the world group.",
+        "A store is a key-value handshake; the rendezvous stores are `TCPStore` and `FileStore`. The launcher starts the processes, rendezvous introduces them, and `dist.init_process_group` builds the world group.",
         "The default group holds all \\(W\\) ranks. `dist.new_group` carves named subsets, one rank may belong to several groups at once, and each group orders its own collectives.",
         "Picotron lays ranks out as `torch.arange(world).view(dp, pp, cp, tp)` and enumerates one subgroup per axis. Every rank must build the identical grid or the groups disagree silently.",
         "File init needs a nonexistent or empty shared file with fcntl locking. Mesh shapes must match on all ranks or setup hangs."
@@ -178,13 +178,13 @@
       "reproduce": "Closed-book, take world size 4 with dp 2 and tp 2 in Picotron axis order: write the tensor-parallel groups and the data-parallel groups as rank sets.",
       "traps": [
         "Reusing one fixed MASTER_PORT for several concurrent runs. The second job fails or joins the wrong rendezvous, so use a distinct port per run.",
-        "Trusting a LOCAL_RANK fallback of the form `global_rank % world_size` in example code on multiple nodes. It is not the true node-local rank.",
+        "Deriving the local rank from the global rank in example code, as in `rank % torch.cuda.device_count()`. It breaks when nodes hold different GPU counts or ranks are not packed node by node; read the `LOCAL_RANK` the launcher sets.",
         "Assuming subgroups inherit a barrier or an ordering from the world group. Each group needs its own calls in the same order."
       ],
       "selfTest": [
         {
           "q": "What does the store do, and when is it no longer needed?",
-          "a": "It exchanges handshake locations so ranks can find each other during init. After the process group is built, collectives use direct links and no longer consult the store."
+          "a": "Ranks exchange their addresses through it during init, so they can find each other. It stays in use after init: `new_group` coordinates through it, `monitored_barrier` reports through it, and errors are shared through it. Collective payloads never pass through the store."
         },
         {
           "q": "World size 4 with dp 2 and tp 2 in Picotron order: which ranks share a tensor-parallel group, and which share a data-parallel group?",
@@ -192,7 +192,7 @@
         },
         {
           "q": "Rank 0 of a subgroup calls `all_reduce` but rank 1 of the same subgroup calls `broadcast`. What happens?",
-          "a": "Both hang. Every member of a group must issue the same collective sequence, and subgroups do not inherit ordering from the world group."
+          "a": "The calls never pair up. On gloo with the default debug level both ranks block until the timeout; with `TORCH_DISTRIBUTED_DEBUG=DETAIL` the wrapper compares collective fingerprints and both ranks fail at once with \"Detected mismatch between collectives on ranks\". Every member must issue the same sequence, and subgroups do not inherit ordering from the world group."
         },
         {
           "q": "Two jobs on one machine share MASTER_PORT. What goes wrong?",
@@ -263,18 +263,18 @@
           "resource": "umar-framework-dt2",
           "title": "Send, receive and pipeline handoffs",
           "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=25685s",
-          "locator": "Minutes 7:08 to 7:10: send and receive as point-to-point primitives, with the pipeline send at minutes 9:59 to 10:00 as the use case"
+          "locator": "From 7:08:05 to about 7:10:00 (hours:minutes:seconds): send and receive as point-to-point primitives, with the pipeline send near 9:59:00 to 10:00:00 as the use case"
         }
       ],
       "focus": [
         "Every `dist.send` names a dst and every `dist.recv` names a src, with a preallocated buffer of matching shape and dtype on the receiving rank. Blocking calls return after completion; immediates return a `Work` handle that requires `req.wait()`.",
         "After `dist.isend`, writing the sent tensor is undefined until wait. After `dist.irecv`, reading the receive buffer is undefined until wait. After wait, the transfer is guaranteed.",
-        "Broadcast copies one source tensor to all ranks. Reduce combines every rank into dst only, so other ranks hold stale data after the call.",
-        "A send with no matching receive, or a receive with no send, blocks forever. The matched pair is the unit that must agree."
+        "Broadcast copies one source tensor to all ranks. Reduce combines every rank into dst only; other ranks' tensors are left undefined, and gloo uses them as scratch for partial sums.",
+        "A send with no matching receive, or a receive with no send, blocks until the group timeout. The matched pair is the unit that must agree."
       ],
       "reproduce": "Closed-book, write the two-process exchange: rank 0 builds a 3-element tensor and sends it to rank 1 with isend and irecv plus wait, then rank 1 broadcasts it back so both ranks hold it. State every buffer each rank allocates.",
       "traps": [
-        "Allocating the receive buffer with the wrong shape or dtype. The call may hang or corrupt instead of raising.",
+        "Allocating the receive buffer with the wrong shape or dtype. On gloo the receiving process aborts with \"Received data size doesn't match expected size\", killing the rank instead of raising a Python error; other backends may hang or corrupt. Allocate from the agreed shape.",
         "Reading a reduce result on a non-root rank. Only dst holds the combined value.",
         "Reusing a send buffer right after isend without wait. The transfer may still be in flight."
       ],
@@ -289,11 +289,11 @@
         },
         {
           "q": "Four ranks call `dist.reduce` with `dst=0` and `SUM`. Afterwards rank 2 reads its tensor. What does it see?",
-          "a": "Its own stale input. Only rank 0 holds the combined sum after a reduce."
+          "a": "Nothing it can rely on. Only rank 0 is guaranteed the sum; on gloo in PyTorch 2.14.1 a 4-rank run with inputs 1 to 4 left partial sums such as [9, 9, 10, 10, 2, 2, 5, 5] in rank 1's tensor. Treat non-destination buffers as scratch, or broadcast the result if other ranks need it."
         },
         {
           "q": "Rank 0 sends to rank 1, but rank 1 never posts a receive and instead calls `all_reduce`. What happens?",
-          "a": "Both hang. The send waits for a matching receive that never comes, and rank 1 waits at a collective rank 0 never joins."
+          "a": "Both block until the timeout. The send waits for a matching receive that never comes, and rank 1 waits at a collective rank 0 never joins."
         }
       ],
       "practice": [
@@ -382,8 +382,8 @@
           "a": "Ring all-reduce moves \\(2 \\times 3/4 \\times 1\\) GB = 1.5 GB per rank. A naive ring that forwards full buffers moves \\((4-1) \\times 1\\) GB = 3 GB per rank, twice as much."
         },
         {
-          "q": "Why does the tutorial divide by size after the all-reduce instead of before it?",
-          "a": "The collective must sum identical-scale local gradients first so every rank holds the same total. Division is then a local rescale on each rank; dividing before would still work arithmetically but the shared pattern is sum collectively, rescale locally."
+          "q": "The tutorial all-reduces gradients and then divides by the world size. Would dividing first be wrong?",
+          "a": "No. Sum then divide and divide then sum both give the mean. DDP divides each bucket by the world size before its all-reduce, which also keeps low-precision sums smaller. The bug to avoid is dividing twice or not at all."
         },
         {
           "q": "Two ranks hold [1, 2, 3, 4] and [10, 20, 30, 40]. What does each rank hold after reduce-scatter with SUM?",
@@ -457,7 +457,7 @@
           "resource": "umar-framework-dt2",
           "title": "All-to-all meaning and the two-step exchange",
           "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=35875s",
-          "locator": "Minutes 9:57 to 10:00 for the all-to-all meaning, then minutes 19:22 to 19:24 for why one exchange carries counts and a second carries data",
+          "locator": "From 9:57:55 to about 10:00:00 (hours:minutes:seconds) for the all-to-all meaning, then https://www.youtube.com/watch?v=XoGvCBRnwLs&t=69724s from 19:22:04 to about 19:24:00 for why one exchange carries counts and a second carries data",
           "depth": "Watch the semantics segments only. Skip the expert-parallel implementation around them; it belongs to the MoE section."
         }
       ],
@@ -471,7 +471,7 @@
       "traps": [
         "Assuming all-to-all concatenates like all-gather. All-gather gives every rank the same concatenation; all-to-all gives each rank its own chunk from each source.",
         "Passing single tensors instead of per-rank lists. Both the input and the output of `dist.all_to_all` are lists with one entry per rank.",
-        "Planning uneven token splits without padding. Equal-size chunks are the CPU contract; ragged routing needs explicit padding or a dedicated layout later."
+        "Passing uneven per-rank lists to `dist.all_to_all`. On gloo that aborts the process with \"invalid tensor size\". Ragged routing exchanges counts first and then calls `dist.all_to_all_single` with input and output split sizes, or pads every chunk to one size."
       ],
       "selfTest": [
         {
@@ -487,8 +487,8 @@
           "a": "All-to-all opens a logical pair per rank pair, so pairs grow quadratically while all-reduce only talks to ring neighbours with constant bytes per node."
         },
         {
-          "q": "The backends table marks gloo all-to-all unsupported. What should you do on CPU in PyTorch 2.14?",
-          "a": "Run it anyway. A 4-process gloo run of `dist.all_to_all` passes on 2.14.1, so the table entry is stale for CPU."
+          "q": "Rank 0 sends 3 tokens to rank 0 and 1 to rank 1; rank 1 sends 2 to rank 0 and 2 to rank 1. What split sizes does each rank pass to `all_to_all_single`, and why must counts move first?",
+          "a": "Rank 0 passes input splits [3, 1] and output splits [3, 2]; rank 1 passes input splits [2, 2] and output splits [1, 2]. Output splits are the other ranks' input counts, so a first all-to-all of counts tells each rank how much to receive before the data exchange."
         }
       ],
       "practice": [
@@ -558,7 +558,7 @@
           "resource": "umar-framework-dt2",
           "title": "Barrier as a rendezvous point",
           "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=47874s",
-          "locator": "Minutes 13:17 to 13:19: all devices wait until every rank arrives at the barrier"
+          "locator": "From 13:17:54 to about 13:18:30 (hours:minutes:seconds): all devices wait until every rank arrives at the barrier"
         }
       ],
       "focus": [
@@ -576,7 +576,7 @@
       "selfTest": [
         {
           "q": "Rank 0 calls all-reduce then broadcast; rank 1 calls broadcast then all-reduce with matching shapes. What happens?",
-          "a": "Both hang. Rank 0 waits for a broadcast partner while rank 1 waits for an all-reduce partner, and neither call can complete."
+          "a": "On gloo with the default debug level both block until the timeout: rank 0 sits in all-reduce and rank 1 in broadcast, so neither call finds its partner. With `TORCH_DISTRIBUTED_DEBUG=DETAIL` the swap fails at once with a collective mismatch report at sequence number 0."
         },
         {
           "q": "All ranks call `dist.barrier` and proceed. Does that prove their tensors agree?",
@@ -643,8 +643,8 @@
         {
           "resource": "umar-framework-dt2",
           "title": "Async launch, streams and device sync",
-          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=36532s",
-          "locator": "Minutes 10:07 to 10:15: launching all-reduce while backward continues, CUDA streams, and when `torch.cuda.synchronize` is required"
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=36442s",
+          "locator": "From 10:07:22 to about 10:15:00 (hours:minutes:seconds): why an all-reduce can launch while backward continues, CUDA streams, and when `torch.cuda.synchronize` is required"
         },
         {
           "resource": "mlsys-vol2-comms-dt2",
@@ -664,7 +664,7 @@
       "traps": [
         "Reading the result tensor right after an async call without wait. The values are undefined until completion.",
         "Claiming overlap from a shorter async wall time on CPU. The CPU returns early by construction; concurrency needs stream dependency proof on a GPU.",
-        "Forgetting device sync before reusing a buffer that an async NCCL collective still reads. With two or more GPUs, synchronize the stream, not just the Python thread."
+        "Writing to a buffer that an async collective still uses. Call `handle.wait()` first; with NCCL that call only makes the current CUDA stream wait for the collective, so a CPU timer or a host read still needs `torch.cuda.synchronize()`."
       ],
       "selfTest": [
         {
@@ -755,13 +755,13 @@
       "focus": [
         "Every message costs \\(T(n) = \\alpha + n / \\beta\\): a startup tax \\(\\alpha\\) plus a transit fee per byte. The crossover size \\(n^* = \\alpha \\beta\\) separates latency-bound small messages from bandwidth-bound large ones.",
         "Ring all-reduce costs \\(2 (N-1) \\alpha + 2 \\frac{N-1}{N} \\frac{S}{\\beta}\\): many latency steps but minimal bytes. Tree forms pay about \\(\\log N\\) steps with more bytes per step, so trees win small and rings win large.",
-        "A naive ring that forwards full buffers costs \\((N-1) S / W\\), about \\(N/2\\) times the chunked ring. Chunking is the whole saving.",
-        "Measured NCCL small-message latency runs 7 to 8 times the wire \\(\\alpha\\), so the real crossover sits above the textbook one. Measure effective \\(\\alpha\\) on the target fabric before choosing."
+        "Chunking is what makes the ring cheap: each of the \\(N-1\\) steps moves \\(S/N\\) bytes per rank. A ring that forwards whole buffers keeps the steps but sends far more per step; CS336 writes the per-device egress bandwidth as \\(W\\), which is \\(\\beta\\) here, not the world size.",
+        "In the book's illustrative DGX H100 table, NCCL small-message latency runs 7 to 8 times the wire \\(\\alpha\\), so the real crossover sits above the textbook one. Measure effective \\(\\alpha\\) on the target fabric before choosing."
       ],
       "reproduce": "Closed-book, derive ring all-reduce time from reduce-scatter plus all-gather, then evaluate 4 ranks and a 1 GB payload at \\(\\alpha = 2\\,\\mu\\text{s}\\) and \\(\\beta = 50\\) GB/s: latency 12 microseconds plus 30 ms of bandwidth, about 30.01 ms. Then state which side of the 100 KB crossover a 4 KB token message sits on.",
       "traps": [
         "Quoting bandwidth only. Below the crossover size the byte count barely matters and startup dominates.",
-        "Treating reduce-scatter as twice as fast as all-reduce in general. The half-bytes factor holds only bandwidth-bound with equal payloads.",
+        "Assuming reduce-scatter always costs half an all-reduce. That holds for ring all-reduce, which is reduce-scatter plus all-gather; NCCL may run all-reduce as a tree or with in-switch reduction, so measure both before using the ratio.",
         "Copying TPU link constants from the scaling-book answers into NCCL predictions. Redo every answer with your own \\(\\alpha\\) and \\(\\beta\\)."
       ],
       "selfTest": [
@@ -774,8 +774,8 @@
           "a": "Reduce-scatter moves \\(\\frac{N-1}{N} S\\) bytes per rank and all-gather moves the same again, so the ring total is \\(2 \\frac{N-1}{N} \\frac{S}{\\beta}\\) plus \\(2 (N-1)\\) latency steps."
         },
         {
-          "q": "Four ranks reduce 1 GB with a naive full-buffer ring versus a chunked ring at 50 GB/s. What are the two times?",
-          "a": "Naive: \\(3 \\times 1\\) GB / 50 GB/s = 60 ms. Chunked: \\(2 \\times 3/4 \\times 1\\) GB / 50 GB/s = 30 ms. The naive ring costs twice as much at 4 ranks."
+          "q": "Eight ranks ring all-reduce a 64 MB gradient (\\(64 \\times 10^6\\) bytes) with \\(\\alpha = 5\\,\\mu\\text{s}\\) and \\(\\beta = 25\\) GB/s. Compute both terms and say which dominates.",
+          "a": "Latency is \\(2 \\times 7 \\times 5\\,\\mu\\text{s} = 70\\,\\mu\\text{s}\\). Bandwidth is \\(2 \\times \\frac{7}{8} \\times 64 \\times 10^6 / (25 \\times 10^9) \\approx 4.48\\) ms. Bandwidth dominates by about 64 times, so this message is far above the crossover."
         },
         {
           "q": "A textbook crossover says rings win above 1 MB, but NCCL measurements prefer trees up to several MB. Why?",
@@ -787,7 +787,7 @@
           "name": "CS336 Assignment 2: `alternate_ring_all_reduce`",
           "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
           "locator": "Section 8.1, problem `alternate_ring_all_reduce` (p. 41): derive the (N-1) S over W time with the one-sentence justification",
-          "note": "Answer from the ring derivation before comparing with peers. The expected time is (N-1) S over W with no 1 over N factor."
+          "note": "Answer from the ring derivation before reading any solution, and write the cost with \\(\\beta\\) for egress bandwidth so it does not clash with world size."
         }
       ],
       "stopWhen": "You derive both ring and tree costs without notes, classify messages against the crossover, and your alternate-ring answer states the missing chunking saving.",
@@ -835,7 +835,7 @@
           "resource": "cs336-lecture8-dt2",
           "title": "Benchmarking formulas and warmup discipline",
           "url": "https://github.com/stanford-cs336/spring2025-lectures/blob/b98b08a98d9d47a69bbdcb4e96a58aa48ee4d13b/lecture_08.py",
-          "locator": "Benchmarking with `all_reduce` and `reduce_scatter`: the sent-bytes lines with the factor of 2 for all-reduce only, plus Section 5.1.1 of the assignment handout for 5 warmups and `torch.cuda.synchronize`"
+          "locator": "Benchmarking with `all_reduce` and `reduce_scatter`: the sent-bytes lines with the factor of 2 for all-reduce only (the lecture warms up once), plus Section 5.1.1 of the assignment handout for 5 warmups and `torch.cuda.synchronize`"
         },
         {
           "resource": "mlsys-vol2-comms-dt2",
@@ -859,7 +859,7 @@
       "selfTest": [
         {
           "q": "Four ranks all-reduce 1024 bytes in 0.001 s. What are the modeled bytes per rank and the bandwidth?",
-          "a": "Bytes per rank are \\(2 \\times 1024 \\times 3/4 = 1536\\). Bandwidth is \\(1536 / 0.001 = 1{,}536{,}000\\) bytes/s."
+          "a": "Bytes per rank are \\(2 \\times 1024 \\times 3/4 = 1536\\). Bandwidth is \\(1536 / 0.001 = 1{,}536{,}000\\) bytes/s, which nccl-tests would call bus bandwidth."
         },
         {
           "q": "Why does the lecture benchmark double the sent bytes for all-reduce but not for reduce-scatter?",
@@ -884,7 +884,7 @@
         {
           "name": "CS336 Assignment 2: `distributed_communication_single_node`",
           "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
-          "locator": "Section 5.1 with the Section 5.1.1 benchmarking practices (p. 32): sizes 1 MB, 10 MB, 100 MB and 1 GB on as many processes as you have, with a plot or table plus 2 to 3 sentences",
+          "locator": "Section 5.1 with the Section 5.1.1 benchmarking practices (p. 32): sizes 1 MB, 10 MB, 100 MB and 1 GB on 2, 4 or 6 processes, with a plot or table plus 2 to 3 sentences",
           "note": "Run the sweep on CPU gloo with 5 warmups. Each run must finish inside 5 minutes."
         }
       ],
@@ -951,7 +951,7 @@
       "focus": [
         "Inside a node, GPUs meet over NVLink and NVSwitch with PCIe to the host. Between nodes, NICs carry traffic over InfiniBand or Ethernet at an order less bandwidth. Keep the heavy bytes on the fast tier.",
         "Use NCCL for CUDA tensors and Gloo for CPU tensors. NCCL needs one GPU per rank; Gloo runs the same collective vocabulary on CPU without GPU-tuned speed.",
-        "NVLink numbers come in pairs: about 900 GB/s bidirectional is 450 GB/s one-way, and only the one-way rate enters \\(T(n) = \\alpha + n / \\beta\\). Mixing the two doubles or halves every prediction.",
+        "NVLink numbers come in pairs: the H100 figure of 900 GB/s is bidirectional, which is 450 GB/s one-way, and only the one-way rate enters \\(T(n) = \\alpha + n / \\beta\\). Mixing the two doubles or halves every prediction.",
         "Companion code `format_bandwidth` reports total gathered bytes over time for all-gather, which equals algorithm bandwidth, not bus bandwidth: https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch04/nccl_benchmark.py - multiply its all-gather rate by \\((n-1)/n\\) before comparing with bus-bandwidth figures."
       ],
       "reproduce": "Closed-book, choose the backend for three runs: 4 CPU processes, 2 GPUs on one node, and 8 GPUs across 2 nodes. Name the tier each all-reduce mostly crosses and which bandwidth row of the book table governs it.",
@@ -982,7 +982,7 @@
         {
           "name": "Stas `all_reduce_bench.py`: `timed_allreduce` reading and conditional run",
           "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/network/benchmarks/all_reduce_bench.py",
-          "locator": "`timed_allreduce` with `dist.barrier`, CUDA events and the bus-bandwidth coefficient, plus the `torch.distributed.run` rendezvous command lines",
+          "locator": "`timed_allreduce` with `dist.barrier` and CUDA events, the `busbw_coeff` line in `run`, plus the `torch.distributed.run` rendezvous command lines",
           "note": "With two or more GPUs, run the 2-process command and label the exact topology. On CPU, read the timing lines and state why gloo numbers are not interconnect evidence."
         }
       ],
@@ -1036,7 +1036,7 @@
           "resource": "umar-framework-dt2",
           "title": "Process-group timeout and teardown",
           "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs&t=20260s",
-          "locator": "Minutes 5:37 to 5:38: setting a higher timeout at group creation, lowering it later, and the wait before killing the process"
+          "locator": "From 5:37:40 to about 5:38:10 (hours:minutes:seconds): a higher timeout at group creation, a lower one after the first step, and the short wait before the process exits"
         },
         {
           "resource": "cs336-comms-dt2",
@@ -1049,13 +1049,13 @@
         "Log on every rank: rank, group, collective sequence number, tensor shape and dtype, and start and end times. Rank 0 logs alone never show the failing rank.",
         "Sequence numbers align the same collective across ranks. A gap or a lone high number on one rank points at the call that diverged.",
         "Timeouts bound every wait: 30 minutes default for gloo and other backends, 10 minutes for NCCL. `dist.monitored_barrier` with a short fuse names the rank that never arrives.",
-        "`dist.destroy_process_group` closes the group on each rank that reaches it. Ranks killed before teardown leave orphans holding ports; the launcher reaps them only if it tracks the processes."
+        "Call `dist.destroy_process_group` on every rank at the end. When one rank dies, the survivors block in their next collective until the timeout; torchrun then stops the other workers, but ranks started by hand in a shell loop can outlive the run and hold the port, so the next rendezvous fails."
       ],
-      "reproduce": "On 2 gloo CPU processes, log 3 collectives with sequence numbers 0, 1 and 2 plus shapes and durations on both ranks. Then delay rank 1 before a `monitored_barrier` with a 30-second timeout and show the report naming rank 1.",
+      "reproduce": "On 2 gloo CPU processes, log 3 collectives with sequence numbers 0, 1 and 2 plus shapes and durations on both ranks. Then make rank 1 sleep 20 seconds before a `monitored_barrier` with a 10-second timeout and show the rank 0 report naming rank 1.",
       "traps": [
         "Logging only on rank 0. The guilty rank is usually elsewhere, so rank-0 logs show a clean run that waited forever.",
         "Keeping default timeouts during fault drills. A 30-minute fuse turns a 10-second diagnosis into a coffee break.",
-        "Reading NCCL_DEBUG output as a collective trace. It shows connectivity and call counts, not tensor values or sequence agreement."
+        "Expecting `NCCL_DEBUG=INFO` to show your call order. By default it reports init and connectivity; per-call lines need `NCCL_DEBUG_SUBSYS=COLL`, and even those come from NCCL, not your code, so keep your own sequence log."
       ],
       "selfTest": [
         {
@@ -1067,19 +1067,19 @@
           "a": "The third collective. Rank 1 repeated or never advanced past sequence 1, so its call sequence disagrees with rank 0 from number 2 on."
         },
         {
-          "q": "A process is killed before `destroy_process_group`. What remains, and who cleans it?",
-          "a": "The dead rank never closes its group state, and orphan processes may keep holding ports or GPU memory. The launcher reaps tracked children; untracked or remote orphans need explicit cleanup."
+          "q": "One rank is killed mid-run before `destroy_process_group`. What do the other ranks do, and what can linger?",
+          "a": "They block in their next collective until the timeout, then fail. torchrun stops the remaining workers of the group; processes started by hand can linger and hold the master port, so check for them before the next run."
         },
         {
-          "q": "`NCCL_DEBUG=INFO` shows one rank on `NET/Socket` while others use `NET/IB`. Is that a collective bug?",
-          "a": "No, it is a fabric mismatch: that rank fell back to sockets while others use InfiniBand. Fix interfaces or placement before suspecting call order."
+          "q": "Ranks 2 and 3 are both late to a `monitored_barrier` on 4 ranks. What does rank 0 report with the default arguments, and how do you see both?",
+          "a": "By default rank 0 names only the first rank that missed the timeout. Pass `wait_all_ranks=True` to collect every late rank in one report, such as \"Ranks 2, 3 failed to pass monitoredBarrier\"."
         }
       ],
       "practice": [
         {
           "name": "Timeout and teardown drill with `monitored_barrier`",
           "url": "https://docs.pytorch.org/docs/2.14/distributed.html",
-          "locator": "The `monitored_barrier` entry on 2 gloo CPU processes: log 3 collectives with sequence numbers on both ranks, delay rank 1, and report which rank the 30-second barrier names",
+          "locator": "The `monitored_barrier` entry on 2 gloo CPU processes: log 3 collectives with sequence numbers on both ranks, make rank 1 sleep past a 10-second barrier timeout, and report which rank the barrier names",
           "note": "Keep every log line structured with rank, group, sequence, shape and duration. Compare with the Stas debug checklist for what NCCL output would add on GPUs."
         }
       ],
@@ -1138,7 +1138,7 @@
       ],
       "focus": [
         "The oracle is a single-process computation: the same sums, concatenations and chunks with no communication. Every rank result must equal its oracle slice exactly.",
-        "Cover the world group plus one subgroup, two dtypes, empty and uneven inputs, and at least world sizes 2 and 4. Bugs that pass at world 2 often fail at world 4.",
+        "Cover the world group plus one subgroup, two dtypes, empty tensors, and at least world sizes 2 and 4. Uneven inputs get an assert-raises check on the list APIs, which gloo rejects, plus `all_to_all_single` with split sizes. Bugs that pass at world 2 often fail at world 4.",
         "Fix seeds, set a short timeout, and give each concurrent run a distinct master port. Shared ports let two suites join each other.",
         "The suite checks semantics only. Timing numbers from gloo runs must not appear as performance claims anywhere in the report."
       ],
@@ -1159,7 +1159,7 @@
         },
         {
           "q": "Which edge inputs belong in the suite, and why?",
-          "a": "Empty tensors, uneven chunk sizes, both dtypes in use, and world sizes 2 and 4. They trigger divisibility, padding and indexing paths that even splits never touch."
+          "a": "Empty tensors, both dtypes in use, world sizes 2 and 4, and uneven sizes: gloo's `all_gather` rejects unequal tensors with \"invalid tensor size\", so the suite asserts that error and tests ragged exchange through `all_to_all_single` splits. These cases reach the error, split and indexing paths that even inputs never touch."
         },
         {
           "q": "Two suites run at once with the same port and both fail strangely. What happened?",
@@ -1218,14 +1218,14 @@
           "resource": "jax-collectives-dt2",
           "title": "Cross-node collectives and the node-bound quiz",
           "url": "https://jax-ml.github.io/scaling-book/gpus",
-          "locator": "How Do Collectives Work on GPUs, Cross-node collectives: the fat-tree time set by node egress bandwidth, with hierarchical all-to-all"
+          "locator": "How Do Collectives Work on GPUs, Cross-node collectives: the fat-tree time set by node egress bandwidth, and why cross-node all-to-all gains nothing from the hierarchy"
         }
       ],
       "focus": [
-        "Hierarchy works in three phases: reduce inside each node over the fast tier, exchange only shards between nodes over the slow tier, then redistribute inside nodes. The saving equals the bytes kept off the slow tier.",
+        "Hierarchy works in three phases: reduce-scatter inside each node over the fast tier, all-reduce each GPU's shard across nodes over the slow tier, then all-gather inside each node. The saving equals the bytes kept off the slow tier.",
         "Compression only helps bandwidth-bound traffic above the crossover size. Below it the latency term is unchanged, so small routed messages gain nothing from fewer bytes.",
         "Error feedback carries the compression residual forward, so the telescoping sum preserves the true total across steps. Naive top-k without it is biased and drifts.",
-        "One-bit and sparse schemes need a warmup in full precision plus a measured accuracy check. A byte saving without a convergence comparison is not a result."
+        "One-bit and sparse schemes usually start with a full-precision warmup plus a measured accuracy check. A byte saving without a convergence comparison is not a result."
       ],
       "reproduce": "Closed-book, recompute the book flat-versus-hierarchical comparison (40 ms against 8.3 ms) from the tier bandwidths, then write the 3-step telescoping sum that shows error feedback preserving the total of the true gradients.",
       "traps": [
@@ -1236,11 +1236,11 @@
       "selfTest": [
         {
           "q": "What are the three hierarchical phases, and which bytes avoid the slow tier?",
-          "a": "Intra-node reduce, inter-node shard exchange, intra-node redistribute. Only the reduced shards cross the slow tier; the full payload never leaves the fast tier."
+          "a": "Intra-node reduce-scatter, inter-node all-reduce of each GPU's \\(1/G\\) shard, intra-node all-gather. Only the shards cross the slow tier; the full payload never leaves the fast tier."
         },
         {
           "q": "Why does error feedback preserve the true gradient sum across steps?",
-          "a": "Each step sends the compressed value but adds the residual back into the next step input. The residuals telescope, so the cumulative sent total equals the cumulative true total plus only the final residual."
+          "a": "Each step sends the compressed value of the gradient plus the carried residual, and keeps the new residual for the next step. Summed over steps the residuals telescope, so the total sent differs from the total of the true gradients only by the last residual."
         },
         {
           "q": "A 140 GB gradient compresses to 1.4 GB. Does the operation become latency-bound?",
@@ -1255,7 +1255,7 @@
         {
           "name": "How to Scale Your Model: GPU Quiz 4 on collectives",
           "url": "https://jax-ml.github.io/scaling-book/gpus",
-          "locator": "Quiz 4 in How Do Collectives Work on GPUs: the two-node all-gather bound question, answered before opening the solution",
+          "locator": "Quiz 4, Question 5 in How Do Collectives Work on GPUs: the precise cost of an all-gather over exactly 2 nodes, answered before opening the solution",
           "note": "Treat the given link numbers as the question givens, not as predictions for your own fabric."
         }
       ],
