@@ -5,7 +5,7 @@
       "id": "pytorch-alltoall-docs",
       "role": "reference",
       "priority": "reference",
-      "name": "PyTorch Distributed - all_to_all_single",
+      "name": "PyTorch Distributed - all-to-all collective",
       "provider": "PyTorch",
       "access": "Free",
       "use": "Read `all_to_all_single` for `input_split_sizes` and `output_split_sizes` on dim 0, including uneven and empty splits. Use it for the dispatch and combine calls in the tiny oracle.",
@@ -285,7 +285,7 @@
       "stopWhen": "Your oracle round-trips token identity through pack, uneven exchange and combine with an empty expert, and the `gloo` run matches it exactly.",
       "fit": {
         "verdict": "added",
-        "note": "Coverage failed for uneven and empty split semantics; the PyTorch 2.14 all_to_all_single reference fills that gap beside the TorchFeather code and GShard math."
+        "note": "Coverage failed for uneven and empty split semantics; the PyTorch 2.14 `all_to_all_single` reference fills that gap beside the TorchFeather code and GShard math."
       },
       "practiceNote": "The section mini-project covers this: router-to-dispatch-to-combine oracle with uneven and empty splits, forward and gradient equivalence against a single process, and a 4-process `gloo` identity run."
     },
@@ -321,7 +321,7 @@
         {
           "resource": "ultrascale-ep-dt7",
           "title": "Expert parallelism and its 5D interaction",
-          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#expert_parallelism",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html",
           "locator": "Chapter 7, Expert Parallelism: independent experts on different workers without splitting matrix multiplies; Chapter 8, 5D Parallelism in a Nutshell: EP along experts composed with DP along batch, and the note that some implementations treat EP as DP with routing"
         },
         {
@@ -584,48 +584,78 @@
         "hot-experts-stragglers-and-all-to-all-skew"
       ],
       "outcomes": [
-        "TODO"
+        "Report tokens-per-expert histograms with token fractions \\(f_{e}\\), mean probabilities \\(m_{e}\\) and a max-to-mean ratio.",
+        "Explain hot experts, stragglers and all-to-all skew from per-rank send and receive splits.",
+        "State why balanced counts need not imply equal compute or equal network load."
       ],
-      "why": "TODO",
+      "why": "Averages hide the failure. One hot expert sets the step time and the largest all-to-all, so diagnosis reads per-expert and per-rank distributions, not global means.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-correctness-gradient-tests",
+          "note": "Separate a real hotspot from a packing or test bug."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Carry expert load evidence into the composed plan."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tensortonic-dt7",
+          "title": "Load statistics definitions",
+          "url": "https://www.tensortonic.com/problems/cs336-l04-topk-moe-router",
+          "locator": "Token fraction \\(f_{e}\\) and probability mass \\(m_{e}\\) definitions with the three public cases as worked histogram examples"
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "Token counting instrumentation",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/moe/moe.py",
+          "locator": "`TokenChoiceTopKRouter.forward` and `TokenReorderer.forward` (`torch.histc` counts), and `MoE.forward` accumulation into `tokens_per_expert`"
+        },
+        {
+          "resource": "deepseek-v3-dt7",
+          "title": "Cross-node skew and its fix",
+          "url": "https://arxiv.org/abs/2412.19437",
+          "locator": "Section 3.2.2 (arXiv:2412.19437v2): IB at 50 GB/s versus NVLink at 160 GB/s, at most 4 nodes per token, IB and NVLink overlap, 20 SMs for communication; cluster figures only"
         }
       ],
       "focus": [
-        "TODO"
+        "Histogram first: counts per expert, \\(f_{e}\\) for selection share, \\(m_{e}\\) for router confidence, and max-to-mean count ratio for the hotspot size.",
+        "Read the dispatch splits per rank: sends by destination expert group, receives for owned experts. The slowest rank and the largest receive set the all-to-all, not the mean.",
+        "Balanced counts still allow skew: top-\\(k\\) duplicates multiply rows, padding wastes FLOPs, and co-located hot experts pile traffic on one link.",
+        "Name the setup behind every number: these traces come from CPU processes or a simulator unless two or more GPUs ran them."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, instrument the 6-token oracle from the dispatch unit: emit per-expert counts, \\(f_{e}\\), \\(m_{e}\\) and the max-to-mean ratio, plus a per-rank send and receive table for EP degree 2 with one hot expert. Point at the rank and the expert that set the step.",
       "traps": [
-        "TODO"
+        "Calling uniform counts proof of uniform compute. Duplicated top-\\(k\\) rows, padding and uneven expert shapes break that equality.",
+        "Calling uniform counts proof of uniform network load. Tokens for one expert may arrive from many ranks while another expert sits local; the receive table tells the truth.",
+        "Quoting CPU `gloo` skew timings as interconnect evidence. They exercise the accounting path only; link claims need the link hardware."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Counts \\([4, 2, 3, 3]\\) over 6 tokens with \\(k = 2\\). What are \\(f_{0}\\) and the max-to-mean ratio?",
+          "a": "Assignments total 12, mean 3. \\(f_{0} = 4/6 \\approx 0.667\\); max-to-mean is \\(4/3 \\approx 1.33\\)."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Two ranks send \\([8, 8]\\) and receive \\([12, 4]\\). Which rank sets the all-to-all?",
+          "a": "Rank 0: it receives 12 rows against 4. Receives size the payload each rank must absorb."
+        },
+        {
+          "q": "Every expert holds exactly 3 tokens but step time still skews. Name two causes.",
+          "a": "Any two of: top-\\(k\\) duplicates counted once but computed twice, padding on some ranks, co-located hot experts sharing one link, or a slow rank outside routing."
+        },
+        {
+          "q": "How do \\(f_{e}\\) and \\(m_{e}\\) disagree under collapse?",
+          "a": "Both pile on the favored expert, but \\(f_{e}\\) is 0 or 1 from hard selection while \\(m_{e}\\) spreads residual mass; the gap measures router overconfidence versus assignments."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "Your oracle tables name the hot expert, the slow rank and the max-to-mean ratio from memory, with the hardware behind each number stated.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
-      }
+        "note": "The TensorTonic statistics, the TorchFeather counters and DeepSeek-V3 Section 3.2.2 cover histograms and skew at measure depth, with the mini-project as practice."
+      },
+      "practiceNote": "The section mini-project covers this: per-expert histograms, drop counts, per-rank timing and communication splits, and one diagnosed hotspot or empty-expert case."
     },
     {
       "id": "moe-correctness-gradient-tests",
@@ -640,47 +670,78 @@
         "failure-cases-from-empty-experts-and-uneven-tokens"
       ],
       "outcomes": [
-        "TODO"
+        "Test masked and repeated tokens for exact dispatch identity and recombination.",
+        "Test router and dispatcher gradients, including empty experts and uneven tokens.",
+        "Name failure cases from empty experts, uneven splits and lost order."
       ],
-      "why": "TODO",
+      "why": "Routing bugs look like quality loss, not crashes. Only targeted tests separate a wrong router, a broken permutation and a true hotspot.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-fsdp-ep-composition",
+          "note": "Keep the tested path correct under sharded state."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-comm-memory-placement",
+          "note": "Cost the tested path before placing it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-moe-dt7",
+          "title": "MoE correctness test patterns",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/tests/unit_tests/cpu/test_moe.py",
+          "locator": "`test_padding_is_excluded_from_counts_but_still_dispatched`, `test_eval_forward_does_not_accumulate_tokens_per_expert`, `test_explicit_moe_tp_transitions_with_ep_without_sp` and `test_routed_branch_rejects_tp_without_ep`",
+          "depth": "Read after the tiny oracle passes; copy the test patterns, not the framework."
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "Combine and scoring-order code",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/moe/moe.py",
+          "locator": "`MoE.forward`: `score_before_experts` scaling position, `torch.gather` routing, `scatter_add` combine, and `tokens_per_expert` accumulation under `torch.no_grad`"
         }
       ],
       "focus": [
-        "TODO"
+        "Masked tokens are still dispatched but excluded from counts and the auxiliary loss. Dropping them from dispatch instead changes expert outputs.",
+        "Router gradients flow through selected scores only; selection indices carry none. The combine must use tensor weights, never Python floats.",
+        "Empty experts must run with zero rows and return zero grads. Uneven splits must be tested with at least one empty expert and one duplicated token.",
+        "Evaluation must not accumulate usage counters. TorchTitan fails a model that counts eval tokens toward balancing state."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, extend the oracle with three tests: repeated tokens produce identical outputs at both positions; converting combine weights with `float()` kills the router gradient while the tensor version keeps it; an expert with zero assigned tokens returns zeros with zero grads and matching empty splits.",
       "traps": [
-        "TODO"
+        "Wrapping a routing weight in `float()` inside the combine loop. It detaches the router graph: the measured run shows `grad Wg` present with tensors and `None` with floats.",
+        "Testing dispatch with balanced splits only. Real routing is uneven; without an empty expert and a duplicated token the tests miss the exact cases that break collectives.",
+        "Counting eval tokens in `tokens_per_expert`. The bias update then learns from inference-like passes; gate eval behind the training flag as the TorchTitan test demands."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two identical tokens at positions 0 and 5 route differently. What is broken?",
+          "a": "Dispatch or packing order: identical inputs must select the same experts with the same weights. Check the stable sort and the permutation inverse."
+        },
+        {
+          "q": "Router gradients are all `None` but expert gradients exist. What is the likely bug?",
+          "a": "Weights were detached before combine, for example via `float()`. Keep them as tensors so the graph reaches the gate."
+        },
+        {
+          "q": "An empty expert raises a shape error in grouped matrix multiply. What should happen?",
+          "a": "It should compute zero rows and return zeros with zero grads. Guard the zero-row case instead of skipping the expert."
+        },
+        {
+          "q": "Padding is excluded from counts. Must padded rows still reach experts?",
+          "a": "Yes for compute layout in padded schemes, but they must not enter counts or the auxiliary loss. The TorchTitan padding test pins exactly this split."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deep-ML 229: Sparse MoE Top-K Routing",
+          "url": "https://www.deep-ml.com/problems/229",
+          "locator": "Implement `moe_topk_routing(router_logits, expert_outputs, k)`; the tests check the combined output for weights \\([0.7311, 0.2689]\\) and for the tied \\([0.5, 0.5]\\) case",
+          "note": "Use it as the recombination oracle. Add your own masked-token, gradient and empty-expert tests around it."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your three oracle tests pass, Deep-ML 229 passes, and you can state the detach bug from the measured gradient run.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The TorchTitan CPU tests and the TorchFeather combine code cover masked, gradient and empty-expert behavior at implement depth, with Deep-ML 229 plus own tests as practice."
       }
     },
     {
@@ -695,48 +756,79 @@
         "ep-tp-and-data-parallel-group-composition"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how FSDP shards expert weights on the sparse mesh while dense state stays on the dense mesh.",
+        "Compose EP, TP and data-parallel groups without double-counting ranks.",
+        "State the validation rules that reject a bad composition."
       ],
-      "why": "TODO",
+      "why": "Expert parameters need a different sharding than everything else. One flat FSDP wrap mixes the meshes; the composed plan keeps them separate and testable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-comm-memory-placement",
+          "note": "Cost the composed groups before choosing degrees."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Place EP beside the other parallel dimensions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-moe-dt7",
+          "title": "Sparse FSDP and expert placements",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/torchtitan/distributed/fsdp.py",
+          "locator": "`resolve_sparse_fsdp_mesh` versus `resolve_fsdp_mesh`, and `apply_fsdp_to_decoder` with `edp_mesh`: routed-expert parameters use the sparse mesh while other parameters use the dense mesh",
+          "depth": "Read after the tiny oracle passes; record the mesh choice, do not run the trainer."
+        },
+        {
+          "resource": "pytorch-moe-dt7",
+          "title": "Expert parameter placements",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/torchtitan/models/common/moe_sharding.py",
+          "locator": "`expert_param_placement_sparse` (EP shards dim 0, FSDP reshards EDP_SHARD) versus `replicated_param_placement_sparse` for shared expert state"
+        },
+        {
+          "resource": "moe-paper-dt7",
+          "title": "Combining expert, model and data parallelism",
+          "url": "https://jmlr.org/papers/v23/21-0998.html",
+          "locator": "Sections 5.4 and 5.5: expert plus data parallelism, then expert plus model plus data parallelism with the data, weight and expert partitioning strategies"
         }
       ],
       "focus": [
-        "TODO"
+        "Two meshes over the same ranks: dense storage and forward views for attention, router and shared experts; the sparse view for routed experts. Rank sets overlap; parameter sets do not.",
+        "Expert weights shard dim 0 on EP and reshard on EDP_SHARD under FSDP. Shared experts and the gate stay dense-family placements.",
+        "EP borrows ranks from the dense grid, so group sizes obey the borrowing rule, not an independent product. Degrees that ignore it fail validation.",
+        "Switch Sections 5.4 and 5.5 are the conceptual version of the TorchTitan code: same composition, XLA-era vocabulary instead of DeviceMesh."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, fill a table for world size 8 with `dp_shard = 4`, `tp = 2`, `ep = 4`: dense mesh axes, sparse mesh axes, `edp_shard`, experts per rank at \\(E = 12\\), and the placement of expert weights, gate, shared experts and attention weights. State the three validation checks.",
       "traps": [
-        "TODO"
+        "Applying one FSDP wrap to a whole MoE layer. Dense and expert parameters need different meshes; a single wrap shards one family wrongly.",
+        "Overlapping EP all-to-all with FSDP reduce-scatter on the same ranks without a plan. The collectives contend; order and overlap need explicit design, not hope.",
+        "Reading Switch group vocabulary as DeviceMesh code. Translate sharding intent, not API names, across the XLA to PyTorch gap."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which parameters use the sparse mesh?",
+          "a": "Only routed-expert weights. Gate, shared experts, attention and dense MLPs stay on the dense mesh."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "State the three composition validation checks.",
+          "a": "`ep` divides the sparse region; `ep >= tp`; \\(E \\bmod \\text{ep} = 0\\)."
+        },
+        {
+          "q": "What does EDP_SHARD reshard under FSDP?",
+          "a": "The expert weights after EP sharding: FSDP gathers and releases them around compute while dense state follows the DP mesh."
+        },
+        {
+          "q": "Why do Switch Sections 5.4 and 5.5 still matter for a DeviceMesh stack?",
+          "a": "They define the composition semantics (which dims shard, which replicate, which collectives appear) that the mesh code implements."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "Your mesh table places every parameter family correctly and rejects a bad degree with the exact rule it breaks.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
-      }
+        "note": "The TorchTitan FSDP and sharding files plus Switch Sections 5.4 and 5.5 cover expert FSDP and group composition at explain depth, with the mini-project as practice."
+      },
+      "practiceNote": "The section mini-project covers this: mesh table for one composition with validation checks, plus a rejected configuration for each rule."
     },
     {
       "id": "moe-comm-memory-placement",
@@ -750,48 +842,79 @@
         "node-limited-routing-and-topology-aware-expert-placement"
       ],
       "outcomes": [
-        "TODO"
+        "Derive dispatch and combine bytes for one MoE layer from tokens, top-\\(k\\), hidden width and dtype.",
+        "Apply the JAX roofline rule for when expert parallelism stays cheap across nodes.",
+        "Explain node-limited routing and topology-aware expert placement."
       ],
-      "why": "TODO",
+      "why": "MoE trades dense FLOPs for token movement. The byte count decides whether more experts help or just buy communication, and placement decides which links pay it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/parallel-dimensions-factorization",
+          "note": "Feed MoE bytes and memory into the full plan."
+        },
+        {
+          "unit": "distributed-training/multidimensional-parallel-planning/link-contention-placement",
+          "note": "Place experts against the link hierarchy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-ep-dt7",
+          "title": "Expert-parallel roofline on GPUs",
+          "url": "https://jax-ml.github.io/scaling-book/gpus",
+          "locator": "Rooflines for LLM Scaling on GPUs, Expert Parallelism: math versus communication time with the takeaway on small versus large feed-forward width; Quiz 5: LLM rooflines (page read 2026-10-14)",
+          "depth": "Work Quiz 5 on paper before opening the answers. Use the all-to-all cost half for your own accounting; keep its H100 numbers labeled as H100 numbers."
+        },
+        {
+          "resource": "hf-moe-dt7",
+          "title": "Capacity factor and communication costs",
+          "url": "https://huggingface.co/blog/moe#capacity-factor-and-communication-costs",
+          "locator": "Capacity Factor and communication costs: raising capacity raises quality, communication and activation memory; top-2 at 1.25 as the starting point"
+        },
+        {
+          "resource": "deepseek-v3-dt7",
+          "title": "Node-limited routing and EP scale",
+          "url": "https://arxiv.org/abs/2412.19437",
+          "locator": "Section 3.2.2 and Section 3.2 (arXiv:2412.19437v2): at most 4 nodes per token, IB and NVLink overlap with 20 SMs, 64-way EP spanning 8 nodes with 16-way PP and ZeRO-1 DP; all figures are the authors cluster results"
         }
       ],
       "focus": [
-        "TODO"
+        "One all-to-all moves \\(T \\times k \\times d\\) elements; dispatch plus combine doubles it before bytes per element. Capacity padding adds rows that also move.",
+        "The JAX rule compares feed-forward width against scaled compute-to-bandwidth: narrow experts stay within about 2 nodes, wide experts scale further. Restate it with your own \\(C\\) and \\(W\\), never with borrowed constants.",
+        "Node-limited routing caps the nodes each token touches (4 in DeepSeek-V3) so slow inter-node links carry less. Topology-aware placement then keeps hot experts behind fast intra-node links.",
+        "DeepSeek-V3 trains without tensor parallelism by pairing 64-way EP with 16-way PP and 2-way DP. That mix is their cluster answer, not a universal recipe."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive bytes for \\(T = 16\\) tokens, \\(k = 2\\), \\(d = 32\\) in bf16: 2048 bytes per all-to-all, 4096 total for dispatch plus combine. Then state the JAX takeaway condition in words and apply it to one narrow and one wide expert case.",
       "traps": [
-        "TODO"
+        "Counting one all-to-all. Dispatch and combine both move the full routed payload; forgetting combine halves the bytes.",
+        "Mixing units: GB against GiB, Gbit/s against GB/s, FLOPs against FLOP/s, algorithm against bus bandwidth. The byte count is exact; the time needs the stated bandwidth and its definition.",
+        "Lifting H100 or TPU constants onto your machine. The JAX numbers assume their fabric; your accounting must plug in measured or explicitly assumed links, and CPU `gloo` timings never stand in for them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "\\(T = 16\\), \\(k = 2\\), \\(d = 32\\), bf16. How many bytes per all-to-all and total?",
+          "a": "\\(16 \\times 2 \\times 32 \\times 2 = 2048\\) bytes each; 4096 total."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Capacity factor rises from 1.0 to 1.5 with no routing change. What happens to bytes?",
+          "a": "Payload grows with padded rows: up to 1.5 times the rows move, so bytes and activation memory grow even though real tokens did not."
+        },
+        {
+          "q": "What does node-limited routing buy?",
+          "a": "It bounds slow-link traffic per token. With at most 4 nodes, most expert fan-out stays behind fast intra-node links under the overlap design."
+        },
+        {
+          "q": "When does the JAX rule favor wide multi-node EP?",
+          "a": "When feed-forward width exceeds the scaled compute-to-bandwidth threshold, so math outweighs the cross-node all-to-all cost."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "Your byte derivation matches 2048 and 4096 from memory, and you can defend a placement with named links and labeled bandwidths.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
-      }
+        "note": "The JAX EP roofline, the blog capacity-cost section and DeepSeek-V3 Sections 3.2 and 3.2.2 cover accounting and placement at derive depth, with the mini-project as practice."
+      },
+      "practiceNote": "The section mini-project covers this: byte and memory accounting for one MoE layer, a stated placement with its contended links, and one measured-versus-predicted residual."
     }
   ]
 }
