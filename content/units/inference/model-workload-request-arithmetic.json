@@ -1,0 +1,1319 @@
+{
+  "section": "model-workload-request-arithmetic",
+  "addedResources": [
+    {
+      "id": "hf-model-config",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Hugging Face Transformers - model configuration and revision",
+      "provider": "Hugging Face",
+      "access": "Free",
+      "use": "Read PreTrainedConfig common attributes (`vocab_size`, `hidden_size`, `num_attention_heads`, `num_hidden_layers`) and `from_pretrained` `revision` (branch, tag or commit id, default `main`). Use the saved `config.json` as the identity record beside the book config dumps.",
+      "url": "https://huggingface.co/docs/transformers/main_classes/configuration"
+    },
+    {
+      "id": "hf-chat-template",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Hugging Face Transformers - chat templates",
+      "provider": "Hugging Face",
+      "access": "Free",
+      "use": "Read `apply_chat_template` with role and content dicts, the Mistral versus Zephyr control-token examples, and `add_generation_prompt` for starting an assistant reply. Compare the template output token count with the raw prompt count.",
+      "url": "https://huggingface.co/docs/transformers/chat_templating"
+    },
+    {
+      "id": "etalon-evaluation",
+      "role": "paper",
+      "priority": "support",
+      "name": "Etalon: Holistic Performance Evaluation Framework for LLM Inference Systems",
+      "provider": "Agrawal et al.",
+      "access": "Free",
+      "use": "Read Sections 2.2, 3.1 and 4.1 with Algorithm 1 and Figures 1 to 3 for TTFT, TBT, TPOT, normalized latency, capacity and fluidity-index; Section 4.2 for black-box and capacity recipes; Section 5.1 for hourly runs over 24 hours and LMSys-Chat-1M medians (417 median, 1418 p90 prefill tokens).",
+      "url": "https://arxiv.org/html/2407.07000v2"
+    },
+    {
+      "id": "distserve-goodput",
+      "role": "paper",
+      "priority": "support",
+      "name": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving",
+      "provider": "Zhong et al. (OSDI 2024)",
+      "access": "Free",
+      "use": "Read Section 1 with Figure 1 for per-GPU goodput: the highest request rate served while a target share of requests meets the TTFT and TPOT SLOs (13B model on one A100 reaches about 1.6 requests per second at 90% attainment).",
+      "url": "https://arxiv.org/html/2401.09670v3"
+    },
+    {
+      "id": "nano-vllm-engine",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Nano-vLLM tiny serving engine",
+      "provider": "GeeeekExplorer",
+      "access": "Free",
+      "use": "Read `nanovllm/engine/sequence.py` for request state, `scheduler.py` for waiting and running sets, `block_manager.py` for allocate, append, deallocate and prefix-hash reuse, `model_runner.py` for prefill and decode steps, and `llm_engine.py` for the generate path. Trace one request through these files only; do not adopt the engine for load measurement.",
+      "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py"
+    },
+    {
+      "id": "inference-engineering-book",
+      "role": "book",
+      "priority": "support",
+      "name": "Inference Engineering",
+      "provider": "Philip Kiely (Baseten Books)",
+      "access": "Free",
+      "use": "Read Sections 1.4 to 1.4.2 for TTFT, TPS, percentiles and end-to-end versus inference-only time; Section 4.5 with 4.5.1 for benchmark dimensions, tooling and eval inputs; Section 6.1 for vision encoders, image tokens and longer-context effects.",
+      "url": "https://www.baseten.co/inference-engineering/"
+    },
+    {
+      "id": "gil-tene-latency",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Gil Tene - How NOT to Measure Latency (talk)",
+      "provider": "Strange Loop Conference via YouTube",
+      "access": "Free",
+      "use": "Use for coordinated-omission vocabulary only: closed-loop testers that wait for each reply, the missing samples under queueing, and the correction concept of recording intended send time. Do not adopt `wrk`, `hey` or `ab`; write the small Python generator in the load-generator unit instead.",
+      "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU"
+    }
+  ],
+  "units": [
+    {
+      "id": "model-identity-serving-fields",
+      "title": "Model identity and the architecture fields that set serving cost",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "model-tokenizer-chat-template-and-revision-identity",
+        "dense-moe-and-attention-architecture-fields-that-affect-serving",
+        "hybrid-attention-and-state-space-cache-vocabulary"
+      ],
+      "outcomes": [
+        "Record the model, tokenizer, chat template and revision that define a serving run, and reject a run whose identity differs.",
+        "Derive parameter count and KV width from architecture fields for dense and MoE models, including query and KV head counts.",
+        "Explain how hybrid attention and state-space layers change what the cache stores."
+      ],
+      "why": "Serving numbers mean nothing without the exact model they describe. A changed revision, template or head count moves every later estimate.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/weight-runtime-memory-budget",
+          "note": "Weigh the identity you record here."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/kv-bytes-attention-variants",
+          "note": "Turn head counts into KV bytes."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Qwen2.5-0.5B architecture and config",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, Decoder-Only Transformer Architecture with the Qwen2.5-0.5B config dump (pp 37-42): hidden 896, layers 24, heads 14, intermediate 4864, vocab 151936, total 494,032,768 params"
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "LLaMA shapes and MoE parameter walks",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "What about memory? with the LLaMA 2-13B parameter table, and Worked Problems Questions 1 and 5 (invented 64-layer model at 18.4e9 params; MoE total versus activated)"
+        },
+        {
+          "resource": "cs336-inference-lecture-inf1",
+          "title": "GQA, MLA, CLA, hybrid and state-space vocabulary",
+          "url": "https://www.youtube.com/watch?v=fcgPYo3OtV0",
+          "locator": "37:48-43:35 GQA, 43:47-45:47 MLA, 46:01-47:36 CLA, 47:50-50:26 local and hybrid attention, 52:47-1:01:10 SSMs with Mamba and AI21's 52B Mamba-transformer hybrid at 56:43 (named Jamba at 1:03:03)",
+          "depth": "Watch for vocabulary only. Skip 1:17:37-1:21:22 continuous batching and PagedAttention here; those return in later sections."
+        },
+        {
+          "resource": "hf-model-config",
+          "title": "Configuration attributes and revision",
+          "url": "https://huggingface.co/docs/transformers/main_classes/configuration",
+          "locator": "`PreTrainedConfig` common attributes `vocab_size`, `hidden_size`, `num_attention_heads`, `num_hidden_layers`; `from_pretrained` `revision` as branch, tag or commit id with default `main`"
+        },
+        {
+          "resource": "hf-chat-template",
+          "title": "Chat templates and generation prompt",
+          "url": "https://huggingface.co/docs/transformers/chat_templating",
+          "locator": "`apply_chat_template` with role and content dicts, Mistral versus Zephyr control-token examples, `add_generation_prompt` for starting an assistant reply"
+        }
+      ],
+      "focus": [
+        "Identity is model id plus `revision` plus tokenizer plus chat template plus precision. The saved `config.json` fields set shapes; `revision` pins weights.",
+        "Dense cost follows total params; MoE per-token cost follows activated params. Attention KV width follows KV heads and head dim, not query heads.",
+        "Hybrid layers mix full and local attention; state-space layers keep constant state. Neither takes the full KV formula.",
+        "Template control tokens count as input tokens. The wrong template shifts token IDs, lengths and stop behavior."
+      ],
+      "reproduce": "Closed-book, write the identity card for Qwen2.5-0.5B (hidden 896, layers 24, heads 14, intermediate 4864, vocab 151936, 494,032,768 params) and derive the invented 64-layer model count \\(64 \\times 4096 \\times (3 \\times 16384 + 2 \\times 256 \\times 40) + 4096 \\times 32128 = 18{,}385{,}207{,}296\\), about \\(18.4 \\times 10^9\\).",
+      "traps": [
+        "Treating the model name as identity. The same name at another `revision`, tokenizer or template gives different token IDs and lengths.",
+        "Reading MoE total params as per-token cost. Only activated experts plus attention run per token; total params set weight bytes.",
+        "Applying the MHA cache formula to GQA, MLA or state-space layers. Use KV heads, latent width or constant state as the layer defines."
+      ],
+      "selfTest": [
+        {
+          "q": "Two runs use the same model name but different `revision` values. Can their token IDs be compared?",
+          "a": "No. Weights, tokenizer or template may differ. Record repo id, `revision`, tokenizer and template before comparing any count."
+        },
+        {
+          "q": "A MoE model reports 212e9 total params and 31.2e9 activated. Which sets per-token dense work?",
+          "a": "Activated params. Total params set weight bytes; per-token dense work follows the activated path plus attention."
+        },
+        {
+          "q": "A layer uses 8 KV heads with head dim 128 in bf16. What is its per-token KV width factor?",
+          "a": "The width uses KV heads: \\(2 \\times 8 \\times 128\\) values per layer before layer count and bytes. Query head count does not enter."
+        },
+        {
+          "q": "Why does the wrong chat template change serving cost even when the user text is fixed?",
+          "a": "Control tokens become input tokens. They add prefill tokens, change IDs and can change where generation stops."
+        }
+      ],
+      "practice": [
+        {
+          "name": "100 Days of LLM Inference Day 02a: Verify parameter count",
+          "url": "https://github.com/elizabetht/100-days-of-inference",
+          "locator": "`day02/02-a-whats-inside-a-model.ipynb`, Verify: Reconstruct Parameter Count from SafeTensors shapes (expect 124,439,808 for GPT-2)",
+          "note": "Sum `wte`, `wpe`, attention, MLP and norm shapes by hand, then compare with the saved header before trusting any config dump."
+        }
+      ],
+      "stopWhen": "Your identity card lists repo, `revision`, tokenizer, template and precision, and your hand-derived 18.4e9 count matches the book answer.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for tokenizer, chat-template and revision identity; HF configuration and chat-template references fill that gap beside the book and lecture."
+      }
+    },
+    {
+      "id": "weight-runtime-memory-budget",
+      "title": "Weight memory by dtype and the runtime memory categories",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "parameter-count-and-weight-memory-by-dtype",
+        "runtime-workspace-graph-and-allocator-memory-categories"
+      ],
+      "outcomes": [
+        "Derive weight bytes from parameter count and stored bytes per value, keeping stored and execution precision apart.",
+        "Write a runtime budget with weights, KV, activations, workspace, graphs and allocator reserve, and fit a batch under capacity.",
+        "Measure resident weights and reserve on your GPU and name what the estimate omitted."
+      ],
+      "why": "Memory sets the maximum batch before timing starts. A fit that forgets precision, file overhead or allocator reserve fails at load time.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/kv-bytes-attention-variants",
+          "note": "Add the KV line to this budget."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Turn the batch fit into rates."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Estimating model size and batch reserve",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 5, Estimating Model Size (pp 172-177): 7B times 2 bytes is 14 GB, `config.json` `torch_dtype`, Table 5-6 precision bytes; Estimating KV Cache Size with Table 5-7 (A10 10 GB left gives 5 theory but 4 served; L40S 34 GB left gives 17 theory but 16 served) and the 2x model-size reserve rule"
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "LLaMA-2-13B bytes and batch tables",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "What about memory? (bf16 26 GB weights, 80 MB activations versus 6.7 GB cache at 8192 context) and Modeling throughput and latency for LLaMA 2-13B with both batch tables",
+          "depth": "The tables label memory GiB but divide decimal gigabytes by bytes per second. Recompute in bytes and keep GB apart from GiB."
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Weight bytes and model loading",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Anatomy of Model's Memory Usage, Model Weights: `bytes = bytes_per_param * num_params` with fp32 4 down to 1-bit 0.125 and MXFP8 1.03125, Llama-3.1-8B bf16 16 GB; Speeding up model loading time with pre-sharded weights and prebuilt engines"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Serving arguments that set runtime memory",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, Serve the LLM (Qwen) with vLLM (pp 57-59): `LLM` with `swap_space`, `max_model_len`, `block_size`, `max_num_seqs` and `enable_prefix_caching` beside `SamplingParams` (the book also prints `enable_cuda_graph=True` and `max_num_sequences`, which are not vLLM 0.31.0 arguments; use `enforce_eager` and `max_num_seqs`)",
+          "depth": "Read the argument list as the runtime lines to budget. Tuning them belongs to later sections."
+        }
+      ],
+      "focus": [
+        "Weight bytes are count times stored bytes per value. Execution precision can differ, as int8 weights with bf16 compute, and changes intensity later, not this line.",
+        "The file holds more than learned params. GPT-2 holds 137,022,720 values (522.7 MiB in fp32) against 124,439,808 learned params; its 12,582,912 causal-mask values explain the gap.",
+        "Budget weights first, then KV, then activations, workspace, graphs and allocator. The book reserves about twice model size and still serves one less than theory in Table 5-7.",
+        "Activations are megabytes beside gigabytes of cache at long context, but they set the workspace line that stops a theoretical fit from loading."
+      ],
+      "reproduce": "Closed-book, derive 7B fp16 as \\(7 \\times 10^9 \\times 2 = 14 \\times 10^9\\) bytes, 8B bf16 as \\(16 \\times 10^9\\) bytes, 13B bf16 as \\(26 \\times 10^9\\) bytes, and GPT-2 learned versus file as \\(124{,}439{,}808 \\times 4 = 497{,}759{,}232\\) bytes against \\(137{,}022{,}720 \\times 4 = 548{,}090{,}880\\) bytes (522.7 MiB).",
+      "traps": [
+        "Reading the name as the count. Llama-2-7b is about 7e9 params, and its bin reads about 13 GB against the 14 GB product; publish the exact count.",
+        "Counting tied embeddings twice. Shared input and output matrices contribute once to weight bytes.",
+        "Treating the Table 5-7 quotient as servable. Reserve, workspace, graphs and fragmentation take the last slot; state the overhead line."
+      ],
+      "selfTest": [
+        {
+          "q": "Qwen2.5-0.5B holds 494,032,768 params. What are its bf16 weight bytes?",
+          "a": "\\(494{,}032{,}768 \\times 2 = 988{,}065{,}536\\) bytes, about 0.99 GB. Count tied embeddings once."
+        },
+        {
+          "q": "Why does the 7B bin read about 13 GB when the product says 14 GB?",
+          "a": "The name is rounded and the exact count is smaller. The product with the exact count plus header explains the bin; the name alone does not."
+        },
+        {
+          "q": "A10 holds 24 GB with 14 GB weights and 4096 context at 0.5 MB per token. Why does it serve 4, not 5?",
+          "a": "\\(10 \\times 1024 / (0.5 \\times 4096) = 5\\) in theory, but activations, workspace and allocator take the last slot. The book serves 4 and keeps the reserve explicit."
+        },
+        {
+          "q": "When do activations stop being negligible?",
+          "a": "At short context with large batch, where cache per request is small and workspace plus graphs set the limit. At 8192 context they are 80 MB against 6.7 GB cache."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-On LLM Serving companion: inside the transformer",
+          "url": "https://github.com/orca3/llm-model-inference",
+          "locator": "ch02/ch2_Inside_the_Mind_of_a_Transformer.ipynb: run `print_module_structure` on Qwen2.5-0.5B and reconcile the summed params with 494,032,768",
+          "note": "Sum by matrix before trusting the config total, and record stored versus execution `dtype` for the later intensity unit."
+        }
+      ],
+      "stopWhen": "Your weight lines match 14, 16 and 26 GB plus the GPT-2 file split, and your budget names the reserve that explains the Table 5-7 gap.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book size and reserve sections plus the inference chapter memory tables and Stas weight formulas cover params, precision and runtime lines at derive and measure depth."
+      }
+    },
+    {
+      "id": "kv-bytes-attention-variants",
+      "title": "KV bytes per token across MHA, GQA, MQA and MLA, and allocated capacity",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "mha-gqa-mqa-and-mla-kv-bytes-per-token",
+        "logical-versus-allocated-kv-capacity"
+      ],
+      "outcomes": [
+        "Derive KV bytes per token for MHA, GQA, MQA and MLA from layers, KV heads, head dim and bytes.",
+        "Distinguish logical cache bytes from allocated bytes with pages, waste and reserve, and fit allocated capacity.",
+        "Check the fit against your own worksheet for the same configuration."
+      ],
+      "why": "KV decides batch before compute matters. Head grouping moves bytes by 4x to 32x, and allocation waste decides what fits.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/serving-operation-counts",
+          "note": "Add attention work at the cached lengths you fit here."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Turn the batch fit into step time and rates."
+        }
+      ],
+      "study": [
+        {
+          "resource": "stas-inference-inf1",
+          "title": "KV bytes and attention variants",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Anatomy of Model's Memory Usage, KV Caching: bytes per token as dtype times 2 times layers times hidden times KV heads over attention heads; Llama-3.1-8B bf16 GQA at 0.131 MB per token with bs1x1024 at 134 MB and bs128x1024 at 17.2 GB; MHA 4x, MQA 8x less, MLA via DeepSeek-v3"
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Cache tables, GQA cuts and paging",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "What about memory? with 13B bf16 6.7 GB at 8192 context; Modeling throughput and latency for LLaMA 2-13B with both batch tables; Tricks for Improving Generation Throughput and Latency for GQA ratio cuts, quant and PagedAttention; Worked Problems Questions 1 and 2",
+          "depth": "The batch tables label GiB but divide decimal gigabytes. Recompute in bytes. In Question 2, dropping to one KV head raises the batch from 7 to about 56."
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "GQA multiplier, fragmentation and two-regime budget",
+          "url": "https://inference.tusharamrit.in/modules/kv-cache.html",
+          "locator": "What is stored with `kv_bytes = 2*n_layers*n_kv_heads*head_dim*seq_len*batch*dtype_bytes`; The GQA multiplier with the 70B MHA versus GQA-8 versus MQA table; Fragmentation with 97.6% waste and 20.4-38.2% useful; The two-regime memory budget with crossover at `batch*seq_len = weight_bytes/kv_per_token`"
+        },
+        {
+          "resource": "hundred-days-inf1",
+          "title": "KV sizing notebook",
+          "url": "https://github.com/elizabetht/100-days-of-inference",
+          "locator": "`day05/kv-cache.ipynb`: Memory Cost with `kv_bytes=2*n_layers*n_embd*seq*bytes`, Benchmark 518 ms to 196 ms at length 200, Try These Experiments for slope versus step and 300 and 500 lengths",
+          "depth": "Verify the slope formula against your own GPT-2 run. The notebook's formula uses `n_embd`, which ignores GQA, so its Llama 3 rows overstate KV by the query-to-KV head ratio (4x for 8B, 8x for 70B); recompute them with KV heads at your precision and length."
+        }
+      ],
+      "focus": [
+        "KV bytes per token are \\(2 \\times \\text{bytes} \\times L \\times K \\times H\\). The shortcut \\(4 \\times L \\times d_{\\text{model}}\\) assumes KV width equals model width and breaks under GQA and MQA.",
+        "Llama-2-7b uses 524,288 bytes per token in fp16; Llama-3.1-8B uses 131,072 bytes in bf16 GQA-8, or 4x with MHA and 8x less with MQA; the invented model uses 262,144 bytes in int8.",
+        "MLA compresses keys and values to a latent vector, as in DeepSeek-v3. It is not fewer heads; use latent width for its bytes.",
+        "Logical bytes are not servable bytes. Pages, `max_model_len` over-allocation, `reserved_memory` and fragmentation decide the fit; a 200-token request in an 8192 reservation wastes 97.6%."
+      ],
+      "reproduce": "Closed-book, derive Llama-2-7b as \\(2 \\times 32 \\times 32 \\times 128 \\times 2 = 524{,}288\\) bytes, Llama-3.1-8B GQA-8 as \\(2 \\times 32 \\times 8 \\times 128 \\times 2 = 131{,}072\\) bytes, and the invented model in int8 as \\(2 \\times 64 \\times 8 \\times 256 \\times 1 = 262{,}144\\) bytes.",
+      "traps": [
+        "Using query heads for KV bytes. Llama-3.1-8B has 32 query heads but 8 KV heads; using 32 overstates bytes by 4x.",
+        "Treating MLA as a head count. Its saving comes from latent compression, so recompute from latent width.",
+        "Fitting logical bytes. The planner divides \\((M - R - M_{\\text{model}})\\) by per-request bytes with reserve \\(R\\); omitting \\(R\\) or page waste overstates batch."
+      ],
+      "selfTest": [
+        {
+          "q": "What are KV bytes per token for a 40-layer, 8 KV head, 128-dim model in int8?",
+          "a": "\\(2 \\times 40 \\times 8 \\times 128 = 81{,}920\\) bytes."
+        },
+        {
+          "q": "The invented model in bf16 uses what per token, and what would full MHA with 32 KV heads use?",
+          "a": "524,288 bytes in bf16 (262,144 in int8). Full MHA at 32 KV heads would use 2,097,152 bytes in bf16."
+        },
+        {
+          "q": "70B GQA-8 uses 327,680 bytes per token in fp16. What does single-head MQA use?",
+          "a": "40,960 bytes, an 8x cut. Capacity grows by about 8x before reserve and waste."
+        },
+        {
+          "q": "Why does a 200-token request waste 97.6% in an 8192 reservation?",
+          "a": "The reservation holds 8192 times per-token bytes (about 2.5 GiB for 70B) while 200 tokens use 62.5 MiB. Paging and exact reservation remove most of this."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Plan KV-Cache Capacity",
+          "url": "https://www.tensortonic.com/problems/cs336-l10-kv-cache-capacity-planner",
+          "locator": "Function `kv_cache_capacity_planner` returning `model_bytes`, `kv_bytes_per_request`, `max_batch_size`, `seconds_per_token`, `tokens_per_second`; public cases check 27-fit, zero-fit when the model exceeds memory, and single-KV-head 18-fit",
+          "note": "Derive by hand first with \\(M_{\\text{model}} = P \\times b_p\\), \\(M_{\\text{request}} = 2 \\times L \\times S \\times H_{\\text{kv}} \\times D \\times b_e\\), \\(B\\) as the floor of \\((M - R - M_{\\text{model}})/M_{\\text{request}}\\) and \\(T = (M_{\\text{model}} + B \\times M_{\\text{request}})/W\\). Then check the answer against your own worksheet for the same config."
+        }
+      ],
+      "stopWhen": "Your hand-derived 524,288, 131,072 and 262,144 match, and the planner passes the three public cases.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Stas, the inference chapter, Tushar and Day 05 cover variants and allocated capacity at derive depth, with the TensorTonic planner as checked practice."
+      }
+    },
+    {
+      "id": "serving-operation-counts",
+      "title": "Prefill and decode operation counts per request",
+      "hours": 3,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "approximate-transformer-prefill-operations",
+        "approximate-autoregressive-decode-operations-per-token"
+      ],
+      "outcomes": [
+        "Derive dense operations per token as \\(2P\\) from the qkv, output and MLP walk.",
+        "Derive prefill attention and decode attention counts separately and state when attention rivals dense work.",
+        "State what a FLOP count omits and when the omission stops being safe."
+      ],
+      "why": "Operation counts are the numerator of every intensity and bound. A count that mixes prefill with decode corrupts all of them.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Divide these counts by bytes for step time."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/serving-regimes-roofline",
+          "note": "Place prefill and decode on the roofline."
+        }
+      ],
+      "study": [
+        {
+          "resource": "transformer-arithmetic-inf1",
+          "title": "Dense walk: 2P operations per token",
+          "url": "https://kipp.ly/p/transformer-inference-arithmetic",
+          "locator": "flops counting with the How many flops in a matmul box in kv cache (qkv, output and MLP sum to about \\(2P\\); 52B example at 51.5B)",
+          "depth": "The \\(2P\\) count covers dense weights once per token in prefill and decode alike. Attention comes on top and grows with prompt length in prefill."
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Linear and attention operations",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Linear operations: what bottlenecks us? with \\(2*B*D*F\\) per matmul, and What about attention? with \\(4*B*S*T*D\\) for scores plus values"
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Prefill versus decode work with numbers",
+          "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
+          "locator": "Prefill compute-bound and decode memory-bound with per-token matmul and attention terms (16.1 GFLOP per token for Llama-3-8B); Math by hand at \\(S = 2048\\) with 32.9 TFLOP dense plus 2.2 TFLOP attention"
+        },
+        {
+          "resource": "hundred-days-inf1",
+          "title": "Matmul and attention intensity",
+          "url": "https://github.com/elizabetht/100-days-of-inference",
+          "locator": "`day06/ops-byte-ratio.ipynb`: matmul `comp=2MKN` with `mem=(MK+KN+MN)*2`, attention `mem=8N^2+8Nd` with `comp=4N^2d+3N^2`, prefill compute-bound versus decode memory-bound",
+          "depth": "Use the count formulas only. The GB10 timings are the author's hardware result, not your target; your target is the crossover and the knee on your GPU in a later section."
+        }
+      ],
+      "focus": [
+        "One matmul through all params costs \\(2P\\) by the \\(2 \\times m \\times n \\times p\\) rule. The qkv, output and MLP walk sums to the same within 2%.",
+        "Decode attention per token scales with cached length; prefill attention scales with prompt length squared. At 8192 cached tokens the invented model adds \\(1.72 \\times 10^{10}\\) to \\(3.68 \\times 10^{10}\\) dense.",
+        "Softmax and norms are \\(O(d_{\\text{model}})\\) per layer, and sampling plus unembedding run once per step, against \\(O(d_{\\text{model}}^2)\\) dense per layer. They matter only when dense shrinks or a profile says so.",
+        "Attention work uses query heads \\(N\\) times head dim \\(H\\), because every query head scores its group; KV bytes use KV heads \\(K\\) times \\(H\\). Neither uses model width where the heads differ from it."
+      ],
+      "reproduce": "Closed-book, derive decode operations per token for the invented 18.4e9-param model at cached length 8192: dense \\(2 \\times 18.4 \\times 10^9 = 3.68 \\times 10^{10}\\), attention \\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), total about \\(5.4 \\times 10^{10}\\).",
+      "traps": [
+        "Taking \\(2P\\) per token as the whole prefill cost. Prefill pays dense per prompt token plus attention that grows with prompt length squared; for Llama-3-8B the attention term passes the dense term near 32k.",
+        "Writing the attention scale as division by head dim. The implemented scale is \\(1/\\sqrt{d_{\\text{head}}}\\); the count is unchanged but a later kernel must use the root.",
+        "Calling decode attention free because dense dominates. At 8192 it is nearly half the dense count; recompute the share before dropping it."
+      ],
+      "selfTest": [
+        {
+          "q": "How many dense operations does one decode step take for the invented 18.4e9-param model?",
+          "a": "About \\(3.68 \\times 10^{10}\\), from \\(2 \\times 18.4 \\times 10^9\\)."
+        },
+        {
+          "q": "At cached length 8192, what is its decode attention count and share?",
+          "a": "\\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), nearly half the dense count, so it cannot be dropped there."
+        },
+        {
+          "q": "Why is \\(2P\\) per token not the whole cost of a prefill at \\(S = 2048\\)?",
+          "a": "\\(2P\\) counts dense once per token (32.9 TFLOP for 8B at 2048). Prefill adds about 2.2 TFLOP of attention there, and at longer prompts attention dominates."
+        },
+        {
+          "q": "Without a cache, how does per-step work grow with length \\(n\\)?",
+          "a": "Each step reruns the full forward over all \\(n\\) tokens (the KV projections alone are about \\(n/6\\) of a one-token forward pass), so totals grow quadratically."
+        }
+      ],
+      "practice": [
+        {
+          "name": "100 Days of LLM Inference Day 06: ops-byte experiments",
+          "url": "https://github.com/elizabetht/100-days-of-inference",
+          "locator": "`day06/ops-byte-ratio.ipynb`, Try These Experiments: redo intensity with \\(d = 64\\), find the crossover batch with `cuda.get_device_properties`, and the 7B fp16 14GB with 14 GFLOP per token calc",
+          "note": "Show every substitution with prefill and decode kept apart. Fix the `matmul_intensity` cell first: a typo (`ompute`) makes its stored batch sweep wrong. Then check the README's batch-64 crossover against the H100 ridge it quotes; this journal is practice, not authority."
+        }
+      ],
+      "stopWhen": "You derive the 5.4e10 decode count at 8192 without notes and complete the \\(d = 64\\) redo with the crossover stated.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The arithmetic article plus the inference chapter linear and attention sections with Tushar and Day 06 cover dense and attention counts at derive depth."
+      }
+    },
+    {
+      "id": "workload-shape-distributions",
+      "title": "Length, reuse and media-token distributions of a workload",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "input-and-output-length-distributions",
+        "prompt-reuse-and-cache-locality-distributions",
+        "multimodal-encoder-and-media-token-budgeting"
+      ],
+      "outcomes": [
+        "Describe a workload by input and output length medians plus spread, not points.",
+        "Describe prompt reuse and cache-locality distributions and state when reuse helps outcomes.",
+        "Budget media tokens for a multimodal input with encoder and longer-context effects."
+      ],
+      "why": "Averages hide the shapes that set cost. Spread, reuse and image tokens decide which batch, cache and SLO hold.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/arrivals-open-closed-load",
+          "note": "Add arrival rate and bursts to these shapes."
+        },
+        {
+          "unit": "inference/kv-memory-prefix-reuse/prefix-reuse-outcomes",
+          "note": "Test reuse against TTFT and goodput there."
+        }
+      ],
+      "study": [
+        {
+          "resource": "etalon-evaluation",
+          "title": "Length spread and day-long variation",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 3.1 with Figures 1 and 2 (Yi-34B on 2 H100 prefill versus length; Arxiv-Summarization at 1.5 QPS with 60% over 25 s scheduling and 228 median decode tokens); Section 4.1 (LMSys-Chat-1M 417 median and 1418 p90 prefill tokens; prefill deadline fitted from 10 isolated repeats); Section 5.1 (hourly runs over 24 hours, 256 to 8k prefill with 256 gen)"
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Prefix reuse and median lengths",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Designing an Effective Inference Engine: Prefix caching with the dogs and cats example, chat append, few-shot and system prompts, affinity routing, LRU trie and host DRAM"
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Cache reuse and fragmentation",
+          "url": "https://inference.tusharamrit.in/modules/kv-cache.html",
+          "locator": "Fragmentation: the waste nobody budgets for with 20.4-38.2% useful; Cache reuse: the free win hiding in chat with 30x TTFT example from 3000 to 100 tokens",
+          "depth": "Treat the 30x as the author's workload result, not your target. Your target is the reuse distribution and the TTFT move on your corpus."
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Benchmark dimensions and vision tokens",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for sequence lengths, traffic volume and pattern, request contents and input params; Section 6.1 for vision encoders, about a thousand visual tokens per high-resolution image, and longer prefill, decode and KV effects"
+        }
+      ],
+      "focus": [
+        "Report medians with spread: 417 median against 1418 p90 prefill tokens, 256 to 8k sliders, 228 median decode tokens, hourly runs over 24 hours. Points hide padding, blocking and queueing.",
+        "Prefill grows about quadratically, so a static TTFT target is slack for short prompts and impossible for long ones. Fit the prefill deadline from the isolated curve per length.",
+        "Reuse is a distribution with routing and eviction costs. Affinity routing, LRU trie and DRAM decide whether shared prefixes move TTFT and goodput.",
+        "A high-resolution image adds about a thousand visual tokens to prefill and KV. The encoder is small but fragmented runtime support makes engine choice matter."
+      ],
+      "reproduce": "Closed-book, write the workload card with medians 417 and 1418, decode median 228 with spread and \\(n\\), a reuse line and an image-token line at 1000 per high-resolution image. Add the steady-state illustration for \\(P = 4096\\), \\(G = 1024\\), \\(B = 16\\), labeled fixed-length only: sequences finishing per step \\(16/1024 = 1/64\\), tokens evicted per step \\(16 \\times 5120/1024 = 80\\).",
+      "traps": [
+        "Sweeping batch at fixed length and calling it a workload. Prompts spread widely and decode lengths vary as much, so fix both axes.",
+        "Reading hit rate as outcome. Low reuse with lookup, routing, reservation or eviction can lose even at high hit rate; check TTFT and goodput.",
+        "Treating image tokens as free. They are prefill tokens with KV that live for the whole decode; budget them as input length."
+      ],
+      "selfTest": [
+        {
+          "q": "Which spreads does this unit cite, and why medians plus spread?",
+          "a": "LMSys-Chat-1M 417 median with 1418 p90 prefill tokens, 256 to 8k sliders, 228 median decode tokens, hourly runs over 24 hours. Points hide the padding, blocking and queueing that spreads cause."
+        },
+        {
+          "q": "Why must the prefill deadline be fitted per length?",
+          "a": "Prefill grows about quadratically (Figure 1), and scheduling delay mixes with processing. A static target is slack or impossible across 417 to 1418 tokens."
+        },
+        {
+          "q": "At \\(P = 8192\\), \\(G = 4096\\), \\(B = 32\\), how many tokens leave the cache per step?",
+          "a": "96: \\(32/4096\\) sequences finish per step, each evicting \\(P + G = 12288\\), so \\(32 \\times 12288/4096 = 96\\)."
+        },
+        {
+          "q": "When does prefix reuse lose despite hits?",
+          "a": "When lookup, routing, reservation, eviction or low reuse costs more than recompute. Hit rate alone does not establish TTFT or goodput gain."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: length, reuse and media-token distributions measured from your retained corpus with medians, spread and n.",
+      "stopWhen": "Your workload card states medians, spread, reuse and image-token lines with n, and you can defend the fitted prefill deadline against a static one.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for length, reuse and media-token distributions; Etalon supplies spreads and recipes and Inference Engineering supplies benchmark dimensions and vision tokens."
+      }
+    },
+    {
+      "id": "arrivals-open-closed-load",
+      "title": "Arrival processes, concurrency, bursts and open versus closed load",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "arrival-rate-concurrency-and-burst-shape",
+        "open-loop-versus-closed-loop-load"
+      ],
+      "outcomes": [
+        "Explain arrival rate, concurrency and burst shape with peak windows stated.",
+        "Derive concurrency from \\(L = \\lambda W\\) with units and the stability assumption.",
+        "Distinguish open-loop from closed-loop load and state which to trust for tails."
+      ],
+      "why": "Capacity math predicts; load proves. A closed driver hides the queue that users feel.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Turn arrival and service time into token rates."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Build the open and closed generators compared here."
+        }
+      ],
+      "study": [
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Throughput when the loop is serial",
+          "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
+          "locator": "What throughput means when the loop is serial: TTFT, TPOT and ITL, end-to-end, throughput, and `concurrency = arrival_rate * latency`"
+        },
+        {
+          "resource": "gil-tene-latency",
+          "title": "Coordinated omission and latency correction",
+          "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU",
+          "locator": "Full talk: closed-loop testers that wait for each reply, missing samples under queueing, and the correction concept of recording intended send time",
+          "depth": "Watch for vocabulary and the correction idea. Do not adopt `wrk`, `hey` or `ab`; write the small Python generator in the load-generator unit."
+        },
+        {
+          "resource": "etalon-evaluation",
+          "title": "Capacity recipe under an SLO",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.2 Capacity Evaluation with different request loads to max capacity under fluidity-index SLOs; Section 5.2 with vLLM and Sarathi-Serve at 0.6 QPS under a 25 ms TBT SLO"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Traffic volume and pattern",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for volume and pattern of traffic with jittered traffic to mimic real usage beside sequence lengths and request contents"
+        }
+      ],
+      "focus": [
+        "The Systems unit Little's Law, capacity and queueing approximations gives \\(L = \\lambda W\\) with matching units. Here arrival rate times time in system is the concurrency you must bound.",
+        "\\(L = \\lambda W\\) holds for long-run averages in a stable system. It predicts nothing about tails; size the bound for the peak window, not the daily mean.",
+        "Open-loop sends on a schedule whether replies returned; closed-loop waits for each reply. Past the knee closed-loop self-throttles and reports flat latency while the queue explodes.",
+        "Keep every raw sample with \\(n\\). Percentiles come from retained records; the generator log with intended send times is part of the evidence."
+      ],
+      "reproduce": "Closed-book, solve all three directions: \\(100 \\text{ rps} \\times 0.05 \\text{ s} = 5\\) requests, \\(5/0.05 = 100\\) rps, \\(5/100 = 0.05\\) s. Then state why, on the load-generator unit's simulated slow server, open-loop p99 near 759 ms is honest against closed-loop p99 near 540 ms.",
+      "traps": [
+        "Applying \\(L = \\lambda W\\) to percentiles or a draining queue. It relates long-run averages in a stable system only.",
+        "Tuning the closed loop until latency looks good. Fewer clients or think time hides the queue; the offered load is no longer the stated load.",
+        "Reading server-side latency only. Queue wait before the handler is user-visible; instrument arrival-to-start separately."
+      ],
+      "selfTest": [
+        {
+          "q": "100 rps with 50 ms in system: average concurrency?",
+          "a": "5 requests (\\(100 \\times 0.05\\)). Units: \\((\\text{requests}/\\text{s}) \\times \\text{s} = \\text{requests}\\)."
+        },
+        {
+          "q": "Single server at high utilization: which multiple of service time does mean wait approach?",
+          "a": "It grows with \\(\\rho/(1 - \\rho)\\) form; state M/D/1 versus M/M/1 before quoting 9.5x versus 19x at 0.95."
+        },
+        {
+          "q": "Open-loop p99 is 759 ms and closed-loop p99 is 540 ms on the same server. Which is honest?",
+          "a": "Open-loop. Closed-loop skips the requests it never sent; the missing samples are the omitted coordination."
+        },
+        {
+          "q": "Throughput rises with offered load, then flattens while p95 climbs. What happened?",
+          "a": "First saturation: the bottleneck reached high utilization. Extra offered load becomes queue wait and errors, not completions."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: an open-loop sweep through the predicted knee with retained raw records, measured p50, p95 and p99 with n, queue depth and recovery, reconciled against the Little's Law prediction.",
+      "stopWhen": "You solve all three Little's Law directions without notes and can point at the knee with the bottleneck named.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for coordinated-omission vocabulary; the verified Tene talk fills that gap beside Tushar, Etalon and Inference Engineering load material."
+      }
+    },
+    {
+      "id": "request-contract-latency-metrics",
+      "title": "The request contract and its latency metrics",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "streaming-sampling-stop-and-timeout-contracts",
+        "ttft-tpot-inter-token-latency-and-end-to-end-latency",
+        "p50-p95-and-p99-latency-interpretation"
+      ],
+      "outcomes": [
+        "Explain the streaming, sampling, stop and timeout fields that define when a request is done.",
+        "Define TTFT, TPOT, ITL and end-to-end latency with request- versus token-weighted averages.",
+        "Interpret p50, p95 and p99 from raw samples with n, keeping end-to-end apart from inference-only time."
+      ],
+      "why": "Users feel first token, gaps and total; averages hide stalls. The contract decides what counts as done.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/goodput-quality-acceptance",
+          "note": "Qualify these latencies with SLOs into goodput."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/engine-request-lifecycle",
+          "note": "Trace where each timestamp comes from."
+        }
+      ],
+      "study": [
+        {
+          "resource": "modular-metrics-inf1",
+          "title": "TTFT, TPOT, ITL and request versus token weighting",
+          "url": "https://handbook.modular.com/llm-inference-basics/llm-inference-metrics/",
+          "locator": "TTFT with chatbot under 500 ms and code under 100 ms; Token Generation Time as `E2EL - TTFT` with 2200 minus 80 is 2120 ms; TPOT as `(E2EL - TTFT)/(N - 1)` with 2120/219 is 9.68 ms; Average TPOT request-weighted versus Average ITL token-weighted; Mean, Median and P99"
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Sampling, percentiles and benchmark caveats",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Decoding methods with Temperature (`scaled_logits=logits/temperature`, `t==0` uses explicit greedy mode, rank-invariant, Top-K and Top-p effects); Key metrics with TPOT table and Simplified prefill and decode throughput; Percentiles with p50 to p99 and the k6 example; Benchmarks with TTFT as first non-empty chunk and `decode_thr=(output_toks-1)/(last-first)` plus TTFT-is-not-prefill caveats"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Streaming contract with abort",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, LLM Streaming Serving Basics (pp 60-61): `llm.generate` blocks, `AsyncLLMEngine` with `SamplingParams(temperature=0.0, max_tokens=100, stop=[\"\\n\"])` (the 128-token example with `temperature=0.8` is the earlier blocking call), `engine.generate` with `request_id`, `async for request_output` with `chunk.text`, and `engine.abort(request_id)`"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Percentiles and end-to-end time",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 1.4 to 1.4.2 for TTFT with Perceived versus Total TPS and ITL at 10 ms as 100 TPS; P50, P90, P95 and P99 table with right-skewed Figure 1.5; End-to-End Metrics for inference-only versus end-to-end with network and queue time"
+        }
+      ],
+      "focus": [
+        "Streaming returns tokens as generated. Blocking `llm.generate` waits for all; `engine.generate` yields `RequestOutput` chunks; `engine.abort` stops by `request_id`.",
+        "Sampling sets `temperature`, `top_p`, `top_k`, `seed`, `stop` strings and ids, `max_tokens` and `min_tokens`. Zero temperature means greedy via an explicit mode, not division.",
+        "TTFT covers scheduling plus prefill plus transport and queue, not prefill alone. TPOT divides decode time by output count; mean ITL equals TPOT for one request but request-weighted and token-weighted averages differ across requests.",
+        "Percentiles need raw samples with \\(n\\). End-to-end includes network and queue; inference-only does not. A fast GPU with slow end-to-end points at infrastructure."
+      ],
+      "reproduce": "Closed-book, score the playground request with E2EL 2200 ms, TTFT 80 ms and 220 output tokens: Token Generation Time \\(2200 - 80 = 2120\\) ms and TPOT \\(2120/219 = 9.68\\) ms per token. Then state the request-weighted versus token-weighted formulas for two requests with different lengths.",
+      "traps": [
+        "Treating TTFT as prefill time. It includes transport, queue, scheduling and generation start; a batched chunk is not one token.",
+        "Averaging TPOT across requests as system ITL. Request-weighted treats requests equally; token-weighted lets long responses dominate. Use the first for per-request latency and the second for system streaming speed.",
+        "Setting one static TTFT SLO across lengths. Prefill grows about quadratically; fit per-length targets or split scheduling from processing."
+      ],
+      "selfTest": [
+        {
+          "q": "E2EL is 2200 ms, TTFT is 80 ms, output is 220 tokens. What are Token Generation Time and TPOT?",
+          "a": "2120 ms and \\(2120/219 = 9.68\\) ms per token. The divisor is output minus one because the first token arrived with TTFT."
+        },
+        {
+          "q": "When do Average TPOT and Average ITL disagree?",
+          "a": "When output lengths differ. Average TPOT weights requests equally; Average ITL weights by tokens, so long responses dominate the latter."
+        },
+        {
+          "q": "Why is prompt tokens divided by TTFT not prefill throughput?",
+          "a": "TTFT includes queue, scheduling, transport and generation start. Server instrumentation is needed to isolate prefill; the quotient mixes all of them."
+        },
+        {
+          "q": "What goes wrong with `temperature=0` as division?",
+          "a": "Division by zero is undefined. Engines use an explicit greedy mode; the rank order is invariant but Top-K probs and Top-p membership still change with temperature above zero."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-request queue, first-token, token, completion, cancellation and error records with TTFT, TPOT and ITL derived from retained timestamps.",
+      "stopWhen": "You derive 2120 ms and 9.68 ms without notes and can read request- versus token-weighted off two requests with different lengths.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Modular, Stas, Hands streaming and Inference Engineering percentiles cover sampling, stop, TTFT, TPOT, ITL and tails at explain and derive depth; timing practice lives in the mini-project."
+      }
+    },
+    {
+      "id": "goodput-quality-acceptance",
+      "title": "Throughput, goodput, rejection, quality acceptance and energy per token",
+      "hours": 3,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "throughput-goodput-rejection-and-quality-acceptance",
+        "energy-per-accepted-token-as-an-additional-outcome"
+      ],
+      "outcomes": [
+        "Distinguish throughput, goodput, rejection and quality acceptance with SLOs stated.",
+        "Derive goodput from a request table with TTFT, TPOT and quality gates.",
+        "Derive energy per accepted token from power, time and accepted outputs."
+      ],
+      "why": "Throughput without an SLO and a quality gate ranks averages and hides stalls and bad outputs. Goodput prices both.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/engine-request-lifecycle",
+          "note": "Trace where rejected and retried work comes from."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Turn goodput into capacity."
+        }
+      ],
+      "study": [
+        {
+          "resource": "distserve-goodput",
+          "title": "Per-GPU goodput under TTFT and TPOT SLOs",
+          "url": "https://arxiv.org/html/2401.09670v3",
+          "locator": "Section 1 with Figure 1: per-GPU goodput as the max request rate within TTFT and TPOT constraints at 90% attainment; 13B model on one A100 at about 1.6 requests per second"
+        },
+        {
+          "resource": "modular-metrics-inf1",
+          "title": "Goodput SLO example",
+          "url": "https://handbook.modular.com/llm-inference-basics/llm-inference-metrics/",
+          "locator": "Goodput with SLO `TTFT <= 200 ms` and `E2EL <= 3000 ms`: 4 of 6 sample requests meet all SLOs for 67% goodput with per-request TPOT table"
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Goodput versus throughput",
+          "url": "https://inference.tusharamrit.in/modules/roofline.html",
+          "locator": "The four metrics with goodput, and the goodput versus throughput check question: batch 256 at 20k tokens per second but TPOT 80 ms against a 50 ms SLO gives zero goodput"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Cost, power and throughput metrics",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 5, Why Optimizing LLM Serving is Important with Cost Efficiency and Table 5-4 hourly cost per chip; GPU power consumption with TDP watts and perf per watt; Chapter 4, Measuring Performance in LLM Serving with Throughput Metrics and Best Practices for Performance Measurement (pp 149-153)"
+        }
+      ],
+      "focus": [
+        "Throughput counts all tokens; goodput counts only requests meeting TTFT, TPOT and quality gates. Rejected, retried and low-quality outputs add load without goodput.",
+        "Per-GPU goodput is the max rate at the SLO attainment target. The 13B example is the source hardware result on one A100, not your target.",
+        "Quality acceptance needs a stated check on retained outputs. Evals double as varied inputs and as spot checks that speed work did not change outputs.",
+        "Energy per accepted token divides power times time by accepted outputs. Use TDP and measured time with the SLO and quality gate stated; never present vendor speedups as your result."
+      ],
+      "reproduce": "Closed-book, score the 6-request Modular table at `TTFT <= 200` ms and `E2EL <= 3000` ms: 4 of 6 pass for 67% goodput. Then derive energy per accepted token for a 400 W chip serving 4 accepted requests of 200 tokens in 10 s as \\(400 \\times 10/(4 \\times 200) = 5\\) J per accepted token.",
+      "traps": [
+        "Quoting raw throughput as serving capacity. A 20k tokens per second batch at 80 ms TPOT against a 50 ms SLO has zero goodput.",
+        "Counting retried and rejected work as useful. Retries add offered load; only accepted outputs enter goodput and energy denominators.",
+        "Presenting paper or vendor speedups as your numbers. Quote them only as the source result on the source hardware with the SLO stated."
+      ],
+      "selfTest": [
+        {
+          "q": "What is per-GPU goodput in DistServe Section 1?",
+          "a": "The highest request rate served while the target share meets TTFT and TPOT SLOs. The 13B example reaches about 1.6 requests per second at 90% attainment on one A100."
+        },
+        {
+          "q": "6 requests, 4 meet TTFT, TPOT and E2E SLOs. What is goodput?",
+          "a": "67% (4 of 6). Throughput counts all tokens; goodput counts only SLO-passing requests, with quality accepted."
+        },
+        {
+          "q": "100 new requests per second with 10% failing once and retried successfully. What are throughput and goodput?",
+          "a": "Throughput is 110 attempts per second; goodput is 100 successful requests per second. Retries add 10% load without goodput."
+        },
+        {
+          "q": "A 400 W chip serves 800 accepted tokens in 10 s. What is energy per accepted token?",
+          "a": "\\(400 \\times 10/800 = 5\\) J per accepted token, at the stated SLO and quality gate. Rejected and unaccepted tokens stay out of the denominator."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: throughput versus goodput with rejection and quality gates, plus energy per accepted token from measured power and time.",
+      "stopWhen": "You score 4 of 6 as 67% goodput without notes and can separate throughput, goodput and energy denominators on a new table.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for SLO-qualified goodput and quality plus energy denominators; DistServe supplies goodput with Etalon and Tushar examples beside the book cost and power material."
+      }
+    },
+    {
+      "id": "engine-request-lifecycle",
+      "title": "One request through the engine, from API to detokenizer",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "api-tokenizer-queue-admission-and-scheduler-lifecycle",
+        "block-manager-model-runner-sampler-and-detokenizer-lifecycle"
+      ],
+      "outcomes": [
+        "Trace one request from API through tokenizer, queue, admission and scheduler with owners named.",
+        "Trace it through block manager, model runner, sampler and detokenizer to streaming output.",
+        "Name the measurement points that falsify a bottleneck hypothesis."
+      ],
+      "why": "An optimization without a lifecycle map optimizes the wrong stage. Every later queue, cache and kernel claim hangs off this path.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/cancellation-cleanup-ownership",
+          "note": "Add cancellation and cleanup to this path."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/latency-decomposition-timing",
+          "note": "Decompose TTFT and decode steps along it."
+        }
+      ],
+      "study": [
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Engine orchestration and JetStream",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Designing an Effective Inference Engine: Continuous batching with queue, prefill, generate, cache and stream orchestration; Prefix caching; Let's look at an implementation: JetStream with prefill and generate engines, controller and transfer thread"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Serve, stream and batch with vLLM",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, Serve the LLM (Qwen) with vLLM (pp 57-59) with `LLM`, `SamplingParams` and `llm.generate`; LLM Streaming Serving Basics (pp 60-61) with `engine.generate` and `engine.abort`; LLM Batch Serving Basics (pp 61-63) with batched `llm.generate` at 2.2x for 4 prompts"
+        },
+        {
+          "resource": "nano-vllm-engine",
+          "title": "Tiny engine request path",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`sequence.py` with `SequenceStatus` WAITING, RUNNING and FINISHED plus `block_table`; `scheduler.py` with `waiting` and `running` sets, `schedule`, `preempt` and `postprocess`; `model_runner.py` with `prepare_prefill`, `prepare_decode` and `run`; `llm_engine.py` with `generate`, `add_request` and `tokenizer.decode`"
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Batching and online versus offline",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Batching with Static versus Continuous batching; Online vs Offline inference for interactive latency versus batch throughput"
+        }
+      ],
+      "focus": [
+        "The GPU unit One request through prefill and decode, and the shapes that set its cost gives tensor shapes; here follow ownership: API to tokenizer to queue to admission to scheduler to block manager to runner to sampler to detokenizer to stream.",
+        "Waiting holds admitted but unscheduled requests; running holds scheduled with blocks. `schedule` moves waiting to running on `can_allocate`; `preempt` returns running to waiting.",
+        "Prefill writes cache for the whole prompt and returns first logits; decode reads full cache, samples one token and appends one pair. `prepare_prefill` and `prepare_decode` build different `block_tables` and slot maps.",
+        "Each handoff is a measurement point: arrival, tokenized, queued, scheduled, prefill done, first token, each decode gap, sampled, streamed and freed. A bottleneck claim must name which gap moved."
+      ],
+      "reproduce": "Closed-book, walk one prompt through the tiny engine: `add_request` creates a WAITING `Sequence`, `schedule` moves it to running after `can_allocate` and `allocate`, `prepare_prefill` then `prepare_decode` run the model, `postprocess` appends tokens until FINISHED, and `tokenizer.decode` renders output. Name the owner that frees blocks.",
+      "traps": [
+        "Treating `llm.generate` as streaming. It blocks until all outputs finish; only `engine.generate` yields `RequestOutput` chunks during the run.",
+        "Calling the scheduler queue the only queue. Tokenizer, admission, block allocation and detokenizer queues add waits with different owners.",
+        "Skipping the transfer thread in disaggregated paths. Prefill and decode engines plus controller plus transfer each hold state that must be traced."
+      ],
+      "selfTest": [
+        {
+          "q": "What moves a request from waiting to running in the tiny engine?",
+          "a": "`schedule` after `can_allocate` succeeds, followed by `allocate` filling `block_table`. Without free blocks it stays waiting or a running request is preempted."
+        },
+        {
+          "q": "What differs between `prepare_prefill` and `prepare_decode`?",
+          "a": "Prefill builds tables and slot maps for the whole prompt and writes cache; decode maps one new token per sequence against the full cache and appends one pair."
+        },
+        {
+          "q": "Where do TTFT and per-token latency attach on this path?",
+          "a": "TTFT spans arrival through scheduled prefill to first streamed token. Per-token latency spans one decode step with cache read, sample and stream."
+        },
+        {
+          "q": "Which lifecycle evidence falsifies a queueing versus execution claim?",
+          "a": "Arrival-to-start versus start-to-done splits with queue depth. Queue growth with flat execution implicates scheduling and load, not the model."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-On LLM Serving companion: LLM execution walkthrough",
+          "url": "https://github.com/orca3/llm-model-inference",
+          "locator": "`ch02/ch2_Workthrough_LLM_execution.ipynb`: Examples 2-1 and 2-2 token-by-token without and with `past_key_values` and `use_cache`",
+          "note": "Run on a small model. Record arrival, prefill, first-token, decode gaps and detokenized output; the cached run stays stable after the first token."
+        }
+      ],
+      "stopWhen": "You walk one request end to end without notes, and your walkthrough run shows cached decode stable after the first token.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for block-manager, runner and sampler ownership; Nano-vLLM sequence, scheduler and runner files fill that gap beside JAX and Hands."
+      }
+    },
+    {
+      "id": "cancellation-cleanup-ownership",
+      "title": "Streaming, cancellation, failure and cleanup states and ownership invariants",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "streaming-cancellation-failure-and-cleanup-states",
+        "request-and-resource-ownership-invariants"
+      ],
+      "outcomes": [
+        "State ownership invariants and cleanup obligations at every request transition, including cancellation and failure.",
+        "Instrument state transitions and resource ownership in a minimal serving path.",
+        "Diagnose lost, duplicated, leaked or double-freed requests from state and resource traces."
+      ],
+      "why": "A cancelled request still owns blocks, streams and sampler state until someone frees them. Leaks and double frees hide there.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Drive cancellation under open and closed load."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/memory-admission-preemption",
+          "note": "Use these invariants for preemption and eviction."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Streaming and abort",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, LLM Streaming Serving Basics (pp 60-61): `engine.generate` with `request_id`, `async for request_output` with `chunk.text`, and `engine.abort(request_id)` for cancellation"
+        },
+        {
+          "resource": "nano-vllm-engine",
+          "title": "Scheduler and block ownership",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`scheduler.py` with `waiting`, `running`, `preempt` and `postprocess`; `block_manager.py` with `ref_count`, `free_block_ids`, `used_block_ids`, `allocate`, `deallocate` and `can_append`; `sequence.py` with `SequenceStatus` WAITING, RUNNING and FINISHED"
+        },
+        {
+          "resource": "inference-lab-inf1",
+          "title": "Failure, correctness and trace requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Milestone B for correlated events, observer overhead and trace queries over TTFT and every decode gap; Milestone D with Failure-injection requirements for cancellation and disconnect at every phase and every terminal phase; Correctness requirements for KV ownership, refcounts, cleanup and scheduler invariants"
+        }
+      ],
+      "focus": [
+        "Cancellation can arrive in queue, prefill, decode or streaming. Abort must stop scheduling, free blocks, close the stream and mark exactly one terminal state.",
+        "One owner per block with `ref_count`; one terminal mark per `request_id`. Freeing asserts zero refs; draining leaves no used blocks and no waiting or running entries.",
+        "Failure, cancellation and timeout differ in trigger but share cleanup. Retries need idempotent handling by `request_id` or they duplicate work.",
+        "Instrument each transition with `request_id`, state, owner and timestamps. Trace queries must explain TTFT and every decode gap without per-token sync overhead."
+      ],
+      "reproduce": "From a blank file, implement a minimal state machine over WAITING, RUNNING, FINISHED, CANCELLED and FAILED with block acquire and release plus abort at each phase. Drive one success, one cancel during decode and one cancel in queue, and assert no leaked blocks and single terminal marks.",
+      "traps": [
+        "Freeing blocks without removing the request from scheduler sets. The freed blocks get reallocated while the stale entry still schedules.",
+        "Marking terminal twice. Stream close plus scheduler free can emit two completions unless one path owns the mark.",
+        "Retrying a cancelled `request_id` without idempotence. The retry duplicates sampler and stream side effects or loses the cancellation."
+      ],
+      "selfTest": [
+        {
+          "q": "Where can cancellation arrive, and what must abort do?",
+          "a": "Queue, prefill, decode or streaming. Stop scheduling, free blocks, close the stream and mark one terminal state."
+        },
+        {
+          "q": "What holds at a clean drain?",
+          "a": "No used blocks, empty waiting and running sets, and each `request_id` with exactly one terminal mark."
+        },
+        {
+          "q": "How do traces distinguish lost, leaked and double-freed requests?",
+          "a": "Lost has no terminal mark; leaked has a terminal mark but held blocks; double-freed shows two frees or a refcount assert."
+        },
+        {
+          "q": "Why must retries be idempotent by `request_id`?",
+          "a": "A retry after cancel or failure must not duplicate sampler, cache or stream effects. The id owns dedup and cleanup."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-On LLM Serving companion: streaming with abort",
+          "url": "https://github.com/orca3/llm-model-inference",
+          "locator": "`ch02/ch2_Streaming.ipynb` with `ch02/streaming.py`: stream with `engine.generate` and cancel one mid-stream request with `engine.abort(request_id)`",
+          "note": "Record request state and block use before and after abort. Assert single terminal output and no held blocks."
+        }
+      ],
+      "stopWhen": "Your state machine passes one success plus two cancels with no leaks and single marks, and your streaming abort run shows freed blocks.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for ownership invariants and cleanup obligations; Nano-vLLM plus capstone failure and correctness requirements fill that gap beside Hands abort."
+      }
+    },
+    {
+      "id": "token-rate-capacity-estimates",
+      "title": "Offered and completed token rates and first-order capacity",
+      "hours": 3,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "offered-token-rate-and-completed-token-rate",
+        "first-order-concurrency-service-time-and-capacity-estimates"
+      ],
+      "outcomes": [
+        "Derive offered versus completed token rates with units, keeping requests apart from tokens.",
+        "Derive concurrency, service time and first-order capacity from arrival, lengths and step time.",
+        "State what the first-order estimate omits before comparing with measured goodput."
+      ],
+      "why": "First-order rates turn shapes into a capacity number to falsify. Omissions explain the gap to measured goodput.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/workload-manifest-replay",
+          "note": "File the rates with the manifest they assume."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Validate the rates against a deterministic server."
+        }
+      ],
+      "study": [
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Step time and token rates",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Theoretical estimates for LLM latency and throughput with Min Step Time, Max Tokens per second and General Step Time plus the small-batch quiz (30B int8 at batch 4 is 2.5 ms and at batch 256 is 21 ms); Modeling throughput and latency for LLaMA 2-13B with both batch tables",
+          "depth": "Recompute the tables in bytes. The small-batch quiz assumes perfect overlap; the honest bounds are max for lower and sum for upper."
+        },
+        {
+          "resource": "transformer-arithmetic-inf1",
+          "title": "Small- and large-batch latency",
+          "url": "https://kipp.ly/p/transformer-inference-arithmetic",
+          "locator": "latency calculations with small-batch 260B on 16 GPUs at 22 ms per token and large-batch 512 at 53 ms with 3 ms comms latency; batch sizes with the 208 crossover",
+          "depth": "The 62 ms in the same large-batch sentence is a slip; 53 ms is the formula value. The crossover writes `A_bw/A_f` but computes peak operations over bytes per second."
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "First-order prefill, decode and batch math",
+          "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
+          "locator": "Math by hand for Llama-3-8B at \\(S = 2048\\) with 512 gen (prefill 33.3 ms versus 4.48 ms bytes, decode 4.48 ms, total 2.33 s, batch 64 at about 14,300 tokens per second needing 295 for the ridge)"
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Offered versus completed load",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Online vs Offline inference for latency versus throughput goals; Key metrics Simplified with prefill throughput as prompt tokens over TTFT and `latency=prompt/prefill_thr+gen/decode_thr`"
+        }
+      ],
+      "focus": [
+        "Offered token rate is arrival rate times tokens per request; completed rate is served tokens per second; goodput keeps only SLO and quality passing. Keep requests per second apart from tokens per second.",
+        "Step time floor is \\((M_{\\text{model}} + B \\times M_{\\text{request}})/W\\). Throughput is \\(B/T\\), or zero when no request fits.",
+        "Concurrency is \\(L = \\lambda W\\) with matching units. Capacity is the smallest resource-over-work ratio with the bottleneck named.",
+        "First-order omits tokenization, queueing, length variance, reserve and failed or retried work. Name each before comparing with measured goodput."
+      ],
+      "reproduce": "Closed-book, derive the planner example: \\(M_{\\text{model}} = 2000\\) bytes, \\(M_{\\text{request}} = 256\\) bytes, \\(B = 27\\), \\(T = 0.08912\\) s per batched step and 302.96 tokens per second.",
+      "traps": [
+        "Mixing requests per second with tokens per second. Multiply by prompt plus output lengths with the distribution stated.",
+        "Reading Max Tokens per second as goodput. It assumes every token passes SLOs and quality; goodput applies both gates.",
+        "Comparing first-order with measured without omissions. Tokenization, queueing, variance, reserve and retries explain why measured sits below the floor."
+      ],
+      "selfTest": [
+        {
+          "q": "What are offered, completed and goodput rates?",
+          "a": "Offered is arrival times tokens per request; completed is served tokens per second; goodput keeps only SLO and quality passing requests."
+        },
+        {
+          "q": "In Reproduce, why is throughput 302.96 and not 100000/256?",
+          "a": "Each step also reads the 2000-byte model once. \\(T=(2000+27 \\times 256)/100000=0.08912\\) s, so \\(27/0.08912=302.96\\). Ignoring the model overstates the rate."
+        },
+        {
+          "q": "30B int8 at batch 4 versus 256: which bound binds each?",
+          "a": "Batch 4 at 2.5 ms is bandwidth-bound; batch 256 at 21 ms adds compute-bound MLP work. Small batch reads weights; large batch computes them."
+        },
+        {
+          "q": "Measured goodput sits below your first-order capacity. What do you list first?",
+          "a": "Tokenization, queueing, output-length variance, memory reserve and failed or retried work with sizes, before claiming a new bottleneck."
+        }
+      ],
+      "practice": [
+        {
+          "name": "How to Scale Your Model inference Questions 2 and 3",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Worked Problems, Question 2 (33.5 GB per entry at 128k context, batch 7, about 56 with one KV head) and Question 3 (1.4 ms parameter-load lower bound for 18.4e9 int8 params on 16 chips)",
+          "note": "Reproduce both closed-book before opening answers. Question 2 tests allocated capacity; Question 3 tests the bandwidth floor that bounds every step time."
+        }
+      ],
+      "stopWhen": "You derive 27 with 0.08912 s and 302.96 tokens per second plus Questions 2 and 3 without notes, and can name the bottleneck with omissions listed.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The inference chapter estimates, the arithmetic latency section and Tushar math-by-hand with Stas load definitions cover offered, completed and capacity at derive depth."
+      }
+    },
+    {
+      "id": "workload-manifest-replay",
+      "title": "An immutable workload manifest and deterministic request replay",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "immutable-workload-and-environment-manifest",
+        "deterministic-request-corpus-and-replay"
+      ],
+      "outcomes": [
+        "Implement a workload manifest fixing model, prompts, lengths, arrival, reuse, sampling, streaming, timeouts and SLO.",
+        "Implement an environment manifest with engine, config, versions, hardware and checksums.",
+        "Implement deterministic corpus and replay with seeds, IDs and tuning versus final split."
+      ],
+      "why": "Comparisons without a manifest compare different workloads. Immutability plus replay makes later ablations honest.",
+      "next": [
+        {
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Drive this manifest with a validated generator."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/baseline-sweeps-matrix",
+          "note": "Run baselines under this manifest."
+        }
+      ],
+      "study": [
+        {
+          "resource": "inference-lab-inf1",
+          "title": "Manifest, corpus and tuning versus final",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Core requirements for recorded corpus with prompt, output, arrival, tenant, priority, cancellation and cache-locality distributions; Architecture constraints for version binding, distinct tuning and final traces and bounded overload; Deliverables for workload and immutable experiment manifests; Milestone E for tuning and final workload sets"
+        },
+        {
+          "resource": "etalon-evaluation",
+          "title": "Replay recipes",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.2 Evaluation workflow and implementation with black-box recipe over diverse prompt lengths and Capacity Evaluation over request loads; Implementation as a fork of LLMPerf over OpenAI-compatible APIs"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Shadowing, simulation and eval inputs",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for shadowing production traffic, simulating sequence lengths, traffic volume and pattern, request contents and input params, and eval datasets such as MMLU, gsm8k and HumanEval as varied inputs with output spot checks"
+        }
+      ],
+      "focus": [
+        "The GPU unit Manifests, claim schemas, predictions declared first and artifact lineage gives file layout; here fill it with serving fields: model, tokenizer, template, precision, prompts, lengths, arrival, reuse, sampling, streaming, timeouts and SLO.",
+        "Environment pins engine, config, versions, hardware and topology with `hashlib.sha256` checksums. Publish atomically and reject replay under a changed config.",
+        "Corpus rows carry stable request IDs with seeds. Tuning traces tune; final traces evaluate blinded with no shared IDs.",
+        "Replay preserves offered load from intended send times and output semantics from tokenizer through stop and stream. Count alone does not prove replay."
+      ],
+      "reproduce": "From a blank file, write a manifest for a tiny 5-prompt corpus with fixed lengths, Poisson arrivals at seed 7, reuse line, sampling seed, timeouts and SLO plus `hashlib.sha256` checksums. Replay it twice and show identical IDs, outputs and checksums with tuning versus final split and no shared IDs.",
+      "traps": [
+        "Editing the manifest in place. Publish a new version and keep the old; a moving workload voids past comparisons.",
+        "Tuning on final traces. Even reading them to choose a policy leaks; keep tuning and final distinct with the split enforced.",
+        "Replaying counts without intended times. A closed-loop replay hides overload; preserve the open schedule and output semantics."
+      ],
+      "selfTest": [
+        {
+          "q": "What must the workload manifest fix?",
+          "a": "Model, tokenizer, template, precision, prompts, length distributions, arrival and concurrency, reuse, sampling, streaming, timeouts and SLO with versions and checksums."
+        },
+        {
+          "q": "Why checksums plus atomic publish?",
+          "a": "They detect corpus or config drift and stop partial reads. Consumers read only complete artifacts declared in the manifest."
+        },
+        {
+          "q": "Why keep tuning and final traces distinct?",
+          "a": "Tuning on final data leaks evaluation into design. Final stays blinded until the comparison runs."
+        },
+        {
+          "q": "What does deterministic replay preserve?",
+          "a": "Offered load from intended send times and output semantics from tokenizer through stop and stream, verified by identical IDs and checksums."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: immutable workload and environment manifests with checksums, deterministic corpus and replay, and tuning versus final split with lineage.",
+      "stopWhen": "Two replays of your tiny corpus give identical IDs, outputs and checksums, and changed-config replay is rejected.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The capstone manifest and corpus requirements plus Etalon recipes and Inference Engineering shadowing cover manifests and replay at implement depth; practice lives in the mini-project."
+      }
+    },
+    {
+      "id": "validated-load-generator",
+      "title": "A validated open- and closed-loop load generator with raw records",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "validated-open-loop-and-closed-loop-load-generator",
+        "per-request-raw-event-and-output-retention"
+      ],
+      "outcomes": [
+        "Build open- and closed-loop generators with deterministic requests, streaming and cancellation.",
+        "Validate the generator against a deterministic fake server with known service and overload behavior.",
+        "Retain per-request raw events and outputs with timestamps."
+      ],
+      "why": "An unvalidated generator hides overload through coordinated waiting or changed outputs. Validation proves it preserves load and semantics.",
+      "next": [
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/raw-records-resource-context",
+          "note": "Carry these raw records into phase-separated baselines."
+        },
+        {
+          "unit": "inference/capacity-economics-engine-extension/fair-trials-raw-traces",
+          "note": "Reuse the fair-trial and tail methods there."
+        }
+      ],
+      "study": [
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Benchmark snippets and tools",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Benchmarks with openai `completions.create` and `stream=True` snippet (`ttft=first-start`, `decode_thr=(output_toks-1)/(last-first)`), TTFT-is-not-prefill caveats, `benchmark_throughput.py`, k6, aiohttp `backend_request_func.py` with vllm#7935 client fix, and the missing max-concurrency note"
+        },
+        {
+          "resource": "gil-tene-latency",
+          "title": "Intended send time correction",
+          "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU",
+          "locator": "Full talk: intended versus actual send time, missing samples under queueing, and why server-side timing alone drops user-visible wait",
+          "depth": "Use the correction concept in your generator. Do not adopt `wrk`, `hey` or `ab`."
+        },
+        {
+          "resource": "inference-lab-inf1",
+          "title": "Validation and raw retention",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Milestone B for raw arrival and completion records, observer overhead and trace queries over TTFT and every decode gap; Milestone E for micro through endpoint open-loop benchmarks on tuning and final sets; Measurement requirements for arrival, queue, service and stream timing with throughput, goodput and quality behavior"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Load tooling and output checks",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for SGLang Genai-bench, NVIDIA GenAI-Perf and Locust plus eval datasets such as MMLU, gsm8k and HumanEval as varied inputs with spot checks that speed work did not change outputs"
+        }
+      ],
+      "focus": [
+        "Open-loop schedules Poisson arrivals via `random.expovariate` from intended send times; closed-loop issues next on completion with fixed clients. Count latency from intended time in both.",
+        "The Systems saturation unit gives the fake server to copy: 10 ms service with a 500 ms stall on every 200th request at seed 21 for 30 s. Validation must separate the modes there before touching a real engine.",
+        "Retain per request: intended and actual arrival, queue start, prefill done, first token, decode gaps, completion with cancellation or error, outputs with usage, sampling params and manifest version. Aggregates alone cannot yield tails.",
+        "Outputs must match a direct run token for token. Eval spot checks catch a fast path that truncates or retunes generation under load."
+      ],
+      "reproduce": "Write a small open-loop generator with `random.seed(21)`, Poisson schedule via `random.expovariate`, latency from intended send time and one FIFO server with 10 ms service plus a 500 ms stall on every 200th request for 30 s. Confirm the 80 rps row (mean 341.1 ms, p50 341.1 ms, p95 649.5 ms, p99 759.1 ms nearest-rank) and the closed-loop twin with 5 clients (mean 62.1 ms, p99 540.0 ms, 80.5 completed rps), and state which run to trust for tails.",
+      "traps": [
+        "Validating only on a fast server. Without queueing both modes agree; the slow server with overload is what separates them.",
+        "Keeping aggregates without raw records. Percentiles need retained samples with `n`; the generator log is evidence, not scratch.",
+        "Changing outputs to meet load. Truncating `max_tokens` or retuning sampling under pressure breaks semantics; identical outputs plus spot checks prove preservation."
+      ],
+      "selfTest": [
+        {
+          "q": "Why validate against a fake server with known service and overload?",
+          "a": "It isolates generator bugs from engine variance. Known service gives expected means and tails; overload separates open from closed behavior."
+        },
+        {
+          "q": "Same slow server gives open mean 341.1 ms and closed mean 62.1 ms. Which is honest for tails?",
+          "a": "Open-loop. Closed-loop never sent the queued work, so its 540.0 ms p99 omits the wait that open-loop reports as 759.1 ms."
+        },
+        {
+          "q": "What raw events does each request retain?",
+          "a": "Intended and actual arrival, queue start, prefill done, first token, decode gaps, completion with cancellation or error, outputs with usage, sampling params and manifest version."
+        },
+        {
+          "q": "How do you prove the generator did not change outputs?",
+          "a": "Identical token IDs and checksums versus a direct run at the same manifest plus eval spot checks. Any fast path that alters outputs fails validation."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a validated open- and closed-loop generator with fake-server checks plus per-request raw events and outputs retained with timestamps.",
+      "stopWhen": "Your generator reproduces the 80 rps row and the closed twin, fake-server validation passes with outputs identical, and raw records yield p50, p95 and p99 with n.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for validated open and closed generation with raw retention; Gil Tene correction plus capstone validation and Inference Engineering tooling fill that gap beside Stas snippets."
+      }
+    }
+  ]
+}

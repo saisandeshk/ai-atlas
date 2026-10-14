@@ -1,0 +1,886 @@
+{
+  "section": "kv-memory-prefix-reuse",
+  "addedResources": [
+    {
+      "id": "vllm-kv-contracts-inf3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM 0.31.0 - cache specifications and connector lifecycle",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read the per-layer attention, MLA and Mamba specifications for hybrid state contracts; read the V1 connector metadata, load synchronization and deferred-free methods for transfer ownership. These fill the pool's hybrid-state and connector-contract gaps, without requiring distributed execution.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/v1/kv_cache_interface/"
+    }
+  ],
+  "units": [
+    {
+      "id": "kv-layouts-cache-variants",
+      "title": "Per-layer KV layouts and the cache consequences of attention variants",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "per-layer-kv-tensor-layouts",
+        "mha-gqa-mqa-and-mla-cache-consequences",
+        "hybrid-attention-and-state-space-cache-identity"
+      ],
+      "outcomes": [
+        "Map a serving engine's per-layer cache views to physical storage and distinguish layout from ownership.",
+        "Derive dense and latent cache payloads without expanding shared KV heads in storage.",
+        "Explain why hybrid attention and recurrent layers need different retention and prefix-checkpoint contracts."
+      ],
+      "why": "Building a KV cache and KV memory arithmetic supplied the single-request contract. Serving now needs a shared pool whose layer views, attention variants and state checkpoints remain compatible under reuse.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/paged-kv-address-translation",
+          "note": "Separate token positions from the pool's physical addresses."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: the pool and its layer views",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/model_runner.py",
+          "locator": "`ModelRunner.allocate_kv_cache`: `block_bytes`, the six-dimensional allocation, and assignment to `k_cache` and `v_cache`",
+          "depth": "Trace the single-worker case. Skip startup, distributed communication and graph capture."
+        },
+        {
+          "resource": "tushar-kv-inf3",
+          "title": "Module 06: architectural cache reduction",
+          "url": "https://inference.tusharamrit.in/modules/memory-optimization.html#concept-2",
+          "locator": "MQA to GQA to MLA: attacking the formula itself, including the latent and decoupled RoPE cache diagram",
+          "depth": "Stop before weight quantization. Treat reported architecture savings as model-specific, not a serving toggle or a quality guarantee."
+        },
+        {
+          "resource": "vllm-kv-contracts-inf3",
+          "title": "vLLM 0.31.0: per-layer state specifications",
+          "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/v1/kv_cache_interface/",
+          "locator": "`AttentionSpec`, `MLAAttentionSpec`, `SlidingWindowSpec`, `MambaSpec` and `KVCacheGroupSpec`; inspect their state shapes, page sizes and grouping contracts",
+          "depth": "Read these classes only. Skip packed hardware-specific formats and the general layout-construction helpers."
+        }
+      ],
+      "focus": [
+        "Nano-vLLM allocates key/value, layer, physical block, token slot, KV head and channel axes. A block ID selects corresponding storage across layers; it does not merge their projections.",
+        "For dense caches, sum per-layer payloads as \\(\\sum_{\\ell} H_{\\mathrm{kv},\\ell}(d_{k,\\ell}+d_{v,\\ell})b_\\ell\\) bytes per token. MHA, GQA and MQA change stored KV heads, not the number of query heads.",
+        "A conventional MLA cache stores the shared KV latent and the decoupled positional key, not two full per-head tensors. Its payload is \\((d_c+d_r)b\\) per layer per token, before padding or metadata.",
+        "Hybrid layers can retain full history, a bounded window, or recurrent state at a checkpoint. A reusable boundary must provide valid state for every layer type, under the same positions and model version."
+      ],
+      "reproduce": "Closed-book, draw Nano-vLLM's pool and layer views for one worker. For a synthetic two-layer model with 8 query heads, 2 KV heads, equal key/value width 4 and two-byte elements, derive 64 bytes per token across layers. For a separate two-layer MLA model with latent width 6 and positional-key width 2 at the same dtype, derive 32 bytes. Label these payloads, not engine allocations; explain which state a hybrid recurrent layer would add.",
+      "traps": [
+        "Expanding GQA keys in the persistent cache because queries have more heads. Expansion for computation is not the storage contract.",
+        "Applying the dense key-plus-value formula to an MLA latent or a recurrent state. Count the actual stored representation.",
+        "Reusing a hybrid prefix because the full-attention layers hit. Missing recurrent checkpoints or window state can still make that boundary unusable."
+      ],
+      "selfTest": [
+        {
+          "q": "Does sharing one block ID across layers mean that their keys are equal?",
+          "a": "No. The ID selects different per-layer storage regions. Each layer still has its own projections and cached values."
+        },
+        {
+          "q": "Why is there no extra factor of two in the conventional MLA payload formula?",
+          "a": "The single latent jointly represents key and value content. Count it once, then add the separately stored positional key."
+        },
+        {
+          "q": "Can a recurrent checkpoint at one prefix boundary stand in for an earlier boundary?",
+          "a": "Not generally. It summarizes the history at its own boundary. An earlier state needs its own checkpoint or recomputation; recurrent updates need not be invertible."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` per-layer state descriptors and byte accounting, with dense, latent and labeled hybrid-state cases.",
+      "stopWhen": "Your state descriptors reconcile the two synthetic payloads and reject a reuse boundary with missing layer state, without rebuilding the earlier single-request cache.",
+      "fit": {
+        "verdict": "added",
+        "note": "Nano-vLLM and Module 06 cover layouts and attention variants. Their hybrid-state coverage fails; the verified vLLM 0.31.0 specifications supply that contract, with descriptor practice in servelab."
+      }
+    },
+    {
+      "id": "paged-kv-address-translation",
+      "title": "Logical tokens, paged storage, block size and block tables",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "logical-kv-tokens-and-physical-allocation",
+        "contiguous-versus-paged-kv-storage",
+        "block-size-and-block-table-address-translation"
+      ],
+      "outcomes": [
+        "Translate logical token positions through a sequence block table into physical KV slots.",
+        "Explain how a contiguous physical pool supports noncontiguous per-request storage.",
+        "Defend block size using tail waste, table overhead and reuse granularity."
+      ],
+      "why": "Variable-length, paged and decode attention supplied the kernel mapping. Here the same mapping becomes an allocator contract that must survive growth, reuse and physical-page permutation.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/fragmentation-page-waste",
+          "note": "Turn addressable slots into a usable capacity estimate."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pagedattention-inf3",
+          "title": "PagedAttention: storage and translation",
+          "url": "https://arxiv.org/html/2309.06180v1#S4.SS1",
+          "locator": "arXiv:2309.06180v1, Sections 4.1 to 4.3, Figures 5 to 7; Section 7.2, Impact of Block Size",
+          "depth": "Trace storage and address translation. Use your existing attention oracle rather than the displayed block-softmax equation; retain normalization over valid tokens. Treat the block-size experiments as the paper's workloads, not a universal optimum."
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: from tables to write locations",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/model_runner.py",
+          "locator": "`prepare_block_tables`, `prepare_prefill` and `prepare_decode`: positions, context lengths and `slot_mapping`",
+          "depth": "Read the metadata construction only; no engine launch or kernel rewrite is needed."
+        }
+      ],
+      "focus": [
+        "For zero-based token position \\(t\\) and block size \\(P\\), logical block is \\(\\lfloor t/P\\rfloor\\) and offset is \\(t\\bmod P\\). The table entry, not the logical block number, selects physical storage.",
+        "The pool itself can be contiguous while each request's blocks are scattered. Paging removes the requirement for a contiguous request-sized allocation, not all contiguous memory.",
+        "Valid length is separate from allocated capacity. A full last page has occupancy equal to the block size, not zero; an empty request needs an explicit convention.",
+        "Smaller pages reduce tail waste and make block-based reuse finer. They also increase table entries and management work. Measure the trade-off rather than assuming the smallest page wins."
+      ],
+      "reproduce": "Closed-book, place a 10-token synthetic request with block size 4 on physical blocks `[5, 1, 7]`. List all token locations: token 9 is block 7, offset 1, flat slot 29. Gather integer token labels on CPU, permute physical blocks while updating the table, and require identical gathered labels. Keep absolute positions unchanged and verify that unused tail slots never appear in the gather.",
+      "traps": [
+        "Using physical slot numbers as RoPE positions. Relocation must not change logical positions.",
+        "Reading the whole final page. Its unused slots can contain stale values from an earlier owner.",
+        "Expecting bit-identical floating-point attention after changing kernels. Storage relocation preserves the mathematical inputs; reduction-order differences still need the earlier numerical contract."
+      ],
+      "selfTest": [
+        {
+          "q": "With block size 4 and table `[5, 1, 7]`, where is token 4?",
+          "a": "Logical block 1 maps to physical block 1, offset 0, flat slot 4."
+        },
+        {
+          "q": "Does moving a physical block require recomputing positional keys?",
+          "a": "No, if the values and logical positions are preserved. Moving storage is not moving tokens within the sequence."
+        },
+        {
+          "q": "Why can free space in separate pages admit a request when a contiguous allocator cannot?",
+          "a": "The page table joins disjoint fixed-size pages into one logical sequence. A contiguous allocator needs one sufficiently large free interval."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` block-table translation, valid-length gathers, physical-page permutation and token-position checks.",
+      "stopWhen": "Your CPU gather preserves every valid token under physical-page permutation and excludes tail slots, and you can translate an unseen table without source code.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper's translation figures and block-size ablation plus Nano-vLLM's metadata construction reach derive depth. Servelab supplies the independent mapping checks."
+      }
+    },
+    {
+      "id": "fragmentation-page-waste",
+      "title": "Fragmentation, page waste, capacity and KV compression",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "internal-and-external-fragmentation",
+        "capacity-and-page-waste-derivation",
+        "kv-quantization-and-compression-orientation"
+      ],
+      "outcomes": [
+        "Derive logical payload, allocated slots and page waste for a length distribution.",
+        "Account for reserve and shared physical blocks when predicting admission capacity.",
+        "Distinguish exact storage management from lossy KV quantization or token removal."
+      ],
+      "why": "The KV bytes per token result is already known. The new question is how many physical blocks remain usable after tails, retained prefixes and allocator reserve consume the pool.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/block-allocator-append",
+          "note": "Make the capacity estimate an admission and append contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pagedattention-inf3",
+          "title": "PagedAttention: the three kinds of waste",
+          "url": "https://arxiv.org/html/2309.06180v1#S3.SS1",
+          "locator": "arXiv:2309.06180v1, Section 3.1 with Figure 3; Sections 4.2 to 4.3 for on-demand blocks; Section 7.2 for block-size sensitivity"
+        },
+        {
+          "resource": "tushar-kv-inf3",
+          "title": "Module 06: KV compression and quality",
+          "url": "https://inference.tusharamrit.in/modules/memory-optimization.html#concept-4",
+          "locator": "KV cache quantization, and why K and V want different treatment, then the next concept, Measuring quality honestly",
+          "depth": "Read for orientation only. Skip the Code lab and its expected concurrency figures: its paged append mutates length before capacity failure, and the driver ignores that failure. Do not use its utilization as evidence. Treat outlier patterns and quality costs as workload-dependent."
+        }
+      ],
+      "focus": [
+        "For independent dense sequences of lengths \\(n_i\\), page size \\(P\\) and payload \\(c\\) bytes per token, allocated bytes are \\(cP\\sum_i\\lceil n_i/P\\rceil\\); tail waste is \\(c\\sum_i(P\\lceil n_i/P\\rceil-n_i)\\). This excludes metadata and padding.",
+        "A nonempty private sequence wastes at most \\(P-1\\) slots in its tail. Mean waste is \\((P-1)/2\\) only if length residues are uniform; block-aligned lengths waste none.",
+        "With sharing, count the union of physical blocks, not the sum of request-table lengths. Partition the pool into pinned, reclaimable cached and uncached free blocks; reserve reduces admission headroom.",
+        "Fixed-size pages avoid external fragmentation within one homogeneous pool. Quantization adds scales, packing and possible padding; dropping attended tokens changes the computation even at unchanged dtype."
+      ],
+      "reproduce": "Derive and check a synthetic CPU ledger with no sharing: lengths `[1, 4, 5, 8]`, block size 4, 64 payload bytes per token, and an eight-block pool with one block reserved. The requests use six blocks, 24 slots and 1536 bytes for 18 tokens of payload; tail waste is six slots or 384 bytes. One additional block is admissible after reserve. Then explain how sharing would change the physical-block count, not the per-token payload formula.",
+      "traps": [
+        "Calling cached, evictable memory either permanently unavailable or simultaneously free and cached. Use disjoint accounting categories.",
+        "Assuming half a page of waste for every distribution. The length residues determine the mean.",
+        "Equating nominal bit width with allocated bytes or safe quality. Metadata and alignment affect capacity; attention and task checks govern quality."
+      ],
+      "selfTest": [
+        {
+          "q": "What tail waste does an 8-token sequence have with block size 4?",
+          "a": "None. Both pages are full; a full final page is not an extra empty page."
+        },
+        {
+          "q": "Two requests reference the same two prefix pages. How many physical pages do those references consume?",
+          "a": "Two, not four. The references still need separate table entries and ownership accounting."
+        },
+        {
+          "q": "Does exact paging justify removing middle-context tokens to fit memory?",
+          "a": "No. Paging changes addresses without dropping valid keys or values. Removing attended tokens changes attention and needs a separate quality contract."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` contiguous-versus-paged capacity ledgers over length and cancellation churn, with reserve, shared-block and page-size accounting.",
+      "stopWhen": "Your derived physical-byte and waste totals match the allocator ledger for aligned, partial and shared cases, with reserve and metadata stated separately.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper supplies fragmentation and allocation depth; Module 06 supplies optional compression orientation. Its faulty allocator demo is excluded, and servelab provides checked capacity practice."
+      }
+    },
+    {
+      "id": "block-allocator-append",
+      "title": "Free lists, reserve policies, block tables and append",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "free-lists-allocation-and-reserve-policies",
+        "sequence-block-tables-and-append-semantics"
+      ],
+      "outcomes": [
+        "Implement a free-list allocator with sequence tables and transactional append.",
+        "Derive additional page demand from committed length and scheduled writes.",
+        "Choose a reserve policy that leaves explicit headroom for running requests."
+      ],
+      "why": "Key-value append, gather, layout conversion and quantized loads supplied the write kernel. The allocator must now prove that each destination exists and has one writer before that kernel runs.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/refcount-copy-on-write",
+          "note": "Extend private allocation to shared ownership."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: free list, admission and append",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`Block.reset`, `_allocate_block`, `_deallocate_block`, `can_allocate`, `allocate`, `can_append` and `may_append`",
+          "depth": "Trace private allocation first. Keep manager and sequence block sizes consistent. Do not copy the append boundary predicate without tracing when the sampled token enters the sequence."
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: logical length versus computed state",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`schedule` prefill/decode branches and `postprocess`; follow `num_cached_tokens`, `num_scheduled_tokens` and `append_token`",
+          "depth": "Draw the memory transitions only. Leave scheduling policy comparisons for Batching, Scheduling and Admission."
+        }
+      ],
+      "focus": [
+        "For private append of \\(a\\) KV tokens to committed length \\(n\\), extra pages are \\(\\lceil(n+a)/P\\rceil-\\lceil n/P\\rceil\\). Validate capacity before changing the committed table or length.",
+        "Nano-vLLM records a sampled token before its KV is computed. Its decode boundary check uses that convention. A token list, computed-KV length and allocated capacity are three different quantities.",
+        "Allocation failure must leave the state unchanged or follow a documented rollback. A successful write publishes the new valid length only after its KV is ready.",
+        "Reserve is a policy, not missing memory. Keep a configurable number of pages outside new-request admission and state which operations may consume it; account for the next batch's growth before dispatch."
+      ],
+      "reproduce": "Implement a CPU private-page allocator from memory. With four pages of four slots and one page reserved from new-request admission, admit a five-token request, append three KV tokens without a new page, then append one with a new page. A further five-token append needs one more page: deny it if this append may not consume reserve, and verify unchanged length 9, table and free list. Release the request and recover all four pages. State your empty-request and duplicate-ID policies.",
+      "traps": [
+        "Mutating length before checking free capacity. A rejected append can leave the valid length beyond allocated storage.",
+        "Using one-token decode logic for a multi-token append. Chunked prefill can cross several boundaries in one operation.",
+        "Counting reserve twice or silently consuming it. Separate hard capacity from each operation's admission policy."
+      ],
+      "selfTest": [
+        {
+          "q": "At committed KV length 5 with block size 4, how many extra pages does a three-token append require?",
+          "a": "None. It fills the existing second page to length 8. The following one-token append needs a third page."
+        },
+        {
+          "q": "Can allocation succeed even though the newly reserved slots have no valid KV yet?",
+          "a": "Yes. Capacity can be reserved before computation. Consumers must still use the committed valid length and readiness state."
+        },
+        {
+          "q": "What must a failed append preserve?",
+          "a": "The committed tokens, valid length, ownership, block table and free-list accounting, unless an explicit rollback contract specifies equivalent restored state."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` private allocator, reserve-aware admission, multi-token append and failure-atomicity tests.",
+      "stopWhen": "Private allocate, append and release pass boundary, exhaustion, duplicate-ID and rollback checks against a separate logical-length ledger.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The pinned manager and scheduler expose allocation and append ordering at implement depth; the capacity derivation and servelab reserve/failure tests complete the policy contract."
+      }
+    },
+    {
+      "id": "refcount-copy-on-write",
+      "title": "Reference counts, copy-on-write, fork, beam and shared prefixes",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "reference-counts-and-copy-on-write",
+        "fork-beam-and-shared-prefix-ownership"
+      ],
+      "outcomes": [
+        "Implement fork and release with reference counts derived from actual owners.",
+        "Implement copy-on-write before modifying a shared partial block.",
+        "Diagnose beam-pruning and fork bugs using an independent unshared token oracle."
+      ],
+      "why": "Beyond one cache introduced sharing vocabulary. This unit makes it safe: one request's append or cancellation must not corrupt or release another request's prefix.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/eviction-preemption-cleanup",
+          "note": "Separate request release from reclaiming shared cached state."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pagedattention-inf3",
+          "title": "PagedAttention: fork and copy-on-write",
+          "url": "https://arxiv.org/html/2309.06180v1#S4.SS4",
+          "locator": "arXiv:2309.06180v1, Section 4.4, Parallel sampling, Beam search and Shared prefix, with Figures 8 to 10"
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: immutable prefix ownership",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`allocate` cached-block branch and `deallocate`; contrast with `may_append`",
+          "depth": "This revision shares cached full blocks but has no general fork or copy-on-write operation. Use the paper for that extension, not an invented Nano-vLLM API."
+        }
+      ],
+      "focus": [
+        "A fork copies the logical table and increments references to its physical blocks. Count all owners under your chosen convention, including any cache or pending-transfer pins; do not count a duplicated table as duplicated payload.",
+        "Before writing a multiply owned tail, allocate a private block, copy valid state across every layer, redirect only the writer and release its old reference. Publish after the copy is ready.",
+        "A full immutable prefix block needs no copy when append starts a fresh page. A shared partial tail does need protection, even if both branches will write the same token.",
+        "Beam selection can create multiple descendants of one parent and prune other parents. Acquire survivor references before releasing old owners, so a transient zero count cannot recycle a still-needed page."
+      ],
+      "reproduce": "In a CPU model with block size 4, create the five-token sequence `[10, 11, 12, 13, 14]` and fork it once. Both pages initially have two request references. Append `20` to the child: copy its partial tail, leaving the full prefix shared. Require three physical pages, prefix refcount 2 and tail refcounts 1 each; the parent remains length 5. Cancel the child, then the parent, and require all pages free when caching is disabled. Compare both token histories with separately copied Python lists.",
+      "traps": [
+        "Copying only keys, one layer or the token-ID metadata. Copy-on-write protects the complete stored state used by future attention.",
+        "Assuming an unused slot in a shared page has no owner. Different branches can disagree on the contents and validity of that slot.",
+        "Releasing all old beams before acquiring new beam references. This can recycle a prefix that a survivor still needs."
+      ],
+      "selfTest": [
+        {
+          "q": "A fork occurs at exactly eight committed tokens with block size 4. Does the next append copy an old page?",
+          "a": "No. Both old pages are full and immutable; each writing branch allocates a fresh tail page."
+        },
+        {
+          "q": "Does cancelling a child free the shared prefix immediately?",
+          "a": "No. It releases the child's references. The parent's references still protect the prefix, as would any other pin."
+        },
+        {
+          "q": "Why is one reference count insufficient to prove correct data?",
+          "a": "It proves ownership only if maintained correctly. A page can have a plausible count yet contain the wrong sequence, generation, layer or position; the token/state oracle checks that separately."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` fork, partial-tail copy-on-write and beam-pruning histories, checked against unshared token/state copies.",
+      "stopWhen": "Forks at partial and full boundaries preserve parent state, reference counts match all owners, and pruning or cancellation restores capacity without invalidating survivors.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Section 4.4 supplies the missing general fork/COW algorithm; Nano-vLLM supplies a narrower full-block sharing baseline. Servelab covers implementation and adversarial ownership checks."
+      }
+    },
+    {
+      "id": "eviction-preemption-cleanup",
+      "title": "Eviction, recomputation, preemption and terminal cleanup",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "eviction-recomputation-and-preemption",
+        "cancellation-and-terminal-cleanup"
+      ],
+      "outcomes": [
+        "Implement distinct transitions for cache eviction, request preemption and terminal release.",
+        "Resume a preempted request from retained token history without resampling its past.",
+        "Prove cancellation is idempotent and cannot free another owner's state."
+      ],
+      "why": "A request can stop owning KV while the prefix cache retains it. Cleanup must distinguish safe reuse from a leak, and preemption must preserve enough history to resume correctly.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/prefix-hash-radix-lookup",
+          "note": "Connect reclaimable state to a prefix index."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pagedattention-inf3",
+          "title": "PagedAttention: recovering preempted state",
+          "url": "https://arxiv.org/html/2309.06180v1#S4.SS5",
+          "locator": "arXiv:2309.06180v1, Section 4.5, Scheduling and Preemption; Section 7.3, Comparing Recomputation and Swapping",
+          "depth": "Read recomputation and swap as the paper's alternatives, not claims about today's vLLM scheduler defaults."
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: preempt and finish",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`preempt` and `postprocess`, including deallocation on end-of-sequence or output limit"
+        },
+        {
+          "resource": "mini-sglang-inf3",
+          "title": "Mini-SGLang: protection and leaf eviction",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/kvcache/radix_cache.py",
+          "locator": "`lock_handle`, `evict` and `_collect_leave_nodes_for_evict`; follow protected and evictable sizes",
+          "depth": "Trace the state transitions. Add cancellation in your own model; neither small engine is a complete cancellation specification."
+        }
+      ],
+      "focus": [
+        "Eviction removes reusable index entries and makes unpinned storage reclaimable. Preemption pauses a live request and releases or moves its KV. Terminal cleanup removes request ownership permanently.",
+        "Recomputation replays the original prompt plus committed generated tokens as inputs. It does not regenerate those tokens or advance the sampling RNG for them.",
+        "A radix leaf may be evictable only when no active handle protects it. Remove descendants before ancestors so remaining prefix paths stay valid.",
+        "Cancellation releases each owner once and invalidates future work for that request generation. Pending readers, writers or transfers must complete or acknowledge cancellation before their blocks can be overwritten."
+      ],
+      "reproduce": "Draw and execute a deterministic CPU history: allocate a request, fork it, cancel one branch twice, preempt the survivor, recompute its committed token history, then finish it. Keep a separate token-list oracle and an ownership ledger after each event. With prefix retention enabled, request references must end at zero while retained blocks remain reclaimable; explicitly evict them and require full pool recovery. Inject a late completion from the cancelled generation and reject it without releasing storage again.",
+      "traps": [
+        "Calling every retained block a leak. A leak has no valid owner or bounded reclamation path; a cached prefix can legitimately outlive its request.",
+        "Resampling old output during recomputation. The resumed history and sampling state then differ from the original request.",
+        "Treating a duplicate cancellation or late callback as a second release. Guard terminal state and request generation before decrementing references."
+      ],
+      "selfTest": [
+        {
+          "q": "Can a request be finished while a prefix derived from it remains cached?",
+          "a": "Yes. Request ownership has ended, but a reusable index can retain reclaimable state. It must remain bounded and evictable when unpinned."
+        },
+        {
+          "q": "Does preemption always reclaim every page in the request table?",
+          "a": "No. Other requests or pending operations may still pin shared pages. Release this request's references and count only newly reclaimable physical pages."
+        },
+        {
+          "q": "Which past tokens are fed to recomputation after a decode preemption?",
+          "a": "The prompt and already committed generated tokens, with their original positions and model state contract. Past sampling decisions are retained, not repeated."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` eviction, recompute, cancellation and terminal cleanup histories, including duplicate cancellation and late-event rejection.",
+      "stopWhen": "The history preserves surviving tokens, releases each owner exactly once, rejects stale events and recovers the full pool after retained entries are explicitly evicted.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper and pinned engines expose recovery, release and protected eviction. Servelab supplies the cancellation and late-event contract rather than assuming unsupported engine APIs."
+      }
+    },
+    {
+      "id": "prefix-hash-radix-lookup",
+      "title": "Prefix hashing with collision checks and radix longest-prefix lookup",
+      "hours": 6,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "prefix-hashing-and-collision-verification",
+        "trie-and-radix-longest-prefix-lookup"
+      ],
+      "outcomes": [
+        "Implement block-hash lookup with exact verification of the complete prefix identity.",
+        "Implement trie or radix longest-prefix matching with insertion and edge splitting.",
+        "Force hash collisions and prove they cannot return state from a different context."
+      ],
+      "why": "Paging chooses where KV lives; a prefix index chooses which existing state a request may reuse. Correct addressing cannot rescue a wrong prefix match.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/prefix-identity-scope",
+          "note": "Extend token equality to model, position and privacy scope."
+        }
+      ],
+      "study": [
+        {
+          "resource": "vllm-prefix-design-inf3",
+          "title": "vLLM 0.31.0: block identity and lookup",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/prefix_caching/",
+          "locator": "Automatic Prefix Caching opening hash-components list and Notes 1 to 2; Data Structure and Block Allocation",
+          "depth": "Read the full-block path. SHA-256 makes accidental collisions negligible, not impossible; including tokens in a hash input is not an exact post-hit comparison. Your educational index must verify identity explicitly."
+        },
+        {
+          "resource": "sglang-paper-inf3",
+          "title": "RadixAttention: sequence-level index",
+          "url": "https://arxiv.org/html/2312.07104v2#S3",
+          "locator": "arXiv:2312.07104v2, Section 3, RadixAttention, with Figure 3",
+          "depth": "Stop before Cache-aware scheduling; policy and outcome measurement come later."
+        },
+        {
+          "resource": "mini-sglang-inf3",
+          "title": "Mini-SGLang: radix insertion and matching",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/kvcache/radix_cache.py",
+          "locator": "`RadixTreeNode.split_at`, `RadixPrefixCache.insert_prefix`, `_tree_walk` and `_get_key_fn`; note page-aligned matches"
+        }
+      ],
+      "focus": [
+        "A block key includes preceding context, current tokens and scope extras. Identical block tokens after different earlier tokens need not have identical KV.",
+        "Hash equality selects candidates, not a proof. Retain exact immutable keys and verify the whole prefix and scope, or verify an exact parent chain plus current tokens. Comparing only the current block misses ancestor collisions.",
+        "A radix edge holds a token sequence. A partial edge match can split it without copying the underlying KV; values and references must split at the same boundary.",
+        "Longest-prefix matching stops at the first differing token. The paper uses token-sized pages; Mini-SGLang aligns matches to its configured page size. Neither index changes the attention algorithm's causal dependencies."
+      ],
+      "reproduce": "From memory, implement exact prefix matching for cached sequences `[[1, 2], [1, 2, 3], [4]]` and requests `[[1, 2, 9], [4, 5], [5]]`. Match lengths are `[2, 1, 0]`. Rebuild it with compressed radix edges and require the same lengths. For the hash index, deliberately return a constant hash for every key; prefixes `[1, 2, 7, 8]` and `[9, 2, 7, 8]` must not share state for the final block merely because its tokens match. Keep a brute-force token-prefix oracle.",
+      "traps": [
+        "Treating a strong digest as mathematically collision-free. A finite digest cannot uniquely represent all possible prefixes.",
+        "Checking only the current block after a hash hit. Nano-vLLM's `can_allocate` does this; it is not a complete ancestor-collision defense.",
+        "Returning a matching substring after divergence. Only a leading prefix has the same causal history under ordinary exact reuse."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does hashing only the current block's tokens give incorrect reuse?",
+          "a": "Its hidden states depend on earlier tokens and positions. The same block text after a different history can have different KV."
+        },
+        {
+          "q": "With a constant hash function, can an exact-key bucket index still be correct?",
+          "a": "Yes, if it compares full immutable identities inside each bucket and keeps all candidates. Performance degrades, but collisions cannot authorize a wrong match."
+        },
+        {
+          "q": "Why split a radix edge when a new request ends inside it?",
+          "a": "The split exposes the matched prefix as a node or handle boundary while preserving the old suffix. State ranges and reference protection must remain consistent."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Find Reusable Prefixes in a KV Trie",
+          "url": "https://www.tensortonic.com/problems/cs336-l18-kv-prefix-trie",
+          "locator": "Implement `kv_prefix_trie(cached_sequences, requests)`; public cases cover nested/separate branches, a duplicate cached prefix and no shared first token",
+          "note": "The free problem checks trie matches and insertion-order node IDs, not KV ownership. Add empty inputs, partial radix edges, forced ancestor collisions and eviction in `servelab`; the section mini-project covers those extensions."
+        }
+      ],
+      "stopWhen": "The named trie cases pass, radix matches agree with the brute-force oracle, and constant-hash histories never return KV from a different prefix.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The vLLM design, SGLang paper and pinned radix code cover both indexes. TensorTonic anchors trie practice; servelab adds collision verification and lifecycle tests missing from the public cases."
+      }
+    },
+    {
+      "id": "prefix-identity-scope",
+      "title": "Exact prefix identity, version scope and tenant privacy scope",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "exact-token-position-and-chat-template-identity",
+        "model-tokenizer-adapter-and-cache-layout-version-scope",
+        "tenant-and-privacy-scope",
+        "multimodal-embedding-and-media-cache-identity"
+      ],
+      "outcomes": [
+        "Explain exact reuse identity across tokens, positions, templates, model versions and adapters.",
+        "Specify a tenant-scoped namespace and invalidation rule that cannot be chosen by an untrusted client.",
+        "Identify why media placeholders and mutable embeddings need identity beyond token IDs."
+      ],
+      "why": "A prefix hit authorizes use of another request's derived state. Model compatibility and tenant isolation must be explicit rather than inferred from equal text or a low collision probability.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/kv-routing-offload-connectors",
+          "note": "Carry identity across placement and transfer boundaries."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-kv-inf3",
+          "title": "Hands-On LLM Serving and Optimization: prompt structure and tenants",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 6, Prefix Caching: Best Practices and Scaling Prefix Cache, printed pp. 227 to 230",
+          "depth": "Read the formatting and tenant examples. Prefer an authenticated cache namespace over inserting a client-supplied tenant ID into the prompt; prompt changes also change model inputs."
+        },
+        {
+          "resource": "vllm-prefix-design-inf3",
+          "title": "vLLM 0.31.0: multimodal keys and cache isolation",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/prefix_caching/",
+          "locator": "Extra hashes; A hashing example with multi-modality inputs; Cache Isolation for Security"
+        },
+        {
+          "resource": "vllm-prefix-design-inf3",
+          "title": "vLLM 0.31.0: actual extra-key fields",
+          "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/v1/core/kv_cache_utils/#vllm.v1.core.kv_cache_utils.generate_block_hash_extra_keys",
+          "locator": "`generate_block_hash_extra_keys`, `_gen_lora_extra_hash_keys`, `_gen_mm_extra_hash_keys` and `_gen_prompt_embeds_extra_hash_keys`",
+          "depth": "Trace these helpers only. The LoRA helper uses adapter name and path, not a checksum of files changed in place; invalidate or change the namespace on such updates."
+        }
+      ],
+      "focus": [
+        "Reuse requires the same effective causal inputs, positions, masks and model computation. Template or tokenizer changes can alter the leading token stream even when the displayed text looks unchanged.",
+        "Separate mathematical identity from storage compatibility. Model weights, adapter contents and positional policy affect values; dtype, layout, quantization scales and cache-group conventions affect whether stored bytes can be consumed safely.",
+        "Some fields are bound by the engine instance rather than repeated in each block key. A persistent or transferred cache needs an explicit model/tokenizer/template/adapter/layout version namespace and invalidation path.",
+        "Bind privacy scope to authenticated server-side identity. In vLLM, first-block `cache_salt` propagates through parent hashes. Equal media placeholders are insufficient: processed media and supplied embeddings also affect KV. Freeze input data before hashing."
+      ],
+      "reproduce": "Closed-book, make a hit/miss matrix for one cached token prefix. Change one field at a time: leading token, absolute position, template-produced tokens, model revision, adapter contents, cache layout, tenant namespace and media embedding. Require a miss or a verified conversion for every incompatible case. A sampling-temperature change alone may reuse prompt KV for the same already-fixed tokens, but must not reuse a sampled continuation or RNG state. Execute the matrix as CPU descriptor comparisons in `servelab`.",
+      "traps": [
+        "Treating `cache_salt` as authentication. An untrusted client must not select another tenant's namespace, and cache isolation is not a complete timing-channel defense.",
+        "Assuming stable adapter names or paths imply stable weights. In-place changes require invalidation or a content-version namespace.",
+        "Reusing prompt embeddings after mutation because token IDs did not change. Cached hashes and KV now describe the old data."
+      ],
+      "selfTest": [
+        {
+          "q": "Must changing temperature invalidate prompt KV for identical fixed input tokens?",
+          "a": "Not by itself. Temperature changes sampling after logits, not the deterministic prompt forward pass. Continuations and RNG state remain separate request state."
+        },
+        {
+          "q": "Why do two images with the same placeholder tokens need different cache identities?",
+          "a": "The placeholders are replaced by different processed embeddings. The effective model inputs differ even though the token IDs match."
+        },
+        {
+          "q": "Why can a model version be absent from a local block hash without making all reuse unsafe?",
+          "a": "The pool may belong exclusively to one fixed model instance. That binding must be enforced; cross-instance persistence or transfer cannot assume it."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` tenant/version namespaces, invalidation and token-position/media identity matrices, including unauthorized namespace selection.",
+      "stopWhen": "Your matrix rejects incompatible or unauthorized reuse and explains which fields are in each key, which are bound by the pool, and which remain request-local.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book's exact-format and tenant examples plus the verified vLLM 0.31.0 design/helpers cover identity and currency. Servelab provides namespace and mutation checks."
+      }
+    },
+    {
+      "id": "kv-routing-offload-connectors",
+      "title": "Cache-aware routing, KV offload and connector metadata",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "cache-aware-routing-and-load-balance",
+        "kv-offload-to-cpu-or-storage-vocabulary",
+        "kv-connectors-and-transfer-metadata"
+      ],
+      "outcomes": [
+        "Explain cache affinity as a routing hint that competes with queueing and load balance.",
+        "Distinguish local prefix reuse, host/storage offload and KV transfer.",
+        "Specify transfer metadata and ownership until load or save completion."
+      ],
+      "why": "A prefix can be correct but live in the wrong place. Reuse pays only if reaching compatible state costs less than recomputing it, and movement must not outlive its storage owner.",
+      "next": [
+        {
+          "unit": "inference/distributed-disaggregated-inference/kv-transfer-connectors-overlap",
+          "note": "Extend the local transfer contract to phase pools and distributed failure."
+        }
+      ],
+      "study": [
+        {
+          "resource": "sglang-paper-inf3",
+          "title": "RadixAttention: replica affinity and stale routing hints",
+          "url": "https://arxiv.org/html/2312.07104v2#A1.SS4",
+          "locator": "arXiv:2312.07104v2, Appendix A.4, Data-Parallel Distributed RadixAttention"
+        },
+        {
+          "resource": "hands-serving-kv-inf3",
+          "title": "Hands-On LLM Serving and Optimization: offload vocabulary",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Advanced KV Caching: Self-Hosting LLMs, KV cache offloading, printed pp. 261 to 262; Hands-on LMCache, printed pp. 264 to 266",
+          "depth": "Read the hierarchy and cold/warm comparison. Skip the deployment commands, compression, blending and fleet cost claims; this unit needs a local transfer model, not that model size or topology."
+        },
+        {
+          "resource": "vllm-kv-contracts-inf3",
+          "title": "vLLM 0.31.0: connector ownership and synchronization",
+          "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/distributed/kv_transfer/kv_connector/v1/base/",
+          "locator": "`KVConnectorMetadata`, `KVConnectorHandshakeMetadata`; `KVConnectorBase_V1` methods `get_num_new_matched_tokens`, `update_state_after_alloc`, `start_load_kv`, `wait_for_layer_load`, `wait_for_save` and `request_finished`",
+          "depth": "Read these contracts only. The metadata base classes do not prescribe a complete wire schema; design your compatible-state descriptor explicitly."
+        }
+      ],
+      "focus": [
+        "Compare predicted queue plus remaining prefill cost, not prefix length alone. A hot replica can have enough queue delay to lose to an idle replica that recomputes.",
+        "Offload retains compatible state on a colder tier; it does not make host or storage bytes GPU-resident. Restore time includes lookup, transfer, synchronization and any conversion, with real destination capacity reserved.",
+        "Transfer metadata needs request generation, exact prefix/position boundary, model and adapter version, tenant authorization, layer/group layout, dtype/scales, valid length and source/destination mapping. A checksum detects corruption, not permission or compatibility.",
+        "Asynchronous save pins source blocks until completion; load must finish before its consumer reads. A cancelled transfer still needs acknowledged cleanup. Routing metadata may be stale, so the destination validates the hit and falls back safely."
+      ],
+      "reproduce": "Use a labeled CPU event simulation, not a fleet measurement. Route one request between a busy prefix-hit replica and an idle miss replica by comparing queue plus service costs; increase only the hit replica's queue until routing changes. Then transfer a small token-labeled state buffer between two CPU stores with a versioned descriptor: reject one stale version, cancel during a pending copy, and keep its source pinned until the copy is acknowledged. Verify byte equality and unchanged logical positions for an accepted transfer.",
+      "traps": [
+        "Treating a router's hit prediction as authority to use state. The destination must confirm presence, identity, compatibility and authorization.",
+        "Freeing a source page as soon as a save is submitted. A pending copy can then read a recycled generation.",
+        "Assuming a larger cold-tier cache gives a faster decode path. Restoring state and attending to it still consume time and device capacity."
+      ],
+      "selfTest": [
+        {
+          "q": "When should an idle miss replica beat a busy hit replica?",
+          "a": "When its predicted queue plus recomputation and remaining service is less than the hit replica's queue plus reuse and remaining service, under the same request contract."
+        },
+        {
+          "q": "Is a matching checksum enough to accept transferred KV?",
+          "a": "No. It can confirm payload integrity but not model compatibility, logical positions, tenant permission or freshness."
+        },
+        {
+          "q": "In the V1 connector contract, what does deferred freeing on `request_finished` require?",
+          "a": "The engine must retain the request's blocks while asynchronous save/send owns them, and release them when transfer completion is reported. Submission alone is not completion."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` labeled routing/offload simulation and local descriptor, stale-version, cancellation and deferred-free checks.",
+      "stopWhen": "Your local simulation changes routing at the predicted queue crossover, rejects incompatible transfers and preserves source ownership through completion or acknowledged cancellation.",
+      "fit": {
+        "verdict": "added",
+        "note": "The paper and book cover affinity and offload, but not the current connector lifecycle. The verified V1 metadata and deferred-free API fills that coverage/currency gap; practice stays in CPU simulation."
+      }
+    },
+    {
+      "id": "allocator-property-tests",
+      "title": "Allocator and prefix-index state machines under randomized property tests",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "allocator-and-prefix-index-state-machines",
+        "randomized-operation-sequence-properties",
+        "no-double-allocation-free-or-stale-reference"
+      ],
+      "outcomes": [
+        "Implement randomized allocator and prefix-index histories against an independent logical-state model.",
+        "Check capacity conservation, exact references, token-position correctness and leak-free cancellation after every operation.",
+        "Shrink a failing history and distinguish a stale-reference bug from an accounting bug."
+      ],
+      "why": "Single-operation tests miss interactions between fork, collision, eviction and cancellation. State-machine tests must explain which earlier transition first broke ownership, not just report a later wrong answer.",
+      "next": [
+        {
+          "unit": "inference/kv-memory-prefix-reuse/prefix-reuse-outcomes",
+          "note": "Measure only policies whose state histories remain correct."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mini-sglang-inf3",
+          "title": "Mini-SGLang: allocator regressions",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/tests/core/test_cache_allocate.py",
+          "locator": "`TestAllocateEvictPageAlignment`: all six tests, from `test_allocate_after_evict_returns_page_aligned` through `test_check_integrity_passes_after_evict_cycle`"
+        },
+        {
+          "resource": "mini-sglang-inf3",
+          "title": "Mini-SGLang: what the integrity check proves",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/cache.py",
+          "locator": "`check_integrity`, `_allocate`, `_free` and `_page_to_token`; compare with `RadixPrefixCache.check_integrity` in the radix file read earlier",
+          "depth": "The manager check counts free plus indexed pages and checks alignment; the radix integrity method is empty at this commit. These are not proofs of unique ownership or active-request state."
+        },
+        {
+          "resource": "inference-lab-inf3",
+          "title": "Inference Systems Laboratory: KV evidence contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Correctness requirements, KV physical/logical ownership; Failure-injection requirements, prefix fork/collision/eviction and request terminal phases",
+          "depth": "Use the KV requirements only. The rest of the track capstone is not this unit's assignment."
+        }
+      ],
+      "focus": [
+        "The independent oracle keeps request token lists, scope descriptors and expected ownership, not the implementation's tables or hashes. Recompute expected references from owners after each operation.",
+        "Partition physical pages into disjoint free/reclaimable and pinned sets under one convention. Check unique allocation, nonnegative references, valid table generations, immutable shared prefixes and correct valid-length gathers.",
+        "Generate successful and rejected allocate/append/fork/free/evict/cancel operations. Bias toward page boundaries, tiny pools, repeated terminal events, constant hashes, scope changes and reused physical IDs.",
+        "Record the seed and full event history, then shrink while preserving operation preconditions. Inject deliberate double-free, missing decrement and stale-index mutants; an invariant suite that cannot detect them is incomplete."
+      ],
+      "reproduce": "Build a deterministic CPU stale-reference history: cache a full page, release its request, evict it, reuse that physical page for different tokens, then look up the old prefix. The correct result is a miss. Deliberately omit index invalidation and require the oracle to catch the stale hit. Add randomized histories around this trace, checking invariants after every event and full recovery after all owners and retained entries are removed. Keep a minimized failing trace for each injected mutant.",
+      "traps": [
+        "Checking only that total counts add up. One missing page and one double allocation can cancel numerically.",
+        "Comparing the implementation with an oracle that reads its block tables. The same mapping bug then appears in both answers.",
+        "Sampling only operations that succeed. Failure, duplicate cleanup and cancellation races are part of the state contract."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is nonnegative refcount weaker than exact refcount?",
+          "a": "A positive extra count leaks capacity; a positive but insufficient count can free state while another owner still needs it. Compare counts with the complete owner ledger."
+        },
+        {
+          "q": "Can a stale table entry be dangerous even when its physical page ID is valid?",
+          "a": "Yes. The page may have been recycled for a new owner. A generation or equivalent lifecycle check must distinguish the old reference from the current allocation."
+        },
+        {
+          "q": "What makes a shrunk failure useful?",
+          "a": "It remains a valid operation history, still exposes the same violated contract, and is small enough to identify the first incorrect transition."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Mini-SGLang: `TestAllocateEvictPageAlignment`",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/tests/core/test_cache_allocate.py",
+          "locator": "Port the six named regression contracts to your allocator: post-eviction alignment, consecutive allocation non-overlap, aligned free slots, requested page count, page-to-token expansion and integrity after an eviction cycle",
+          "note": "The section mini-project covers the broader `servelab` randomized state machines, independent token/owner oracle, collision/cancellation histories and mutation checks. These deterministic tests alone do not cover them."
+        }
+      ],
+      "stopWhen": "Your allocator passes the six regression contracts and replayable randomized histories, detects the injected lifecycle mutants and returns every physical page after explicit final cleanup.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The pinned regression suite provides precise allocation cases; its limited integrity checks are explicit. The laboratory's KV requirements and servelab state machines supply randomized implementation depth."
+      }
+    },
+    {
+      "id": "prefix-reuse-outcomes",
+      "title": "Prefix reuse, memory pressure and fairness measured against outcomes",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "prefix-reuse-ttft-and-goodput-measurement",
+        "eviction-fairness-and-memory-pressure-measurement",
+        "hit-rate-versus-application-outcome"
+      ],
+      "outcomes": [
+        "Compare reuse off/on under fixed arrivals, token streams, memory budgets and output contracts.",
+        "Explain TTFT and goodput changes using skipped prefill, lookup, queueing, pressure and eviction traces.",
+        "Retain a benefit region and a high-hit-rate region with no better outcome, including per-tenant fairness evidence."
+      ],
+      "why": "A cache-hit counter measures avoided work, not user success. Retaining prefixes or favoring hot requests can improve that counter while reducing admission headroom or delaying other tenants.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/memory-admission-preemption",
+          "note": "Use the pressure traces to design safe admission and preemption."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/priority-fairness-blocking",
+          "note": "Separate cache affinity from bounded waiting and fairness."
+        }
+      ],
+      "study": [
+        {
+          "resource": "sglang-paper-inf3",
+          "title": "RadixAttention: scheduling, outcomes and ablations",
+          "url": "https://arxiv.org/html/2312.07104v2#S6.SS3",
+          "locator": "arXiv:2312.07104v2, Section 3, Cache-aware scheduling and starvation caveat; Sections 6.1 to 6.3, metrics, short/long multi-turn chat and Figure 8 ablations",
+          "depth": "Read the cache experiments, not constrained decoding or API speculation. The offline hit-rate theorem is not an online fairness or goodput guarantee; the paper's older baselines are not your current-engine comparison."
+        },
+        {
+          "resource": "hands-serving-kv-inf3",
+          "title": "Hands-On LLM Serving and Optimization: cold versus retained prefixes",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 6, Prefix Caching, Use Cases and Best Practices, printed pp. 226 to 228; Chapter 7, Hands-on LMCache, Run benchmarks and Performance analysis, printed pp. 264 to 266",
+          "depth": "Use the cold/warm and pressure comparisons as experiment designs. Do not adopt the Chapter 6 claim of almost no drawback as a guarantee, or change prompt order merely to raise hits without rechecking quality."
+        }
+      ],
+      "focus": [
+        "Define hit rate as reused prompt tokens divided by eligible prompt tokens and state the denominator. Separate active shared pages from retained evictable pages, and keep cold and warmed trials distinct.",
+        "Use the earlier validated load generator. Define client TTFT as arrival/submission to first nonempty generated output, including queueing; define goodput as quality-accepted requests meeting the declared latency targets per measurement time.",
+        "Reused prefix KV skips its repeated forward computation. New suffix queries and decode steps still attend to valid prefix state, so a token-hit fraction is not a proportional latency reduction.",
+        "Keep cache policy and scheduler order separate in ablations. Record per-request and per-tenant waiting, admission, rejection, eviction and preemption alongside latency tails and memory; longest-prefix-first can starve cold traffic."
+      ],
+      "reproduce": "Replay the same `servelab` manifest with reuse off/on, first using a labeled deterministic CPU model with explicit prefill, decode, lookup and transfer costs. Vary reuse and output length separately, then add pressure and two-tenant skew; retain one benefit region and one high-hit region where lookup, queueing or memory policy prevents better goodput. On your GPU, repeat one bounded pair using a fitting model and the earlier endpoint harness; otherwise retain the simulation and label its timing assumptions. Keep arrivals, prompts, output limits, sampling, quality/SLO rules and pool budget fixed within each pair, with raw request and page traces.",
+      "traps": [
+        "Using a high hit rate as the optimization target. Long decode, lookup cost or a hot replica's queue can dominate the saved prefill.",
+        "Comparing warm reuse with a cold baseline while also changing arrival rate or output length. Name the cache-state treatment and change only the intended mechanism.",
+        "Hiding cold-tenant rejection or cancellation in aggregate throughput. Count unsuccessful work and report per-tenant outcomes, not only completed hot requests."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can 90 percent prompt-token reuse fail to give a tenfold TTFT improvement?",
+          "a": "TTFT also includes queueing, tokenization, lookup, remaining attention, sampling and streaming. The remaining suffix still attends to the prefix, and cost need not scale linearly with newly computed tokens."
+        },
+        {
+          "q": "Can retained prefix data reduce capacity without changing physical pool size?",
+          "a": "Yes, if the policy pins it or reserves too much space for retention. Immediately evictable pages need not reduce hard admission capacity, but reclaiming them still has policy and management costs."
+        },
+        {
+          "q": "What evidence separates reuse benefit from cache-aware scheduling benefit?",
+          "a": "Hold scheduler order fixed while toggling reuse, then hold reuse fixed while changing order. Preserve the same arrivals and outputs and compare raw waiting and execution traces."
+        },
+        {
+          "q": "When is a high-hit negative result valid evidence?",
+          "a": "When outputs and workload controls pass, the hit denominator is clear, and traces identify the overhead or remaining bottleneck that prevents better latency or goodput. Simulation must be labeled, not presented as device measurement."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` reuse off/on, page-size/reserve and eviction ablations under controlled reuse, pressure and tenant skew, with TTFT, goodput, fairness and a high-hit negative result.",
+      "stopWhen": "You can explain a controlled benefit and a high-hit non-improvement from request/page traces, reconcile memory with the allocator ledger and report cold-tenant outcomes without overstating simulated evidence.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper's cache ablations and starvation caveat plus the book's cold/warm pressure comparison supply measurement framing. Servelab provides controlled outcome practice with a single-GPU or labeled CPU path."
+      }
+    }
+  ]
+}

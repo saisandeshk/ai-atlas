@@ -1,0 +1,1186 @@
+{
+  "section": "batching-scheduling-admission",
+  "addedResources": [
+    {
+      "id": "vllm-serve-args",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM v0.31.0 serve CLI and scheduler arguments",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Look up scheduler flags and defaults: `--max-num-seqs`, `--max-num-batched-tokens`, `--max-num-active-seqs`, `--enable-chunked-prefill`, `--long-prefill-token-threshold` and `--scheduling-policy`. Runtime defaults vary by GPU class, so check them against the installed v0.31.0 behavior.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/cli/serve/"
+    },
+    {
+      "id": "vllm-metrics-design",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM v0.31.0 metrics design",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read the WAITING, RUNNING and PREEMPTED request states and the queue, inference, prefill and decode interval definitions. Swapped-preemption metrics are legacy in v1. The exported counters, including `vllm:num_requests_waiting_by_reason` and `vllm:num_preemptions`, are listed on the Production Metrics page, https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
+      "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/"
+    },
+    {
+      "id": "vllm-bench-cli",
+      "role": "support",
+      "priority": "support",
+      "name": "vLLM v0.31.0 benchmark CLI",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Use `vllm bench serve` with `--request-rate` for offered-load sweeps, and `vllm bench throughput` and `vllm bench latency` for offline endpoint and phase baselines. Fix the dataset, lengths, request rate, warmup and sampling, and keep raw per-request results; do not copy example rates as targets.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/"
+    },
+    {
+      "id": "vllm-online-serving",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM v0.31.0 online serving",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read the `/abort_requests` endpoint and the Responses cancel API for request cancellation. Verify client-disconnect aborts on your engine; the page does not cover them.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/"
+    },
+    {
+      "id": "vllm-lora",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM v0.31.0 LoRA adapters",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read per-request `LoRARequest` serving, server-wide `--lora-modules` with `max_loras` and `max_lora_rank`, and why adapter-slot pressure rewards grouping same-adapter requests.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/features/lora/"
+    },
+    {
+      "id": "vllm-structured-outputs",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM v0.31.0 structured outputs",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read the xgrammar and guidance backends, the `choice`, `regex`, `json`, `grammar` and `structural_tag` options in `StructuredOutputsParams`, and the `--structured-outputs-config.backend` flag.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/features/structured_outputs/"
+    },
+    {
+      "id": "vllm-multimodal",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM v0.31.0 multimodal inputs",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read `limit_mm_per_prompt`, content hashing with `multi_modal_uuids` in Cached Inputs, and the video pruning flags as examples of encoder-side scheduling cost.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/features/multimodal_inputs/"
+    },
+    {
+      "id": "tensortonic-cache-routing",
+      "role": "practice",
+      "priority": "support",
+      "name": "TensorTonic Language Modeling from Scratch - Route Cache-Aware Prefill Requests",
+      "provider": "TensorTonic",
+      "access": "Free",
+      "use": "Solve after the affinity unit: assign each request to a feasible worker by longest cached prefix, lowest projected uncached load, greatest remaining capacity, then lowest worker id, with -1 when infeasible.",
+      "url": "https://www.tensortonic.com/problems/cs336-l18-cache-aware-prefill-routing"
+    }
+  ],
+  "units": [
+    {
+      "id": "batching-modes-iteration-scheduling",
+      "title": "Static, dynamic and continuous batching and iteration-level scheduling",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "static-dynamic-and-continuous-batching",
+        "iteration-level-token-scheduling"
+      ],
+      "outcomes": [
+        "Contrast static, dynamic and continuous batching, and name the drain condition each one removes.",
+        "Explain iteration-level scheduling and selective batching at the operation level.",
+        "Explain why a throughput-maximizing batch can harm TTFT, inter-token latency and memory availability."
+      ],
+      "why": "Real request lengths vary by orders of magnitude, so a fixed batch spends most slots idle. Iteration-level refill is the mechanism every later policy in this section assumes.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/request-sets-token-budgets",
+          "note": "Bound each iteration with token budgets and sequence-count limits."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/prefill-decode-mixing-chunking",
+          "note": "Handle the prefill and decode interference that refill creates."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-ch6-inf4",
+          "title": "Request batching: static, dynamic and continuous",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 6, Request Batching and Scheduling-Level Optimizations: Why Do We Need Batching in Real-Time Serving? (p.190) with Fig 6-1 and Fig 6-2 at max batch size 3; Dynamic Batching in Online Inference (p.191) with max batch size, max delay time and the ferry-boat tuning example; Continuous Batching for LLM Online Inference (pp.192-194) with Fig 6-3 idle time and Fig 6-4 in-flight refill"
+        },
+        {
+          "resource": "tushar-batching-inf4",
+          "title": "Batching: static cost, iteration loop and selective batching",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Concepts 01 and 02 with the utilization arithmetic, the five-step iteration loop and selective batching; Math by hand Part 1 (a) to (d)"
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Orca iteration-level scheduling and selective batching",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 3 iteration-level scheduling with Fig 4; Section 3.2 selective batching with Fig 5; Section 4.2 Algorithm 1 iteration-level FCFS with max batch size and `max_tokens` reservation",
+          "depth": "Skim the distributed execution in the rest of Section 4. Treat the 36.9x FasterTransformer throughput result as the paper's result on its hardware and workload, not a target."
+        }
+      ],
+      "focus": [
+        "Slot utilization under static batching is mean length over max length, so one long request idles every shorter slot until it finishes.",
+        "Dynamic batching bounds assembly wait with a timeout but still drains the whole batch, so variable output lengths still idle slots.",
+        "Iteration-level scheduling admits and evicts at every decode step, which keeps the batch full regardless of length variance.",
+        "Selective batching flattens position-independent operations across sequences into one large matrix multiply and handles attention per sequence, which is what makes mixed-position batches implementable."
+      ],
+      "reproduce": "Closed-book, compute slot utilization for output lengths [20, 35, 40, 60, 80, 120, 200, 900]: 900 iterations, 1455 useful sequence-steps, 20.2%. Then show batch 32 with mean 180 and longest 2000 gives 9%, and explain why growth moves it down: the max reaches further into the tail while the mean stays put.",
+      "traps": [
+        "Calling continuous batching dynamic batching with a shorter timeout. Dynamic batching still runs each batch to completion; continuous batching changes the scheduling granularity to the iteration, which needs per-sequence KV management.",
+        "Assuming a larger static batch is always better. Utilization falls as batch size grows because the longest of more samples grows while the mean does not, and padding wastes both arithmetic and KV memory.",
+        "Quoting the 36.9x Orca result as expected gain. It compares against FasterTransformer on the paper's GPT-3 175B workload; your simulator should reproduce the direction and rough magnitude, not the number."
+      ],
+      "selfTest": [
+        {
+          "q": "A static batch of 8 has output lengths [20, 35, 40, 60, 80, 120, 200, 900]. What is the slot utilization?",
+          "a": "20.2%. Useful work is 1455 sequence-steps and capacity is \\(8 \\times 900 = 7200\\) sequence-steps."
+        },
+        {
+          "q": "The batch grows to 32 with mean length 180 and longest 2000. What happens to utilization and why?",
+          "a": "It falls to 9%: \\(32 \\times 180 = 5760\\) useful over \\(32 \\times 2000 = 64{,}000\\) slots. More samples reach further into the length tail, so the max grows faster than the mean."
+        },
+        {
+          "q": "What scheduling change removes the wait for the longest sequence?",
+          "a": "Decide every iteration instead of every request: evict each finished sequence and admit a waiting one on the next step, so slots refill without waiting for the batch maximum."
+        },
+        {
+          "q": "Why can the QKV projection batch across sequences at different positions while attention cannot?",
+          "a": "The projection treats each token as an independent matrix row, so all tokens form one flat batch. Attention must stay within each request, since each sequence has its own KV length and positions."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Simulate Continuous Decode Batching",
+          "url": "https://www.tensortonic.com/problems/cs336-l18-continuous-batching-scheduler",
+          "locator": "Implement `continuous_batching_scheduler(requests, kv_capacity)`; public cases `scheduler_public_1`, `scheduler_public_2` and `scheduler_public_parallel_completion`",
+          "note": "The public cases check arrival-order admission with skip-if-unfit, the two admission passes, active and finished ordering, and `kv_tokens_in_use` as actual use rather than reserved footprint. Compare its reserve-full-footprint rule with your simulator admission in the simulator unit."
+        }
+      ],
+      "stopWhen": "You reproduce both utilization numbers without notes and can trace which requests enter and leave each iteration on a small arrival timeline.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book sections, the Orca scheduling sections and the TensorTonic admission simulation cover both topics at explain depth with checked practice."
+      }
+    },
+    {
+      "id": "request-sets-token-budgets",
+      "title": "Waiting, running and preempted sets, token budgets and runner limits",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "waiting-running-preempted-and-terminal-request-sets",
+        "token-budgets-and-maximum-batched-tokens",
+        "sequence-count-and-model-runner-limits"
+      ],
+      "outcomes": [
+        "Name the WAITING, RUNNING, PREEMPTED and terminal request sets and the event that moves a request between them.",
+        "Derive whether a waiting request fits from active KV tokens, its new prefill tokens, decode tokens, batch limits and memory reserve.",
+        "Predict admit, defer or preempt outcomes for a small request mix under stated budgets."
+      ],
+      "why": "Every iteration must fit both a request-count limit and a token limit. Misreading either knob admits batches that run out of memory or leaves paid capacity idle.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/memory-admission-preemption",
+          "note": "Add KV reserve and preemption to the budget check."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/scheduler-invariants",
+          "note": "Turn the set and budget rules into checked state invariants."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-ch6-inf4",
+          "title": "Two knobs: max batch size and max batched tokens",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Continuous Batching for LLM Online Inference (pp.194-195): Fig 6-5 relating max batch size, max number of tokens and max model length, with prefill bound by token count and decode by batch size; Example 6-1 `vllm serve Qwen/Qwen2.5-7B-Instruct --max-num-batched-tokens 4096 --max-num-seqs 128`"
+        },
+        {
+          "resource": "nano-vllm-inf4",
+          "title": "Nano-vLLM request sets and budget loop",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`Scheduler.schedule`: the waiting and running deques with `SequenceStatus` in `nanovllm/engine/sequence.py`; the prefill loop over `max_num_seqs` and `max_num_batched_tokens` with chunking for the first sequence only; the decode loop with `can_append`, `may_append` and `preempt`"
+        },
+        {
+          "resource": "vllm-serve-args",
+          "title": "vLLM scheduler flags and defaults",
+          "url": "https://docs.vllm.ai/en/v0.31.0/cli/serve/",
+          "locator": "SchedulerConfig arguments: `--max-num-seqs`, `--max-num-batched-tokens`, `--max-num-active-seqs`, `--enable-chunked-prefill`, `--long-prefill-token-threshold` and `--scheduling-policy` with `fcfs` and `priority`"
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Orca admission with reservation",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 Algorithm 1: `Select` admits at most `max_bs` requests in arrival order and reserves `max_tokens` slots per new request against `n_slots`, which guarantees its future KV fits"
+        }
+      ],
+      "focus": [
+        "WAITING holds admitted-but-unscheduled and preempted requests, RUNNING holds scheduled ones, and terminal states end ownership and free blocks. PREEMPTED returns to WAITING, never directly to RUNNING.",
+        "The token budget counts every scheduled token: one per decode sequence plus each prefill chunk. The sequence count caps live requests. A batch must satisfy both at once.",
+        "Nano-vLLM schedules prefill first and returns early when any prefill is scheduled, so decode-only iterations happen only with no schedulable prefill. Only the first waiting sequence may take a partial chunk.",
+        "Conservative admission reserves the full footprint up front, as Orca does with `max_tokens`. Optimistic admission packs tighter and relies on preemption, which the next unit covers."
+      ],
+      "reproduce": "Closed-book, decide admission with chunked prefill off, a token budget of 2048 and at most 8 sequences: 3 running sequences hold 1500 cached tokens and need 3 decode tokens, and two waiting prefills need 1200 and 900 tokens. Admit the 1200-token prefill (\\(3 + 1200 = 1203 \\le 2048\\)) and defer the 900-token one (\\(1203 + 900 = 2103 > 2048\\)). State both checks in tokens and in sequence count, then say what changes with chunked prefill on (the vLLM default): the 900-token prefill gets an 845-token chunk instead of waiting.",
+      "traps": [
+        "Treating the two knobs as phase-exclusive. Decode tokens also consume the token budget (one each), and long prefills also consume sequence slots; either limit can bind in any iteration.",
+        "Reading `--max-num-seqs` as the only running cap. When `--max-num-active-seqs` is set, vLLM admits at most that many into RUNNING and parks the rest in deferred waiting; unset, the cap is `max_num_seqs`.",
+        "Copying Example 6-1 values as defaults. Installed v0.31.0 defaults vary by GPU class and context, so derive feasibility from the flags on your engine, not from the book example."
+      ],
+      "selfTest": [
+        {
+          "q": "What moves a request from RUNNING to PREEMPTED, and where does it go next?",
+          "a": "Memory pressure during decode admission: the scheduler reclaims its blocks and requeues it at the front of WAITING. It must be rescheduled and recomputed, never resumed in place."
+        },
+        {
+          "q": "A batch holds 4 decode sequences under a 2048-token budget. How many tokens of prefill chunk fit?",
+          "a": "\\(2048 - 4 = 2044\\) tokens. Each decode sequence contributes one token to the budget."
+        },
+        {
+          "q": "Why does Orca reserve `max_tokens` slots for a new request instead of its prompt length?",
+          "a": "Output length is unknown at admission, so only the request's maximum possible footprint guarantees its future KV fits. The cost is lower admission under uncertain lengths."
+        },
+        {
+          "q": "Nano-vLLM has a schedulable prefill and free decode slots. Does the decode loop run?",
+          "a": "No. `schedule` returns as soon as any prefill is scheduled, so decode-only iterations run only when no waiting prefill fits."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: token-budget and sequence-count admission with admit, defer and preempt decisions on fixed request mixes.",
+      "stopWhen": "You derive admit or defer for a new mix without notes and can name the set each request sits in after every scheduler step.",
+      "fit": {
+        "verdict": "added",
+        "note": "Currency failed for current engine flags and defaults; the pinned vLLM serve CLI reference fills that gap beside the book and Nano-vLLM."
+      }
+    },
+    {
+      "id": "memory-admission-preemption",
+      "title": "Memory admission, KV reserve and preemption by recompute or swap",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "memory-admission-and-kv-reserve",
+        "preemption-recomputation-and-swap-vocabulary"
+      ],
+      "outcomes": [
+        "Explain optimistic versus reserved memory admission and the deadlock each one prevents or risks.",
+        "Contrast recompute and swap preemption and pick the cheaper one from sequence size and interconnect numbers.",
+        "Derive the reserve needed to admit one more request without evicting a running one."
+      ],
+      "why": "Token budgets mean nothing if the KV blocks do not exist. Admission bets memory on unknown output lengths, and preemption is how the scheduler collects when the bet loses.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/prefill-decode-mixing-chunking",
+          "note": "Use chunking to bound the prefill side of the memory bet."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/scheduler-invariants",
+          "note": "State the no-overcommit rule this unit motivates."
+        }
+      ],
+      "study": [
+        {
+          "resource": "tushar-batching-inf4",
+          "title": "Admission bets, swap versus recompute, and the crossover",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Concept 05: admission control as a bet on unknown lengths; swap cost of moving 2.5 GiB at about 50 GB/s each way against recompute cost of one prefill; short sequences favour recomputation and long ones favour swapping",
+          "depth": "The module's 2.5 GiB at about 50 GB/s is about 54 ms each way once GiB is converted to GB; keep the two units apart."
+        },
+        {
+          "resource": "nano-vllm-inf4",
+          "title": "Nano-vLLM recompute preemption walkthrough",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`Scheduler.preempt` with `BlockManager.deallocate` in `nanovllm/engine/block_manager.py`, requeue at the waiting front with `is_prefill` reset; the decode loop evicting from the running tail via `can_append` before `may_append`"
+        },
+        {
+          "resource": "vllm-metrics-design",
+          "title": "Preemption states and counters in vLLM",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "PREEMPTED state with the queue-time and inference-time interval split across preemptions, and the note that swapped-preemption metrics are legacy because v1 preempts by recomputation. The `vllm:num_preemptions` counter and `vllm:request_num_preemptions` histogram are listed on the Production Metrics page, https://docs.vllm.ai/en/v0.31.0/usage/metrics/"
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Orca reservation against scheduler deadlock",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 around Algorithm 1: reserving `max_tokens` slots per new request so the K/V manager never deadlocks with no space for the next token"
+        }
+      ],
+      "focus": [
+        "Admission commits blocks for tokens that do not exist yet. Reserving the maximum bounds the risk and lowers fill; admitting on current length fills tighter and needs a working preemption path.",
+        "Recompute discards KV and re-runs prefill on resume. Swap copies KV to host memory and back. The crossover sits where one prefill costs more than the round trip.",
+        "Nano-vLLM only recomputes: `preempt` frees every block and the request restarts prefill from its tokens. vLLM v1 also preempts by recomputation; swap is gone, so size the reserve for recompute cost, not transfer cost.",
+        "Repeated preemption of the same request signals an undersized reserve or an overpacked batch, not bad luck. Count preemptions per request and treat growth as the alarm."
+      ],
+      "reproduce": "Closed-book, compute the swap round trip for 2.5 GB at 50 GB/s each way: about 50 ms per direction, about 100 ms total. Then state the decision rule: recompute wins when one prefill of the sequence costs less than that round trip, which favours short sequences, and swap wins for long ones where prefill exceeds transfer.",
+      "traps": [
+        "Assuming swap exists in vLLM v1. The engine removed swap space and preempts by recomputation, so a plan that prices preemption as a PCIe transfer misprices every eviction.",
+        "Pricing preemption as free because tokens are reused. Recompute re-runs the full prefill and re-consumes its token budget, which delays every other waiter.",
+        "Reserving exactly the prompt length. Growth during decode is the risk, so the reserve must cover future tokens or the scheduler must be ready to preempt on the first append that does not fit."
+      ],
+      "selfTest": [
+        {
+          "q": "What deadlock does Orca reservation prevent?",
+          "a": "A pool full of running requests with no free slot for any next token, where no iteration can issue and no request can finish to free space. Reserving the maximum footprint admits only requests whose completion fits."
+        },
+        {
+          "q": "A 2.5 GB sequence faces preemption on a 50 GB/s link. What does swap cost, and when is recompute cheaper?",
+          "a": "About 50 ms each way, about 100 ms total. Recompute is cheaper when one prefill of that sequence costs less than the round trip."
+        },
+        {
+          "q": "Nano-vLLM preempts a decode sequence. What exactly is freed and what restarts?",
+          "a": "`deallocate` frees all its blocks and zeroes its cached tokens, and the sequence requeues at the waiting front with `is_prefill` set, so it restarts with prefill from its stored tokens."
+        },
+        {
+          "q": "One request preempts five times while others preempt never. What should you change?",
+          "a": "The admission policy, not the request. Repeated preemption of the same victim means the reserve is too small or the batch is overpacked; raise the reserve or tighten admission."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: KV-reserve admission, recompute preemption with per-request preemption counts, and a workload that forces repeated eviction.",
+      "stopWhen": "You price swap against recompute for a sized sequence without notes and can trace blocks from admission through preemption to resume.",
+      "fit": {
+        "verdict": "added",
+        "note": "Currency failed for current preemption behavior; the pinned vLLM metrics design corrects swap-era assumptions beside Tushar and Nano-vLLM."
+      }
+    },
+    {
+      "id": "prefill-decode-mixing-chunking",
+      "title": "Mixing prefill and decode, and chunked prefill to protect decode",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "prefill-and-decode-mixing",
+        "chunked-prefill-and-decode-protection"
+      ],
+      "outcomes": [
+        "Derive per-iteration cost with and without chunking for a stated prompt size and decode batch.",
+        "Predict how a chunk budget moves TTFT, worst inter-token latency and total prefill time.",
+        "Measure the chunk-budget tradeoff on your GPU or simulator and name the budget region that holds."
+      ],
+      "why": "One long prefill can freeze every streaming user for hundreds of milliseconds. Chunking bounds each iteration to a token budget, which protects decode without a separate prefill fleet.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Ablate chunking against the simpler scheduler and keep the losing regime."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/saturation-queue-recovery",
+          "note": "See how the budget behaves from light load through saturation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hands-serving-ch6-inf4",
+          "title": "Chunked prefill against decode stalls",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Continuous Batching with Chunked Prefill (pp.195-198): Fig 6-6 happy path, Fig 6-7 prefill-priority stall, Fig 6-8 hybrid batching still stalls, Fig 6-9 chunked prefill; the ITL gain against TTFT and prefill-overhead cost; chunk size as part of max batched tokens"
+        },
+        {
+          "resource": "sarathi-inf4",
+          "title": "Sarathi-Serve stall-free batching and token budget",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Sections 3.2 (arXiv:2403.02310v3) generation stalls with Fig 7; 4.1 chunked-prefills; 4.2 stall-free batching with Algorithm 3, which packs running decodes first, then a partial prefill, then new requests within the token budget; 4.3 token-budget choice from the TBT SLO with tile-quantization and profiling notes",
+          "depth": "Skip the pipeline-parallel bubble analysis in Fig 8 and Section 5.3 until the distributed section. Treat Fig 10, Fig 11, Fig 14 and Table 4 numbers as the paper's results on its hardware, not targets."
+        },
+        {
+          "resource": "aisys-scheduling-inf4",
+          "title": "Stall-free scheduling cost analysis",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Stall-Free Scheduling (Chunked Prefill) (p.998) with Table 16-5 chunk costs; the \\(N(N + 1)/2\\) per-layer-per-head attention analysis (p.1001), which shows chunking smooths latency without reducing total work"
+        },
+        {
+          "resource": "tushar-batching-inf4",
+          "title": "Interference numbers and budget tradeoff",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Concepts 03 and 04: the four scheduling policies with their costs; the token-budget fill order with decode tokens first; the budget tradeoff table for 256, 2048 and 8192 tokens"
+        }
+      ],
+      "focus": [
+        "Prefill-priority gives best TTFT and worst token-stream stability, decode-priority gives smooth streams and starving prefills, chunking bounds every iteration, and disaggregation removes the conflict with separate hardware.",
+        "Each iteration fills decode tokens first because they are cheap and latency-critical, then one prefill chunk with the remainder of the budget, so iteration time stays near constant.",
+        "Chunking changes when attention work runs, not how much: self-attention still performs about \\(N(N + 1)/2\\) QK dot products per layer per head. The mixed iteration is nearly free because decode leaves arithmetic capacity unused.",
+        "Small budgets steady the stream but underfeed the GPU and add chunk overhead; large budgets approach unchunked stalls. Sarathi-Serve evaluates 512 to 2048; the vLLM 0.31.0 server default is 2048, or 8192 on GPUs with 70 GiB or more other than A100."
+      ],
+      "reproduce": "Closed-book, price an 8000-token prompt arriving while 32 sequences decode, with the module's Llama-3-8B on H100 model at 70% of 989 TFLOP/s and its bandwidth model: unchunked prefill costs about 186 ms, which is the worst inter-token latency the decoders see. At a 2048-token budget the prefill takes 4 iterations (three 2016-token chunks and a 1952-token tail) of about 47 ms each, total about 188 ms, so worst inter-token latency falls to about 47 ms while TTFT barely moves.",
+      "traps": [
+        "Saying chunked prefill reduces total attention work. It replays KV reads per chunk and adds launch overhead, so total work is unchanged or slightly higher; the win is bounded iteration time.",
+        "Calling chunking a pure TTFT-for-TPOT trade. The mixed iteration moves the same bytes as a decode-only one while doing far more arithmetic, so both phases beat running separately.",
+        "Setting the smallest budget that fits. Down at 256 tokens the GPU starves and overhead dominates, which the paper's Fig 14 shows as up to about 25% extra prefill cost at chunk 512 against negligible cost at 2048."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does one 8000-token prefill stall 32 decoders for about 186 ms?",
+          "a": "In the module's Llama-3-8B on H100 model, the prefill runs as one compute-bound unit costing \\(2 \\times 8.03 \\times 10^{9} \\times 8000\\) FLOP, about 186 ms at 70% of 989 TFLOP/s. The decoders share the same hardware turn by turn, so they emit nothing until it finishes."
+        },
+        {
+          "q": "At a 2048-token budget with 32 decoders, how many iterations does that prefill take and what bounds each one?",
+          "a": "4 iterations carrying at most 2016 prefill tokens each: three full chunks and a 1952-token tail. Each iteration is bounded by the budget, so the worst inter-token latency is one chunk cost, about 47 ms, instead of the full 186 ms."
+        },
+        {
+          "q": "Does chunking change the total QK work of the prefill?",
+          "a": "No. Self-attention still performs about \\(N(N + 1)/2\\) dot products per layer per head; chunking only spreads them across iterations. Repeated KV reads add a small overhead."
+        },
+        {
+          "q": "The budget drops from 2048 to 256. What improves and what degrades?",
+          "a": "Worst inter-token latency improves toward pure decode steps. TTFT stretches over more iterations, throughput dips because 256 tokens underfeed the GPU, and per-chunk overhead grows."
+        }
+      ],
+      "practice": [
+        {
+          "name": "LLM Inference Module 05 code lab: chunk-budget sweep",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Code lab: run the budget table for 256, 512, 1024, 2048 and 8192 and record throughput with ITL p50, p99 and max",
+          "note": "Expect ITL max to fall sharply as the budget shrinks with ITL p50 nearly flat and a slight throughput dip at 256. Absolute numbers depend on the sampling seed; keep the table for the ablation unit."
+        }
+      ],
+      "stopWhen": "You derive the module's 186 ms stall and the 4-iteration chunked schedule without notes and can defend a budget choice from a measured table.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book, Sarathi-Serve Sections 3 to 4, the AI Systems cost analysis and the module code lab cover mixing and chunking at derive and measure depth."
+      }
+    },
+    {
+      "id": "priority-fairness-blocking",
+      "title": "Priorities, deadlines, fairness, starvation and head-of-line blocking",
+      "hours": 4,
+      "target": [
+        "explain",
+        "derive"
+      ],
+      "topics": [
+        "priority-classes-and-deadlines",
+        "fairness-starvation-and-priority-inversion",
+        "head-of-line-blocking-and-convoy-effects"
+      ],
+      "outcomes": [
+        "Explain priority classes, deadlines, fairness, starvation, priority inversion and head-of-line blocking with scheduler examples.",
+        "Derive the convoy delay a long prompt imposes on short requests behind it under FCFS.",
+        "Define an aging rule that bounds maximum wait without abandoning priority order."
+      ],
+      "why": "FCFS treats unequal work equally, so one pasted document can delay every request behind it. Priority fixes that for some users by hurting others, which is why fairness needs an explicit definition.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/adversarial-scheduler-workloads",
+          "note": "Build priority and bursty workloads that expose starvation."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/cancellation-overload-goodput",
+          "note": "Shed and reject when priority alone cannot meet deadlines."
+        }
+      ],
+      "study": [
+        {
+          "resource": "tushar-batching-inf4",
+          "title": "Queueing policy, fairness and the starvation trap",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Concept 05: FCFS against shortest-job-first with unknown output lengths; the priority and fairness discussion with its unclear unit of fairness in requests, tokens or GPU time; the starvation trap of decode-priority policies"
+        },
+        {
+          "resource": "aisys-scheduling-inf4",
+          "title": "Latency-aware scheduling and tiered quality of service",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Latency-Aware Scheduling and Dynamic Routing (p.1001) with the six-prompt two-GPU routing example; Quality of Service (p.1147) with `configs/qos.yaml` reserving 10%, 30% and 60% of prefill and decode workers for premium, standard and free tiers"
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Iteration-level FCFS and the batch-size tradeoff",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 iteration-level FCFS definition: an earlier arrival runs the same or more iterations than a later one; the max batch size knob trading throughput against latency"
+        }
+      ],
+      "focus": [
+        "FCFS is fair in arrival order but blind to size, so a long prefill at the head blocks every short request behind it. That convoy is head-of-line blocking in scheduler form.",
+        "The fair unit is a choice, not a fact. One 100k-token request and a thousand 100-token requests consume comparable resources through different shapes, so state whether you equalize requests, tokens or GPU time.",
+        "Any strict priority can starve the bottom class under sustained load, because higher-priority work always exists. Aging raises a waiter's priority with its wait until it must win.",
+        "Reserved capacity shares the machine under contention; it does not promise latency. A premium tier with 10% reserved still queues when its own demand exceeds that share."
+      ],
+      "reproduce": "Closed-book, derive convoy delay under FCFS with the module's Llama-3-8B on H100 model, whose prefill runs at \\(R = 692 \\times 10^{12} / (2 \\times 8.03 \\times 10^{9}) \\approx 43{,}000 \\text{ tokens/s}\\): one 100000-token prompt ahead of ten 100-token prompts adds about \\(100000 / 43000 = 2.3 \\text{ s}\\) to every short request's TTFT, independent of their size. Then state an aging rule, such as effective priority rising linearly with wait, that bounds any request's wait under continuous decode-priority load.",
+      "traps": [
+        "Promising that priority lowers latency for everyone. It redistributes wait from one class to another; the total work is unchanged and the bottom class waits longer.",
+        "Reading a reserved fraction as a latency guarantee. `reserved_fraction` splits workers under contention, so a tier still queues past its share and still suffers its own convoys.",
+        "Reaching for shortest-job-first to fix convoys. Output length is unknown at admission and predictions are poor, so exact SJF is unavailable; size-aware admission needs an honest proxy such as prompt length."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does FCFS produce convoys even though it is fair?",
+          "a": "It orders by arrival without regard to size. A long prefill at the head occupies the shared hardware while short requests behind it wait, so small jobs pay for work unrelated to their size."
+        },
+        {
+          "q": "What makes priority inversion possible in a serving scheduler?",
+          "a": "A low-priority request holds a contended resource, such as the running batch or KV blocks, while a high-priority waiter cannot proceed until it releases. The priority order says the waiter matters more, but the resource order serves the holder first."
+        },
+        {
+          "q": "A decode-priority scheduler never idles under load. Why can a new request still starve?",
+          "a": "There is always more decode work under sustained load, so prefills never win an iteration. Without aging, a request can wait unboundedly while the machine looks fully utilized."
+        },
+        {
+          "q": "Premium reserves 10% of workers. Does a premium request skip queueing?",
+          "a": "No. The reserve protects premium from free-tier contention, not from premium-tier contention. Past its share it queues like everyone else."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: priority classes with aging, a convoy workload, and a starvation test that fails without the aging rule.",
+      "stopWhen": "You derive a convoy delay without notes and can show which workload starves under each policy you studied.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The module policy section, the AI Systems QoS and routing sections and Orca FCFS cover all three topics at explain and derive depth, with practice in the mini-project."
+      }
+    },
+    {
+      "id": "cancellation-overload-goodput",
+      "title": "Cancellation, disconnects, overload, rejection and SLO-aware goodput",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "request-cancellation-and-disconnect-handling",
+        "overload-rejection-and-load-shedding",
+        "slo-aware-goodput"
+      ],
+      "outcomes": [
+        "Explain cancellation and client-disconnect handling with cleanup ownership at every request phase.",
+        "Explain early rejection and load shedding as goodput protection under overload.",
+        "Implement an abort path that frees blocks, records a terminal state and keeps goodput accounting honest."
+      ],
+      "why": "Load always exceeds capacity eventually. Requests that miss their deadline are wasted work, and cancelled requests that leak blocks slowly strangle the server.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/saturation-queue-recovery",
+          "note": "Watch rejection and recovery across a full saturation sweep."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/adversarial-scheduler-workloads",
+          "note": "Test cancellation races with a dedicated workload."
+        }
+      ],
+      "study": [
+        {
+          "resource": "aisys-scheduling-inf4",
+          "title": "Early rejection and fault tolerance",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Early Rejection (Admission Control) (pp.1144-1147): predicting SLO misses from queue and throughput signals, fail-fast against queue-then-miss, Fig 18-8 instance load on p.1147; the Quality of Service tail (pp.1147-1148) with TTFT and TPOT p99 monitoring and the prefill and decode queue split; Fault Tolerance (p.1148) with decode-node failover via KV pooling"
+        },
+        {
+          "resource": "mini-sglang-inf4",
+          "title": "Mini-SGLang abort path",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/prefill.py",
+          "locator": "`PrefillManager.abort_req` in `python/minisgl/scheduler/prefill.py` with `DecodeManager.abort_req` in `python/minisgl/scheduler/decode.py`, dispatched from `_process_one_msg` in `python/minisgl/scheduler/scheduler.py`; trace where each path frees the request's resources"
+        },
+        {
+          "resource": "vllm-online-serving",
+          "title": "vLLM cancellation endpoints",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
+          "locator": "`/abort_requests` for all in-flight or listed request ids without pausing the scheduler; the Responses cancel API at `/v1/responses/{response_id}/cancel`. The page does not cover client disconnects, which the v0.31.0 server handles in `with_cancellation`; confirm on your engine that dropping a streaming client stops its tokens and frees its blocks"
+        },
+        {
+          "resource": "vllm-metrics-design",
+          "title": "Terminal accounting in vLLM metrics",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "The queue-time against inference-time split, and TTFT, inter-token and end-to-end latency histograms as the goodput inputs. `vllm:request_success` with its `finished_reason` label (`abort` among the v0.31.0 values) is listed on the Production Metrics page, https://docs.vllm.ai/en/v0.31.0/usage/metrics/"
+        }
+      ],
+      "focus": [
+        "Cancel at any phase: waiting removal, prefill-chunk abandonment and decode eviction must all free blocks and mark a terminal state, or the leak accumulates one request at a time.",
+        "A client disconnect is an implicit cancel. The server cannot rely on the client to say goodbye, so streaming endpoints must watch the connection and abort promptly.",
+        "Early rejection protects the accepted load: refusing work that would miss its SLO keeps TTFT and TPOT for the rest, while queueing everything maximizes completions and minimizes goodput.",
+        "Goodput counts only completions that meet the SLO over offered requests. Aborted, rejected and late requests are not throughput, and retried work multiplies load as the systems overload-control unit shows."
+      ],
+      "reproduce": "Closed-book, implement `abort(request_id)` in your simulator: remove the request from whichever set holds it, free its blocks, append a terminal ABORTED record with its phase, and assert no block stays reserved. Then compute goodput for 10 offered requests with 7 on-time completions, 2 late completions and 1 abort: \\(7/10 = 0.7\\), not 9/10.",
+      "traps": [
+        "Deleting the request from the queue and calling it cancelled. Its KV blocks stay reserved until something frees them, so the leak only shows under sustained cancel load.",
+        "Counting retries as new offered load. Client retries multiply the original overload, which is why rejection must pair with retry budgets rather than replace them.",
+        "Averaging latency over completed requests only. Dropped and late requests vanish from that mean while users still waited, so goodput over offered load is the honest denominator."
+      ],
+      "selfTest": [
+        {
+          "q": "A decode request disconnects mid-stream. List what the server must do.",
+          "a": "Abort the in-flight request, free its KV blocks, mark it terminal with an abort reason, and stop scheduling further tokens for it. Anything less leaks memory or burns compute on a gone client."
+        },
+        {
+          "q": "Why does early rejection raise goodput while lowering raw completions?",
+          "a": "It refuses requests predicted to miss their SLO, so the accepted ones meet TTFT and TPOT targets. Raw completions fall by the rejected count, but SLO-meeting completions over offered load rise."
+        },
+        {
+          "q": "Ten requests are offered: 7 on time, 2 late, 1 aborted. What are throughput and goodput denominators telling you?",
+          "a": "9 completions over 10 offered is completion rate, not success. Goodput is 7/10: only on-time completions count, because late outputs already failed the contract."
+        },
+        {
+          "q": "Where does Mini-SGLang route a cancel, and why two paths?",
+          "a": "Through `_process_one_msg` to `PrefillManager.abort_req` or `DecodeManager.abort_req`. A request can sit in either manager, so the cancel must reach whichever one owns it."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: cancellation at every phase with leak checks, overload rejection with retry budgets, and goodput computed over offered load.",
+      "stopWhen": "Your abort path passes a cancel-at-every-phase test with zero leaked blocks, and you compute goodput over offered load without notes.",
+      "fit": {
+        "verdict": "added",
+        "note": "Practice and currency failed for engine cancellation and terminal accounting; the pinned online-serving and metrics-design references fill both gaps beside the books."
+      }
+    },
+    {
+      "id": "scheduler-invariants",
+      "title": "Scheduler state, resource, progress and bounded-wait invariants",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "scheduler-state-and-resource-invariants",
+        "progress-and-bounded-wait-invariants"
+      ],
+      "outcomes": [
+        "Define state, resource, progress and bounded-wait invariants for a continuous-batching scheduler.",
+        "Derive the no-overcommit admission rule from reserved blocks, running growth and free capacity.",
+        "Implement per-iteration invariant checks that catch leaks, double frees and stalled waiters."
+      ],
+      "why": "Policies change, but the invariants do not. Every admission, preemption, cancel and finish path must preserve the same ownership and progress rules, or one path corrupts the rest.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/batching-simulator-replay",
+          "note": "Assert these invariants on every simulated iteration."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Keep the invariants fixed while ablating policy."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nano-vllm-inf4",
+          "title": "Nano-vLLM scheduler as a checkable state machine",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`Scheduler` waiting and running deques with `SequenceStatus` in `nanovllm/engine/sequence.py`; allocate, append, share, preempt and free transitions in `nanovllm/engine/block_manager.py`; `postprocess` finishing with `running.remove` and `deallocate`"
+        },
+        {
+          "resource": "mini-sglang-inf4",
+          "title": "Mini-SGLang scheduler structure and lifecycle",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/docs/structures.md",
+          "locator": "`docs/structures.md` System Architecture with Key Components and the 8-step Data Flow request lifecycle; `Scheduler._schedule_next_batch` with `PrefillManager` and `DecodeManager` in `python/minisgl/scheduler/`",
+          "depth": "Read the rank-0 loop only. Skip the multi-GPU broadcast, ZMQ and NCCL parts on one GPU."
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Orca reservation and progress properties",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 Algorithm 1 reservation of `max_tokens` slots per new request against `n_slots`; the iteration-level FCFS property that an earlier arrival runs the same or more iterations than a later one"
+        }
+      ],
+      "focus": [
+        "Ownership: every block is free or referenced by live requests with a matching count, and every RUNNING request holds a non-empty block table. Freeing checks the count; shared prefix blocks survive one holder's release.",
+        "No overcommit: reserved plus running growth fits free capacity before any admit. Reservation is the static form; vLLM's runtime form is the `watermark` headroom and the full-input-length admission check, `scheduler_reserve_full_isl`, in its scheduler configuration.",
+        "Progress: every iteration retires finished requests, frees their blocks and advances at least one waiter or token. Steady completions with a never-served waiter still violate progress.",
+        "Bounded wait: aging or reserved capacity turns FCFS order into a wait bound. State the bound as a number of iterations or requests served, not as good intentions."
+      ],
+      "reproduce": "Closed-book, write `check_invariants` for a Nano-vLLM-style scheduler and run it after every `schedule`, `preempt` and `postprocess` call: reserved plus running blocks fit total blocks, every RUNNING sequence has a non-empty block table, every FINISHED sequence left running with freed blocks, and the longest waiter advances within the stated bound. Show it catching a finish path that forgets `deallocate`.",
+      "traps": [
+        "Checking invariants only on admission. Preempt, finish and abort paths move the same state, so the check must run after every transition, including the error paths.",
+        "Confusing a positive reference count with exclusive ownership. Shared prefix blocks outlive one holder, so freeing must decrement and test rather than release outright.",
+        "Reading steady throughput as progress. A scheduler can complete easy requests forever while one waiter starves, which throughput hides and the bounded-wait check exposes."
+      ],
+      "selfTest": [
+        {
+          "q": "State the no-overcommit rule in one sentence with its three quantities.",
+          "a": "Admit only when reserved blocks plus running growth fits free blocks. The three quantities are current reservations, worst-case growth of running requests, and free capacity."
+        },
+        {
+          "q": "A finish path removes the sequence from running but skips `deallocate`. Which check catches it?",
+          "a": "The ownership check: the finished sequence still holds blocks that no live request references, so they never return to the free list. Held plus free still equals total, so a count check alone misses it."
+        },
+        {
+          "q": "Why must the invariant check run after preemption, not just admission?",
+          "a": "Preemption moves blocks back to free and the request back to waiting with reset counters. A wrong requeue or a missed counter reset corrupts the same state admission relies on."
+        },
+        {
+          "q": "Throughput is flat at a healthy value but the longest waiter never advances. Which invariant fails?",
+          "a": "Bounded wait. Progress of completions does not imply progress of every waiter; the wait bound needs its own check with the waiter's age."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-iteration invariant asserts with randomized admit, preempt, cancel and finish histories, including a seeded leak it must catch.",
+      "stopWhen": "Your checks run green on a randomized history and catch an injected missing-free and an injected stuck waiter.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Nano-vLLM, Mini-SGLang and Orca supply the state machine, lifecycle and reservation properties at derive and implement depth, with checks in the mini-project."
+      }
+    },
+    {
+      "id": "batching-simulator-replay",
+      "title": "A continuous-batching simulator with deterministic replay and event traces",
+      "hours": 6,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "continuous-batching-simulator",
+        "deterministic-workload-replay",
+        "per-request-scheduler-event-traces"
+      ],
+      "outcomes": [
+        "Implement a continuous-batching simulator with admission, token and memory budgets, chunking, preemption, priority, cancellation and overload.",
+        "Replay a fixed workload deterministically and emit per-request state and timing traces.",
+        "Compare two policies from request traces rather than aggregate throughput alone."
+      ],
+      "why": "Policies cannot be compared on a live server with random arrivals. A deterministic simulator with event traces turns scheduling opinions into checkable claims before touching a real engine.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/adversarial-scheduler-workloads",
+          "note": "Feed the simulator workloads designed to break policies."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Carry one simulated win through ablation into a real engine."
+        }
+      ],
+      "study": [
+        {
+          "resource": "nano-vllm-inf4",
+          "title": "Nano-vLLM engine loop as the simulation skeleton",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/llm_engine.py",
+          "locator": "`LLMEngine.step` in `nanovllm/engine/llm_engine.py`: schedule, model call, postprocess; mirror it as admit, step, complete and free in your simulator, with `Scheduler.schedule`, `preempt` and `postprocess` in `nanovllm/engine/scheduler.py` as the policy surface"
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Orca scheduling algorithm as the correctness baseline",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 Algorithm 1 with `Select` in arrival order, `max_bs` cap and `max_tokens` reservation; hand-trace one small timeline through it before trusting your simulator on the same input"
+        },
+        {
+          "resource": "tensortonic-batching-inf4",
+          "title": "Deterministic replay contract",
+          "url": "https://www.tensortonic.com/problems/cs336-l18-continuous-batching-scheduler",
+          "locator": "The `continuous_batching_scheduler` statement: arrival-time ordering with input-order tiebreaks, admission before decoding and again after completions release capacity, idle-gap skipping, and recorded step dicts with admitted, active, finished and `kv_tokens_in_use` as actual use"
+        },
+        {
+          "resource": "mini-sglang-inf4",
+          "title": "Mini-SGLang scheduler loop and driver script",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/scheduler.py",
+          "locator": "`Scheduler._schedule_next_batch` with `PrefillManager.schedule_next_batch(prefill_budget)` and overlap against normal loop in `python/minisgl/scheduler/scheduler.py`; the manual end-to-end driver in `tests/core/test_scheduler.py` as a single-prompt loop (it sends one request and drains detokenizer messages; it emits no scheduler traces, so record them in your own simulator)"
+        },
+        {
+          "resource": "inference-lab-inf4",
+          "title": "Scheduler laboratory path",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "The scheduler and KV checkpoints and the contribution requirement: a recorded corpus with priority and cancellation distributions, no-overcommit and bounded-overload invariants, and one contribution carried through the real engine path with a reference fallback and versioned configuration"
+        }
+      ],
+      "focus": [
+        "One loop does everything: admit arrivals, assemble the iteration within budgets, advance one step, retire finished requests and free their state. Every policy is a different admit-and-assemble rule inside that loop.",
+        "Determinism needs a fixed request corpus, a fixed seed and a recorded configuration. Same inputs must yield byte-identical traces, including preemption and cancel events.",
+        "Trace per request, not per batch: arrival, admit, each state move, preemptions, cancel and completion with timestamps. Policy differences hide in request timelines that batch averages erase.",
+        "The simulator proves scheduling logic, not speed. Execution times, kernel shapes, cache reuse and host overhead are modeled coarsely, so every simulated win needs a bounded real-engine check later."
+      ],
+      "reproduce": "Closed-book, hand-simulate requests A with 2 prompt and 2 new tokens and B with 1 prompt and 1 new token at capacity 4 with full-footprint reservation: step 0 admits A, active [A], finished none, 3 tokens in use; step 1 finishes A, admits B, active [B], finished [A], 1 in use; step 2 finishes B with nothing active and 0 in use. Then implement that trace as your simulator's first regression test.",
+      "traps": [
+        "Iterating over sets or dicts for admission order. Iteration order is not arrival order, so the replay diverges run to run; sort explicitly by arrival time and input order.",
+        "Recording state after the first admission pass. Completions free capacity for a second pass in the same step, so record after the second pass or the trace understates fill.",
+        "Quoting simulator milliseconds as engine results. The cost model is approximate by construction; the simulator ranks policies and the engine decides by how much."
+      ],
+      "selfTest": [
+        {
+          "q": "What three inputs must be fixed for a deterministic replay?",
+          "a": "The request corpus with arrivals and lengths, the random seed, and the full scheduler configuration. Any one of them drifting breaks trace equality."
+        },
+        {
+          "q": "Why record traces per request instead of per batch?",
+          "a": "Batch aggregates average away who waited, who preempted and who starved. Request timelines show which policy decision caused each delay."
+        },
+        {
+          "q": "Your simulator says policy X beats Y by 30%. What is still unknown?",
+          "a": "Whether the win transfers: real execution times, kernel shapes, cache reuse and host overhead differ from the model, so X needs a bounded real-engine run before the claim stands."
+        },
+        {
+          "q": "Where does the second admission pass fit in one simulated step?",
+          "a": "After completions release capacity and before recording. Admit, decode, complete, admit again, then record admitted, active, finished and tokens in use."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the continuous-batching simulator with deterministic replay, per-request event traces, and the hand-simulated regression test above.",
+      "stopWhen": "Two runs of your simulator on the fixed corpus produce identical traces, and your hand trace matches the implementation exactly.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Nano-vLLM, Orca, the TensorTonic replay contract, Mini-SGLang and the laboratory path cover the simulator, replay and traces at implement depth."
+      }
+    },
+    {
+      "id": "adversarial-scheduler-workloads",
+      "title": "Long-prefill, decode-heavy, mixed, bursty, priority and cancellation workloads",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "long-prefill-and-decode-heavy-workloads",
+        "mixed-length-and-bursty-workloads",
+        "priority-and-cancellation-workloads"
+      ],
+      "outcomes": [
+        "Predict queue and phase behavior for long-prefill, decode-heavy, mixed, bursty, priority and cancellation workloads.",
+        "Compare policies on at least three workload distributions with latency, goodput, memory, fairness and error evidence.",
+        "Keep one workload where the preferred policy regresses and explain it from traces."
+      ],
+      "why": "A policy tuned on chat traffic meets a pasted document sooner or later. Adversarial workloads reveal each policy's failure mode while the fix is still cheap.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/saturation-queue-recovery",
+          "note": "Push the same workloads through saturation and recovery."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Turn the win and the regression into an ablation result."
+        }
+      ],
+      "study": [
+        {
+          "resource": "sarathi-inf4",
+          "title": "Sarathi-Serve capacity workloads and SLOs",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Section 5 (arXiv:2403.02310v3) capacity evaluation: `openchat_sharegpt4` with median prompt 1730 tokens against `arxiv_summarization` with median 7059, under strict and relaxed latency SLOs with Fig 10 and Fig 11; Section 5.4 ablation of chunking and hybrid batching in isolation and combined",
+          "depth": "Use the workload shapes and SLO split as your design template. Treat the capacity multiples as the paper's results on its hardware, not targets."
+        },
+        {
+          "resource": "tushar-batching-inf4",
+          "title": "Workload model and extension points",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Code lab workload model: lognormal prompts and outputs with Poisson arrivals; the follow-up exercises for a KV memory cap with recompute preemption and a priority queue with aging"
+        },
+        {
+          "resource": "hands-serving-ch6-inf4",
+          "title": "Mixed-length workload that motivates refill",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Continuous Batching for LLM Online Inference (pp.192-194): Fig 6-3 uneven lengths causing idle time and Fig 6-4 in-flight refill; reproduce this shape as the first adversarial mix before adding bursts, priorities and cancels"
+        }
+      ],
+      "focus": [
+        "Each workload attacks one mechanism: long prefills attack inter-token latency, decode-heavy mixes attack the memory cap, mixed lengths attack convoys, bursts attack the queue, priorities attack starvation, and cancels attack cleanup.",
+        "Freeze the corpus across policies. Same arrivals, same lengths, same seed; only the policy changes, or the comparison measures the workload instead of the scheduler.",
+        "Report tails, fairness and errors beside throughput. The adversarial signal lives in p99, maximum wait, preemption counts and leaked blocks, not in the mean.",
+        "Keep the losing workload in the report. A policy without a documented regression is an untested policy, and the checkpoint requires one."
+      ],
+      "reproduce": "Closed-book, specify a six-request adversarial set: one 8000-token prefill, three short chats, one simultaneous arrival pair, and one request cancelled mid-decode. Predict for unchunked continuous batching: worst inter-token latency near one full prefill cost during the long prefill (about 186 ms in the module's Llama-3-8B on H100 example; recompute it for your model and GPU), the burst pair queues behind the running batch, and the cancel must free its blocks or memory accounting drifts. Then run it and compare prediction against trace.",
+      "traps": [
+        "Tuning on one friendly workload. Chat-only traffic hides prefill stalls, document-only traffic hides convoys, and steady rates hide bursts; the suite needs all of them.",
+        "Regenerating the workload per policy run. Fresh random draws confound policy effects with sampling noise, so generate once, save the corpus and replay it.",
+        "Averaging the adversarial tail away. A mean over a bursty run can look healthy while every burst request missed its SLO; percentiles and per-request timelines carry the verdict."
+      ],
+      "selfTest": [
+        {
+          "q": "Which workload breaks a decode-priority scheduler, and what is the visible symptom?",
+          "a": "Sustained overload with fresh arrivals. Prefills never win an iteration, so new requests queue unboundedly while decoders look busy; the symptom is growing TTFT with flat token output."
+        },
+        {
+          "q": "Why pair a long-prefill workload with a cancellation workload?",
+          "a": "Long prefills raise preemption and eviction pressure, which exercises the paths cancels also use. A leak that is invisible at low churn becomes measurable when both run together."
+        },
+        {
+          "q": "Two policies tie on throughput but differ on the bursty workload. What decides?",
+          "a": "Tail and fairness evidence: p99 and maximum wait during bursts, preemption counts, and whether any burst request starved. Throughput already failed to discriminate."
+        },
+        {
+          "q": "Why must the corpus stay fixed across policies?",
+          "a": "Otherwise arrival and length differences explain the outcome as well as the policy does. A frozen corpus with a fixed seed isolates the scheduler as the only variable."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the long-prefill, decode-heavy, mixed, bursty, priority and cancellation workload suite with frozen corpora and per-policy traces.",
+      "stopWhen": "Three frozen workloads rank two policies differently and you explain each ranking from request traces, including one regression.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Sarathi-Serve evaluation design, the module workload model and the book's mixed-length shape cover all three workload topics at measure depth."
+      }
+    },
+    {
+      "id": "saturation-queue-recovery",
+      "title": "Offered-load sweeps through saturation, queue growth and recovery",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "offered-load-sweep-through-saturation",
+        "queue-growth-and-recovery-analysis"
+      ],
+      "outcomes": [
+        "Sweep offered load through saturation with fixed corpus, warmup and repeated trials.",
+        "Report queue growth, admission, shedding, tail behavior and recovery from raw per-request records.",
+        "Separate queueing stalls from execution stalls in the saturated regime."
+      ],
+      "why": "Every capacity number is a saturation story. Without a sweep that crosses the knee, a single load point cannot tell headroom from overload.",
+      "next": [
+        {
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Ablate policy at fixed load points chosen from the sweep."
+        },
+        {
+          "route": "inference",
+          "note": "Carry the sweep method into capacity and engine-extension work."
+        }
+      ],
+      "study": [
+        {
+          "resource": "vllm-bench-cli",
+          "title": "Offered-load sweeps with vLLM bench serve",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/",
+          "locator": "`vllm bench serve` with `--request-rate` sweeps across saturation; `vllm bench throughput` and `vllm bench latency` for endpoint and phase baselines; keep the raw per-request results with fixed dataset, lengths, warmup and sampling"
+        },
+        {
+          "resource": "sarathi-inf4",
+          "title": "Capacity under strict and relaxed SLOs",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Section 5 (arXiv:2403.02310v3): capacity as sustainable load under strict and relaxed latency SLOs with Fig 10 and Fig 11; the finding that baseline schedulers violate the p99 TBT SLO before reaching maximum throughput, so relaxing the target raises capacity"
+        },
+        {
+          "resource": "aisys-scheduling-inf4",
+          "title": "Inflection point and rejection under load",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Dynamic Batching (pp.991-992): p50 latency staying flat or dropping with throughput up to an inflection point, with SLO-relative batch-delay sizing; Early Rejection (p.1144) with Fig 18-8 instance load under admission control"
+        }
+      ],
+      "focus": [
+        "Drive open-loop with intended-time latency, as the saturation unit in the observability section defines. Closed-loop generation waits for replies and hides the queue you came to measure.",
+        "Saturation has a signature: queue wait passes service time, goodput flattens while offered load climbs, and p99 explodes first. Little's law \\(L = \\lambda W\\) ties the queue length you see to the wait users feel.",
+        "Recovery is part of the result: after the burst ends, report drain time until the queue empties and latency returns. A system that never drains never recovered.",
+        "Queueing versus execution needs separate evidence. Queue, prefill and decode timestamps per request tell whether the stall sat in WAITING or inside the model step."
+      ],
+      "reproduce": "Closed-book, specify a sweep: double the request rate from clearly below to clearly above capacity on a frozen corpus with warmup and three trials per point. Predict the shape: flat p50 to an inflection, then p99 explosion with goodput plateau while completions keep rising late. Then state the recovery check: stop arrivals, measure drain time to empty queue and baseline latency.",
+      "traps": [
+        "Calling a closed-loop sweep a saturation test. Self-throttling caps offered load at served load, so the queue never grows past the concurrency limit and the overload an open-loop rate would expose stays hidden.",
+        "Reading capacity off peak throughput without an SLO. Baselines in this unit's papers saturate their latency target first, so the honest capacity is the highest load that still meets TTFT and TPOT.",
+        "Reporting one run per load point. Queueing systems vary run to run near saturation, so single runs confuse noise with the knee; repeat and show the spread."
+      ],
+      "selfTest": [
+        {
+          "q": "p50 is flat while p99 climbs steeply with load. Saturated or not?",
+          "a": "Entering saturation. The mean still looks healthy because most requests pass, but the tail shows queueing taking over; push further and goodput flattens."
+        },
+        {
+          "q": "Why must the sweep generator be open-loop?",
+          "a": "Open-loop arrivals follow the intended schedule regardless of replies, so offered load is independent of served load. Closed-loop waits for replies and throttles itself exactly when the queue forms."
+        },
+        {
+          "q": "How do you tell a queueing stall from an execution stall at high load?",
+          "a": "Split per-request time into queue, prefill and decode stamps. Growth concentrated in WAITING is queueing; growth inside model steps with a full batch is execution."
+        },
+        {
+          "q": "The burst ends but p99 stays high for a minute. What do you report?",
+          "a": "The drain time: how long the leftover queue took to empty and latency to return to baseline. Recovery behavior, not just the saturated peak."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: offered-load sweeps through saturation with raw records, queue-growth and recovery analysis, and the stall split.",
+      "stopWhen": "Your sweep shows the inflection with error bars and you explain the saturated regime from per-request stamps, including drain time.",
+      "fit": {
+        "verdict": "added",
+        "note": "Currency failed for current sweep tooling; the pinned vLLM benchmark CLI fills that gap beside Sarathi-Serve and AI Systems."
+      }
+    },
+    {
+      "id": "policy-ablation-engine-change",
+      "title": "Policy ablation, a negative regime and a bounded real-engine change",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "policy-ablation-and-negative-regime",
+        "real-engine-bounded-policy-change"
+      ],
+      "outcomes": [
+        "Isolate one scheduling mechanism with ablations that freeze everything else, including the corpus.",
+        "Preserve a negative regime where the change loses and explain the shifted bottleneck from traces.",
+        "Implement one bounded policy change in a real engine with fallback and regression tests."
+      ],
+      "why": "A policy that only ever wins in reports is untested. Ablations separate the mechanism from the hype, and a bounded engine change proves the simulator result transfers.",
+      "next": [
+        {
+          "unit": "inference/capacity-economics-engine-extension/contribution-hypothesis-change",
+          "note": "Grow the bounded change into a defended engine contribution."
+        },
+        {
+          "unit": "inference/capacity-economics-engine-extension/baselines-ablations-regions",
+          "note": "Reuse the ablation discipline across workload regions."
+        }
+      ],
+      "study": [
+        {
+          "resource": "sarathi-inf4",
+          "title": "Sarathi-Serve ablation of chunking and hybrid batching",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Section 5.4 (arXiv:2403.02310v3): Fig 14 chunked-prefill overhead against no chunking for Yi-34B, and Table 4 with hybrid-batching-only, chunked-prefills-only and combined TTFT and TBT over 128 requests at token budget 1024"
+        },
+        {
+          "resource": "aisys-code15-inf4",
+          "title": "Continuous-batching baseline against optimized pair",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch15",
+          "locator": "`baseline_continuous_batching.py` against `optimized_continuous_batching.py` with the shared harness in `compare.py`, run as `python -m ch15.compare` under CPU-safe or single-GPU settings",
+          "depth": "Skip the multigpu pair and the disaggregation and MoE targets in this unit. Re-measure on your hardware; the repo's bundled number is its result on its hardware, not your target."
+        },
+        {
+          "resource": "nano-vllm-inf4",
+          "title": "Bounded scheduler change in Nano-vLLM",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm",
+          "locator": "Fork `nanovllm/engine/scheduler.py` with `llm_engine.py` and `block_manager.py`: add event logging that explains every admit, chunk, preempt and finish transition, then implement one bounded admission or chunking change with regression tests"
+        }
+      ],
+      "focus": [
+        "Ablate one mechanism at a time with the corpus, seed, budgets and hardware frozen. The paper's three-way split of hybrid-only, chunked-only and combined is the template: each run differs by exactly one rule.",
+        "The negative regime is a deliverable, not an embarrassment. Name the workload where the change loses, show the trace, and explain the shifted bottleneck in overhead, memory pressure or tail cost.",
+        "Bound the engine change to one policy with a reference fallback and a versioned flag. Reviewers must be able to turn it off and get the old behavior with no stale state.",
+        "Diagnose transfer explicitly when the simulator and the engine disagree. Execution times, kernel shapes, cache reuse and host overhead are the usual suspects, and each one is checkable."
+      ],
+      "reproduce": "Closed-book, write the three-run ablation plan for chunked prefill on a frozen mixed corpus: hybrid-batching-only, chunked-prefills-only, and combined. Predict the paper's direction on its hardware: hybrid-only has the lowest TTFT but keeps TBT stalls, chunked-only cuts TBT but stretches TTFT, and combined has the lowest TBT with TTFT between the two (Table 4). Then state your engine-change checklist: one flag, fallback to reference, regression tests, and per-request traces for both positions.",
+      "traps": [
+        "Sweeping every flag combination instead of isolating mechanisms. Combinatorial tuning attributes nothing; three runs that differ by one rule attribute everything.",
+        "Promoting a simulator win without an engine check. The simulator ranks policies under a coarse cost model, so the bounded engine run is the result, not a formality.",
+        "Dropping the negative regime from the write-up. A missing losing workload reads as an untested boundary, and the section checkpoint explicitly requires one win and one regression."
+      ],
+      "selfTest": [
+        {
+          "q": "What makes Table 4 an ablation rather than a benchmark?",
+          "a": "Same model, hardware, requests and budget across three runs that differ by exactly one mechanism each. The TTFT and TBT movements attribute to hybrid batching and chunking separately and combined."
+        },
+        {
+          "q": "Your chunking change wins in simulation and ties on the real engine. What do you check first?",
+          "a": "Transfer gaps in order: real iteration times against modeled ones, kernel shapes in mixed batches, prefix-cache hit differences, and host and scheduling overhead per step."
+        },
+        {
+          "q": "What bounds a real-engine policy change?",
+          "a": "One mechanism behind one flag with a reference fallback, regression tests that pin old behavior, and no stale state when toggled. Anything wider is a rewrite, not an experiment."
+        },
+        {
+          "q": "Why keep tuning traces separate from final traces?",
+          "a": "Tuning on the final numbers overfits the policy to one corpus and hides variance. Tuning traces choose the setting; fresh final traces with the invariant checks report the result."
+        }
+      ],
+      "practice": [
+        {
+          "name": "AI Systems Performance Engineering: continuous-batching pair",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch15",
+          "locator": "Run `baseline_continuous_batching.py` against `optimized_continuous_batching.py` through `python -m ch15.compare` under CPU-safe or single-GPU settings",
+          "note": "Inspect the shared comparison contract first, re-measure rather than quoting the bundled number, and keep one workload where the optimized path does not win."
+        }
+      ],
+      "stopWhen": "Your ablation attributes a win and a regression to named mechanisms, and your bounded engine change toggles cleanly with regression tests green.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Sarathi-Serve ablation design, the Chapter 15 baseline pair with its harness, and the Nano-vLLM change cover ablation and the bounded engine change."
+      }
+    },
+    {
+      "id": "affinity-grammar-multimodal-scheduling",
+      "title": "Adapter and prefix affinity, grammar cost and multimodal co-scheduling",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "adapter-affinity-and-prefix-locality-scheduling",
+        "structured-output-and-grammar-cost-scheduling",
+        "multimodal-encoder-and-decoder-co-scheduling"
+      ],
+      "outcomes": [
+        "Explain adapter-affinity scheduling from LoRA slot and rank pressure.",
+        "Explain grammar-constrained decoding as per-step scheduling cost that varies with the constraint.",
+        "Explain multimodal encoder and decoder co-scheduling with media-scoped cache reuse."
+      ],
+      "why": "Real batches mix adapters, grammars and images. Each one adds a scheduling dimension beyond tokens and blocks, and ignoring any of them turns a tuned policy into queueing surprises.",
+      "next": [
+        {
+          "unit": "inference/distributed-disaggregated-inference/replica-cache-aware-routing",
+          "note": "Grow prefix affinity into replica routing with locality skew."
+        },
+        {
+          "unit": "inference/kv-memory-prefix-reuse/prefix-identity-scope",
+          "note": "Reuse the media-identity scoping argument for prefix caches."
+        }
+      ],
+      "study": [
+        {
+          "resource": "vllm-lora",
+          "title": "Per-request LoRA serving and slot pressure",
+          "url": "https://docs.vllm.ai/en/v0.31.0/features/lora/",
+          "locator": "Per-request `LoRARequest` served in parallel with base-model and other-adapter requests when `max_loras` allows; server-wide `--lora-modules` with `max_loras` and `max_lora_rank`, including the warning against oversized rank for memory and performance"
+        },
+        {
+          "resource": "vllm-structured-outputs",
+          "title": "Constrained decoding options and backends",
+          "url": "https://docs.vllm.ai/en/v0.31.0/features/structured_outputs/",
+          "locator": "xgrammar and guidance backends with `--structured-outputs-config.backend`; `choice`, `regex`, `json`, `grammar` and `structural_tag` in `StructuredOutputsParams` with the offline `choice` example"
+        },
+        {
+          "resource": "vllm-multimodal",
+          "title": "Multimodal inputs, caching and encoder-side cost",
+          "url": "https://docs.vllm.ai/en/v0.31.0/features/multimodal_inputs/",
+          "locator": "`limit_mm_per_prompt` bounding media per request; Cached Inputs with content hashing and caller-supplied `multi_modal_uuids`, including skipping media on expected cache hits; `--video-pruning-rate` with `--video-pruning-method` as encoder-side scheduling cost"
+        }
+      ],
+      "focus": [
+        "Group same-adapter requests together. Mixing adapters is supported up to `max_loras` concurrent adapters, but each active adapter consumes slot and rank-budgeted memory, so affinity scheduling avoids slot churn and oversized-rank waste.",
+        "Grammar cost lands on decode steps: the backend builds a token mask every step, and its cost depends on the compiled constraint. The cited page gives no cost order, so time choice, regex, schema and grammar steps yourself and budget that work with the token budget.",
+        "Media tokens join the prompt token budget, and encoder work must be scheduled before or beside the decode stream. Identical text with different images is a different cache entry: reuse is scoped by media identity through content hashes or UUIDs.",
+        "All three topics are optional extensions of the same rule: schedule the scarce shared state, whether adapter slots, grammar engines or encoder results, rather than only tokens and blocks."
+      ],
+      "reproduce": "Closed-book, schedule with `max_loras` at 2 and three queued adapters: group the two already-active adapters first and state which request waits for a slot. Predict an order of per-step cost for choice, regex, JSON schema and full grammar, and name the timing run that would test it. Then decide cache sharing for two requests with identical text where one pair shares an image UUID and the other uses different images: only the UUID pair shares encoder and prefix-cache work.",
+      "traps": [
+        "Claiming different adapters cannot batch together. They can up to `max_loras`; affinity is about slot pressure and memory, not correctness, so the failure mode is churn and waste rather than errors.",
+        "Treating grammar constraints as free because outputs look the same length. The constraint engine works every decode step, and wider grammars usually cost more per step than a fixed choice; measure it.",
+        "Expecting prefix hits across different images with matching text. Media identity scopes the entry, so a changed image is a cache miss even when every word matches."
+      ],
+      "selfTest": [
+        {
+          "q": "Three adapters queue with two LoRA slots. What does affinity scheduling do?",
+          "a": "It groups requests of the two already-active adapters first and holds the third adapter's requests until a slot frees. This avoids loading churn and oversized-rank memory waste."
+        },
+        {
+          "q": "How do you establish the per-step cost of choice, regex, JSON schema and full grammar constraints?",
+          "a": "Time constrained decode steps for each on your engine and backend with identical prompts and lengths. Expect wider constraints to cost more, but the documentation states no order, so the measurement decides."
+        },
+        {
+          "q": "Two requests share all text but carry different images. Do they share prefix-cache work?",
+          "a": "No. Cache identity includes the media through content hashes or UUIDs, so different images make different entries even with identical text."
+        },
+        {
+          "q": "A request skips sending its image and provides only a UUID. When does that work?",
+          "a": "Only when the caller can expect a cache hit for that UUID with caching enabled. The page documents skipping on expected hits, not the miss path, so treat a miss as needing the media and verify the fallback on your engine."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Route Cache-Aware Prefill Requests",
+          "url": "https://www.tensortonic.com/problems/cs336-l18-cache-aware-prefill-routing",
+          "locator": "Implement `cache_aware_prefill_routing(request_token_counts, cached_prefix_lengths, worker_ids, worker_capacities)`; public cases `routing_public_1`, `routing_public_2` and `routing_public_3`",
+          "note": "The public cases check feasibility by full request length against capacity, ranking by longest cached prefix then lowest projected uncached load then greatest remaining capacity then lowest worker id, and -1 when no worker fits."
+        }
+      ],
+      "stopWhen": "You can schedule adapters under slot pressure, order grammar costs and scope media reuse without notes, and your routing solution passes the public cases.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for all three optional topics; the pinned LoRA, structured-output and multimodal references plus the cache-aware routing problem fill the gap."
+      }
+    }
+  ]
+}
