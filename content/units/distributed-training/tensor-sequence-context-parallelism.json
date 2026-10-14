@@ -616,47 +616,82 @@
         "ring-attention-block-exchange-and-online-softmax-state"
       ],
       "outcomes": [
-        "TODO"
+        "Derive query ownership, KV visits and per-rank forward communication for a context-parallel ring.",
+        "Implement a deterministic ring-attention simulation with dense output and gradient oracles.",
+        "Explain causal load imbalance and distinguish streamed KV storage from gathering all KV."
       ],
-      "why": "TODO",
+      "why": "CP keeps tokens partitioned through the block instead of gathering the full sequence for TP. Attention must still combine every allowed remote key with each local query.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/cp-masks-positions-rng",
+          "note": "Preserve token identity, positions and randomness across the ring."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-degree-choice-async",
+          "note": "Compare communication time with local attention work."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Context ownership, ring exchange and causal imbalance",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#context_parallelism",
+          "locator": "Context Parallelism; Ring Attention; Zig-Zag Ring Attention - A balanced compute implementation",
+          "depth": "Read the ownership and KV-exchange diagrams, not the benchmark plots. The rendered zig-zag heading uses a long dash; locate it by title."
+        },
+        {
+          "resource": "ring-attention-paper-dt5",
+          "title": "Incremental attention across a ring",
+          "url": "https://arxiv.org/abs/2310.01889v4",
+          "locator": "arXiv:2310.01889v4, Section 3, Ring-Based Blockwise Attention; Algorithm 1; Appendix A, `scan_kv_block` and the forward `lax.scan`",
+          "depth": "Algorithm 1 prints only \(N_h-1\) compute iterations before feedforward and omits the final received block's attention evaluation. Use Appendix A's \(N_h\) visits as the coverage contract; an optimized forward ring needs \(N_h-1\) transfers. Leave fused kernels to depth work."
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Four-rank causal ring on CPU",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/ring_attention.py",
+          "locator": "`rotate_tensors`, `apply_local_causal_mask`, `ring_attention`, `format_ring_schedule` and `main` output comparison",
+          "depth": "This example checks forward output only and waits for communication before the next compute. It is not gradient or overlap evidence. Its final rotation is redundant for forward output."
         }
       ],
       "focus": [
-        "TODO"
+        "Keep queries and outputs local; stream KV shards past each query shard. With contiguous sequence ownership, a rank skips wholly future KV blocks and masks its own diagonal block. Reordered ownership requires actual global token indices.",
+        "Reuse Online softmax state, query and key-value tiling and output tolerance. Carry the running maximum, exponential denominator and weighted numerator across KV visits; never softmax each block independently and sum normalized outputs.",
+        "For CP degree \(c\), batch \(B\), sequence \(S\), KV heads \(H_{\mathrm{kv}}\), head width \(d\) and element bytes \(q\), one equal KV shard is \(2qB(S/c)H_{\mathrm{kv}}d\) bytes. A forward ring without the redundant return sends \((c-1)\) shards per rank, excluding metadata. Backward requires its own communication ledger.",
+        "Remote keys accumulate gradient contributions from multiple query owners. A differentiable simulation can retain that graph; a real P2P implementation must explicitly return and sum remote KV gradients. CP parameter replicas also need globally weighted gradient sums."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw four ranks' KV-owner visits for an eight-token causal sequence, then simulate the same visits on CPU with seed-0 `torch.float64` query, key and value tensors shaped \([1,2,8,4]\). Compare outputs and all three input gradients under squared-output sum loss with dense causal attention, at a stated tolerance. Skip wholly masked blocks safely. For the named `torch.float32` example, count 128 bytes per KV shard: four rotations send 512 bytes per rank, while three sufficient rotations send 384 bytes. Removing only the final rotation must preserve output.",
       "traps": [
-        "TODO"
+        "Summing per-block normalized attention. Each block used a different denominator; merge unnormalized statistics instead.",
+        "Assuming a correct P2P forward pass gives remote KV gradients automatically. Ordinary send/receive calls do not create that distributed autograd path.",
+        "Calling contiguous causal partitioning balanced. Early query shards have fewer allowed KV blocks than late shards; zig-zag placement changes this work distribution."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "How many KV visits and transfers are needed for a noncausal forward ring on four ranks?",
+          "a": "Four visits, including the local shard, and three transfers per rank. Returning the last shard to its original owner is unnecessary for the forward output."
+        },
+        {
+          "q": "Under contiguous causal ownership, which rank has more useful work: the first or last?",
+          "a": "The last. Its queries can use all earlier blocks; the first rank can use only its own causally masked block."
+        },
+        {
+          "q": "Does CP alone divide parameter memory by its degree?",
+          "a": "No. It partitions sequence activations and work while parameters remain replicated over the CP group unless another sharding dimension is added."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TorchFeather: ring-attention minimal example",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/ring_attention.py",
+          "locator": "At commit c416ab1, run `torchrun --nproc-per-node 4 --master-port 29653 minimal_examples/ring_attention.py` from the repository root",
+          "note": "It uses Gloo on CPU, prints KV-owner schedules and checks output against ordinary causal SDPA. Remove the redundant final rotation and recheck. The section mini-project covers remote-gradient ownership and mask variations in `trainlab`; the public example does not test them."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The CPU example and your dense forward/gradient simulation agree, every allowed KV block is visited once, and your byte count distinguishes four shipped rotations from three necessary transfers.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook supplies CP and imbalance, the verified paper supplies incremental ring semantics with a pseudocode correction, and TorchFeather plus the mini-project supply CPU output and gradient practice."
       }
     },
     {
