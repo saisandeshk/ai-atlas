@@ -1,6 +1,17 @@
 {
   "section": "kv-memory-prefix-reuse",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "vllm-kv-contracts-inf3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM 0.31.0 - cache specifications and connector lifecycle",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Read the per-layer attention, MLA and Mamba specifications for hybrid state contracts; read the V1 connector metadata, load synchronization and deferred-free methods for transfer ownership. These fill the pool's hybrid-state and connector-contract gaps, without requiring distributed execution.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/v1/kv_cache_interface/"
+    }
+  ],
   "units": [
     {
       "id": "kv-layouts-cache-variants",
@@ -16,47 +27,72 @@
         "hybrid-attention-and-state-space-cache-identity"
       ],
       "outcomes": [
-        "TODO"
+        "Map a serving engine's per-layer cache views to physical storage and distinguish layout from ownership.",
+        "Derive dense and latent cache payloads without expanding shared KV heads in storage.",
+        "Explain why hybrid attention and recurrent layers need different retention and prefix-checkpoint contracts."
       ],
-      "why": "TODO",
+      "why": "Building a KV cache and KV memory arithmetic supplied the single-request contract. Serving now needs a shared pool whose layer views, attention variants and state checkpoints remain compatible under reuse.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/kv-memory-prefix-reuse/paged-kv-address-translation",
+          "note": "Separate token positions from the pool's physical addresses."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: the pool and its layer views",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/model_runner.py",
+          "locator": "`ModelRunner.allocate_kv_cache`: `block_bytes`, the six-dimensional allocation, and assignment to `k_cache` and `v_cache`",
+          "depth": "Trace the single-worker case. Skip startup, distributed communication and graph capture."
+        },
+        {
+          "resource": "tushar-kv-inf3",
+          "title": "Module 06: architectural cache reduction",
+          "url": "https://inference.tusharamrit.in/modules/memory-optimization.html#concept-2",
+          "locator": "MQA to GQA to MLA: attacking the formula itself, including the latent and decoupled RoPE cache diagram",
+          "depth": "Stop before weight quantization. Treat reported architecture savings as model-specific, not a serving toggle or a quality guarantee."
+        },
+        {
+          "resource": "vllm-kv-contracts-inf3",
+          "title": "vLLM 0.31.0: per-layer state specifications",
+          "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/v1/kv_cache_interface/",
+          "locator": "`AttentionSpec`, `MLAAttentionSpec`, `SlidingWindowSpec`, `MambaSpec` and `KVCacheGroupSpec`; inspect their state shapes, page sizes and grouping contracts",
+          "depth": "Read these classes only. Skip packed hardware-specific formats and the general layout-construction helpers."
         }
       ],
       "focus": [
-        "TODO"
+        "Nano-vLLM allocates key/value, layer, physical block, token slot, KV head and channel axes. A block ID selects corresponding storage across layers; it does not merge their projections.",
+        "For dense caches, sum per-layer payloads as \(\sum_{\ell} H_{\mathrm{kv},\ell}(d_{k,\ell}+d_{v,\ell})b_\ell\) bytes per token. MHA, GQA and MQA change stored KV heads, not the number of query heads.",
+        "A conventional MLA cache stores the shared KV latent and the decoupled positional key, not two full per-head tensors. Its payload is \((d_c+d_r)b\) per layer per token, before padding or metadata.",
+        "Hybrid layers can retain full history, a bounded window, or recurrent state at a checkpoint. A reusable boundary must provide valid state for every layer type, under the same positions and model version."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw Nano-vLLM's pool and layer views for one worker. For a synthetic two-layer model with 8 query heads, 2 KV heads, equal key/value width 4 and two-byte elements, derive 64 bytes per token across layers. For a separate two-layer MLA model with latent width 6 and positional-key width 2 at the same dtype, derive 32 bytes. Label these payloads, not engine allocations; explain which state a hybrid recurrent layer would add.",
       "traps": [
-        "TODO"
+        "Expanding GQA keys in the persistent cache because queries have more heads. Expansion for computation is not the storage contract.",
+        "Applying the dense key-plus-value formula to an MLA latent or a recurrent state. Count the actual stored representation.",
+        "Reusing a hybrid prefix because the full-attention layers hit. Missing recurrent checkpoints or window state can still make that boundary unusable."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does sharing one block ID across layers mean that their keys are equal?",
+          "a": "No. The ID selects different per-layer storage regions. Each layer still has its own projections and cached values."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is there no extra factor of two in the conventional MLA payload formula?",
+          "a": "The single latent jointly represents key and value content. Count it once, then add the separately stored positional key."
+        },
+        {
+          "q": "Can a recurrent checkpoint at one prefix boundary stand in for an earlier boundary?",
+          "a": "Not generally. It summarizes the history at its own boundary. An earlier state needs its own checkpoint or recomputation; recurrent updates need not be invertible."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` per-layer state descriptors and byte accounting, with dense, latent and labeled hybrid-state cases.",
+      "stopWhen": "Your state descriptors reconcile the two synthetic payloads and reject a reuse boundary with missing layer state, without rebuilding the earlier single-request cache.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Nano-vLLM and Module 06 cover layouts and attention variants. Their hybrid-state coverage fails; the verified vLLM 0.31.0 specifications supply that contract, with descriptor practice in servelab."
       }
     },
     {
