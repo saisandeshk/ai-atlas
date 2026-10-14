@@ -572,47 +572,84 @@
         "persistent-activation-temporary-and-allocator-memory-accounting"
       ],
       "outcomes": [
-        "TODO"
+        "Derive parameter, gradient, optimizer, activation, temporary and checkpoint bytes by dtype for a small model.",
+        "Distinguish allocated, reserved and peak memory in a profiler snapshot and explain the gaps.",
+        "Validate one predicted memory number against measurement and explain allocator and temporary-buffer differences."
       ],
-      "why": "TODO",
+      "why": "OOMs are decided before the step runs: persistent state sets the floor, activations scale with batch and sequence, and the allocator decides what fits in practice. A ledger turns an OOM into an arithmetic error with a line number.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/activation-recompute-tradeoffs",
+          "note": "Cut the activation row the ledger identifies as dominant."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/profiler-memory-snapshots-nvtx",
+          "note": "Measure the rows with profiler and snapshot."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-first-steps-dt1",
+          "title": "Weight, gradient, optimizer and activation bytes",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#memory_usage_in_transformers",
+          "locator": "Memory usage in transformers: the FP32 and mixed-precision byte rules with the 1B, 7B, 70B and 405B table; the activation formula \\(m_{act}\\) in sequence length, batch, width, heads and layers and its quadratic sequence dependence",
+          "depth": "Derive the table rows by hand; use the interactive calculator only after fixing sequence length and recomputation mode, since it does not display either."
+        },
+        {
+          "resource": "transformer-math-dt1",
+          "title": "Second derivation of the training ledger",
+          "url": "https://blog.eleuther.ai/transformer-math/",
+          "locator": "Memory Requirements, Training: Model Parameters, Optimizer States, Gradients, Activations and Batch Size, Total Training Memory; Distributed Training, Sharded Optimizers for the ZeRO-1, ZeRO-2 and ZeRO-3 rows"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Bottleneck signatures around the ledger",
+          "url": "https://mlsysbook.ai/vol1/training/training.html",
+          "locator": "Model Training, Identifying Bottlenecks: MFU with the 7B, 1024-token, 1.2s A100 example at 11.5 percent, and the compute, memory and data-bound signatures that say which ledger row binds"
         }
       ],
       "focus": [
-        "TODO"
+        "Persistent bytes follow \\(M = N \\times w\\): element count times byte width. Mixed precision without FP32 gradient accumulation holds \\(2 + 2 + 4 + 8 = 16\\) bytes per parameter; with FP32 gradient accumulation it holds 20. The book table checks: 1B gives 16 GB and 20 GB, 7B gives 112 GB and 140 GB.",
+        "Eleuther counts the same 16 bytes differently: 2 for BF16 parameters, 2 for gradients and 12 for optimizer with the FP32 master inside. Reconcile presentations before comparing numbers across sources.",
+        "Activations scale with batch and quadratically with sequence while persistent state does not. For long sequences activations dominate; for short ones the persistent rows do.",
+        "Allocated is tensors alive, reserved includes the caching allocator pool, peak is the high-water mark. Kernels need 1 to 2 GB on first CUDA use, and fragmentation makes reserved exceed allocated even when the ledger balances."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, ledger a 10M-parameter Adam model in mixed precision without FP32 gradient accumulation: parameters, gradients, optimizer and a stated activation shape in bytes. Then measure one row on your machine and explain the gap to allocator or temporary buffers.",
       "traps": [
-        "TODO"
+        "Quoting GB against GiB without converting. The book table uses GB; profiler snapshots and the CS336 3.6 GiB per-layer numbers use GiB, 7 percent apart.",
+        "Treating mixed precision as memory saving for persistent state. It redistributes the same 16 bytes and adds 4 more with FP32 accumulation; the saving sits in activations and compute, not in the persistent rows.",
+        "Reading the Playbook widget number against the formula with unstated widget state. Without its sequence length and recomputation mode the two cannot be compared."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A 1B-parameter model trains mixed precision with Adam, no FP32 gradient accumulation. What are the persistent bytes?",
+          "a": "16 GB: \\(16 \\times 10^9\\) bytes, as 2 GB parameters, 2 GB gradients, 12 GB optimizer with master, momentum and variance."
+        },
+        {
+          "q": "Why do Eleuther (2 plus 2 plus 12) and the Playbook (2 plus 2 plus 4 plus 8) agree?",
+          "a": "Both sum to 16 bytes per parameter. Eleuther files the 4-byte FP32 master inside the 12-byte optimizer row; the Playbook lists it as a separate parameters row."
+        },
+        {
+          "q": "Allocated reads 0.85 GB while reserved reads 1.29 GB after a step. Is memory leaking?",
+          "a": "Not necessarily. Reserved includes the allocator pool held for reuse plus fragmentation; allocated is live tensors. A leak needs growth across steps, not a reserved gap."
+        },
+        {
+          "q": "Batch doubles but persistent state is unchanged. Which row grows and how?",
+          "a": "Activations grow linearly with batch (and quadratically with sequence). Parameters, gradients and optimizer state are batch independent."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Mixed-Precision Training Memory Accountant",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant",
+          "locator": "Implement `memory_accountant`: byte counts for parameters, gradients, saved activations and optimizer state (none for SGD, one per parameter for AdaGrad, two for Adam) from shapes and byte widths; the public cases check BF16 with FP32 gradients under Adam, FP32 SGD and BF16 AdaGrad",
+          "note": "The problem excludes allocator overhead and master-weight copies by construction; state both exclusions when you compare its totals with your measured ledger."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand ledger predicts the measured persistent bytes within allocator noise, and you can name which row any batch, sequence or dtype change moves.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook byte rules plus the Eleuther second derivation and the MLSys bottleneck signatures cover the full ledger at derive and measure depth, with the free TensorTonic accountant as checked practice."
       }
     },
     {
@@ -628,47 +665,77 @@
         "selective-activation-checkpoint-policy"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the memory saving and extra forward cost of full versus selective checkpointing for a small stack.",
+        "Apply `torch.utils.checkpoint` with `use_reentrant=False` and validate the peak-memory change by measurement.",
+        "Choose checkpoint granularity from a memory profile instead of a rule of thumb."
       ],
-      "why": "TODO",
+      "why": "Activations are the elastic row of the ledger: checkpointing trades a bounded recompute cost for a large memory cut. The policy choice decides whether a bigger batch or a longer sequence fits.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/training-memory-accounting",
+          "note": "File the saving back into the ledger."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/activation-checkpointing",
+          "note": "Reuse the single-GPU mechanism under sharding later."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-first-steps-dt1",
+          "title": "Full versus selective recomputation",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#activation_recomputation",
+          "locator": "Activation recomputation: full checkpointing at layer boundaries costing up to 30 to 40 percent extra compute, selective checkpointing of attention at about 70 percent memory saving for 2.7 percent cost on GPT-3 175B, and the HFU versus MFU accounting that follows"
+        },
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: checkpointing mechanics",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 3.1 autograd residuals with `saved_tensors_hooks` and Section 3.2.1 `gradient_checkpointing`: the memory-optimal nested strategy with asymptotics, then the single-level granularity choice on `xl` validated by peak-memory profile"
         }
       ],
       "focus": [
-        "TODO"
+        "Full checkpointing stores only layer-boundary activations and replays each layer forward in backward, adding up to a full extra forward pass. Selective checkpointing stores the cheap-to-keep feedforward activations and recomputes only attention, which is expensive to store but cheap to redo.",
+        "Recompute cost belongs in the FLOP count honestly: hardware FLOPs include the replayed forward, model FLOPs exclude it. HFU rewards less recompute per second; MFU rewards less total time for the same model work.",
+        "Checkpointing changes which tensors backward saves, not the mathematics. Gradients must match the uncheckpointed run; only the memory timeline and step time change.",
+        "Pin `use_reentrant=False` explicitly. The default is None, leaving the reentrant choice implicit, and the two modes differ in RNG handling and hook behavior."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, sketch the nested checkpoint plan for a stack of N identical blocks with its memory asymptotics. Then checkpoint one granularity on a tiny model, show gradients match the baseline and the peak-memory profile moves as predicted.",
       "traps": [
-        "TODO"
+        "Checkpointing a module whose forward draws unseeded randomness without preserving RNG state. Dropout then replays different masks and gradients silently differ.",
+        "Wrapping the loss or the optimizer step in a checkpointed region. Recompute replays forward ops only; step side effects replay wrongly or not at all.",
+        "Comparing step times with and without checkpointing as pure overhead. The checkpointed run may fit a larger microbatch, so compare at equal global batch or not at all."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does selective checkpointing target attention activations?",
+          "a": "They grow largest with sequence length yet cost little to recompute per byte saved. Feedforward activations are cheaper to store relative to their recompute cost, so they are kept."
+        },
+        {
+          "q": "A checkpointed run matches loss but its step is slower. Is the optimization failing?",
+          "a": "Not necessarily. Extra forward work is expected; the win is fitting a larger batch or longer sequence. Judge at equal global batch and memory, not per-step time alone."
+        },
+        {
+          "q": "Checkpointed and baseline gradients differ with dropout on. What is the first suspect?",
+          "a": "RNG state across the replay. Forward randomness must be preserved and replayed identically; otherwise backward differentiates a different graph."
+        },
+        {
+          "q": "What distinguishes HFU from MFU when recomputation is on?",
+          "a": "HFU counts the replayed forward in achieved FLOPs; MFU counts only the required forward and backward. Recompute raises hardware work while model work stays fixed."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `gradient_checkpointing`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 3.2.1 on a model size your hardware fits: the nested-strategy asymptotics sketch, then the single-level granularity choice validated against the peak-memory profile of the neighboring sizes",
+          "note": "A writeup problem with no public tests; checking is your gradient-equality test plus the before and after memory profiles."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your checkpointed run matches baseline gradients and your profile explains which granularity fits the next larger batch.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook recomputation section plus the CS336 checkpointing problems cover full versus selective policy at derive and measure depth."
       }
     },
     {
@@ -683,47 +750,83 @@
         "warmup-synchronization-and-repeated-trial-benchmark-hygiene"
       ],
       "outcomes": [
-        "TODO"
+        "Instrument one step into data, transfer, forward, backward, optimizer and checkpoint phases with honest synchronization.",
+        "Run repeated trials with warmup and report mean, spread and exact settings instead of a best step.",
+        "Attribute a slow step to its phase from timer evidence rather than from intuition."
       ],
-      "why": "TODO",
+      "why": "Without phase timers every optimization is a guess: input stalls look like slow kernels and allocator warmup looks like a regression. Timelines make the bottleneck state its name.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/profiler-memory-snapshots-nvtx",
+          "note": "Replace coarse timers with a full trace."
+        },
+        {
+          "unit": "distributed-training/performance-fleet-operation/throughput-mfu-hfu",
+          "note": "Turn phase times into throughput and utilization."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: benchmarking method",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3 `benchmarking_script`: `benchmark.py` with selectable forward-only, forward plus backward and plus `optimizer.step` modes, `torch.cuda.synchronize` around `timeit.default_timer`, 5 warmup plus 10 measured steps with mean and standard deviation; Section 2.1.4 `nsys_profile` for the annotated trace"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Per-phase timers and memory statistics",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "`LocalTimer` with `data`, `forward`, `backward` and `update` phases using `synchronize` plus `time.time`, `get_mem_stats` with current and peak allocation and reservation, and the per-`log_freq` logging line reporting loss, tokens per second and all four timers"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "What a benchmark must hold fixed",
+          "url": "https://mlsysbook.ai/vol1/benchmarking/benchmarking.html",
+          "locator": "Benchmarking, Training Benchmarks: time to fixed quality rather than raw step speed; Benchmarking Best Practices: report the full envelope and never the best of several runs"
         }
       ],
       "focus": [
-        "TODO"
+        "CUDA launches are asynchronous, so a timer without `torch.cuda.synchronize` measures launch time, not work time. Both the CS336 script and `LocalTimer` synchronize around every phase boundary.",
+        "The first steps include allocator prep, compilation and cache fill, so they run slower and allocate differently. The CS336 5-warmup plus 10-measured pattern with 0 versus 1 to 2 warmup comparison exists to show this effect, not to hide it.",
+        "Report mean and standard deviation over the measured steps with model size, batch, sequence, precision, hardware, backend and commit. A single fast step is a sample of one from an unknown distribution.",
+        "Keep data, transfer, forward, backward, optimizer and checkpoint phases separate. The Lambda logs show all four timers plus tokens per second on every line so a slow step names its phase immediately."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write a three-mode timer (forward-only, forward plus backward, full step) with synchronization and warmup, and run it on a tiny model reporting mean and standard deviation per phase. Then remove warmup and synchronization one at a time and explain how each number lies.",
       "traps": [
-        "TODO"
+        "Timing the first step and calling it the step time. Allocator and compilation effects make it unrepresentative in both directions.",
+        "Averaging across a checkpoint step. Checkpoint I/O belongs to its own phase; folding it into the mean hides both the steady step and the save cost.",
+        "Comparing steps across machines or commits without restating settings. Interconnect, allocator state and kernel versions move numbers more than most optimizations."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Forward time measures near zero while backward looks normal. What is wrong with the timer?",
+          "a": "Missing synchronization around the forward phase. The timer recorded kernel launch and returned while the GPU still worked; backward synchronized implicitly and absorbed the forward time."
+        },
+        {
+          "q": "Why do the CS336 instructions ask for runs with 0 and with 1 to 2 warmup steps?",
+          "a": "To exhibit the warmup effect directly. The unwarmmed mean mixes compilation and allocator prep with steady state; the comparison quantifies the bias warmup removes."
+        },
+        {
+          "q": "Tokens per second rises but time to fixed quality does not. Which benchmark view disagrees and why?",
+          "a": "The training-benchmark view: time to quality counts convergence per token, while tokens per second counts throughput. A faster step that harms sample efficiency can lose on quality time."
+        },
+        {
+          "q": "One step in ten is far slower and the slow phase is data. What do you check first?",
+          "a": "Loader workers, prefetch depth and storage versus local disk, not kernels. Periodic data-phase spikes with idle compute point at input starvation."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `benchmarking_script`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.3 on the Table 1 sizes your hardware fits: all three timer modes with mean and standard deviation tables, plus the 0 versus 1 to 2 warmup comparison with its explanation",
+          "note": "A writeup problem with no public tests; checking is your timing tables plus the annotated explanation. Needs one GPU; CPU timers cannot stand in for device phases."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your phase table attributes any slow step to a named phase, and a peer can rerun your exact settings from the report alone.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 benchmarking problems plus the Lambda per-phase timers and the MLSys training-benchmark sections cover timelines and repeated-trial hygiene at measure depth."
       }
     },
     {
