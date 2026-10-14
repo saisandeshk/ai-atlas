@@ -592,47 +592,70 @@
         "distributed-worker-and-telemetry-reconstruction"
       ],
       "outcomes": [
-        "TODO"
+        "Trace logits through sampling, token state, detokenization and streaming to the client.",
+        "Locate cancellation and completion cleanup across request, cache and frontend owners.",
+        "Map worker control messages and telemetry boundaries without claiming distributed performance from a single-device run."
       ],
-      "why": "TODO",
+      "why": "The request is not finished when the kernel returns. Sampling, stream delivery and cleanup determine output correctness, measured latency and whether the next request inherits stale state.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/capacity-economics-engine-extension/contribution-hypothesis-change",
+          "note": "Choose a change only after its full lifecycle is mapped."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mini-engines-inf9",
+          "title": "Nano-vLLM sample and completion loop",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/model_runner.py",
+          "locator": "`run`, `call`, `write_shm`, `read_shm` and `exit`; follow `nanovllm/layers/sampler.py`: `Sampler.forward`; `nanovllm/engine/scheduler.py`: `postprocess`; and `nanovllm/engine/llm_engine.py`: `generate`"
+        },
+        {
+          "resource": "mini-engines-inf9",
+          "title": "Mini-SGLang output delivery and abort ownership",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/scheduler/scheduler.py",
+          "locator": "`_process_last_data`, `_process_one_msg` abort branch and `_free_req_resources`; follow `python/minisgl/tokenizer/detokenize.py`: `DetokenizeManager.detokenize`; `python/minisgl/server/api_server.py`: `stream_chat_completions`, `stream_with_cancellation` and `abort_user`; `python/minisgl/scheduler/io.py`: rank-specific receive/reply methods"
+        },
+        {
+          "resource": "vllm-architecture-inf9",
+          "title": "vLLM 0.31.0 output state and telemetry",
+          "url": "https://github.com/vllm-project/vllm/blob/v0.31.0/vllm/v1/engine/output_processor.py",
+          "locator": "`OutputProcessor.process_outputs`, `abort_requests`, `_finish_request`, `do_tracing` and `_update_stats_from_finished`; follow `vllm/v1/engine/async_llm.py`: `generate` and `abort`; Architecture Overview: GPU Worker Processes and DP Coordinator Process",
+          "depth": "Worker/rank coordination is source reading plus labeled local-process simulation. Trace actual execution with one worker on your GPU; additional GPUs are not required."
         }
       ],
       "focus": [
-        "TODO"
+        "Mark when sampled token IDs become request state, when text becomes printable, when a chunk is sent and when the client sees content. These are distinct timing boundaries.",
+        "Follow cancellation past the frontend acknowledgment. Request queues, KV references, in-flight work and output collectors may have different cleanup times.",
+        "Mini-SGLang's overlap loop can observe terminal requests again while earlier work completes. Its finished-request guard is an ownership clue, not a reason to remove duplicate-event tests.",
+        "Locate each telemetry producer and aggregation boundary. Join request and iteration records without logging sensitive prompt text or introducing unbounded metric labels."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, draw successful completion and cancellation during an in-flight iteration through all output and cleanup owners. Use CPU fake-runner events to replay late output after cancellation and repeated terminal notifications; assert no second client completion and no double release. Link each event to the pinned implementation and identify the telemetry needed to distinguish generated tokens from client-visible content.",
       "traps": [
-        "TODO"
+        "Equating one stream chunk with one model token. Detokenization, buffering and output intervals can merge or delay content.",
+        "Using Nano-vLLM's terminal batch output as proof of online streaming behavior. That interface returns completed outputs, not an HTTP stream.",
+        "Trusting Mini-SGLang's non-streaming usage fields as measured counts. The pinned API returns literal zeros there; count token IDs independently."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does receiving an abort acknowledgment prove all KV is reusable immediately?",
+          "a": "No. Follow the cache owner and any in-flight consumers to the safe release point; acknowledgment and device completion can differ."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can first-content latency exceed first sampled-token latency?",
+          "a": "A token may not yet decode to printable text, and output processing, buffering, transport or a slow client can delay visible content."
+        },
+        {
+          "q": "What can a CPU worker-loss simulation establish?",
+          "a": "Request identity, terminal outcome, retry and bounded cleanup behavior under its event model. It cannot establish collective timing or distributed GPU throughput."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `servelab` output/worker/telemetry map and CPU cancellation, late-output and duplicate-terminal replay checks.",
+      "stopWhen": "Your map distinguishes generated tokens, visible chunks and safe release, and both normal completion and cancellation reconcile every owner and telemetry record.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Pinned sampling/output/worker sources cover the lifecycle at explain depth; the mini-project tests cleanup and trace correlation without multi-GPU requirements."
       }
     },
     {
