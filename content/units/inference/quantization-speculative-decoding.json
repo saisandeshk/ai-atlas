@@ -1,6 +1,17 @@
 {
   "section": "quantization-speculative-decoding",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "inference-engineering-quant",
+      "role": "book",
+      "priority": "support",
+      "name": "Inference Engineering - Section 5.1, Quantization",
+      "provider": "Philip Kiely (Baseten Books)",
+      "access": "Free",
+      "use": "Read 5.1.1 Number Formats for the format table and Precision/Type/Scale-factor with Dynamic range/Granularity, 5.1.2 for PTQ versus QAT and the what-to-quantize decisions, and 5.1.3 for the perplexity, benchmark and custom-eval quality checks.",
+      "url": "https://www.baseten.co/inference-engineering/"
+    }
+  ],
   "units": [
     {
       "id": "inference-number-formats",
@@ -15,47 +26,84 @@
         "weight-only-weight-activation-and-kv-quantization"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how INT8, INT4, FP8 and microscaled FP4 trade dynamic range against storage, and where each sits in a serving path.",
+        "Derive weight memory for a dense model under FP16, INT8 and INT4, and state which tensors the count covers.",
+        "Distinguish weight-only, weight-activation and KV quantization by what gets smaller, what gets faster and what still needs high precision."
       ],
-      "why": "TODO",
+      "why": "Precision sets the memory floor for every later decision. A plan that confuses nominal bits with served bytes mispredicts capacity by gigabytes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/quantization-speculative-decoding/affine-quantization-granularity",
+          "note": "Turn formats into scale, zero point and granularity arithmetic."
+        },
+        {
+          "unit": "inference/quantization-speculative-decoding/quantized-serving-measurement",
+          "note": "Measure what the format choice buys on your GPU."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-ch67-inf6",
+          "title": "Quantization: formats and where they help",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 6, Model Compression: Quantization (printed pp. 206 to 211): Storing numbers with Table 6-1, How does quantization help in model serving with Table 6-2, and Weight-only versus weight-and-activation quantization strategies with the Marlin and Machete kernels",
+          "depth": "Skip the hands-on quantization commands and the Qwen walkthrough here; they belong to the measurement unit."
+        },
+        {
+          "resource": "inference-engineering-quant",
+          "title": "Number formats, range and granularity",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 5.1.1, Number Formats: the format table with first architecture, then Precision, Type and Scale factor, then Dynamic range and Granularity"
+        },
+        {
+          "resource": "hundred-days-quant-spec-inf6",
+          "title": "Day 13: number formats from scratch",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day13/quantization-number-formats.ipynb",
+          "locator": "Notebook day13/quantization-number-formats.ipynb: Part 1 Quantization Math (scale and zero point), Part 2 Memory Savings and Throughput Impact, Part 3 FP8, Part 4 NVFP4"
         }
       ],
       "focus": [
-        "TODO"
+        "INT formats spread levels evenly while FP formats spend bits on exponent range. Activations with outliers therefore prefer FP8 E4M3 over INT8 at the same width.",
+        "W4A16 means 4-bit weights with 16-bit activations. Weight-only quantization shrinks storage and weight traffic but still computes in high precision after dequantization.",
+        "Weight-activation quantization can raise compute throughput, but only where a kernel for the exact pair exists on your GPU. A format without kernel support is storage only.",
+        "KV quantization targets capacity and decode traffic, not prefill FLOPs. Without a quantized attention kernel the values are dequantized back before the dot product."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive that a 7B-parameter model needs 14 GB in FP16, 7 GB in INT8 and 3.5 GB in INT4 for weights alone, then name the two costs the nominal count omits: per-group scales with zero points, and the KV cache.",
       "traps": [
-        "TODO"
+        "Reading H100 FP8 throughput as a portable speedup. FP8 Tensor Core rates need Hopper or newer hardware; on older hardware that path does not exist.",
+        "Counting 4 bits per weight. Group scales, zero points and alignment push the served rate above nominal; NVFP4 lands near 4.5 effective bits per weight.",
+        "Expecting KV quantization to cut prefill time. It cuts capacity and decode traffic; a latency win needs a quantized attention kernel alongside it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A 7B model needs 14 GB for weights in FP16. What do INT8 and INT4 need, and what is missing from both numbers?",
+          "a": "7 GB and 3.5 GB. Both omit scale and zero-point storage, alignment padding, and the KV cache and activations."
+        },
+        {
+          "q": "Why does FP8 E4M3 suit spiky activations better than INT8 at the same width?",
+          "a": "Its exponent bits give wide dynamic range for outlier magnitudes. INT8 spreads levels evenly, so one scale either saturates on the outlier or crushes small values."
+        },
+        {
+          "q": "A weight-only INT4 model shows slower first-token latency than the FP16 baseline at high concurrency. What mechanism explains it?",
+          "a": "Weights are dequantized to 16-bit before compute, so prefill arithmetic does not shrink while dequantization overhead is added. Weight-only quantization buys memory and decode bandwidth, not compute."
+        },
+        {
+          "q": "The KV cache is quantized but attention still runs in FP16. What happens each step?",
+          "a": "Values are dequantized back before the dot product. Capacity falls but arithmetic cost does not; keep this separate from a quantized-attention speedup."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of LLM Inference Day 13: number-format experiments",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day13/quantization-number-formats.ipynb",
+          "locator": "Try These Experiments in day13/quantization-number-formats.ipynb: run the FP8, INT8, INT4 and NVFP4 cells and record error per format with the memory model from Reproduce",
+          "note": "Treat the notebook numbers as implementation checks on tiny tensors, not as serving evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the three weight-memory numbers without notes and can say for each of W4A16, W8A8 and FP8 KV which traffic shrinks and which kernel the speedup needs.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for a compact format and granularity taxonomy; Inference Engineering Section 5.1.1 fills it beside the book chapter and the Day 13 from-scratch cells."
       }
     },
     {
@@ -72,47 +120,83 @@
         "per-tensor-per-channel-and-group-granularity"
       ],
       "outcomes": [
-        "TODO"
+        "Derive symmetric and asymmetric quantize and dequantize maps, with scale, zero point and clipping.",
+        "Compute representable range and worst-case rounding error for a stated width and granularity.",
+        "Implement per-tensor, per-channel and grouped affine quantization on a small tensor and report error per choice."
       ],
-      "why": "TODO",
+      "why": "Every quantized serving path is this map plus metadata. If you cannot predict what a scale does to small values, calibration and method comparisons stay mysterious.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/quantization-speculative-decoding/calibration-outliers-smoothing",
+          "note": "See how calibration picks the range the map uses."
+        },
+        {
+          "unit": "inference/quantization-speculative-decoding/packing-accumulation-dequant-kernels",
+          "note": "Count what the scales and codes cost in memory."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hundred-days-quant-spec-inf6",
+          "title": "Day 13 Part 1: scale and zero point",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day13/quantization-number-formats.ipynb",
+          "locator": "Notebook day13/quantization-number-formats.ipynb, Part 1 Quantization Math: `quantize_symmetric`, `dequantize_symmetric` and the error `|x - xhat|` cells, with the outliers exercise"
+        },
+        {
+          "resource": "smoothquant-inf6",
+          "title": "Quantization preliminaries: symmetry, static versus dynamic, granularity",
+          "url": "https://arxiv.org/abs/2211.10438",
+          "locator": "SmoothQuant arXiv:2211.10438v1, Section 2 Preliminaries: symmetric versus asymmetric cases with zero point, static versus dynamic quantization, and per-tensor, per-token, per-channel and group-wise granularity"
+        },
+        {
+          "resource": "inference-engineering-quant",
+          "title": "Granularity: tensor, channel and block scales",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 5.1.1, Number Formats: the Granularity paragraphs (tensor single scale, channel per-vector, block of N values) and the MXFP8, MXFP4 and NVFP4 block sizes"
         }
       ],
       "focus": [
-        "TODO"
+        "Symmetric maps \\(x_q = \\mathrm{round}(x / s)\\) with \\(s = \\max|x| / (2^{b-1} - 1)\\) and zero point 0. Asymmetric maps use \\(s = (x_{\\max} - x_{\\min}) / (2^b - 1)\\) with \\(z = \\mathrm{round}(-x_{\\min} / s)\\), rounded and clamped to range.",
+        "One outlier stretches \\(s\\) and crushes the bulk: every value below \\(s/2\\) rounds to zero. Clipping the range trades saturation error against rounding error.",
+        "Finer granularity lowers error but adds scale storage. Group-128 INT4 with FP16 scale and zero point adds \\((16 + 16) / 128 = 0.25\\) bits per weight.",
+        "Weights normally take per-channel or grouped scales while activations take per-tensor static or per-token dynamic scales, because activation ranges move with the input."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement symmetric and asymmetric INT8 quantize and dequantize. On \\([-3.0, 0.1, 100.0]\\), show one group gives \\(s \\approx 0.79\\) and maps 0.1 to 0, then split into two groups and show 0.1 survives.",
       "traps": [
-        "TODO"
+        "Leaving the zero point unrounded or unclamped. It must be an integer code in range, not a float; otherwise dequantization shifts every value.",
+        "Quoting nominal width as served width. Scales, zero points and alignment padding are real bytes; state effective bits per value.",
+        "Copying per-channel scales to activations. Activation ranges depend on the input, so static per-channel activation scales go stale while per-token dynamic scales track them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the symmetric INT8 scale and codes for \\(\\max|x| = 100\\)?",
+          "a": "Scale \\(s = 100 / 127 \\approx 0.79\\). Then 100 maps to 127 and dequantizes to 100.0, and any value below about 0.39 maps to 0."
+        },
+        {
+          "q": "For range \\([-3, 100]\\) in asymmetric INT8, what are the scale and zero point?",
+          "a": "Scale \\(s = 103 / 255 \\approx 0.40\\) and zero point \\(z = \\mathrm{round}(3 / s) = 7\\). Zero is representable exactly, unlike in the symmetric map."
+        },
+        {
+          "q": "Why does one outlier destroy small values under a per-tensor scale?",
+          "a": "The outlier sets \\(s\\), so the step dwarfs small magnitudes. Splitting the range into groups or channels gives the bulk its own smaller step."
+        },
+        {
+          "q": "Group-128 INT4 stores an FP16 scale and an FP16 zero point per group. What is the overhead?",
+          "a": "\\(32 / 128 = 0.25\\) bits per weight, so the served rate is about 4.25 bits per weight before alignment."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of LLM Inference Day 13: symmetric pipeline and error",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day13/quantization-number-formats.ipynb",
+          "locator": "Part 1 cells: extend `quantize_symmetric` to an asymmetric variant and to grouped scales, and plot error against groups of 128, 32 and 8 on an outlier tensor",
+          "note": "Score error on held-out random tensors, not the tensor you used to pick the range."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your blank-file quantizer reproduces the 0.1-to-0 collapse and its grouped fix, and you can state scale, zero point and overhead for any width and group size.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Day 13 executable math, the SmoothQuant preliminaries and the granularity paragraphs cover all three topics at derive and implement depth."
       }
     },
     {
