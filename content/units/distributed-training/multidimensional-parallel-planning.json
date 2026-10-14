@@ -1,6 +1,17 @@
 {
   "section": "multidimensional-parallel-planning",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "hetpipe-planning-dt8",
+      "role": "paper",
+      "priority": "support",
+      "name": "HetPipe - Heterogeneous Partitioning and Placement",
+      "provider": "Park et al.",
+      "access": "Free",
+      "use": "Read arXiv:2005.14038v1 Section 4, Pipelined Model Parallelism Within a VW, for its Model Partitioning paragraph, Section 7, Partitioning Algorithm, and Section 8.1, Methodology, for resource allocation to virtual workers. Reuse device-specific compute, memory and placement constraints in a synchronous simulator; do not adopt its stale-weight update semantics or source speedups.",
+      "url": "https://arxiv.org/html/2005.14038v1#S7"
+    }
+  ],
   "units": [
     {
       "id": "parallel-dimensions-factorization",
@@ -15,47 +26,62 @@
         "world-size-factorization-and-divisibility-constraints"
       ],
       "outcomes": [
-        "TODO"
+        "Identify the state or tensor dimension partitioned by each strategy and the communication it introduces.",
+        "Derive world size from independent mesh axes without counting SP or a reused expert mesh twice.",
+        "Distinguish data replicas, state-sharding groups and expert replicas in one composed plan."
       ],
-      "why": "TODO",
+      "why": "A planner must count physical ranks once even when their ownership changes between dense and expert layers. Start from the mechanisms you built in DT-3 through DT-7, not a list of parallelism labels.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/named-mesh-rank-coordinates",
+          "note": "Turn independent axes into rank coordinates and groups."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-5d-dt8",
+          "title": "The strategies as one ownership map",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#5d_parallelism_in_a_nutshell",
+          "locator": "5D Parallelism in a Nutshell, including Scope and focus and Summarizing it all"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Dense and sparse meshes reuse the same world",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/parallel_dims.py",
+          "locator": "`ParallelDims._validate` and `build_mesh`, especially the `dataloading`, `dense` and `sparse` mesh products",
+          "depth": "Trace the products and ownership only. Do not copy the private mesh methods into your planner. The trainer package requires PyTorch 2.11 up to but excluding 2.12; that range is an implementation convention, not a current public API contract."
         }
       ],
       "focus": [
-        "TODO"
+        "For an independent dense mesh, write \\(W = d_r d_s t c p\\), with replicated DP, sharded DP, TP, CP and PP degrees respectively. FSDP describes state ownership on existing ranks, not another factor.",
+        "Megatron-style SP uses the TP group for selected sequence-sharded activations. It does not add ranks. CP is a separate sequence axis in this mesh.",
+        "TorchFeather uses \\(d_s c t = d_e e t_e\\) for expert-FSDP, EP and expert-TP degrees. The expert mesh refactors the same ranks; dense and expert state have different owners."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw TorchFeather's three meshes for replicated DP 1, sharded DP 4, CP 2, TP 2, PP 1, EP 4 and expert TP 2. All use 16 ranks. Derive dense FSDP degree 8, expert FSDP degree 2 and independent data-replica degree 4; explain why multiplying by EP again would be wrong.",
       "traps": [
-        "TODO"
+        "Treating every named strategy as an independent axis. Ask whether it introduces new ranks or changes ownership on existing ranks.",
+        "Using the data-replica count for every gradient reduction. CP ranks contribute different tokens, and expert parameters have their own replication groups."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does enabling SP on an existing TP group double world size?",
+          "a": "No. It changes selected activation layouts on those ranks."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why does CP not create new examples in the global batch?",
+          "a": "Its ranks own pieces of the same sequences. Their token contributions must be combined, not counted as independent copies of those sequences."
+        },
+        {
+          "q": "Can an expert parameter use the dense FSDP divisor without checking its mesh?",
+          "a": "No. EP assigns different experts to ranks, so the ranks holding replicas of one expert can be a smaller group than the dense FSDP group."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's dense and expert ownership tables and world-size validation.",
+      "stopWhen": "Your ownership table accounts for all 16 ranks once in each mesh and names the reduction group for dense and expert gradients.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook supplies the composition map; TorchFeather supplies exact mesh-product and expert-reuse constraints. Trainlab covers the ownership exercise."
       }
     },
     {
@@ -70,47 +96,62 @@
         "rank-coordinates-and-process-group-construction"
       ],
       "outcomes": [
-        "TODO"
+        "Implement rank-to-coordinate and coordinate-to-rank mappings with round-trip tests.",
+        "Construct groups by varying one coordinate while holding the others fixed.",
+        "Reject inconsistent mesh products and verify group membership with CPU collectives."
       ],
-      "why": "TODO",
+      "why": "A legal product is not enough: a wrong slice silently synchronizes unrelated shards. This unit extends DT-2 group construction to a named multidimensional layout.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/composed-plan-correctness",
+          "note": "Use these group invariants in an update-equivalence test."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "picotron-4d-dt8",
+          "title": "Explicit coordinate slices",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/process_group_manager.py",
+          "locator": "`ProcessGroupManager.__init__`: `grid`, coordinate lookup, subgroup enumeration and group rank lists"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "A CPU named mesh with independent checks",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`main` from process-group initialization to `get_group`, plus `peer_rank`",
+          "depth": "Read mesh construction only here. Leave the schedule and numerical oracle for the correctness unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Picotron orders axes as DP, PP, CP, TP. Its row-major rank is \\(r = (((i_d p + i_p)c + i_c)t + i_t)\\). Store axis order as part of the plan.",
+        "Different axis groups through one rank intersect at that rank. Groups on the same axis partition the world. Neither property means their physical links are independent.",
+        "All ranks must agree on group creation order and membership. Enumerate the full group list deterministically before any rank-specific execution."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On four CPU processes with gloo, build a row-major DP-by-TP mesh of shape 2 by 2. Verify TP groups `[0, 1]` and `[2, 3]`, DP groups `[0, 2]` and `[1, 3]`, and rank-coordinate round trips. All-reduce the global rank as a scalar within each group and check its sum against the listed members. Then simulate a four-axis mesh with all degrees 2 and test every rank.",
       "traps": [
-        "TODO"
+        "Inferring node placement from adjacent rank numbers. Logical ordering and physical placement are separate inputs.",
+        "Creating groups only on participating ranks while other ranks follow a different order. Use a consistent global construction sequence."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What is rank 2's coordinate in the row-major 2 by 2 DP-by-TP mesh?",
+          "a": "DP coordinate 1 and TP coordinate 0. Its TP peer is rank 3 and its DP peer is rank 0."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Which coordinates change inside a pure PP group?",
+          "a": "Only the PP coordinate. DP, CP and TP coordinates stay fixed."
+        },
+        {
+          "q": "What does a successful rank-sum check prove, and what does it not prove?",
+          "a": "It checks the chosen group's collective membership for that fixture. It does not prove tensor ownership, update equivalence or placement performance."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's rank-coordinate mapper, group membership, round-trip and invalid-product tests.",
+      "stopWhen": "All simulated round trips and four-process group sums pass, and an invalid world-size product is rejected before group creation.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Picotron exposes every group slice and TorchFeather supplies a CPU named-mesh example. Trainlab adds mapper and invalid-configuration tests."
       }
     },
     {
@@ -125,47 +166,82 @@
         "head-hidden-vocabulary-sequence-layer-and-expert-divisibility"
       ],
       "outcomes": [
-        "TODO"
+        "Derive unique examples and valid loss tokens per update for a composed mesh.",
+        "Build a divisibility table for heads, widths, vocabulary, sequence, layers and experts.",
+        "Separate mathematical constraints from a chosen implementation's equal-shard restrictions."
       ],
-      "why": "TODO",
+      "why": "The model-parallel ranks cooperate on the same data. Counting them as data replicas changes the update contract before any performance comparison begins.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/plan-search-regimes",
+          "note": "Make batch and layout constraints executable pruning rules."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-5d-dt8",
+          "title": "Hit the batch without inventing data replicas",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#step_2:_achieving_the_target_global_batch_size_",
+          "locator": "Step 2: Achieving the target global batch size; cross-check with Revisiting global batch size",
+          "depth": "Treat the CP bullets as allocation advice, not batch equations. Changing CP alone partitions existing sequences and does not multiply unique examples."
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Implementation-specific divisibility",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/parallelize.py",
+          "locator": "`parallelize_deepseekv3` sequence and head checks; `apply_non_moe_tp` embedding, attention, output and MLP layouts"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Mesh and balanced-context restrictions",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/parallel_dims.py",
+          "locator": "`_validate` expert-mesh constraints and `seq_len_divisor`"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Uneven layer partitions",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/pipeline_parallel.py",
+          "locator": "`generate_llm_fqn_per_model_part`: effective layer weights, remainder distribution and stage bounds"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Equal expert-owner chunks",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/expert_parallel.py",
+          "locator": "`ExpertParallel._token_dispatch`: `num_local_experts` and the reshape of `num_tokens_per_expert` into expert-owner chunks",
+          "depth": "Trace the equal-expert-count layout only. Do not run the full expert stack here."
         }
       ],
       "focus": [
-        "TODO"
+        "With independent data degree \\(d\\), microbatch examples \\(b\\), microbatches per update \\(m\\) and full sequence length \\(s\\), unique examples are \\(d \\, b \\, m\\) and dense input tokens are \\(d \\, b \\, m \\, s\\). Count unmasked loss tokens separately.",
+        "For equal head shards, query heads must divide by TP; GQA needs a stated KV-head sharding or replication policy. Check hidden and MLP widths, and vocabulary padding, against the actual tensor layouts.",
+        "Balanced CP may require two chunks per rank; combined SP can strengthen the sequence divisor. Equal layers per stage and equal experts per EP rank are planner policies, not universal requirements. Uneven partitions need explicit metadata and costs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For DP 2, TP 2, CP 2 and PP 2, with microbatch 2 examples, eight microbatches per update and full sequence length 1024, derive 32 unique examples and 32,768 input tokens. Write equal-shard checks for a model with 8 query heads, 2 KV heads, hidden width 256, MLP width 768, vocabulary 1024, 8 layers and 4 experts; use EP 2 as a refactoring, not an extra factor. Reject an unpadded vocabulary of 1025 and sequence length 1025 under those equal-shard policies.",
       "traps": [
-        "TODO"
+        "Multiplying global batch by PP, TP or CP. None introduces independent examples in this convention.",
+        "Rejecting every uneven layer count as mathematically impossible. A pipeline can have uneven stages, but the planner must cost their imbalance.",
+        "Dividing a mean loss by world size. Weight gradients by the global valid-token denominator, accounting for replicated outputs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does doubling CP at fixed data degree and full sequence length double update tokens?",
+          "a": "No. It reduces local sequence ownership while keeping the same full sequences."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why might TP exceed the number of KV heads legally?",
+          "a": "An implementation may replicate KV heads across TP ranks. That changes ownership and memory costs; it is not equal KV-head sharding."
+        },
+        {
+          "q": "What changes when some tokens are masked out of the loss?",
+          "a": "The valid-token denominator and useful-token count. Input processing cost can remain unchanged, so report both counts."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's batch-token ledger and model-layout divisibility validator, including invalid and uneven cases.",
+      "stopWhen": "Your ledger recovers the stated unique-token count and your table explains every rejection as a mesh, data or implementation-layout constraint.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook and verified TorchFeather checks cover batch composition and concrete layouts; trainlab supplies the full validator, including explicit equal-shard policies."
       }
     },
     {
@@ -180,47 +256,71 @@
         "checkpoint-and-communication-buffer-memory"
       ],
       "outcomes": [
-        "TODO"
+        "Derive persistent parameter, gradient, master-weight and optimizer bytes from their actual owners and dtypes.",
+        "Account for gathered parameters, reduction buffers and checkpoint staging by lifetime and memory tier.",
+        "Find the worst rank rather than accepting an average per-rank fit."
       ],
-      "why": "TODO",
+      "why": "Build on Memory, arithmetic intensity and reconciling estimates. Composition adds different divisors for different state, plus transient gathers that can invalidate an otherwise correct persistent-state estimate.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-activation-memory",
+          "note": "Add schedule-dependent saved activations to this state ledger."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-math-dt8",
+          "title": "State ownership under ZeRO and model parallelism",
+          "url": "https://blog.eleuther.ai/transformer-math/",
+          "locator": "Distributed Training: Sharded Optimizers, 3D Parallelism and Sharded Optimizers + 3D Parallelism",
+          "depth": "Do not copy the 3D gradient-memory formula as universal: it omits the TP divisor for TP-sharded weight gradients. Derive each gradient from its local parameter shape. The 12-byte optimizer convention includes a master weight; it is not every PyTorch AdamW configuration."
+        },
+        {
+          "resource": "lambda-2d-dt8",
+          "title": "FSDP gathers a TP shard, not the whole model",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/07-2d-parallel/README.md",
+          "locator": "Six-device ownership example and Applying FSDP after TP"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Checkpoint state and asynchronous lifetime",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`CheckpointManager.__init__`, `dcp_save`, `save` and `close`: state inventory, save future and waiting",
+          "depth": "Trace retained state and completion only. Leave checkpoint durability and resume semantics for DT-9."
         }
       ],
       "focus": [
-        "TODO"
+        "Use the DT-4 dtype ledger, but apply TP, PP and state-sharding divisors only to tensors they actually partition. CP usually leaves dense weights replicated unless its ranks also participate in state sharding.",
+        "A gather materializes the stage's TP-local parameter unit. Prefetch may make multiple units live together. Do not divide this full compute window by the FSDP degree again.",
+        "Separate durable checkpoint bytes from additional staging allocations. State-dict views can alias existing tensors; clones do not. Charge host staging to RAM and concurrent device buffers to device memory.",
+        "Compute a timeline maximum of live allocations, not the sum of each category's separate maximum. Include tied state, padding, allocator reserve and the largest stage."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a synthetic model with 12 million evenly partitioned parameters, TP 2, PP 3 and FSDP 4, assume BF16 parameters and gradients, an FP32 master copy and two FP32 moments. Derive persistent tensor storage of 8,000,000 bytes per rank. Then draw a live-window ledger for one gathered TP-local layer, its prefetched successor, a gradient buffer and an asynchronous host checkpoint copy. Mark unknown workspace and allocator reserve separately; do not call the persistent total a peak.",
       "traps": [
-        "TODO"
+        "Treating the source's bytes-per-parameter convention as an AdamW default. Record the tensors your implementation actually stores.",
+        "Adding checkpoint file size to device memory even when staging lives on the host.",
+        "Averaging uneven stages. The smallest device must fit its assigned peak, not the fleet's average."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is the synthetic persistent ledger 8,000,000 bytes?",
+          "a": "Each rank owns 500,000 parameters after TP, PP and FSDP. The stated state uses 16 bytes per parameter, giving 8,000,000 bytes, before transient storage."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What parameter shape is gathered under FSDP plus TP?",
+          "a": "The complete TP-local shard for the wrapped unit, not the unpartitioned model tensor and not just the persistent FSDP fragment."
+        },
+        {
+          "q": "Does an asynchronous save necessarily double device memory?",
+          "a": "No. Extra storage depends on staging location, copying and aliasing. A retained host copy increases host memory while training continues."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's per-rank state, communication-buffer and checkpoint-staging ledger with live-window tests.",
+      "stopWhen": "Every persistent tensor has a dtype and owner, and your peak ledger distinguishes device gathers, host staging, shared storage and reserve.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "EleutherAI provides the state model with an explicit correction; the Distributed Training Guide verifies 2D ownership and TorchFeather exposes checkpoint lifetimes. Trainlab checks the ledger."
       }
     },
     {
@@ -234,47 +334,64 @@
         "per-rank-activation-and-temporary-memory"
       ],
       "outcomes": [
-        "TODO"
+        "Derive saved activation bytes from local layouts and the number of live pipeline microbatches.",
+        "Separate saved tensors from attention, routing and collective workspaces.",
+        "Revise a plan's activation estimate when recomputation, SP or CP changes."
       ],
-      "why": "TODO",
+      "why": "Training-step operation, activation and communication arithmetic gave a whole-model estimate. A composed plan needs the peak lifetime on each stage, not that estimate divided by world size.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/bubble-critical-path-overlap",
+          "note": "Connect live microbatches to the schedule's time cost."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-math-dt8",
+          "title": "Which activations really shrink with TP?",
+          "url": "https://blog.eleuther.ai/transformer-math/",
+          "locator": "Training: Activations and Batch Size, including the three recomputation formulas and their assumptions",
+          "depth": "Use this as an FP16, no-SP reference model. Do not apply its materialized-attention term to a fused attention implementation without checking what is saved."
+        },
+        {
+          "resource": "ultrascale-5d-dt8",
+          "title": "Schedule changes activation lifetime",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#one_forward,_one_backward_and_llama_3.1_schemes",
+          "locator": "One forward, one backward and Llama 3.1 schemes: stored activations and the comparison with all-forward-all-backward",
+          "depth": "Use your DT-6 schedules rather than rebuilding them. Track saved tensors at stage boundaries and within stages."
         }
       ],
       "focus": [
-        "TODO"
+        "Count each saved tensor from its local shape and dtype. Residuals may be replicated while MLP intermediates are TP-sharded; SP changes only the regions where its layout is active.",
+        "At a stage, multiply per-microbatch saved bytes by the schedule's live microbatch count, then add temporary storage at that event. GPipe and 1F1B need not have the same peak.",
+        "CP shards queries and sequence-local tensors, but remote KV blocks or all-gathered KV storage add temporary memory. EP needs routing indices, packed tokens and padding for the actual capacity policy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In a deterministic simulation, let a stage retain one BF16 boundary tensor per live microbatch, with local shape 2 examples by 1024 tokens by hidden width 256. Derive 1,048,576 bytes per tensor. Replay your DT-6 GPipe and 1F1B event lists, allocating at forward completion and freeing after the matching backward. Check the peak against the maximum number of live tensor identities, then add a temporary receive buffer at its actual lifetime.",
       "traps": [
-        "TODO"
+        "Dividing all activation memory by TP. Replicated residuals and normalization inputs can remain unchanged without SP.",
+        "Calling activation checkpointing a durable training checkpoint. Here it trades saved tensors for recomputation, not recovery storage.",
+        "Charging a quadratic attention matrix when the chosen fused kernel does not save it, or forgetting its linear-size statistics and workspace."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Eight synthetic boundary tensors are live. What storage do they occupy?",
+          "a": "8,388,608 bytes, or 8 MiB. This counts only the stated boundary tensors."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does increasing accumulation always increase activation memory?",
+          "a": "No. Sequential microbatches can release activations before the next starts. A pipeline schedule can keep several microbatches live, so use its lifetime trace."
+        },
+        {
+          "q": "Why does full recomputation not make activation memory zero?",
+          "a": "It retains recomputation boundaries and still needs current-layer intermediates, outputs and workspaces."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's activation lifetime simulation and per-stage temporary-memory accounting.",
+      "stopWhen": "The simulated live-set maximum agrees with your byte ledger for both schedules, and changing recomputation or layout changes only the tensors it actually affects.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The activation formulas state their precision and layout assumptions; the Playbook supplies schedule-dependent retention. Trainlab tests the composed live-set estimate."
       }
     },
     {
@@ -289,47 +406,76 @@
         "collective-volume-for-every-parallel-dimension"
       ],
       "outcomes": [
-        "TODO"
+        "Derive local matmul shapes and forward, backward and recomputation FLOPs for each stage.",
+        "List every DP, FSDP, TP, SP, CP, PP and EP transfer with group, dtype, payload and frequency.",
+        "Keep logical payload, per-rank transmitted bytes and critical-path time distinct."
       ],
-      "why": "TODO",
+      "why": "Use Counting parameters and FLOPs and Operation counts for projections, MLPs, output and attention as inputs. The new task is to distribute those operations and count the communication that makes them valid.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/link-contention-placement",
+          "note": "Map the byte ledger onto physical links."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-calcs-dt8",
+          "title": "A gated FFN with explicit forward and backward communication",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Sections 8.1 to 8.4, Communication Primitives through Analyzing Tensor Parallel, printed pp. 40 to 45"
+        },
+        {
+          "resource": "jax-plan-dt8",
+          "title": "Transformer terms beyond the FFN",
+          "url": "https://jax-ml.github.io/scaling-book/transformers/",
+          "locator": "Global FLOPs and Params Calculation: MLPs, Attention, Other Operations and Fractional cost of attention with context length"
+        },
+        {
+          "resource": "ultrascale-5d-dt8",
+          "title": "Sequence, context, pipeline and expert transfers",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#5d_parallelism_in_a_nutshell",
+          "locator": "Summarizing it all, the combined MoE-layer diagram; follow back to Sequence parallelism, Ring Attention and Expert Parallelism for the transfer paths",
+          "depth": "Use the diagrams to enumerate transfers. Do not use Appendix A3's shard-size lines as transmitted bytes: an input shard is not the total traffic, and element counts need their dtype multiplier."
         }
       ],
       "focus": [
-        "TODO"
+        "For a gated FFN with token rows \\(n\\), hidden width \\(h\\) and MLP width \\(f\\), three projections cost \\(6 n \\, h \\, f\\) forward FLOPs and about \\(12 n \\, h \\, f\\) backward FLOPs. Distribute rows and weights according to actual layouts, not every mesh degree blindly.",
+        "For a ring on \\(q\\) ranks and full logical tensor size \\(S\\) bytes, all-gather or reduce-scatter sends \\((q-1)S/q\\) per rank; all-reduce sends twice that. At degree 1 all three have zero network traffic.",
+        "DP reduces gradients once per synchronization; FSDP gathers each live parameter unit and scatters gradients; TP/SP moves activations at layout boundaries. PP sends boundary activations and their gradients. CP exchanges attention blocks; EP dispatches and combines routed tokens, including backward transfers.",
+        "Include attention score/value matmuls, vocabulary projection, recomputation and replicated operations. CP and EP counts depend on algorithm, masks, routing and padding; count the actual messages rather than assuming uniform traffic."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the three CS336 FFN strategies from tensor shapes without notes. For a separate synthetic four-rank ring all-reduce with a 1 MiB logical tensor, derive 1,572,864 transmitted bytes per rank, excluding protocol overhead. Extend one composed-plan ledger with every transfer type in the combined MoE diagram; record forward/backward frequency and explicitly mark any inactive dimension as zero.",
       "traps": [
-        "TODO"
+        "Treating FLOPs divided by peak FLOP/s as a measured kernel time. Local shard shapes can reduce attainable throughput.",
+        "Adding send and receive bytes and then dividing by an egress-only bandwidth. Keep the byte and bandwidth convention consistent.",
+        "Counting only EP forward dispatch. Combine and the backward routing paths also move tensors."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is the gated FFN forward count larger than a two-matrix MLP count?",
+          "a": "It has gate, up and down projections rather than just up and down. Each costs twice token rows times the two weight dimensions."
+        },
+        {
+          "q": "What happens to FSDP traffic if parameters are retained across the forward/backward boundary?",
+          "a": "A backward parameter gather may be avoided for retained units, but memory rises. Count gathers from the retention policy, not a fixed slogan."
+        },
+        {
+          "q": "Why is the 1 MiB ring input not the per-rank all-reduce traffic?",
+          "a": "Each rank sends three quarters of the tensor in reduce-scatter and again in all-gather. That totals 1.5 MiB."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `data_parallel_calcs`, `fsdp_calcs` and `tp_calcs`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.2 problem on p. 42, Section 8.3 problem on pp. 43 to 44 and Section 8.4 problem on pp. 44 to 45",
+          "note": "These are written derivations, not public autograded tests. Retain the finite-rank ring factors and the handout's FP16 and egress-bandwidth assumptions. The section mini-project extends your transfer ledger to CP, PP and EP."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your three written solutions agree with an independent shape-and-message count, and the composed ledger names every active transfer and its units.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies checked-by-derivation practice, the scaling book supplies transformer terms and the Playbook diagrams expose the remaining dimensions. Trainlab completes the transfer ledger."
       }
     },
     {
@@ -345,47 +491,65 @@
         "communication-overlap-and-dependency-constraints"
       ],
       "outcomes": [
-        "TODO"
+        "Derive ideal pipeline overhead and distinguish it from the idle fraction of elapsed time.",
+        "Compute makespan from a dependency graph with stage imbalance and communication resources.",
+        "Identify which transfers can overlap and which must finish before their consumers."
       ],
-      "why": "TODO",
+      "why": "Cost categories and the Amdahl bound on end-to-end gain established why total work is not elapsed time. Composition makes the dependency graph and shared resources the planner's central objects.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/plan-residuals-manifest",
+          "note": "Test predicted overlap against rank-local event evidence."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "narayanan-paper-dt8",
+          "title": "Bubble, microbatch size and composed schedules",
+          "url": "https://arxiv.org/html/2104.04473v5#S2.SS2",
+          "locator": "arXiv:2104.04473v5, Sections 2.2.1 to 2.2.2 and 3.1 to 3.4; Figures 3, 4 and 8",
+          "depth": "Use the schedule and cost analysis. The A100 Selene results are source measurements, not targets for your machine."
+        },
+        {
+          "resource": "jax-plan-dt8",
+          "title": "Where overlap assumptions enter the model",
+          "url": "https://jax-ml.github.io/scaling-book/training/#combining-fsdp-and-tensor-parallelism",
+          "locator": "Combining FSDP and Tensor Parallelism: forward/backward algorithm and the two assumptions before minimizing communication",
+          "depth": "A maximum of costs is an ideal overlap bound, not a guarantee. Include first-layer gathers and last gradient reductions when constructing the full step."
         }
       ],
       "focus": [
-        "TODO"
+        "For balanced non-interleaved fill-drain with \\(p\\) stages, \\(m\\) microbatches, stage forward time \\(t_f\\) and backward time \\(t_b\\), makespan is \\((m+p-1)(t_f+t_b)\\), ignoring transfers and update. Bubble overhead relative to ideal work is \\((p-1)/m\\); its elapsed-time fraction is \\((p-1)/(m+p-1)\\).",
+        "Use the DT-6 event simulator with per-stage durations. The busiest stage limits steady-state throughput; embeddings, output projection and routed-expert skew can make equal layer counts unbalanced.",
+        "An asynchronous launch removes host waiting, not a tensor dependency. The consuming matmul waits for its gather or reduction. Overlap also needs independent resource capacity and enough ready compute.",
+        "The last gradient bucket can remain exposed even if earlier reductions overlap. Retaining parameters or adding prefetch can shorten waits while enlarging live memory."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Simulate balanced fill-drain with four stages, eight microbatches, forward duration 1 time unit and backward duration 2 time units per stage, with zero transfer and update cost. Recover makespan 33, ideal work time 24 and bubble time 9. Then double one stage's durations and insert a positive receive dependency; recompute the makespan from events rather than reusing the balanced formula.",
       "traps": [
-        "TODO"
+        "Calling the paper's bubble-to-ideal-work ratio the fraction of elapsed step time. The denominators differ.",
+        "Replacing all compute and communication sums with a maximum. Dependent operations and shared links cannot overlap freely.",
+        "Charging bubble time twice, once in the simulator and again as an added analytic penalty."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What are the two bubble ratios in the synthetic balanced case?",
+          "a": "Overhead relative to ideal work is \\(3/8\\), or 37.5%. The fraction of elapsed time is \\(3/11\\), about 27.3%."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does non-interleaved 1F1B automatically remove the ideal fill-drain bubble?",
+          "a": "No. Under the balanced ideal model it has the same bubble while reducing outstanding activation lifetimes."
+        },
+        {
+          "q": "A gather is shorter than total backward compute. Is that enough to hide it?",
+          "a": "No. It needs ready independent compute in its own release-to-consumer window, sufficient buffers and uncongested resources."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's composed critical-path simulator, stage-imbalance cases and overlap-versus-serialization bounds.",
+      "stopWhen": "Your simulator reproduces the ideal case and explains an imbalance or blocked-transfer case through dependencies, without double-counting bubble or overlap.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pinned Megatron paper gives schedule derivations and the scaling book exposes ideal overlap assumptions. Trainlab validates their bounded use in an event model."
       }
     },
     {
@@ -402,47 +566,70 @@
         "fast-link-preference-for-tensor-and-expert-parallelism"
       ],
       "outcomes": [
-        "TODO"
+        "Map logical groups onto device, node, NIC and switch links with a traffic table.",
+        "Identify simultaneous dimensions that contend for the same physical capacity.",
+        "Defend fast-link placement for frequent TP or EP traffic without treating it as a universal rule."
       ],
-      "why": "TODO",
+      "why": "Orthogonal groups can still share a NIC. A topology-aware plan needs physical routes and shared capacities, not just one bandwidth constant per logical dimension.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/uncertain-heterogeneous-planning",
+          "note": "Rank plans when those link capacities are uncertain."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-plan-dt8",
+          "title": "Node and cross-node collective capacity",
+          "url": "https://jax-ml.github.io/scaling-book/gpus/#how-do-collectives-work-on-gpus",
+          "locator": "How Do Collectives Work on GPUs: Intra-node collectives and Cross-node collectives; Rooflines for LLM Scaling on GPUs: Tensor Parallelism, Expert Parallelism and Caveat about latency",
+          "depth": "Keep the chapter's H100 and GB200 constants labeled as its hardware assumptions. Reuse the hierarchy and message-size reasoning, not those constants as measurements of your machine."
+        },
+        {
+          "resource": "cs336-calcs-dt8",
+          "title": "Independent versus contending FSDP and TP",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.5, 2D Parallelism (FSDP + TP), problem `fsdp_tp_calcs`, printed pp. 45 to 46"
         }
       ],
       "focus": [
-        "TODO"
+        "Separate rank-to-device placement from coordinate-to-rank mapping. Map each message onto links and direction; count simultaneous traffic at the GPU interface, shared NIC and network cuts.",
+        "TP collectives recur inside each layer's dependency chain. EP all-to-all can expose routing skew and many destinations. Fast links often help these paths, but feasibility and available domains can force cross-node groups.",
+        "On one directed bottleneck of capacity \\(w\\), transfers of \\(S_1\\) and \\(S_2\\) bytes require at least \\((S_1+S_2)/w\\) if neither can use another route. Taking their individual times' maximum spends the same bandwidth twice.",
+        "Use egress bandwidth for transmitted bytes. Algorithm bandwidth is logical payload divided by time; bus bandwidth applies the collective's traffic factor. Neither automatically equals physical peak bandwidth."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw two simulated nodes with two devices each and a single shared outbound link per node. Place a 2 by 2 DP-by-TP mesh once with TP inside nodes and once with TP across nodes. Use the same layer/message ledger and symbolic capacities for both. Mark simultaneous FSDP and TP traffic on shared links and derive serialization and independent-link bounds; explain which placement wins under each capacity ratio.",
       "traps": [
-        "TODO"
+        "Giving every rank the full node NIC capacity. Shared egress must be budgeted across all active rank flows.",
+        "Assuming simultaneous collectives have independent bandwidth because their groups intersect only at one rank.",
+        "Calling CPU gloo timing evidence about NVLink or inter-node NCCL performance. The CPU experiment verifies semantics only."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two equal-sized transfers share one saturated directed link. Is their completion time the individual time's maximum?",
+          "a": "No. The link must carry twice the bytes. Ignoring latency, the lower bound is twice the individual transfer time."
+        },
+        {
+          "q": "Why can EP need a different placement preference from DP?",
+          "a": "EP routes activations between expert owners, often on the layer critical path and with skew. DP reduces gradient tensors with a different readiness and overlap pattern."
+        },
+        {
+          "q": "Does moving PP across nodes make its transfer cost zero?",
+          "a": "No. Boundary tensors and gradients still cross links and block dependent work. PP often has less frequent communication, not free communication."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `fsdp_tp_calcs`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 8.5, all four parts of `fsdp_tp_calcs`, printed pp. 45 to 46",
+          "note": "Solve the independent-axis and shared-network cases separately. This is a written problem with no public autograded tests. Check your optimum against an enumeration of legal integer factors; the handout's continuous optimum is only a relaxation. Trainlab extends the exercise to placement and EP."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your written solutions distinguish overlapping and shared-resource costs, and both placements have a per-link traffic table with no duplicated bandwidth budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The GPU chapter supplies topology and EP placement reasoning; CS336 explicitly tests contention in 2D composition. Trainlab adds physical-route simulation."
       }
     },
     {
@@ -457,47 +644,70 @@
         "batch-limit-trade-offs-between-dp-zero-and-pp"
       ],
       "outcomes": [
-        "TODO"
+        "Compare TP and CP for a long-context workload using local shapes, memory and attention communication.",
+        "Compare DP, ZeRO and PP at a fixed global batch without changing the intended update.",
+        "Defend at least three feasible alternatives and state when recomputation, offload or fewer dimensions is preferable."
       ],
-      "why": "TODO",
+      "why": "More dimensions are not automatically better. A plan must respect batch and memory constraints while retaining enough useful work per rank to amortize its communication.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/plan-search-regimes",
+          "note": "Turn the alternatives and crossover assumptions into a search."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-5d-dt8",
+          "title": "Weights, activations and long-context tradeoffs",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#5d_parallelism_in_a_nutshell",
+          "locator": "5D Parallelism in a Nutshell: PP versus ZeRO-3 comparison, TP/SP interplay and the CP discussion"
+        },
+        {
+          "resource": "jax-plan-dt8",
+          "title": "Fixed batch limits the data dimension",
+          "url": "https://jax-ml.github.io/scaling-book/applied-training/#how-to-shard-llama-3-70b-for-training",
+          "locator": "How to shard LLaMA 3-70B for training: pure FSDP, sequence-sharded and mixed FSDP/TP questions",
+          "depth": "Answer before revealing the solutions. The final suggested 2048-way FSDP with 4-way TP uses 8192 chips, not the stated full 8960-chip pod. Treat it as a smaller allocation, then enumerate legal factors for the full pod. The memory table earlier in the chapter omits gradients and transient buffers."
         }
       ],
       "focus": [
-        "TODO"
+        "CP reduces local sequence ownership and adds attention exchange, while usually retaining dense weights. TP reduces selected weights and computation widths, but can make local GEMMs small and introduce dependent collectives throughout the block.",
+        "At fixed update batch, increasing DP reduces examples per replica and the microbatches available to each pipeline. Neither TP nor CP creates extra training examples. Derive the batch again after each factorization.",
+        "ZeRO-3 trades persistent state for gathers; PP trades depth ownership for bubbles and boundary transfers. Retention across microbatches can avoid repeated gathers but raises peak memory.",
+        "Compare recomputation and host offload as alternatives when their compute or transfer cost buys feasibility. Keep the loss, token budget and optimizer update fixed; throughput does not establish convergence or recovery suitability."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Build three analytical scenarios: a short-context model that fits unsharded, a weight-heavy model and a long-context model with constrained global batch. For each, compare at least three legal plans using your state, activation and message ledgers. Identify a memory or bandwidth assumption that reverses the preferred plan. In the scaling-book case, separately check the suggested allocation product and the full-pod factorization before using its optimum.",
       "traps": [
-        "TODO"
+        "Increasing global batch merely to make the preferred mesh look efficient. That changes the optimization workload.",
+        "Assuming CP fixes a weight-memory problem. It mainly partitions sequence-local activations unless combined with state sharding.",
+        "Rounding each degree independently and forgetting to recheck the world-size product."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can TP help a weight-heavy model more than CP at the same degree?",
+          "a": "TP partitions substantial parameter tensors. Pure CP retains those weights and mainly reduces local activation ownership."
+        },
+        {
+          "q": "Why can a small fixed global batch make deep PP unattractive?",
+          "a": "Few microbatches per pipeline leave a large fill/drain overhead. More accumulation is not free if it changes the prescribed global batch."
+        },
+        {
+          "q": "Is 2048-way FSDP with 4-way TP a legal allocation of every chip in an 8960-chip pod?",
+          "a": "No. It uses 8192 chips. Either name the unused capacity or choose factors whose product is 8960 and recheck model and batch constraints."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "How To Scale Your Model: sharding LLaMA 3-70B for training",
+          "url": "https://jax-ml.github.io/scaling-book/applied-training/#how-to-shard-llama-3-70b-for-training",
+          "locator": "The pure FSDP, sequence-sharded and mixed FSDP plus TP questions in How to shard LLaMA 3-70B for training, answered on paper before opening each solution",
+          "note": "The givens are TPU v5p numbers; keep them labeled as such. Check the suggested allocation's product against the full pod, then add gradients and transient buffers to its memory answer. The section mini-project carries the three-scenario comparison into trainlab."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your three scenario tables retain at least three feasible alternatives each and explain distinct winners without changing the batch or hiding unused ranks.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook covers TP/CP and PP/ZeRO tradeoffs; the scaling-book case exposes fixed-batch constraints with an explicit allocation correction. Trainlab supplies scenario practice."
       }
     },
     {
@@ -512,47 +722,71 @@
         "predicted-oom-communication-bound-and-bubble-bound-regimes"
       ],
       "outcomes": [
-        "TODO"
+        "Enumerate legal integer plans and retain a reason for every rejection.",
+        "Rank feasible plans using peak memory, local compute, communication, bubble and topology costs.",
+        "Predict OOM, exposed-communication and bubble-dominated regimes without presenting analytical labels as measurements."
       ],
-      "why": "TODO",
+      "why": "The preceding ledgers become useful only when they reject bad allocations and expose alternatives. Search a bounded space before requesting hardware, then validate its leading assumptions.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/plan-residuals-manifest",
+          "note": "Calibrate the planner without erasing its original prediction."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-5d-dt8",
+          "title": "A bounded configuration search",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#finding_the_best_training_configuration",
+          "locator": "Finding the Best Training Configuration: Steps 1 to 3, then Benchmarking thousands of configurations",
+          "depth": "Use the search ordering, not fixed model-size or rank-count thresholds as universal rules. The heatmaps are Hugging Face's H100-cluster results at sequence length 4096 and global batch 1M tokens."
+        },
+        {
+          "resource": "tensortonic-dt8",
+          "title": "A finite planner with an exact scoring contract",
+          "url": "https://www.tensortonic.com/problems/cs336-l08-topology-aware-parallel-plan",
+          "locator": "Choose a Topology-Aware Parallel Plan: statement, feasibility rules, lexicographic score and three public examples",
+          "depth": "Implement its supplied model exactly for this problem. It has no FSDP, EP, pipeline activation-lifetime or step-time model; passing it does not validate those parts of trainlab."
         }
       ],
       "focus": [
-        "TODO"
+        "Enumerate factor tuples, then prune by mesh reuse, model divisibility, batch integrality and peak capacity with reserve. For degree 1, charge no network transfer. Keep a full rejection record instead of deleting inconvenient cases.",
+        "Apply stage-specific cost functions to local shapes. A plan with smaller FLOPs per rank can lose through tiny GEMMs, launch overhead, bubbles or contending links.",
+        "Use predicted regimes as hypotheses: memory exceeds usable capacity, a required transfer is exposed, or idle schedule time dominates. Feasibility and a fast predicted time are separate questions.",
+        "Rank only plans with the same model, valid tokens and update contract. Add checkpoint staging, failure-domain restrictions and supported implementation features as constraints, not invented performance bonuses."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, enumerate all ordered positive-integer DP, TP, PP and CP factors for a small world size and implement TensorTonic's exact ceiling, feasibility and tie-breaking rules. Compare factor-first enumeration with an independent brute-force loop over degrees. Then extend trainlab with state-sharding policies, expert-mesh reuse and schedule costs; keep the platform's simplified scorer as a separate baseline.",
       "traps": [
-        "TODO"
+        "Using the TensorTonic score as a throughput estimate. It ranks modeled byte counts lexicographically, not seconds.",
+        "Pruning on persistent memory alone while a gather or pipeline live set exceeds capacity.",
+        "Treating the first predicted winner as measured optimal. Preserve close alternatives and uncertainty ranges."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Can a configuration with the correct world-size product still be illegal?",
+          "a": "Yes. It can violate batch, tensor-layout, expert-reuse, sequence, stage or supported-implementation constraints."
+        },
+        {
+          "q": "Why should feasibility use a memory reserve?",
+          "a": "Tensor estimates omit or approximate workspace, runtime allocations and allocator effects. State the reserve and test sensitivity rather than treating nominal capacity as fully usable."
+        },
+        {
+          "q": "What evidence distinguishes a predicted communication regime from a demonstrated one?",
+          "a": "A measured timeline and controlled variation showing exposed communication limits step time on the executed topology. Byte volume alone is not enough."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Choose a Topology-Aware Parallel Plan",
+          "url": "https://www.tensortonic.com/problems/cs336-l08-topology-aware-parallel-plan",
+          "locator": "Implement `topology_aware_parallel_plan` using the function signature and public cases on the page",
+          "note": "The free public cases exercise single-node TP, CP with PP, and DP with TP under the supplied model. They do not check FSDP, EP or real throughput. Add your own no-feasible-plan and tied-score tests; the section mini-project extends the planner."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The named problem's public cases pass, independent enumerations agree, and your extended planner reports feasible candidates and explicit rejection reasons for all three scenarios.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook supplies search priorities and the free, opened TensorTonic problem supplies a bounded enumeration contract. Trainlab adds the dimensions and costs absent from that model."
       }
     },
     {
@@ -567,47 +801,71 @@
         "topology-and-assumption-manifest-for-every-result"
       ],
       "outcomes": [
-        "TODO"
+        "Freeze a prediction and compute signed timing or memory residuals against a scoped observation.",
+        "Attribute the largest discrepancy to kernels, overlap, contention, input, stragglers or runtime overhead.",
+        "Preserve the workload, topology, software and assumptions needed to reproduce a plan comparison."
       ],
-      "why": "TODO",
+      "why": "A planner is a falsifiable model, not a fitting exercise. The useful result is an explained residual and a revised assumption that predicts a new case.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/performance-fleet-operation/fixed-workload-benchmark-contracts",
+          "note": "Carry the frozen comparison into DT-10's performance evidence."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-5d-dt8",
+          "title": "What makes a configuration result non-transferable?",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#lessons_learned_on_benchmarking",
+          "locator": "Benchmarking thousands of configurations and Lessons learned on benchmarking"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Rank-local schedule labels and CPU traces",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`run_schedule` action labels and `main` CPU profiling and trace export",
+          "depth": "Use this to inspect event ordering. It profiles one schedule execution, not a repeated-trial steady-state throughput benchmark."
+        },
+        {
+          "resource": "picotron-4d-dt8",
+          "title": "Audit the reported step boundary",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/train.py",
+          "locator": "Main training loop from `step_start_time` through `step_duration`, logging and checkpoint save",
+          "depth": "Read only. Its wall-clock boundary excludes checkpoint saves and is not an explicit synchronized GPU timing contract. Do not reuse its logged time as validated end-to-end GPU latency."
         }
       ],
       "focus": [
-        "TODO"
+        "Define \\(r = T_{\\text{observed}} - T_{\\text{predicted}}\\) and relative residual \\(r/T_{\\text{predicted}}\\) for a positive predicted duration. Keep the original estimate alongside any calibrated revision.",
+        "Use rank-local phase durations and the slowest completed rank for the declared step boundary. Cross-rank clock alignment needs a stated method; raw timestamps are not automatically comparable.",
+        "The manifest names model shapes, seeds, data/token identity, batch and accumulation, masks, dtypes, optimizer, mesh order, rank placement, links, bandwidth convention, reserve, schedule, recomputation, software versions and source commits.",
+        "Retain raw trials, warmup policy, timing boundary, observer overhead and evidence tier. CPU gloo timing describes your machine's CPU execution, not a GPU interconnect."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Freeze a schedule and predicted phase costs for a tiny CPU gloo PP-plus-DP plan, using the same shapes and settings for every trial. Run correctness checks first, then time repeated warm steady-state steps without profiling and keep a separate labeled trace run. Reconcile the largest signed residual using a controlled change to one suspected term. With two or more GPUs, repeat on one GPU per NCCL rank with synchronized timing and measured device/link assumptions; keep that evidence separate.",
       "traps": [
-        "TODO"
+        "Calibrating on every observation and reporting only the revised prediction. That hides whether the model predicts unseen configurations.",
+        "Adding durations from overlapping phases as if they were disjoint step components.",
+        "Comparing a profiled cold step with an unprofiled steady-state prediction, or omitting checkpoint cost while calling the result end to end."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What does a negative timing residual mean?",
+          "a": "The observed duration is shorter than predicted. Possible causes include pessimistic rates or more overlap, but check equal work and timing boundaries before explaining it."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can the sum of phase durations exceed measured step time?",
+          "a": "Some phases run concurrently. Their sum counts overlapping intervals more than once."
+        },
+        {
+          "q": "Which test separates a bad link-rate assumption from a data-loader delay?",
+          "a": "Hold tensors and compute fixed, remove input preparation with resident synthetic batches, then inspect transfer intervals and exposed wait. Preserve both runs and their changed input assumption."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's frozen prediction, repeated-trial manifest, largest-residual attribution and held-out configuration check.",
+      "stopWhen": "You retain the original prediction, raw trials and manifest, explain the largest residual with a controlled comparison, and test the revised assumption on a new configuration.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook supplies benchmark failure context; opened code supplies inspectable step boundaries and traces. Trainlab adds the repeated-trial and residual contract."
       }
     },
     {
@@ -621,47 +879,70 @@
         "correctness-tests-for-a-composed-2d-or-4d-plan"
       ],
       "outcomes": [
-        "TODO"
+        "Execute a CPU-safe composed plan and compare outputs, global loss, gradients and updates with an unpartitioned oracle.",
+        "Test sample identity, global normalization and complete state ownership across groups.",
+        "Localize a composition defect with group, tensor-layout and collective-order evidence."
       ],
-      "why": "TODO",
+      "why": "Correct dimensions in isolation do not guarantee a correct composition. The same global batch and optimizer state must produce the intended update after group construction, accumulation and transfers interact.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Carry ownership and equivalence checks into a changed recovery mesh."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "torchfeather-mesh-dt8",
+          "title": "A composed PP-plus-DP numerical check",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`run_schedule`, `average_gradients`, `run_reference`, `assert_parameter_gradients_match` and the assertions in `main`"
+        },
+        {
+          "resource": "lambda-2d-dt8",
+          "title": "Compare a second composition's ownership",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/07-2d-parallel/README.md",
+          "locator": "Applying FSDP after TP and Controlling TP size",
+          "depth": "Read the ownership path without launching the GPU trainer. Extend CPU checks with the reduced sharding and TP mechanisms you already built; the README has no independent update oracle."
         }
       ],
       "focus": [
-        "TODO"
+        "The supplied example checks two-stage PP with four DP replicas on CPU gloo. It compares final-stage outputs and loss, and all stage-local parameter gradients; it does not step an optimizer or test checkpoint resume.",
+        "Its reference averages gradients through the same DP groups. Add a stronger oracle that concatenates all replicas' distinct input and target tensors and computes one global mean loss in a single process.",
+        "Keep model and data seeds, token identities, loss denominator and optimizer hyperparameters identical. Compare floating-point tensors with justified absolute and relative tolerances, not bitwise equality.",
+        "Test nontrivial data on every replica, accumulation changes, tied-state ownership and invalid layouts. Log collective group, sequence, shape and dtype; reject known bad meshes before entering collectives."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run the CPU example with its supplied model/data seeds and shapes. Then add one SGD update at learning rate 0.01 to a reduced PP-plus-DP trainer and to an independent concatenated-batch oracle. Compare stage parameters and global loss before and after the update, under a stated tolerance. Perturb one replica's reduction denominator and require the oracle test to fail; keep the first mismatching tensor and its owner.",
       "traps": [
-        "TODO"
+        "Reusing the distributed reduction in the only oracle. A wrong group or divisor can then appear correct in both paths.",
+        "Claiming the supplied PASS message proves optimizer or recovery equivalence. Those are not tested by this example.",
+        "Running every replica on identical data. That can hide missing synchronization and incorrect sample ownership."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What is the reference loss for the example's equal-sized DP replicas?",
+          "a": "The supplied reference is per replica: the mean squared error on that replica's own 8-sample batch. Its global equivalent is the mean squared error over the concatenation of all replicas' outputs and targets; with equal local sizes averaging the local means gives the same value, while unequal sizes need count weighting. Your added oracle should compute the concatenated form directly."
+        },
+        {
+          "q": "Why compare gradients as well as final parameters?",
+          "a": "A small learning rate or rounding can hide a gradient-scale defect in parameters. Gradients expose the error before the optimizer transforms it."
+        },
+        {
+          "q": "Does one-step equivalence establish long-run convergence equivalence?",
+          "a": "No. It checks a bounded update contract. Stochastic streams, repeated numerical error and altered optimization policies need trajectory or convergence evidence."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TorchFeather CPU example: GPipe with replicated DP",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "Run `torchrun --nnodes=1 --nproc-per-node=8 --master-port=29884 minimal_examples/pp_gpipe.py` from the repository root",
+          "note": "The standalone example uses only PyTorch and CPU gloo; it passed on PyTorch 2.14.1. Its checks cover outputs, loss and averaged gradients for the stated fixture, not optimizer state. The section mini-project adds a concatenated-batch oracle, update checks and negative cases in trainlab."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The supplied example passes, your independent oracle matches one composed SGD update, and a wrong reduction denominator produces a localized failing test.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The opened CPU example supplies real composed numerical checks; the Distributed Training Guide supplies complementary FSDP/TP ownership. Trainlab strengthens the oracle and tests the update contract."
       }
     },
     {
@@ -676,47 +957,65 @@
         "heterogeneous-device-planning"
       ],
       "outcomes": [
-        "TODO"
+        "Derive a plan crossover and report when a bandwidth interval leaves the ranking unresolved.",
+        "Partition stages using device-specific capacity and compute rates instead of fleet averages.",
+        "Test ranking sensitivity to latency, reserve, sequence, batch and stage imbalance."
       ],
-      "why": "TODO",
+      "why": "This optional extension turns a point estimate into a decision boundary. It is useful when device types differ or the available link rate is not yet known, without requiring a heterogeneous fleet.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/performance-fleet-operation/gang-scheduling-quotas-capacity",
+          "note": "Carry device and placement constraints into allocation decisions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-plan-dt8",
+          "title": "Expose the assumptions behind a ranking",
+          "url": "https://jax-ml.github.io/scaling-book/training/#combining-fsdp-and-tensor-parallelism",
+          "locator": "Combining FSDP and Tensor Parallelism: continuous optimum and compute-to-communication ratio",
+          "depth": "Vary rates and legal integer factors instead of assuming the continuous optimum survives uncertain bandwidth."
+        },
+        {
+          "resource": "hetpipe-planning-dt8",
+          "title": "Device-specific partitions and virtual-worker placement",
+          "url": "https://arxiv.org/html/2005.14038v1#S7",
+          "locator": "arXiv:2005.14038v1, Section 4 Pipelined Model Parallelism Within a VW (Model Partitioning paragraph), Section 7 Partitioning Algorithm and Section 8.1 Methodology (resource allocation for virtual workers)",
+          "depth": "Stop before reproducing the system. Its TensorFlow experiments use stale-weight WSP semantics; borrow the cost and placement questions for a synchronous simulator, not its update rule. It does not evaluate heterogeneous link rates."
         }
       ],
       "focus": [
-        "TODO"
+        "For two serialized cost models \\(T_A(w)=a_A+S_A/w\\) and \\(T_B(w)=a_B+S_B/w\\), solve their equality before ranking. Latency, overlap and routing can require a richer model; name what this abstraction omits.",
+        "A ranking is robust over an interval only if it remains feasible and preferred throughout that interval. Endpoint checks suffice for a monotone difference in the simple model, not for arbitrary piecewise schedules.",
+        "Use compute cost by layer and device type, peak memory by assigned stage and communication by actual route. Averages can hide both a slow stage and a small-memory device.",
+        "Sweep uncertain bandwidth, latency and reserve alongside sequence, batch and stage balance. Report rank reversals and feasibility cliffs; do not assign a probability without a distributional assumption."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use synthetic, serialized models: plan A has 12 ms of non-transfer cost and 120,000,000 transmitted bytes; plan B has 20 ms and 40,000,000 bytes. With shared egress rate between 5 and 20 GB/s, zero launch latency and no overlap, derive the crossover at 10 GB/s and show both endpoint winners. Separately partition 12 identical layers, each costing one work unit, between devices sustaining 2 and 1 work units per time unit. With zero transfer cost and capacity for eight layers on each device, enumerate contiguous cuts and recover the balanced 8/4 split. Then add activation lifetimes and a slow link to see when that split ceases to win.",
       "traps": [
-        "TODO"
+        "Calling the nominal-rate winner robust when the supplied rate interval crosses its decision boundary.",
+        "Aggregating memory across devices. An allocation fails if any assigned rank's peak exceeds that device's usable capacity.",
+        "Copying an asynchronous paper's convergence claim into a synchronous update-equivalence contract. Different update semantics need separate evidence."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which synthetic plan wins at 5 and 20 GB/s?",
+          "a": "At 5 GB/s, A takes 36 ms and B 28 ms, so B wins. At 20 GB/s, A takes 18 ms and B 22 ms, so A wins. They tie at 24 ms at 10 GB/s."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is the zero-transfer heterogeneous split 8/4 rather than 6/6?",
+          "a": "Eight layers on the faster device and four on the slower both take 4 time units. The equal split takes 3 and 6, so its slowest stage is worse."
+        },
+        {
+          "q": "Do overlapping plan-time intervals prove a rank reversal?",
+          "a": "No. Both plans may depend on the same uncertain quantities. Compare their paired costs under each admissible scenario, not independent interval extrema alone."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's optional bandwidth sensitivity and heterogeneous-stage simulation with rank-reversal and capacity-cliff reports.",
+      "stopWhen": "Your sensitivity report distinguishes robust and unresolved rankings and your heterogeneous simulation checks every device's peak under a stated synchronous schedule.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for heterogeneous-device partitioning in the pool. One search pass found and opened HetPipe v1 Sections 4, 7 and 8.1; these add device-specific constraints while the scaling book supports sensitivity analysis."
       }
     }
   ]
