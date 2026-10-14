@@ -132,21 +132,46 @@ import unitFile129 from './programming/python-execution-model.json';
 import unitFile130 from './programming/python-execution-model.project.json';
 import unitFile131 from './programming/testing-debugging-reproducibility.json';
 import unitFile132 from './programming/testing-debugging-reproducibility.project.json';
-import unitFile133 from './systems/_route.json';
-import unitFile134 from './systems/concurrency-bounded-work.json';
-import unitFile135 from './systems/concurrency-bounded-work.project.json';
-import unitFile136 from './systems/databases-durable-storage.json';
-import unitFile137 from './systems/databases-durable-storage.project.json';
-import unitFile138 from './systems/distributed-state-streams.json';
-import unitFile139 from './systems/distributed-state-streams.project.json';
-import unitFile140 from './systems/machine-process-memory-io.json';
-import unitFile141 from './systems/machine-process-memory-io.project.json';
-import unitFile142 from './systems/networking-rpc.json';
-import unitFile143 from './systems/networking-rpc.project.json';
-import unitFile144 from './systems/observability-reliability-design.json';
-import unitFile145 from './systems/observability-reliability-design.project.json';
-import unitFile146 from './systems/security-privacy-evolution.json';
-import unitFile147 from './systems/security-privacy-evolution.project.json';
+import unitFile133 from './reinforcement-learning/_route.json';
+import unitFile134 from './reinforcement-learning/classical-mdps-bellman-planning.json';
+import unitFile135 from './reinforcement-learning/classical-mdps-bellman-planning.project.json';
+import unitFile136 from './reinforcement-learning/classical-sampling-td-control.json';
+import unitFile137 from './reinforcement-learning/classical-sampling-td-control.project.json';
+import unitFile138 from './reinforcement-learning/deep-exploration-empirical-method.json';
+import unitFile139 from './reinforcement-learning/deep-exploration-empirical-method.project.json';
+import unitFile140 from './reinforcement-learning/deep-function-approximation-stability.json';
+import unitFile141 from './reinforcement-learning/deep-function-approximation-stability.project.json';
+import unitFile142 from './reinforcement-learning/deep-imitation-offline-ope.json';
+import unitFile143 from './reinforcement-learning/deep-imitation-offline-ope.project.json';
+import unitFile144 from './reinforcement-learning/deep-model-based-world-models.json';
+import unitFile145 from './reinforcement-learning/deep-model-based-world-models.project.json';
+import unitFile146 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.json';
+import unitFile147 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.project.json';
+import unitFile148 from './reinforcement-learning/llm-direct-preference-optimization.json';
+import unitFile149 from './reinforcement-learning/llm-direct-preference-optimization.project.json';
+import unitFile150 from './reinforcement-learning/llm-online-policy-optimization.json';
+import unitFile151 from './reinforcement-learning/llm-online-policy-optimization.project.json';
+import unitFile152 from './reinforcement-learning/llm-policy-trajectory-contracts.json';
+import unitFile153 from './reinforcement-learning/llm-policy-trajectory-contracts.project.json';
+import unitFile154 from './reinforcement-learning/llm-preferences-rewards-verifiers.json';
+import unitFile155 from './reinforcement-learning/llm-preferences-rewards-verifiers.project.json';
+import unitFile156 from './reinforcement-learning/llm-reasoning-agents-systems-research.json';
+import unitFile157 from './reinforcement-learning/llm-reasoning-agents-systems-research.project.json';
+import unitFile158 from './systems/_route.json';
+import unitFile159 from './systems/concurrency-bounded-work.json';
+import unitFile160 from './systems/concurrency-bounded-work.project.json';
+import unitFile161 from './systems/databases-durable-storage.json';
+import unitFile162 from './systems/databases-durable-storage.project.json';
+import unitFile163 from './systems/distributed-state-streams.json';
+import unitFile164 from './systems/distributed-state-streams.project.json';
+import unitFile165 from './systems/machine-process-memory-io.json';
+import unitFile166 from './systems/machine-process-memory-io.project.json';
+import unitFile167 from './systems/networking-rpc.json';
+import unitFile168 from './systems/networking-rpc.project.json';
+import unitFile169 from './systems/observability-reliability-design.json';
+import unitFile170 from './systems/observability-reliability-design.project.json';
+import unitFile171 from './systems/security-privacy-evolution.json';
+import unitFile172 from './systems/security-privacy-evolution.project.json';
 
 export const unitFiles: Array<{ route: string; name: string; data: unknown }> = [
   { route: 'algorithms', name: '_route', data: unitFile0 },
@@ -282,19 +307,44 @@ export const unitFiles: Array<{ route: string; name: string; data: unknown }> = 
   { route: 'programming', name: 'python-execution-model.project', data: unitFile130 },
   { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile131 },
   { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile132 },
-  { route: 'systems', name: '_route', data: unitFile133 },
-  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile134 },
-  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile135 },
-  { route: 'systems', name: 'databases-durable-storage', data: unitFile136 },
-  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile137 },
-  { route: 'systems', name: 'distributed-state-streams', data: unitFile138 },
-  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile139 },
-  { route: 'systems', name: 'machine-process-memory-io', data: unitFile140 },
-  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile141 },
-  { route: 'systems', name: 'networking-rpc', data: unitFile142 },
-  { route: 'systems', name: 'networking-rpc.project', data: unitFile143 },
-  { route: 'systems', name: 'observability-reliability-design', data: unitFile144 },
-  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile145 },
-  { route: 'systems', name: 'security-privacy-evolution', data: unitFile146 },
-  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile147 },
+  { route: 'reinforcement-learning', name: '_route', data: unitFile133 },
+  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning', data: unitFile134 },
+  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning.project', data: unitFile135 },
+  { route: 'reinforcement-learning', name: 'classical-sampling-td-control', data: unitFile136 },
+  { route: 'reinforcement-learning', name: 'classical-sampling-td-control.project', data: unitFile137 },
+  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method', data: unitFile138 },
+  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method.project', data: unitFile139 },
+  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability', data: unitFile140 },
+  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability.project', data: unitFile141 },
+  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope', data: unitFile142 },
+  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope.project', data: unitFile143 },
+  { route: 'reinforcement-learning', name: 'deep-model-based-world-models', data: unitFile144 },
+  { route: 'reinforcement-learning', name: 'deep-model-based-world-models.project', data: unitFile145 },
+  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo', data: unitFile146 },
+  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo.project', data: unitFile147 },
+  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization', data: unitFile148 },
+  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization.project', data: unitFile149 },
+  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization', data: unitFile150 },
+  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization.project', data: unitFile151 },
+  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts', data: unitFile152 },
+  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts.project', data: unitFile153 },
+  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers', data: unitFile154 },
+  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers.project', data: unitFile155 },
+  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research', data: unitFile156 },
+  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research.project', data: unitFile157 },
+  { route: 'systems', name: '_route', data: unitFile158 },
+  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile159 },
+  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile160 },
+  { route: 'systems', name: 'databases-durable-storage', data: unitFile161 },
+  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile162 },
+  { route: 'systems', name: 'distributed-state-streams', data: unitFile163 },
+  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile164 },
+  { route: 'systems', name: 'machine-process-memory-io', data: unitFile165 },
+  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile166 },
+  { route: 'systems', name: 'networking-rpc', data: unitFile167 },
+  { route: 'systems', name: 'networking-rpc.project', data: unitFile168 },
+  { route: 'systems', name: 'observability-reliability-design', data: unitFile169 },
+  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile170 },
+  { route: 'systems', name: 'security-privacy-evolution', data: unitFile171 },
+  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile172 },
 ];

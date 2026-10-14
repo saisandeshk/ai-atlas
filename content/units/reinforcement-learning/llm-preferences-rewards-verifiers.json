@@ -1,0 +1,884 @@
+{
+  "section": "llm-preferences-rewards-verifiers",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "feedback-types-collection",
+      "title": "Feedback types, policy-dependent collection and target-preference definition",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "rl-9-demonstrations-comparisons-rankings-ratings-and-critiques-as-distinct-feedback",
+        "rl-9-prompt-sampling-and-policy-dependent-response-collection",
+        "rl-9-annotator-population-rubric-and-target-preference-definition"
+      ],
+      "outcomes": [
+        "Explain how demonstrations, comparisons, rankings, ratings and critiques differ as training signals and which pipeline stage each one feeds.",
+        "Explain why preference pairs should come from the current model family and what breaks when collection is off-policy.",
+        "Define a target preference for a task: whose judgments count, under which rubric, and how ties and disagreement are handled."
+      ],
+      "why": "Every reward model inherits the feedback it was fed. Vague target preferences and off-policy pairs mistarget all later optimization, no matter how good the loss is.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/bradley-terry-identifiability",
+          "note": "Turn the collected pairs into a likelihood over reward differences."
+        },
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-model-training-evaluation",
+          "note": "Train the reward model on the pairs defined here and audit its slices."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Preference data collection practices",
+          "url": "https://rlhfbook.com/c/11-preference-data",
+          "locator": "Collecting Preference Data (on-policy data and the chosen answer as relatively better); Interfaces; Rankings vs Ratings with the 5-point and 8-point Likert scales; Multiturn Data; Structured Preference Data; Sourcing and Contracts; Bias: Things to Watch Out For; Open Questions in RLHF Preference Data"
+        },
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Why preferences replace correctness",
+          "url": "https://rlhfbook.com/c/10-preferences",
+          "locator": "When Preference Replaces Correctness (the goldfish poem pair); Complexity of Optimizing Preferences (preference drift, aggregation limits)"
+        },
+        {
+          "resource": "rl9-deep-reinforcement-learning-from-human-preferences",
+          "title": "Preference elicitation and query selection",
+          "url": "https://arxiv.org/abs/1706.03741",
+          "locator": "arXiv:1706.03741v4, Sections 2.2.2 to 2.2.4 (segment-pair elicitation, reward fitting, query selection) and Section 3 (Atari and robotics results)"
+        },
+        {
+          "resource": "rl9-rlhf-book-course-lecture-2",
+          "title": "Lecture 8 on preferences and preference data",
+          "url": "https://rlhfbook.com/teach/course/lec8-chap10-11-preferences/slides.pdf",
+          "locator": "Lecture 8: On Preferences and Preference Data (Chapters 10 and 11); full lecture video on the course page https://rlhfbook.com/course"
+        }
+      ],
+      "focus": [
+        "On-policy means pairs drawn from the current model family. Different models have different generation patterns, so pooled third-party completions miss the regions the policy will actually visit.",
+        "The chosen answer is better relative to the shown alternatives, not globally correct. All compared completions can be correct, or all incorrect, and the pair still teaches.",
+        "A Likert integer records a ranking between shown responses, which differs from a rating of one response alone. An even scale such as the 8-point form removes ties, and the result is still binarized for reward training.",
+        "Multiturn collection continues from the chosen answer, unrolls every turn into its own prompt, and masks all previous turns from the loss. Structured domains build pairs automatically but the constraint must stay inside the prompt."
+      ],
+      "reproduce": "Closed-book, write a one-paragraph target-preference definition for a summarization task: feedback types used, prompt sampling, annotator population, rubric axes, and the tie and disagreement policy. State why the pairs must come from the current model family.",
+      "traps": [
+        "Reading chosen as correct. A preference pair orders two outputs; correctness needs a verifier, which arrives in a later unit.",
+        "Treating on-policy as the exact current checkpoint. The book uses it softly for the current model family, which is stricter than pooled data but looser than per-update sampling.",
+        "Assuming vendor data matches downstream users. Professional labeling settings, interfaces and repetition shift preferences, so audit transfer instead of assuming it."
+      ],
+      "selfTest": [
+        {
+          "q": "Why should preference pairs come from the current model family rather than a pool of popular third-party outputs?",
+          "a": "Each model family has its own generation patterns. Training on pooled outputs teaches distinctions in regions the policy never visits and misses the regions it will visit, so optimization pressure lands in the wrong place."
+        },
+        {
+          "q": "What does the 8-point Likert scale remove, and what happens to its labels at training time?",
+          "a": "Its even scale removes the tie option. The labels are still reduced to a binary chosen and rejected signal for reward-model training."
+        },
+        {
+          "q": "Can a well-labeled pair teach anything when both completions are factually correct?",
+          "a": "Yes. The label records which response is clearer, safer or more helpful relative to the other, and the reward model learns that ordering."
+        },
+        {
+          "q": "How is multiturn preference data turned into training prompts?",
+          "a": "Each turn becomes one prompt that continues from the chosen answer, and every previous turn is masked from the loss so only the judged turn teaches."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.4 Exercises: SFT and preference items for one prompt",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/standard-rlhf-pipeline",
+          "locator": "Exercises, item 1: design an `sft_item` and a `preference_item` for the same prompt (page read 2026-10-14)",
+          "note": "Runs on CPU. State the target preference, the rubric and the tie policy alongside the two records."
+        }
+      ],
+      "stopWhen": "You can state the target preference, the feedback-type mix and the collection plan for a new task, and your paired records pass the page exercise without leaking evaluation prompts.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book chapters plus the preference-query paper and Lecture 8 cover all three topics at explain depth with named collection practices."
+      }
+    },
+    {
+      "id": "bradley-terry-identifiability",
+      "title": "Preference triples, Bradley-Terry likelihood and reward identifiability",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "rl-9-pairwise-preference-triples-and-listwise-comparisons",
+        "rl-9-bradley-terry-preference-likelihood",
+        "rl-9-reward-differences-additive-identifiability-and-scale-limits"
+      ],
+      "outcomes": [
+        "Derive the Bradley-Terry sigmoid form from exponential strengths and the pairwise negative log-likelihood loss.",
+        "Explain additive identifiability: only reward differences matter, while scale changes the preference probabilities.",
+        "State how margin terms, per-prompt grouping and K-wise Plackett-Luce extend the pairwise loss, and when K equal to 2 reduces to Bradley-Terry."
+      ],
+      "why": "The reward model learns differences, not absolute quality. Misreading its scores as calibrated quality breaks every later claim about margins, scales and KL penalties.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-model-training-evaluation",
+          "note": "Implement this loss with a scalar head and measure it on held-out pairs."
+        },
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-derivation",
+          "note": "Reuse the same likelihood with policy log-ratio margins instead of reward scores."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Bradley-Terry training and loss forms",
+          "url": "https://rlhfbook.com/c/05-reward-models",
+          "locator": "Training a Bradley-Terry Reward Model: exponential strengths, the sigmoid form, the log-before-average derivation, the log-sigmoid and softplus losses and their equivalence by \\(\\Delta\\) substitution"
+        },
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Margin, per-prompt grouping and K-wise extensions",
+          "url": "https://rlhfbook.com/c/05-reward-models",
+          "locator": "Other Reward Model Variants: Preference Margin Loss with margin m, Balancing Multiple Comparisons Per Prompt with grouped averaging, K-Wise Loss Function with the Plackett-Luce ranking probability"
+        },
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "BT loss implementation line",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/reward_models/train_preference_rm.py",
+          "locator": "Pairwise loss `loss = -F.logsigmoid(r_chosen - r_rejected).mean()` inside `PreferenceRewardModel` in `train_preference_rm.py`; the chapter Implementation Example writes the same line with `rewards_chosen` and `rewards_rejected`"
+        },
+        {
+          "resource": "rl9-stanford-cs224r-2026-reward-learning",
+          "title": "Reward learning lecture with the preference-query reading",
+          "url": "https://cs224r.stanford.edu/slides/08_cs224r_reward_learning_2026.pdf",
+          "locator": "Lecture 08: Reward Learning on the course timeline https://cs224r.stanford.edu/ (Week 4) with the Christiano et al. preference paper as its listed reading"
+        }
+      ],
+      "focus": [
+        "Preference probability depends only on the score difference. With \\(\\Delta = r_{\\text{c}} - r_{\\text{r}}\\), the model is \\(P(y_c \\succ y_r \\mid x) = \\sigma(\\Delta)\\) and the per-example loss is \\(\\mathcal{L} = -\\log \\sigma(\\Delta)\\).",
+        "Maximum likelihood takes the logarithm before averaging over the dataset. Maximizing expected probability is not the same objective as maximizing expected log-probability.",
+        "Adding one constant to every reward leaves every pairwise probability unchanged, but multiplying rewards by \\(c > 1\\) pushes every probability away from 0.5 and \\(c < 1\\) pulls it toward 0.5. Only the additive constant is unidentified; the data pin down the scale.",
+        "A margin \\(m\\) demands that the difference clear a threshold, per-prompt grouping stops many-completion prompts from dominating, and the K-wise product over a full ranking collapses to the pairwise form when \\(K = 2\\)."
+      ],
+      "reproduce": "Closed-book, derive the sigmoid form from the exponential ratio, then compute the loss for scores 2.0 versus 0.5 as 0.2014 and for equal scores as 0.6931. Show that adding 10 to both scores changes nothing.",
+      "traps": [
+        "Averaging probabilities instead of log-probabilities. The book derivations keep the log inside the dataset expectation for the maximum-likelihood reason.",
+        "Reading a reward of 5 as good in absolute terms. Scores from two runs share no scale, so only differences within one model and data distribution order outputs.",
+        "Treating K-wise ranking as a different model family at K equal to 2. The product has one factor left and equals the pairwise probability."
+      ],
+      "selfTest": [
+        {
+          "q": "Show that adding a constant to every reward changes no pairwise probability.",
+          "a": "Each numerator and denominator gains the same factor \\(e^c\\), which cancels, so only the difference \\(\\Delta\\) enters \\(\\sigma(\\Delta)\\)."
+        },
+        {
+          "q": "What loss does a tied pair produce, and why?",
+          "a": "With \\(\\Delta = 0\\), \\(\\sigma(0) = 0.5\\) and \\(-\\log 0.5 = 0.6931\\). The model is maximally uncertain."
+        },
+        {
+          "q": "Why must the logarithm come before the dataset average?",
+          "a": "Maximum likelihood maximizes the expected log-probability of the observed choices. Averaging probabilities first defines a different, incorrect objective."
+        },
+        {
+          "q": "A margin of 3 applies to a pair whose reward difference is 1. What is the loss?",
+          "a": "The margin loss is \\(-\\log \\sigma(1 - 3) = -\\log \\sigma(-2) = 2.1269\\). The margin requires the difference to clear 3, so a difference of 1 is penalized heavily."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: fixed-batch Bradley-Terry loss, gradient and sign tests against hand calculations, including margin and grouped variants.",
+      "stopWhen": "You derive the loss from the exponential form without notes and predict how additive shifts, rescaling and margins move the loss before running code.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 5 derives both loss forms plus margin, grouping and K-wise extensions, and the pinned loss line plus Lecture 08 give checked implementation and lecture depth."
+      }
+    },
+    {
+      "id": "reward-model-training-evaluation",
+      "title": "Reward-model loss, held-out ranking accuracy, calibration and slices",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "rl-9-pairwise-reward-model-architecture-and-training-loss",
+        "rl-9-reward-model-held-out-ranking-accuracy",
+        "rl-9-calibration-margins-and-disagreement-slices"
+      ],
+      "outcomes": [
+        "Implement the pairwise loss with a last-token scalar head and train one epoch on a tiny preference set on CPU first.",
+        "Measure held-out pairwise accuracy, mean and median margin and reward-length correlation on prompt-split data.",
+        "Distinguish ranking accuracy from score calibration, using Maximum likelihood and MAP estimation and the calibration and ranking units you already did."
+      ],
+      "why": "A reward model that orders pairs well can still fail policy optimization through tiny margins, shifted scales or length bias. Training and evaluation must measure all three before any policy update.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-shortcuts-overoptimization",
+          "note": "Turn length correlation and margin collapse into hacking probes."
+        },
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-components-lineage",
+          "note": "Carry the calibrated scale and version manifest into scalarization."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Reward-model architecture, training and first full protocol",
+          "url": "https://rlhfbook.com/c/05-reward-models",
+          "locator": "The Default Reward Model Architecture (last-token scalar head); Implementation Example (`BradleyTerryRewardModel` with last non-padding hidden state); one-epoch training practice; Suggested Experiments item 1 (train a Bradley-Terry model on UltraFeedback with `reward_models/configs/preference_rm.yaml`)"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Reward-model data splits, scale and acceptance checks",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/standard-rlhf-pipeline",
+          "locator": "Step 2: Data Splitting By Prompt (`split_by_prompt`); Reward Scale (`RewardNormalizer` on a fixed calibration set); What to Look At (`rm_eval_metrics` with accuracy, margins and length correlation); Adversarial Testing stress cases (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl9-learning-to-summarize",
+          "title": "First large-scale comparison-trained reward model",
+          "url": "https://arxiv.org/abs/2009.01325",
+          "locator": "arXiv:2009.01325v3, Sections 1 to 3 (comparison collection, reward training, policy optimization) and the human-evaluation protocol with the length analysis"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Reward-model metrics and their course targets",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Per-Stage Metrics: pairwise accuracy with a typical 65 to 75 percent course target (annotators agree only about 80 percent), reward margin, and a reward-length correlation above 0.5 in absolute value as a length-hacking signal (page read 2026-10-14)",
+          "depth": "Treat the targets as course guardrails for small runs, not constants that transfer across rubrics."
+        }
+      ],
+      "focus": [
+        "Read the loss as maximum likelihood over chosen and rejected pairs, as in Maximum likelihood and MAP estimation. The head reads the last non-padding hidden state and one scalar leaves the model per sequence.",
+        "Split by prompt, never by pair. Pairs from one prompt scattered across train and held-out sets share prompts and responses, which inflates accuracy.",
+        "Report accuracy with the margin distribution and the reward-length correlation. Tiny margins give PPO a weak noisy signal even at acceptable accuracy, and strong length correlation means the data taught longer-is-better.",
+        "Fix the reward scale on a calibration set before policy training. Batch statistics drift with the actor, while scores such as 2 versus 1 and 20 versus 10 order identically but drive PPO differently."
+      ],
+      "reproduce": "Closed-book, score four fixed pairs with chosen rewards `[2.0, 0.2, 1.0, 0.0]` and rejected rewards `[0.5, 0.1, 1.5, -0.5]`: margins `[1.5, 0.1, -0.5, 0.5]`, accuracy 0.75, mean margin 0.4 and mean loss 0.5735. Then state the split, scale and slice checks that must pass before PPO.",
+      "traps": [
+        "Chasing 100 percent held-out accuracy. Humans disagree on many pairs: on a subset of its summarization comparisons, Stiennon et al. measured labeler-researcher agreement at 77 percent and researcher-researcher agreement at 73 percent. Near-perfect accuracy on human labels points to a leaky split or overfitting.",
+        "Reading large margins as calibration. A large gap can come from overfitting, and ranking accuracy never promises calibrated probabilities; use Calibration curves and Platt or isotonic recalibration and ROC AUC, average precision, log loss and Brier score where probabilities matter.",
+        "Training past one or two epochs by default. Preference sets are small relative to backbone size, so validation accuracy usually peaks early and then drops."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must the held-out split separate prompts rather than pairs?",
+          "a": "Pairs from one prompt share the prompt and often share responses. Splitting pairs leaks both sides of the distribution into training, while a prompt split tests generalization to unseen prompts."
+        },
+        {
+          "q": "Accuracy is 0.90 but the median margin is 0.05. Should PPO start?",
+          "a": "No. Ordering without separation gives a weak noisy reward signal. Inspect the margin distribution, check for overfitting, and fix the data before optimizing."
+        },
+        {
+          "q": "Reward-length correlation is 0.8 on held-out pairs. What caused it and what is the fix?",
+          "a": "Chosen responses are systematically longer, so the model learned longer-is-better. Add rejected long-filler pairs against concise chosen answers and retrain, as the data-flywheel fix describes."
+        },
+        {
+          "q": "Two reward models output (2, 1) and (20, 10) on the same pair. Do they agree, and does PPO behave the same?",
+          "a": "They order the pair identically but drive PPO differently: the small scale is drowned by the KL penalty and the large scale dominates it. Normalize on a fixed calibration set first."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.4: prompt split, normalizer and RM metrics on tiny local pairs",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/standard-rlhf-pipeline",
+          "locator": "Run `split_by_prompt`, `RewardNormalizer` and `rm_eval_metrics` on a few hand-written pairs, then run the Adversarial Testing stress cases (page read 2026-10-14)",
+          "note": "Runs on CPU. Report accuracy, mean and median margin and length correlation, plus which stress case outscores a correct terse answer."
+        },
+        {
+          "name": "RLHF Book Suggested Experiment 1: train a Bradley-Terry model on UltraFeedback",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/reward_models/train_preference_rm.py",
+          "locator": "`uv run python -m reward_models.train_preference_rm --config reward_models/configs/preference_rm.yaml` on a copy of the YAML with `samples` and `model_id` lowered first",
+          "note": "Plan on your GPU: the YAML defaults to `device: cuda`, a 0.6B backbone and W&B logging, so set `use_wandb: false` in the copied YAML for an offline run. Watch the chosen and rejected margin in the logs before any policy training."
+        }
+      ],
+      "stopWhen": "Your tiny CPU run reports accuracy, margins and length correlation on a prompt split, and you can reject a high-accuracy model for collapsed margins or length bias with numbers.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 5 plus the pipeline split, scale and metric helpers plus the summarization protocol cover architecture, loss, accuracy, calibration and slices at implement and measure depth."
+      }
+    },
+    {
+      "id": "outcome-process-generative-rewards",
+      "title": "Outcome, process and generative reward models",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "rl-9-outcome-reward-models",
+        "rl-9-process-reward-models-and-step-boundaries",
+        "rl-9-generative-reward-models-and-judge-rationales"
+      ],
+      "outcomes": [
+        "Explain what outcome, process and generative reward models predict, which tokens or steps carry labels, and how scores aggregate.",
+        "Explain sparse terminal credit versus step credit with the discounted-return arithmetic.",
+        "State when step supervision is worth its annotation cost and what a step boundary must define before labeling."
+      ],
+      "why": "One terminal score cannot say which step failed. Choosing outcome, process or generative feedback decides where credit lands and what annotation bill you pay.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/verifiers-soundness-tests",
+          "note": "Replace learned step scores with executable checks where the task allows it."
+        },
+        {
+          "unit": "reinforcement-learning/llm-reasoning-agents-systems-research/process-rewards-reasoning-traces",
+          "note": "Use step credit inside reasoning rollouts with observable-answer controls."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Outcome, process and generative reward models",
+          "url": "https://rlhfbook.com/c/05-reward-models",
+          "locator": "Outcome Reward Models (per-token outcome loss and the sequence cross-entropy form); Process Reward Models (per-step loss, separator labels, 3-class head); Comparing Reward Model Types with the summary table and the ORM versus value-function distinction; Inference Across Reward Model Types (aggregation choices); Generative Reward Modeling (judge prompt, temperature 0 practice)"
+        },
+        {
+          "resource": "rl9-lets-verify-step-by-step",
+          "title": "Process versus outcome supervision on MATH",
+          "url": "https://arxiv.org/abs/2305.20050",
+          "locator": "arXiv:2305.20050v1, Sections 1 to 3 (outcome versus process supervision, active learning) with the MATH comparison and the released PRM800K step labels"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Outcome versus process rewards with hand recomputation",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter20_prm_search/outcome-vs-process",
+          "locator": "Sections 1 to 4: sparse-reward masking, discounted return with \\(\\gamma = 0.9\\), GAE and token-level loss limits, ORM and PRM definitions with aggregation, and the three-condition test for needing process reward (page read 2026-10-14)",
+          "depth": "Recompute the discounted weights by hand and check them against the page: \\(0.9^8 \\approx 0.43\\) for the first step, then 0.66, 0.73 and 0.90 for the later steps it names."
+        }
+      ],
+      "focus": [
+        "An outcome model broadcasts one binary outcome label to every completion token and trains binary cross-entropy there. A process model trains only at step boundaries, such as separator tokens, with correct, neutral and incorrect classes.",
+        "With only a final reward of 1 and \\(\\gamma = 0.9\\) over nine steps, early steps get weights down to \\(0.9^8 \\approx 0.43\\). Distance discounting punishes early assumptions even when they determine everything downstream.",
+        "Aggregation is a decision, not a default. Outcome scores aggregate by mean, minimum or product, and process scores aggregate over steps by mean, minimum or late-weighted sums.",
+        "A pairwise model trained on correct versus incorrect pairs is still a Bradley-Terry contrastive model. An outcome model needs independently labeled sequences without same-prompt pairing."
+      ],
+      "reproduce": "Closed-book, write the per-token outcome loss and the per-step process loss from memory, state which positions carry labels in each, and compute the nine-step discounted weights for a final reward of 1 with discount 0.9.",
+      "traps": [
+        "Reading outcome per-token outputs as step-correctness scores. Every token repeats the outcome label, so reasoning errors that still reach the right answer are reinforced, not flagged.",
+        "Treating token-level policy losses as process supervision. Per-token weighting still starts from one terminal signal with no independent judge of each step.",
+        "Buying step labels before defining steps. Equation transforms, code edit-compile-test cycles and tool calls are stable boundaries; token counts are not."
+      ],
+      "selfTest": [
+        {
+          "q": "How do outcome models and value functions differ if both emit per-token numbers?",
+          "a": "Outcome models predict the probability of final correctness from fixed offline labels broadcast to every token. Value functions predict remaining return, usually from on-policy rollouts, and serve as baselines in advantages."
+        },
+        {
+          "q": "A proof reaches the right conclusion through a wrong step 6. What does outcome-only training reinforce?",
+          "a": "Everything: the correct prefix, the wrong step and the conclusion share one terminal reward, so the error is reinforced alongside the good reasoning."
+        },
+        {
+          "q": "When is process reward worth its annotation cost?",
+          "a": "When steps have stable meaning, intermediate errors propagate and waste budget, and the step judge is more reliable than the generator. Short answers with cheap resampling usually fail this test."
+        },
+        {
+          "q": "What did the step-by-step paper report on MATH, and under which setup?",
+          "a": "Process supervision beat outcome supervision on MATH problems with 78 percent solved on a representative test subset, using the paper's candidate generation and best-of-n reranking setup with 800,000 released step labels. It is the paper's result on its setup, not a transferable constant."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 17.1: discounted-return hand recomputation",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter20_prm_search/outcome-vs-process",
+          "locator": "Section 2.1 with \\(\\gamma = 0.9\\) over the nine-step proof: recompute every step weight and state which step the distance rule undervalues most (page read 2026-10-14)",
+          "note": "Runs on CPU. The first step should come out near 0.43 and the erroneous sixth step near 0.73."
+        },
+        {
+          "name": "RLHF Book Suggested Experiment 2: outcome versus process supervision",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/reward_models/train_orm.py",
+          "locator": "Run `uv run python -m reward_models.train_orm --config reward_models/configs/orm.yaml` and `uv run python -m reward_models.train_prm --samples 500 --epochs 2`, then state which model scores final answers and which scores intermediate steps",
+          "note": "Needs your GPU. For an offline run set `use_wandb: false` in a copied `orm.yaml` and run `uv run python -m reward_models.train_prm --samples 500 --epochs 2 --no-wandb`. Compare what each trained head can score: final-answer correctness versus step correctness."
+        }
+      ],
+      "stopWhen": "You can label any new supervision scheme as outcome, process or generative, write its loss and label positions, and defend or reject step labels for a new task with the three-condition test.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 5 plus the step-by-step paper plus the outcome-versus-process page cover all three model classes with losses, boundaries and aggregation at explain depth."
+      }
+    },
+    {
+      "id": "verifiers-soundness-tests",
+      "title": "Executable verifiers, completeness, soundness and verifier error tests",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "rl-9-executable-rule-based-and-formal-verifiers",
+        "rl-9-verifier-completeness-soundness-and-parser-boundaries",
+        "rl-9-false-positive-and-false-negative-verifier-tests"
+      ],
+      "outcomes": [
+        "Implement a deterministic verifier with explicit parser boundaries and report completeness and soundness separately.",
+        "Build false-positive and false-negative verifier tests, including equivalent-answer and format-deviation cases.",
+        "State what a verifier cannot establish and which failures need hidden tests outside training."
+      ],
+      "why": "Verifiable tasks replace noisy human scores with exact checks, but every verifier has a parser boundary. Policy optimization finds that boundary fast, so tests must cover it first.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-evaluation-governance",
+          "note": "Promote the verifier tests into hidden release gates."
+        },
+        {
+          "unit": "reinforcement-learning/llm-reasoning-agents-systems-research/verifier-isolation-outcome-credit",
+          "note": "Isolate the verifier and assign sparse outcome credit in reasoning rollouts."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Verifiable rewards with a runnable verifier",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter18_grpo/rlvr",
+          "locator": "Section 15.3.2 (determinism, correctness and efficiency; parser boundary cases); Section 15.3.4 (extract, grade and reward functions with `extract_boxed_answer` and `reward_rlvr`); Gap from Production Implementations; Section Summary (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Step boundaries and formal checking vocabulary",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter20_prm_search/outcome-vs-process",
+          "locator": "Section 1.3 (step boundaries must be decided before scoring) and Section 4.1 (discriminative, generative and formal feedback with Lean and Coq proof checkers) (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl9-llm-post-training-laboratory-reward-and-adversarial-evaluation",
+          "title": "Deterministic verifier with hidden adversarial tests",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Core requirements and Architecture constraints (deterministic verifier, version binding, immutable rollouts); Milestones C and D (verifier tests, loophole injection, proxy-improves-behavior-worsens case)"
+        }
+      ],
+      "focus": [
+        "A usable verifier promises three properties: determinism on identical inputs, correctness against true answer quality, and speed that never bottlenecks training. Correctness is the subtle one.",
+        "Completeness accepts correct answers and soundness rejects wrong ones. Report both rates, because a strict parser can be sound yet incomplete and a lenient matcher the reverse.",
+        "Parser boundaries decide rewards as much as math does. Boxed-answer extraction, numeric tolerance and symbolic equivalence each accept and reject different equivalent forms.",
+        "Verifiers cover only checkable slices. Math, code tests and formal proofs qualify; politeness, creativity and safety do not, and training tests must stay separate from hidden release tests."
+      ],
+      "reproduce": "Closed-book, write boxed-answer extraction plus grading with string and tolerance comparison, then list four test cases: a correct answer, a wrong answer, a right answer in the wrong format, and an equivalent form such as a fraction versus a decimal.",
+      "traps": [
+        "Counting a missing box as a math failure. The page's boxed-only extractor returns no answer and reward 0, which trains format compliance, not reasoning; fix the parser contract or teach format separately.",
+        "Equating string equality with answer equivalence. Fractions, decimals, factored and expanded forms need tolerance or symbolic checks, or correct answers fail.",
+        "Shipping one verifier as complete evaluation. Visible tests leak into training incentives, so release needs hidden tests the policy never optimized against."
+      ],
+      "selfTest": [
+        {
+          "q": "What do completeness and soundness measure for a verifier?",
+          "a": "Completeness is the rate at which correct answers pass; soundness is the rate at which wrong answers fail. A verifier can be perfect on one and poor on the other."
+        },
+        {
+          "q": "The model derives the right number but omits the boxed format and gets 0. Is the math wrong?",
+          "a": "Not necessarily. The parser boundary rejected it before grading. The reward conflates format and math, so either widen the parser or train format as its own objective."
+        },
+        {
+          "q": "What separates the minimal classroom verifier from a production math verifier?",
+          "a": "Production adds symbolic equivalence checks, LaTeX parsing and multiple accepted formats where the minimal version uses string matching plus float tolerance."
+        },
+        {
+          "q": "What must accompany every verifier score at release?",
+          "a": "Held-out problems plus adversarial and hidden tests with version binding. Training reward is never the sole release metric."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 15.3: runnable RLVR verifier with error tests",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter18_grpo/rlvr",
+          "locator": "Run `code/chapter09_grpo_rlvr/rule_based_reward.py` at commit 9231bab without any model and compare its extraction (boxed answer, then answer phrases, then the last number) with the page's boxed-only `extract_boxed_answer`. Then add false-negative cases (equivalent forms such as 1/2 versus 0.5, format deviations) and false-positive cases (a wrong number the fallback picks up, tolerance edges) (page read 2026-10-14)",
+          "note": "Runs on CPU. Record completeness and soundness separately for both extractors; keep the training cases and the hidden cases in different files."
+        }
+      ],
+      "stopWhen": "Your verifier passes hidden equivalent-answer and format-deviation cases with separate completeness and soundness rates, and you can name what it cannot check.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The RLVR verifier sections plus the step-boundary and formal-checker map plus the laboratory verifier requirements cover executable checks and error tests at implement depth."
+      }
+    },
+    {
+      "id": "reward-shortcuts-overoptimization",
+      "title": "Length and style shortcuts, reward shift and overoptimization",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "rl-9-format-verbosity-style-and-response-length-shortcuts",
+        "rl-9-reward-distribution-shift-as-the-policy-changes",
+        "rl-9-reward-overoptimization-and-proxy-regression"
+      ],
+      "outcomes": [
+        "Explain proxy-versus-gold overoptimization: train reward rises while true quality peaks then falls with KL distance, with different curves for RL and best-of-n.",
+        "Measure length, template and format shortcuts with reward-length correlation and phrase-frequency checks.",
+        "Distinguish overoptimization from overfitting and state the rollback rule when proxy and behavior diverge."
+      ],
+      "why": "Optimizing a learned reward exploits its blind spots by design. Without a proxy-versus-behavior check, rising reward reads as progress while the product gets worse.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-evaluation-governance",
+          "note": "Convert the hacking checks into release gates and stop rules."
+        },
+        {
+          "unit": "reinforcement-learning/llm-online-policy-optimization/online-rl-controls-traces",
+          "note": "Use matched controls and training traces to separate real gains from hacking."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Overoptimization, proxy objectives and qualitative failure signs",
+          "url": "https://rlhfbook.com/c/14-over-optimization",
+          "locator": "Managing Proxy Objectives (Goodhart, proxy versus true objective, verbosity and rare-token exploits); Over-Refusal and Too Much RLHF; Quantitative Over-Optimization (KL distance axis, train and test reward-model split); Misalignment and the Role of RLHF (sycophancy)"
+        },
+        {
+          "resource": "rl9-reward-model-overoptimization",
+          "title": "Proxy-versus-gold scaling curves",
+          "url": "https://arxiv.org/abs/2210.10760",
+          "locator": "arXiv:2210.10760v1, Sections 1 to 4 (gold-standard reward as the human stand-in, proxy training, best-of-n and RL curves against KL distance, effects of data and parameters) and Section 3.6 (Effect of KL Penalty)"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Reward-hacking detection and controlled experiment",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Reward Hacking Specialized Checks (`reward_hacking_signals` with length correlation and phrase counts); Reward Hacking Controlled Experiment (`flawed_reward`, hand calculation, anomaly curves); Reward hacking diagnosis flow; Training-Time Monitoring checkpoint table (page read 2026-10-14)",
+          "depth": "Recompute the worked win rates with ties as half-wins and run `flawed_reward` on the two strings yourself. The page example table divides by wins plus losses only, and its printed reward totals do not match character-length scoring, but the ordering verdict (verbose beats concise) is what you must reproduce."
+        },
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Data biases that become shortcuts",
+          "url": "https://rlhfbook.com/c/11-preference-data",
+          "locator": "Bias: Things to Watch Out For (verbosity, formatting habits, sycophancy and prefix bias)"
+        }
+      ],
+      "focus": [
+        "Overoptimization differs from overfitting. Overfitting degrades the same task on held-out data; overoptimization improves the proxy while the true goal peaks then falls, so plot quality against KL distance, not just steps.",
+        "In the paper setup, gold score follows different functional forms in KL distance for RL and best-of-n, with RL spending far more KL, while gold against proxy score looks similar for both. A fixed gold model stands in for humans, so label the curves synthetic overoptimization evidence, never human results.",
+        "Length bias is load-bearing evidence, not folklore. On TL;DR, length explains about a third of the gap between the 6.7B human-feedback and supervised models in the summarization work, and in a train and test reward-model split the book shows, test reward stops following train reward as optimization continues.",
+        "Fixes combine data, rubric and constraints. Penalizing length alone treats a symptom; the durable fix feeds bad cases back as rejected pairs, retrains the reward model and holds the KL constraint."
+      ],
+      "reproduce": "Closed-book, sketch train-reward rising while gold quality rises then falls against KL distance for RL and best-of-n, then run the flawed length-plus-format reward on one concise and one verbose answer and show the verbose one wins.",
+      "traps": [
+        "Reading the page win-rate table as ties-count-half. Its rows divide wins by wins plus losses, so recompute as wins plus half ties over all outcomes before quoting a rate.",
+        "Trusting printed flawed-reward totals exactly. Character-length scoring on the page strings gives larger totals than printed, but both rank the verbose empty answer above the concise accurate one; run the function.",
+        "Calling the KL penalty a fix by itself. The book says a higher penalty reduces overoptimization at a given KL distance but needs more steps, and in the Gao et al. RL setup the penalty left the gold versus KL frontier unchanged, acting like early stopping. Either way it is a brake, not a repair of the reward model."
+      ],
+      "selfTest": [
+        {
+          "q": "How does overoptimization differ from overfitting?",
+          "a": "Overfitting memorizes training examples so the same task degrades on held-out data. Overoptimization genuinely improves the proxy while the true goal degrades, because the metric itself diverges from the goal."
+        },
+        {
+          "q": "What does the gold-versus-proxy setup establish, and what are its limits?",
+          "a": "A fixed gold model stands in for humans while a proxy trains on its labels; optimizing the proxy traces different curve forms for RL and best-of-n against KL distance. It models human feedback synthetically, so it cannot set human constants."
+        },
+        {
+          "q": "Reward correlates 0.8 with length and mean length tripled while reward rose. What is the call?",
+          "a": "Length hacking. Roll back, add concise-chosen versus long-filler-rejected pairs, retrain the reward model, and require the length correlation and manual review to pass before resuming."
+        },
+        {
+          "q": "Why is a length penalty alone an incomplete fix?",
+          "a": "It suppresses one exploit without repairing the reward model or the rubric. The policy shifts to the next blind spot such as templates or confident jargon, so pair the penalty with flywheel data and KL control."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.6: flawed-reward hacking experiment",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Run the full Reward Hacking Controlled Experiment: score both worked answers with `flawed_reward`, log reward, length, distinct n-grams and KL across steps, then apply the multi-dimensional `safer_reward` fix (page read 2026-10-14)",
+          "note": "Runs on CPU. Keep every run including the hacked regime; the table shape matters more than any single number."
+        }
+      ],
+      "stopWhen": "You can run the flawed-reward experiment, read the reward, length and diversity curves together, and issue a rollback with the data fix instead of tuning the penalty alone.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 14 plus the proxy-versus-gold paper plus the hacking detection and controlled experiment cover shortcuts, shift and overoptimization at explain and measure depth."
+      }
+    },
+    {
+      "id": "active-ai-feedback-judge-bias",
+      "title": "Active collection, AI feedback and constitutions, and judge bias",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "rl-9-active-feedback-collection-and-uncertain-comparisons",
+        "rl-9-ai-feedback-constitutions-and-rubric-conditioned-labels",
+        "rl-9-judge-position-identity-self-preference-and-correlated-error-bias"
+      ],
+      "outcomes": [
+        "Explain active collection: uncertain and disagreement comparisons first, with recollection as the policy shifts.",
+        "Run a rubric-conditioned AI-feedback comparison and measure position, length, identity and self-preference bias with order swaps and human spot checks.",
+        "State what correlated judge error implies for training on judge labels."
+      ],
+      "why": "AI judges scale labeling but share blind spots with the policy they train. Unmeasured judge bias becomes policy bias within one flywheel turn.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-components-lineage",
+          "note": "Version the judge, rubric and constitution alongside the reward weights."
+        },
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-evaluation-governance",
+          "note": "Keep a fixed human-anchored eval set that no judge appeasement can move."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-constitutional-ai-harmlessness-from-ai-feedback",
+          "title": "Supervised self-critique and RL from AI feedback",
+          "url": "https://arxiv.org/abs/2212.08073",
+          "locator": "arXiv:2212.08073v1, Sections 3 and 4 with Figure 1 (self-critique and revision, then preference modeling and RL from AI feedback) and Appendix C (principles for each stage)"
+        },
+        {
+          "resource": "rl9-lets-verify-step-by-step",
+          "title": "Active learning for step supervision",
+          "url": "https://arxiv.org/abs/2305.20050",
+          "locator": "arXiv:2305.20050v1, Section 4.2 (Active Learning: in the small-scale synthetic setup, labeling convincing wrong-answer samples is estimated at about 2.6 times more data efficient than uniform labeling)"
+        },
+        {
+          "resource": "rl9-deep-reinforcement-learning-from-human-preferences",
+          "title": "Disagreement queries and online collection",
+          "url": "https://arxiv.org/abs/1706.03741",
+          "locator": "arXiv:1706.03741v4, Section 2.2.4 (Selecting Queries by ensemble disagreement, which the authors call a crude approximation) and Section 3.3 (Ablation Studies: random queries, no ensemble and no online queries, where reward fitted only on early queries led to behavior the true reward rejects)"
+        },
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Generative judges and their failure modes",
+          "url": "https://rlhfbook.com/c/05-reward-models",
+          "locator": "Generative Reward Modeling (judge prompt with position and length instructions, verdict format, temperature 0 practice) and Further Reading on judge-training work"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Pairwise judge evaluation with bias controls",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Preference Evaluation (judge prompt, order randomization, recorded reasoning, human spot checks); LLM-as-Judge bias table (position, length, formatting, self, over-safety); Statistical significance (`bootstrap_win_rate_ci` with ties as half-wins) (page read 2026-10-14)"
+        }
+      ],
+      "focus": [
+        "Label uncertain and disagreement comparisons first, but measure the selector: Lightman et al. estimate about 2.6 times better label efficiency for step labels, while Christiano et al. found disagreement queries hurt some tasks. Recollect as the policy moves, since reward fitted only on early queries misses where the policy goes.",
+        "A constitution bounds AI feedback but never specifies it exactly. The paper says its principles were chosen in a fairly ad hoc way for research, so every rubric-conditioned run needs human calibration on a sample.",
+        "Judge with temperature 0, randomized A and B order with recorded seeds, saved reasoning and a fixed evaluation set. Verdicts without reasoning and seeds cannot be audited later.",
+        "Correlated error is the core risk: judge and policy share blind spots, so training on judge labels amplifies them. Anchor the flywheel with an external reward model or human review that the current judge cannot move."
+      ],
+      "reproduce": "Closed-book, write the pairwise judge prompt with order randomization and a JSON verdict, then score five outcomes with 3 wins, 1 tie and 1 loss as 0.7 with ties as half-wins. State the swap test that detects position bias.",
+      "traps": [
+        "Judging with sampling temperature above 0. Rating variance then contaminates every comparison; the book practice fixes temperature at 0 for judge calls.",
+        "Treating one strong judge as ground truth. Self-preference and style bias need multi-judge or human audit, and the fixed set must survive judge changes.",
+        "Reading a constitution as executable law. Ambiguous principles produce ambiguous labels, so test principle edge cases instead of assuming coverage."
+      ],
+      "selfTest": [
+        {
+          "q": "Why prioritize uncertain comparisons, and what forces recollection?",
+          "a": "Uncertain and disagreement pairs carry the most information per label. The policy distribution shifts under optimization, so yesterday's informative pairs go stale where the policy now samples."
+        },
+        {
+          "q": "How do you test a judge for position bias?",
+          "a": "Swap A and B with a fresh recorded seed and rerun. If verdicts follow the position rather than the content, randomize order per prompt and store the seed with every record."
+        },
+        {
+          "q": "How do you check self-preference in a judge?",
+          "a": "Compare its verdicts against other judges and against human review on a sampled subset. A judge that favors its own style needs its weight reduced or its rubric rewritten."
+        },
+        {
+          "q": "Can AI feedback fully replace human labels?",
+          "a": "No. Scale labeling with AI judges and calibrate direction with humans: spot checks, a fixed evaluation set and an external anchor, so the flywheel cannot merely appease the current judge."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.6: order-swapped pairwise judge audit",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Run the Preference Evaluation pairwise prompt on a few answer pairs in both orders, compute win rate with `bootstrap_win_rate_ci`, and fill the judge-bias table rows for position, length and self bias (page read 2026-10-14)",
+          "note": "Runs on CPU. Keep the reasoning, order seeds and human-checked flags with every record."
+        }
+      ],
+      "stopWhen": "Your judge audit shows position-swap stability, a length-bias readout and a human-checked sample, and you can state which labels the current judge cannot be trusted to produce.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The constitutional-AI paper plus the two active-collection results plus the generative-judge and bias-control sections cover active, AI and biased judging at explain and measure depth."
+      }
+    },
+    {
+      "id": "reward-components-lineage",
+      "title": "Multiple reward components, scalarization and version lineage",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rl-9-multiple-reward-components-and-scalarization-policy",
+        "rl-9-preference-reward-and-verifier-version-lineage"
+      ],
+      "outcomes": [
+        "Implement a multi-component reward with explicit scalarization weights plus length and repetition penalties.",
+        "Bind preference, reward and verifier versions to every rollout and evaluation record with an atomic manifest.",
+        "State the rollback rule when any component shifts."
+      ],
+      "why": "One scalar hides competing goals. Explicit weights plus version binding turn which trade-off shipped into an auditable fact rather than a memory.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-evaluation-governance",
+          "note": "Enforce the manifest and rollback rules at release."
+        },
+        {
+          "unit": "reinforcement-learning/llm-online-policy-optimization/llm-reward-normalization",
+          "note": "Normalize each component without letting batch statistics drift."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Hybrid rewards and experiment artifacts",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/standard-rlhf-pipeline",
+          "locator": "The Spectrum of Rewards (hybrid `Rmix` with format, length and correctness weights); Minimal Experiment Directory (data, models and reports layout); quality gates for the data flywheel (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Multi-dimensional fix and bad-case flywheel",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Multi-dimensional reward fix (`safer_reward` with 0.40 helpfulness, 0.35 correctness, 0.15 format and two 0.05 penalties); The Data Flywheel (bad-case tags such as `length_hack` and `template_hack`) (page read 2026-10-14)",
+          "depth": "Treat the printed weights as one worked choice to implement and vary, not as standard constants."
+        },
+        {
+          "resource": "rl9-llm-post-training-laboratory-reward-and-adversarial-evaluation",
+          "title": "Version binding and instrumentation requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Architecture constraints (every record binds prompt, template, model, reference, reward, verifier and policy versions); Milestone B (instrumentation) and Milestone C (reward and preference implementation)"
+        }
+      ],
+      "focus": [
+        "Scalarization weights are policy, so record them with the run. Helpfulness, correctness and format get positive weights while repetition and excess length get explicit penalties, and length is a penalty term, never a reward.",
+        "Normalize each component on a fixed calibration set. Current-batch statistics drift with the actor and hide which component moved.",
+        "Group pairwise updates per prompt. Prompts with 9 completions yield 36 pairs against 6 from 4 completions, so ungrouped averaging lets heavy prompts dominate.",
+        "A manifest publishes only complete validated artifacts: ordered paths, checksums, counts, versions and RNG state. Failed and filtered rollouts stay counted with explicit reasons, and changed configs reject resume."
+      ],
+      "reproduce": "Closed-book, write a hybrid reward with separate helpfulness, correctness, format, repetition and length terms plus a manifest listing data, model, tokenizer, template, reward, verifier and policy versions for one run.",
+      "traps": [
+        "Adding a component without versioning it. An unrecorded weight change is an irreproducible experiment, since no later audit can recover the trade-off.",
+        "Normalizing rewards on the current batch. The scale then chases the actor distribution and every debug comparison becomes meaningless.",
+        "Silently dropping failed rollouts. Deletion changes the estimand, so count failures with reasons in the manifest."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must reward normalization use a fixed calibration set?",
+          "a": "Batch statistics move with the policy, so the same behavior scores differently across steps. A fixed set holds the scale still and exposes which component actually shifted."
+        },
+        {
+          "q": "One prompt yields 9 completions and another yields 4. What goes wrong with naive pair averaging?",
+          "a": "The first prompt contributes 36 pairs against 6 from the second and dominates the update. Average pairs within each prompt so each prompt contributes one grouped update."
+        },
+        {
+          "q": "What must a run manifest contain to support rollback?",
+          "a": "Data, tokenizer, template, model, reference, reward, verifier and policy versions with ordered paths, checksums, counts and RNG state, covering only complete validated artifacts."
+        },
+        {
+          "q": "A format checker ships a bug mid-run. What is the governance call?",
+          "a": "Roll back to the last manifest whose acceptance checks passed, quarantine the affected rollouts, and require the predeclared stop rule before resuming with the fixed checker."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.6: scalarized reward with manifest",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Implement `safer_reward` on your own answers, vary each weight once, and record a manifest with component versions, checksums and failure counts (page read 2026-10-14)",
+          "note": "Runs on CPU. Show that a weight change moves the ranking, and that the manifest alone reproduces which trade-off shipped."
+        }
+      ],
+      "stopWhen": "Your scalarized reward plus manifest reproduces which trade-off shipped, survives a weight change and a checker bug, and rejects resume under a changed config.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The hybrid-reward and flywheel sections plus the laboratory version-binding requirements cover scalarization policy and lineage at implement depth."
+      }
+    },
+    {
+      "id": "reward-evaluation-governance",
+      "title": "Independent evaluation, adversarial tests and reward governance",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "rl-9-train-reward-versus-independent-task-human-and-safety-evaluation",
+        "rl-9-adversarial-completions-and-hidden-verifier-tests",
+        "rl-9-reward-governance-rollback-and-collection-stop-rules"
+      ],
+      "outcomes": [
+        "Separate train reward from independent task, human and safety evaluation with a frozen regression set and blinded review.",
+        "Build adversarial completions and hidden verifier tests that the policy never trains on.",
+        "Write governance rules: ship thresholds, rollback triggers and collection stop rules."
+      ],
+      "why": "Training reward always votes for itself. Release needs independent evidence plus written rules for when evidence forces a rollback or stops collection.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-controls-external-evaluation",
+          "note": "Carry independent evaluation into preference-optimization controls."
+        },
+        {
+          "unit": "reinforcement-learning/llm-reasoning-agents-systems-research/reasoning-agent-evaluation-hacking",
+          "note": "Extend adversarial and hacking evaluation to reasoning agents."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl9-rlhf-book-reward-models-preferences-and-evaluation",
+          "title": "Evaluation eras, unreliability and contamination",
+          "url": "https://rlhfbook.com/c/16-evaluation",
+          "locator": "Why Many External Evaluation Comparisons Are Unreliable (prompt, sampling and inference-budget sensitivity); How Labs Actually Use Evaluations Internally; Contamination (n-gram overlap probes, UltraFeedback, Evol-CodeAlpaca, NuminaMath and WildChat overlaps, perturbation limits)"
+        },
+        {
+          "resource": "rl9-hands-on-modern-rl-rlhf-evaluation-and-process-rewards",
+          "title": "Three-layer evaluation with acceptance and monitoring",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "A Three-Layer Evaluation Stack; Per-Stage Metrics; Training-Time Monitoring checkpoint table; Minimum Acceptance Criteria; Manual Review rubric (page read 2026-10-14)",
+          "depth": "Use the acceptance numbers as course guardrails to implement and tighten, not as industry standards."
+        },
+        {
+          "resource": "rl9-llm-post-training-laboratory-reward-and-adversarial-evaluation",
+          "title": "Frozen blinded evaluation with reproduction",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Milestone F (frozen policies, blinded clean, adversarial and shift evaluation, clean-state reproduction, prespecified extension) and Measurement requirements (paired and seed uncertainty with all attempts preserved)"
+        }
+      ],
+      "focus": [
+        "Answer three questions together, building on Task contracts and automatic metrics: users prefer it, capabilities did not regress, and the reward was not fooled. Benchmarks, preference and manual review each catch what the others miss.",
+        "Freeze prompts, decoding and order. Win rates compare only under identical judges, prompts and settings, and small samples need intervals plus manual review of key claims.",
+        "Treat contamination probes as bounded evidence, building on Contamination and memorization. Overlap search misses paraphrases and format shifts, and perturbed-variant variance suggests format training without proving contamination.",
+        "Write the stop rules before training: ship thresholds, rollback triggers and collection halts. A checkpoint with rising reward, falling regression scores and growing length is a rollback, not a debate."
+      ],
+      "reproduce": "Closed-book, read one monitoring row with reward, KL, length, distinct n-grams, regression score and win rate, issue a ship or rollback call with reasons, and write the collection stop rule for length-hack recurrence.",
+      "traps": [
+        "Quoting verifier pass rate as complete evaluation. Verifiers cover checkable slices only; safety, honesty and open-ended quality need independent human and task evidence.",
+        "Comparing win rates across different judges or prompts. Rates are comparable only under matched prompts, judges, decoding and item sets.",
+        "Reading a clean overlap probe as proof of clean data. Probes miss transformed content while boilerplate triggers false matches, so review matches and bound the claim."
+      ],
+      "selfTest": [
+        {
+          "q": "Which three questions must release evaluation answer at once?",
+          "a": "The model is more aligned with preferences, general and specialized capabilities did not regress, and high-reward responses are truly high quality rather than hacked."
+        },
+        {
+          "q": "A checkpoint shows reward 0.45, KL 0.18, mean length 330, distinct-4 0.51, regression 0.70 and win rate 49 percent against SFT. Ship or roll back?",
+          "a": "Roll back. Reward rose while the regression set fell, length grew, diversity collapsed and the win rate sits below half, which matches the suspected-hacking row pattern."
+        },
+        {
+          "q": "What are the limits of an n-gram contamination probe?",
+          "a": "It misses paraphrased, translated and reformatted reuse while flagging common boilerplate. High variance on perturbed variants indicates format sensitivity, not proven contamination."
+        },
+        {
+          "q": "State a minimal governance bar for an RLHF-versus-SFT comparison.",
+          "a": "The Hands-on course guardrails: preference win rate above 55 percent with a manual explanation, regression at 95 percent of SFT or better, mean length within 1.3 times SFT, no repetition surge and no safety regression; anything worse rolls back into the flywheel."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.6 Exercises: regression set and win-rate arithmetic",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/evaluation",
+          "locator": "Exercises 1 and 2: design a 30-prompt regression set across format, reasoning, factual, safety and quality slices, then compute win rates with ties as half-wins (page read 2026-10-14)",
+          "note": "Runs on CPU. Freeze the set, seeds and decoding before scoring; report sample sizes with every rate."
+        }
+      ],
+      "stopWhen": "You can freeze a regression set, score a checkpoint row against written thresholds, and issue a rollback with the adversarial evidence that forced it.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 16 plus the three-layer monitoring and acceptance sections plus the frozen blinded laboratory evaluation cover independent, adversarial and governed evaluation at measure depth."
+      }
+    }
+  ]
+}

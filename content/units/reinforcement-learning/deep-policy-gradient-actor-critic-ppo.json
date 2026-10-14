@@ -1,0 +1,954 @@
+{
+  "section": "deep-policy-gradient-actor-critic-ppo",
+  "addedResources": [
+    {
+      "id": "rl4-sac-squashed-density",
+      "role": "paper",
+      "priority": "reference",
+      "name": "Soft Actor-Critic: action-bound density correction",
+      "provider": "Haarnoja et al.",
+      "access": "Free",
+      "use": "Appendix C, Enforcing Action Bounds, Equations 20 and 21 in arXiv:1801.01290v2. Supplies the change-of-variables derivation missing from the pool's action-clipping checklist; do not study SAC training here.",
+      "url": "https://arxiv.org/abs/1801.01290v2"
+    },
+    {
+      "id": "rl4-farama-vector-autoreset",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "Gymnasium vector autoreset modes",
+      "provider": "Farama Foundation",
+      "access": "Free",
+      "use": "Read Next-Step Mode, Same-Step Mode and Disabled Mode in the official autoreset explainer, then SyncVectorEnv's reset and step API. Check against Gymnasium 1.4.0; pages read 2026-10-14. Supplies current rollout semantics missing from the older PPO examples.",
+      "url": "https://farama.org/Vector-Autoreset-Mode"
+    }
+  ],
+  "units": [
+    {
+      "id": "trajectory-objective-score-function",
+      "title": "Trajectory objectives and the likelihood-ratio identity",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "rl-4-trajectory-objectives-and-expected-return",
+        "rl-4-likelihood-ratio-and-score-function-identities"
+      ],
+      "outcomes": [
+        "Factor a trajectory likelihood and identify which factors depend on policy parameters.",
+        "Derive the score-function estimator from expected return, with its support and differentiation assumptions.",
+        "Check the estimator against an exactly enumerated policy objective."
+      ],
+      "why": "The environment need not be differentiable to optimize a stochastic policy. This identity supplies the gradient used by REINFORCE and later language-policy updates.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/policy-gradient-theorem-reinforce",
+          "note": "Turn the trajectory estimator into an implementable update."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 5: Policy Gradients",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-5.pdf",
+          "locator": "Slides 3 to 7: objective, trajectory factorization, direct differentiation and the sampled gradient"
+        },
+        {
+          "resource": "rl4-spinning-up-policy-optimization",
+          "title": "Part 3: Intro to Policy Optimization",
+          "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html#deriving-the-simplest-policy-gradient",
+          "locator": "Deriving the Simplest Policy Gradient, facts 1 to 5 and Derivation for Basic Policy Gradient",
+          "depth": "Stop before Implementing the Simplest Policy Gradient."
+        }
+      ],
+      "focus": [
+        "Use the trajectory contract from Trajectories, episodes, horizons, discounting, termination and truncation. Include the initial-state law, each policy factor and each transition factor.",
+        "For a fixed environment and parameter-independent reward, only policy factors contribute to the trajectory score. Differentiability, fixed support and a valid interchange of derivative and expectation are assumptions, not consequences of sampling.",
+        "The score has mean zero: \\(\\mathbb{E}_{\\tau\\sim p_\\theta}[\\nabla_\\theta\\log p_\\theta(\\tau)]=0\\). Multiplying it by return creates the learning signal."
+      ],
+      "reproduce": "Closed-book, derive \\(\\nabla_\\theta J=\\mathbb{E}[R(\\tau)\\sum_t\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)]\\). Check a one-step Bernoulli policy with \\(p=\\operatorname{sigmoid}(\\theta)=1/4\\), reward 2 for action 1 and -1 for action 0: \\(J=3p-1=-1/4\\) and \\(dJ/d\\theta=3p(1-p)=9/16\\). Enumerate both actions and recover the same gradient from their scores.",
+      "traps": [
+        "Differentiating a sampled reward as if the sampled action were a differentiable path through the environment. The score-function estimator differentiates the sampling law instead.",
+        "Dropping a reward or transition derivative when those functions actually share policy parameters. The displayed estimator assumes they do not.",
+        "Summing action probabilities rather than log probabilities along a trajectory. Independent conditional factors multiply; their logs add."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can an unknown transition model disappear from the score?",
+          "a": "Its log derivative is zero when the transition law has no policy parameters. Its effect remains in the sampled state distribution and rewards."
+        },
+        {
+          "q": "What changes if the return explicitly depends on policy parameters?",
+          "a": "Add \\(\\mathbb{E}[\\nabla_\\theta R_\\theta(\\tau)]\\) to the likelihood-ratio term, under the same differentiation assumptions."
+        },
+        {
+          "q": "Does an action-dependent reward require a differentiable reward function?",
+          "a": "No. Dependence on a sampled action is already handled by the trajectory likelihood. Explicit dependence on policy parameters is a separate issue."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the policylab exact-enumeration policy-gradient oracle.",
+      "stopWhen": "You derive the trajectory score without notes and match the one-step gradient by direct differentiation and exact enumeration.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The lecture and Spinning Up supply the full derivation; the mini-project supplies an independent gradient oracle."
+      }
+    },
+    {
+      "id": "policy-gradient-theorem-reinforce",
+      "title": "The policy-gradient theorem and REINFORCE",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-4-policy-gradient-theorem-at-working-depth",
+        "rl-4-reinforce-and-monte-carlo-policy-gradients"
+      ],
+      "outcomes": [
+        "Derive the policy-gradient theorem using state visitation and conditional action values.",
+        "Implement a REINFORCE update with explicit discounting, trajectory reduction and detached return weights.",
+        "Match the expected update to exact enumeration and a finite difference."
+      ],
+      "why": "The theorem explains why sampled action scores suffice even though the policy changes future state visits. REINFORCE is the first complete implementation of that result.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/reward-to-go-baselines",
+          "note": "Remove irrelevant rewards and reduce gradient noise."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 5: Policy Gradients",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-5.pdf",
+          "locator": "Slide 7, REINFORCE, and slides 20 to 23, automatic differentiation and practical implementation"
+        },
+        {
+          "resource": "rl4-reinforcement-learning-an-introduction-chapter-13",
+          "title": "Sutton and Barto: theorem and REINFORCE",
+          "url": "https://mitpress.mit.edu/9780262352703/reinforcement-learning/",
+          "locator": "Chapter 13, Section 13.2, The Policy Gradient Theorem, and Section 13.3, REINFORCE: Monte Carlo Policy Gradient; printed pp. 324 to 329, including the proof box and REINFORCE algorithm box",
+          "depth": "The authors post the full text free on their Incomplete Ideas website. Use the section titles if your printing has different page labels. Leave the short-corridor training comparison for the baseline unit."
+        }
+      ],
+      "focus": [
+        "Unroll the Bellman derivative into visitation-weighted action-value terms. The theorem avoids an explicit derivative of the state distribution; it does not assume that distribution is fixed.",
+        "For \\(J=\\mathbb{E}[\\sum_{t=0}^{T-1}\\gamma^t r_{t+1}]\\), a trajectory-sum estimator uses \\(\\gamma^t G_t\\), where \\(G_t=\\sum_{k=t}^{T-1}\\gamma^{k-t}r_{k+1}\\). Uniform timestep sampling without this outer factor is a different weighting convention.",
+        "Use Stable softmax, cross-entropy and loss reductions rather than rebuilding softmax. Minimize the negative weighted log probability, hold return weights fixed, sum within episodes and average over episodes."
+      ],
+      "reproduce": "On CPU, enumerate the four trajectories of two independent Bernoulli actions with separate logits initially zero. Let the rewards be \\(r_1=a_0\\), \\(r_2=2a_1\\) and \\(\\gamma=1/2\\). Then \\(J=p_0+p_1\\), so its logit gradient is \\((1/4,1/4)\\). Implement the negative episode-sum log-probability loss using detached reward-to-go and outer discount weights. Probability-weight its four gradients and get \\((-1/4,-1/4)\\); check the objective with centered differences in `float64`.",
+      "traps": [
+        "Calling an arbitrary timestep mean the exact episodic gradient. Episode length and the reduction convention affect weighting.",
+        "Applying the optimizer before recomputing the batch's action log probabilities, then describing that gradient as on-policy REINFORCE.",
+        "Using the policy pseudo-loss as the return metric. Its value is not an estimate of expected return."
+      ],
+      "selfTest": [
+        {
+          "q": "Does the theorem say state visitation is independent of the policy?",
+          "a": "No. It reorganizes the full derivative into an expectation over policy-dependent visits."
+        },
+        {
+          "q": "Why is return treated as fixed when differentiating the sampled loss?",
+          "a": "The score-function derivation already accounts for how the policy changes the trajectory law. Differentiating the weight would add a different term."
+        },
+        {
+          "q": "In the two-step example, what happens if the outer discount weight is omitted?",
+          "a": "The expected ascent gradient for the second logit becomes \\(1/2\\), not \\(1/4\\). The first component remains \\(1/4\\)."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab REINFORCE with an exact expected-gradient check and fresh-trajectory updates.",
+      "stopWhen": "Your enumerated loss gradients match the objective gradient with the sign reversed, and your derivation states the visitation, discount and reduction conventions.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The lecture implementation and Chapter 13 proof reach derive and implement depth; policylab supplies the checked update."
+      }
+    },
+    {
+      "id": "reward-to-go-baselines",
+      "title": "Reward-to-go, baselines, unbiasedness and variance reduction",
+      "hours": 4,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "rl-4-causality-and-reward-to-go",
+        "rl-4-constant-and-state-dependent-baselines",
+        "rl-4-baseline-unbiasedness-and-variance-reduction"
+      ],
+      "outcomes": [
+        "Prove the reward-to-go causality result and conditional baseline unbiasedness.",
+        "Distinguish fixed, state-dependent and action-dependent baselines, including a baseline fitted on the same samples.",
+        "Measure estimator variance against an exact small-problem expectation."
+      ],
+      "why": "A noisy but unbiased gradient and a biased gradient need different repairs. Baselines offer a controlled way to change noise without changing the population target, when their assumptions hold.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/critics-actor-critic",
+          "note": "Learn a baseline, then distinguish it from a bootstrapped critic."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 5: variance reduction",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-5.pdf",
+          "locator": "Slides 16 to 18: gradient noise, Baselines and Causality",
+          "depth": "Slide 17's zero-mean proof applies to a baseline independent of the scored action. Its same-batch mean-return suggestion has finite-sample dependence; test that case separately."
+        },
+        {
+          "resource": "rl4-spinning-up-policy-optimization",
+          "title": "Causality and the expected score lemma",
+          "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html#expected-grad-log-prob-lemma",
+          "locator": "Expected Grad-Log-Prob Lemma, Don't Let the Past Distract You, and Baselines in Policy Gradients",
+          "depth": "Skip the intervening implementation walkthrough; do not install the retired environment stack."
+        },
+        {
+          "resource": "rl4-reinforcement-learning-an-introduction-chapter-13",
+          "title": "Sutton and Barto: baseline comparison",
+          "url": "https://mitpress.mit.edu/9780262352703/reinforcement-learning/",
+          "locator": "Chapter 13, Section 13.4, REINFORCE with Baseline, printed pp. 329 to 331; revisit Example 13.1, Short corridor with switched actions, on p. 323",
+          "depth": "The authors post the full text free on their Incomplete Ideas website. Read the comparison as evidence from the book's setup, not a guaranteed learning-speed improvement."
+        }
+      ],
+      "focus": [
+        "Condition on the history before the action. Earlier rewards are fixed under this conditioning and multiply a zero-mean action score, so they can be removed.",
+        "For a fixed baseline, \\(\\mathbb{E}[b(s)\\nabla_\\theta\\log\\pi_\\theta(a\\mid s)\\mid s]=0\\). A state-only input does not ensure independence if fitting used that same action's return.",
+        "Variance reduction is not automatic. For a scalar score \\(z\\), the variance-minimizing constant baseline is \\(\\mathbb{E}[Rz^2]/\\mathbb{E}[z^2]\\), when the denominator is positive. It need not equal mean return."
+      ],
+      "reproduce": "Reuse the one-step Bernoulli policy with \\(p=1/4\\) and rewards 2 and -1. Enumerate \\(g=(R-b)(a-p)\\). All fixed baselines have mean \\(9/16\\). With \\(b=0\\), variance is \\(75/256\\); with the value baseline \\(b=-1/4\\), it is \\(27/64\\); with \\(b=5/4\\), it is zero. Verify these population quantities on CPU by probability-weighting both actions, not by comparing unrelated Monte Carlo runs.",
+      "traps": [
+        "Claiming every value baseline reduces variance. The exact example shows one that increases it.",
+        "Subtracting each episode's own return as its baseline. That removes the entire learning signal, not just noise.",
+        "Using `detach()` as an independence proof. It blocks an autograd path but does not remove statistical dependence on the sampled action."
+      ],
+      "selfTest": [
+        {
+          "q": "May a baseline depend on the current state?",
+          "a": "Yes, provided it is conditionally independent of the current action. The score has conditional mean zero at that state."
+        },
+        {
+          "q": "For independent one-step samples, what happens if every sample subtracts the batch mean return that includes itself?",
+          "a": "With batch size \\(N\\), the expected sample-mean estimator is \\((1-1/N)\\nabla J\\). The self contribution creates bias; a leave-one-out mean avoids that dependence."
+        },
+        {
+          "q": "Why can past rewards be dropped even when past and future rewards are correlated?",
+          "a": "Conditional on the pre-action history, each past reward is fixed and the current score has mean zero. Independence of past and future rewards is unnecessary."
+        },
+        {
+          "q": "What should a variance comparison hold fixed?",
+          "a": "The policy, environment, objective, estimator reduction and sampled trajectories. Change only the weighting or baseline, and check expectation against an oracle."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab baseline and reward-to-go comparisons with exact expectations, shared samples and the short-corridor baseline ablation.",
+      "stopWhen": "You prove causality and baseline unbiasedness, reproduce all three exact variances, and explain why same-batch centering needs a separate finite-sample check.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The lecture, score lemma and Chapter 13 comparison cover the derivations; exact enumeration and the mini-project supply controlled measurement."
+      }
+    },
+    {
+      "id": "critics-actor-critic",
+      "title": "Learned value baselines, critic targets and actor-critic dependencies",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-4-learned-value-baselines-and-critic-targets",
+        "rl-4-actor-critic-data-and-update-dependencies"
+      ],
+      "outcomes": [
+        "Explain why a learned Monte Carlo baseline and a bootstrapped actor-critic have different bias sources.",
+        "Derive one-step critic targets and actor weights with separate termination and trajectory-boundary semantics.",
+        "Implement actor and critic updates with explicit target snapshots and gradient ownership."
+      ],
+      "why": "A critic gives credit before an episode ends, but its errors can enter the actor's learning signal. The update order and the target's policy identity are part of the algorithm.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/advantage-estimation-gae",
+          "note": "Combine one-step and longer-horizon actor weights."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 6: Actor-Critic",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-6.pdf",
+          "locator": "Slides 4 to 6, 8 to 12, 16 to 17 and 21 to 22: value fitting, bootstrap targets, batch and online actor-critic, critics versus baselines",
+          "depth": "Do not adopt the variance labels as universal guarantees. Stop before off-policy actor-critic; that belongs to the continuous-control section."
+        },
+        {
+          "resource": "rl4-reinforcement-learning-an-introduction-chapter-13",
+          "title": "Sutton and Barto: actor-critic distinction",
+          "url": "https://mitpress.mit.edu/9780262352703/reinforcement-learning/",
+          "locator": "Chapter 13, Section 13.5, Actor-Critic Methods, printed pp. 331 to 332; the One-step Actor-Critic (episodic) box",
+          "depth": "The authors post the full text free on their Incomplete Ideas website. Skip the eligibility-trace algorithm box."
+        },
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "Homework 2: baseline update dependencies",
+          "url": "https://github.com/berkeleydeeprlcourse/homework_spring2026/blob/59e40fc/hw2/src/agents/pg_agent.py",
+          "locator": "`PGAgent.update`, steps 1 to 4, and `_estimate_advantage`, the baseline branch",
+          "depth": "Read the starter as an update-order audit, not runnable completed code. Its Gym and WandB setup needs porting; implement the update in policylab instead."
+        }
+      ],
+      "focus": [
+        "Use TD error, TD(0), bootstrapping and Monte Carlo versus TD bias and variance as the earlier result. The new question is how that target weights an action score.",
+        "For a snapshot critic, \\(y_t=r_{t+1}+\\gamma(1-d_t)V_{\\text{old}}(s_{t+1})\\) and \\(\\hat A_t=y_t-V_{\\text{old}}(s_t)\\), where \\(d_t\\) marks true termination. A truncation needs the final pre-reset observation's value.",
+        "Freeze actor weights and critic regression targets for the specified update. Detach the actor's advantage and the bootstrap target; a shared encoder may still receive the separately declared value-loss gradient.",
+        "A fixed imperfect baseline subtracted from full returns preserves the score expectation. An imperfect next-state value inside a return target can create action-dependent bias."
+      ],
+      "reproduce": "Closed-book, write one actor-critic update with separate actor and critic parameters. For reward 1, \\(\\gamma=0.9\\), current value 0.5 and next value 2, get target 2.8 and advantage 2.3. True termination gives target 1 and advantage 0.5; external truncation keeps 2.8 and 2.3 using the final observation. On CPU, backpropagate the actor loss and check that only actor parameters receive gradients; backpropagate the detached-target squared value loss separately.",
+      "traps": [
+        "Refitting the critic and silently recomputing actor weights partway through the same update. That changes the declared estimator.",
+        "Treating the baseline network as a critic merely because it is learned. Bootstrapping the action assessment is the relevant distinction here.",
+        "Bootstrapping from a reset observation at truncation. That credits the old action with the next episode's value."
+      ],
+      "selfTest": [
+        {
+          "q": "Can a perfect value function make the one-step TD residual an unbiased advantage estimate?",
+          "a": "Yes. Conditional on the state and action, the expected reward plus discounted next-state value equals the action value, so subtracting the state value yields advantage."
+        },
+        {
+          "q": "What bias can an imperfect next-state value introduce?",
+          "a": "Its expected bootstrap error can depend on the current action through the transition law. It therefore need not vanish when multiplied by the action score."
+        },
+        {
+          "q": "Does detaching the advantage forbid a shared actor-critic encoder?",
+          "a": "No. It prevents the policy-loss gradient from flowing through the advantage calculation. The encoder can still receive gradients through policy logits and the separate value loss."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab learned baselines and one-step actor-critic, with target, boundary and gradient-ownership tests.",
+      "stopWhen": "Your update matches all three boundary cases, target tensors receive no gradient, and you can draw the actor, critic and rollout dependency graph.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Lecture 6 and Chapter 13 distinguish baseline and critic bias; the starter makes update order concrete and policylab checks gradient ownership."
+      }
+    },
+    {
+      "id": "advantage-estimation-gae",
+      "title": "n-step advantages, Generalized Advantage Estimation and the \\(\\gamma\\)-\\(\\lambda\\) trade-off",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-4-one-step-and-n-step-advantage-estimates",
+        "rl-4-generalized-advantage-estimation",
+        "rl-4-gamma-and-lambda-bias-variance-behavior"
+      ],
+      "outcomes": [
+        "Derive n-step advantages and GAE as a weighted sum of TD residuals.",
+        "Implement the backward recursion with separate bootstrap and trace-continuation masks.",
+        "Explain the discount and trace-decay endpoints relative to a stated policy-gradient objective."
+      ],
+      "why": "GAE controls how much future sampled reward enters the actor weight. Fixed trajectories expose its indexing and boundary bugs before any learning curve can hide them.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/ppo-ratios-clipped-surrogate",
+          "note": "Use frozen advantages in the PPO surrogate."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 6: longer-horizon advantages",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-6.pdf",
+          "locator": "Slides 23 to 25: n-step returns, Generalized Advantage Estimation and the policy update"
+        },
+        {
+          "resource": "rl4-high-dimensional-continuous-control-using-generalized-advantage-estimation",
+          "title": "GAE paper: estimator derivation",
+          "url": "https://arxiv.org/abs/1506.02438v6",
+          "locator": "arXiv:1506.02438v6, Section 2, Preliminaries, and Section 3, Advantage Function Estimation, pp. 2 to 5; Equations 14 to 18",
+          "depth": "Stop before Section 4. The paper starts from an undiscounted objective and introduces discounting as an approximation; do not silently identify its discounted gradient approximation with every discounted-objective convention."
+        },
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "Homework 2: GAE starter contract",
+          "url": "https://github.com/berkeleydeeprlcourse/homework_spring2026/blob/59e40fc/hw2/src/agents/pg_agent.py",
+          "locator": "`_estimate_advantage`, the `gae_lambda` branch and reverse loop",
+          "depth": "The dummy final value and single `terminals` boundary marker are not enough for externally truncated rollouts. Carry final observations and two masks in your own implementation."
+        }
+      ],
+      "focus": [
+        "Build on n-step returns, target boundaries and fixed-trajectory update oracles. Subtract the current value from each n-step return, then telescope the TD residual sum.",
+        "Use \\(\\delta_t=r_{t+1}+\\gamma(1-d_t)V(s_{t+1})-V(s_t)\\) and \\(\\hat A_t=\\delta_t+\\gamma\\lambda c_t\\hat A_{t+1}\\). The bootstrap mask excludes true termination; the continuation mask excludes any episode reset and the end of the available segment.",
+        "At \\(\\lambda=0\\), use one TD residual. At \\(\\lambda=1\\), a complete terminal episode telescopes to discounted return minus baseline; a nonterminal segment still contains its final bootstrap value.",
+        "Changing \\(\\gamma\\) changes the discounted value target, or biases an undiscounted-gradient approximation. Changing \\(\\lambda\\) changes estimator reliance on the critic, not the underlying discounted value function. Lower variance is a tendency, not a theorem for every trajectory law."
+      ],
+      "reproduce": "Closed-book, implement both an explicit TD-residual sum and a backward recursion on CPU. Use rewards \\((1,2,3)\\), values \\((0.5,1,1.5,0)\\), true termination after the third reward, \\(\\gamma=0.9\\) and \\(\\lambda=0.8\\). Residuals are \\((1.4,2.35,1.5)\\) and advantages are \\((3.8696,3.43,1.5)\\). With \\(\\lambda=0\\), recover the residuals; with \\(\\lambda=1\\), recover \\((4.73,3.7,1.5)\\). Require absolute agreement within \\(10^{-10}\\) in `float64`, then add a truncated segment with a nonzero final value.",
+      "traps": [
+        "Cutting both bootstrap and trace at truncation. Cut the trace across reset, but retain the final observation's bootstrap.",
+        "Calling the finite-segment trace-decay endpoint pure Monte Carlo while it still bootstraps an estimated tail.",
+        "Flattening time and environment axes before the recursion and letting one environment's residual enter another's advantage."
+      ],
+      "selfTest": [
+        {
+          "q": "Why do the intermediate value terms cancel when trace decay is 1?",
+          "a": "Each discounted next-state value cancels the following residual's discounted current-state value. The initial negative value and any final bootstrap remain."
+        },
+        {
+          "q": "Does a correct critic eliminate the usual bootstrapping bias for shorter traces?",
+          "a": "For the stated discounted advantage target, yes in conditional expectation. Discounting relative to an undiscounted objective and finite-sample effects are separate issues."
+        },
+        {
+          "q": "Which mask applies when an episode ends because of an external time limit?",
+          "a": "Keep the bootstrap from the true final observation, but set trace continuation to zero so the next reset episode contributes nothing."
+        },
+        {
+          "q": "At a nonterminal rollout cut, should the value of the next observation be zero?",
+          "a": "No. Use its critic value for the last residual; only the unavailable future residual sum is cut."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab GAE endpoint, termination, truncation and vector-lane oracles, followed by a matched trace-decay ablation.",
+      "stopWhen": "Both GAE implementations match the fixed cases and a nonterminal cut, and changing a reward in one vector lane cannot change another lane's advantages.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Lecture 6 and the original paper cover n-step and GAE derivations; the starter and policylab boundary oracles supply implementation depth."
+      }
+    },
+    {
+      "id": "policy-distributions-entropy",
+      "title": "Categorical, Gaussian and tanh-squashed policies and entropy regularization",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-4-entropy-regularization-and-exploration-effects",
+        "rl-4-categorical-and-gaussian-action-distributions",
+        "rl-4-tanh-squashed-actions-and-log-probability-correction"
+      ],
+      "outcomes": [
+        "Implement categorical and diagonal Gaussian policy log probabilities with correct event reductions.",
+        "Derive the tanh-squashed density and explain why clipping samples is not the same distribution.",
+        "Add entropy regularization with the correct loss sign and distinguish base Gaussian from transformed entropy."
+      ],
+      "why": "The action passed to the environment and the action whose density enters the update must have a declared relationship. A wrong density can leave training apparently functional while the gradient and PPO ratios are wrong.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/ppo-ratios-clipped-surrogate",
+          "note": "Compare old and new densities of the same action."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-reinforcement-learning-an-introduction-chapter-13",
+          "title": "Sutton and Barto: stochastic policy parameterizations",
+          "url": "https://mitpress.mit.edu/9780262352703/reinforcement-learning/",
+          "locator": "Chapter 13, Section 13.1, Policy Approximation and its Advantages, printed pp. 322 to 324, and Section 13.7, Policy Parameterization for Continuous Actions, pp. 335 to 336",
+          "depth": "The authors post the full text free on their Incomplete Ideas website. Focus on policy parameterization; the underlying distributions and transformations are already covered in Common distribution families and transformations."
+        },
+        {
+          "resource": "rl4-37-implementation-details-of-ppo",
+          "title": "PPO continuous-action distribution audit",
+          "url": "https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/#9-details-for-continuous-action-domains-eg-mujoco",
+          "locator": "9 details for continuous action domains: state-independent log standard deviation, independent action components, and Handling of action clipping to valid range and storage",
+          "depth": "Stop before Normalization of Observation. The checklist uses latent Gaussian samples followed by clipping, not a tanh-transformed density."
+        },
+        {
+          "resource": "rl4-sac-squashed-density",
+          "title": "The tanh change-of-variables correction",
+          "url": "https://arxiv.org/abs/1801.01290v2",
+          "locator": "arXiv:1801.01290v2, Appendix C, Enforcing Action Bounds, Equations 20 and 21"
+        },
+        {
+          "resource": "rl4-proximal-policy-optimization-algorithms",
+          "title": "PPO entropy term",
+          "url": "https://arxiv.org/abs/1707.06347v2",
+          "locator": "arXiv:1707.06347v2, Section 5, Algorithm, Equation 9 and its entropy-bonus explanation",
+          "depth": "Read only the combined objective here; the PPO surrogate comes next."
+        }
+      ],
+      "focus": [
+        "Reuse the stable log-softmax and loss-gradient results. A categorical policy produces one log probability per sampled action; independent Gaussian components require a sum across action coordinates, not across the batch.",
+        "For \\(a=\\tanh u\\), \\(\\log\\pi(a\\mid s)=\\log\\mu(u\\mid s)-\\sum_i\\log(1-\\tanh^2 u_i)\\). An additional affine scaling of action bounds adds its log-Jacobian correction too.",
+        "Retain the pre-squash action for stable likelihood evaluation near saturation. Clipping is noninvertible and creates boundary masses; do not apply the tanh Jacobian to it.",
+        "Minimizing a loss with \\(-c_H H\\), for positive \\(c_H\\), encourages entropy. Transformed entropy is \\(H(a)=H(u)+\\mathbb{E}[\\log|\\det(da/du)|]\\), not merely the Gaussian's analytic entropy. Entropy alone does not guarantee useful state coverage."
+      ],
+      "reproduce": "On CPU with `float64`, derive the scalar Gaussian log-density derivatives at fixed action \\(u=0.5\\), mean 0 and standard deviation 1: the mean derivative is 0.5 and the log-standard-deviation derivative is -0.75. Squashing gives \\(a=\\tanh(0.5)\\approx0.462117\\) and corrected log density about -0.803710. Implement the correction and match `torch.distributions.TransformedDistribution` with `torch.distributions.TanhTransform(cache_size=1)` to absolute tolerance \\(10^{-10}\\).",
+      "traps": [
+        "Keeping a reparameterized sample's gradient path while applying a score-function loss. Hold the sampled action fixed when differentiating its log density.",
+        "Evaluating a Gaussian density at the clipped environment action while claiming it is the latent-action score. Store the actual latent sample if using that formulation.",
+        "Assuming larger Gaussian standard deviation always means larger bounded-action entropy. Saturation can concentrate transformed actions near the bounds."
+      ],
+      "selfTest": [
+        {
+          "q": "Why sum diagonal Gaussian component log probabilities?",
+          "a": "Their joint density is the product of component densities. Taking its log turns the product into a sum and gives one scalar per action vector."
+        },
+        {
+          "q": "Can a continuous action density exceed 1?",
+          "a": "Yes. A density is not a point probability; its integral over the action support must be 1."
+        },
+        {
+          "q": "Can the tanh correction cancel in a PPO ratio?",
+          "a": "Yes, for the same action and the same parameter-independent invertible transform under both policies. It still matters for absolute log densities and transformed entropy."
+        },
+        {
+          "q": "Which entropy sign encourages exploration in a minimized loss?",
+          "a": "Subtract a positive coefficient times entropy. Adding it would encourage lower entropy."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab categorical and continuous-action density, event-shape, entropy-sign and squashing tests.",
+      "stopWhen": "Your fixed-action Gaussian gradients and squashed log density match the analytic checks, and your batched policies return one log probability per action vector.",
+      "fit": {
+        "verdict": "added",
+        "note": "Depth failed for tanh density: the pool checklist only describes clipping versus squashing. The opened SAC Appendix C supplies the missing derivation without adding SAC training."
+      }
+    },
+    {
+      "id": "ppo-ratios-clipped-surrogate",
+      "title": "Old and new log probabilities, importance ratios and the PPO clipped surrogate",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-4-old-and-new-policy-log-probabilities",
+        "rl-4-importance-probability-ratios-and-direction",
+        "rl-4-ppo-clipped-surrogate-with-advantage-sign-cases"
+      ],
+      "outcomes": [
+        "Compute new-over-old action-density ratios from frozen rollout log probabilities.",
+        "Derive the PPO clipped surrogate and its active gradient branch for each advantage sign.",
+        "Implement a minimized clipped loss and verify it on fixed actions before training."
+      ],
+      "why": "PPO changes the policy-gradient objective so one rollout batch can support several updates. Its clipping is sign-dependent and must be tested as an objective, not treated as a safety guarantee.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/ppo-kl-clip-epoch-drift",
+          "note": "Measure the drift clipping does not constrain."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 9: policy gradients with reused data",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-9.pdf",
+          "locator": "Lecture 9, Off-Policy Policy Gradient, slides 7 to 10 and 13 to 16: importance sampling, the first-order approximation and clipped weights",
+          "depth": "Distinguish the lecture's approximations from the precise clipped surrogate in the paper. Do not infer exact state-distribution correction from an action ratio."
+        },
+        {
+          "resource": "rl4-proximal-policy-optimization-algorithms",
+          "title": "PPO clipped surrogate",
+          "url": "https://arxiv.org/abs/1707.06347v2",
+          "locator": "arXiv:1707.06347v2, Section 3, Clipped Surrogate Objective, Equations 6 and 7 and Figure 1, p. 3"
+        },
+        {
+          "resource": "rl4-spinning-up-policy-optimization",
+          "title": "PPO: both advantage signs",
+          "url": "https://spinningup.openai.com/en/latest/algorithms/ppo.html#key-equations",
+          "locator": "Key Equations: PPO-Clip, Advantage is positive, Advantage is negative, and the KL early-stopping caveat",
+          "depth": "Stop before Exploration vs. Exploitation; do not install its implementation."
+        }
+      ],
+      "focus": [
+        "Recompute the new policy's log density at the stored observation and stored action. Keep the old density from the behavior-policy snapshot: \\(\\rho_t=\\exp(\\log\\pi_{\\text{new}}(a_t\\mid s_t)-\\log\\pi_{\\text{old}}(a_t\\mid s_t))\\).",
+        "Maximize \\(\\min(\\rho_t A_t,\\operatorname{clip}(\\rho_t,1-\\epsilon,1+\\epsilon)A_t)\\). For positive advantage the upper side saturates; for negative advantage the lower side saturates. Movement in the harmful direction is still penalized.",
+        "Minimization requires the negative surrogate, equivalently the maximum of the two negated branches. Old log probabilities and advantages are fixed, while new log probabilities retain their gradient.",
+        "The surrogate is a lower bound on the unclipped sampled surrogate, not a general lower bound on true policy return. It does not enforce an actual ratio or KL constraint."
+      ],
+      "reproduce": "With \\(\\epsilon=0.2\\), enumerate four samples with \\((\\rho,A)=(0.6,2),(1.4,2),(0.6,-2),(1.4,-2)\\). The maximized per-sample surrogates are \\((1.2,2.4,-1.6,-2.8)\\); the negative batch mean is 0.2. On CPU in `float64`, differentiate that loss with respect to the four ratios and get \\((-0.5,0,0,0.5)\\). Check centered differences away from the clipping boundaries.",
+      "traps": [
+        "Putting the old policy on top of the ratio. That reverses the intended correction and clipping cases.",
+        "Resampling actions when computing new log probabilities. The ratio must compare densities of the same stored action.",
+        "Clamping the ratio and using only that branch. PPO takes a minimum with the unclipped surrogate so harmful changes retain a gradient."
+      ],
+      "selfTest": [
+        {
+          "q": "What ratio should an unchanged policy produce?",
+          "a": "One, up to numerical tolerance, when observation processing, action representation and density evaluation are unchanged."
+        },
+        {
+          "q": "Does a ratio above the upper clip boundary always have zero policy-loss gradient?",
+          "a": "No. It is flat for positive advantage, but a negative advantage retains the unclipped harmful-change gradient."
+        },
+        {
+          "q": "What happens at zero advantage?",
+          "a": "That sample's policy-surrogate term and its gradient are zero. Value and entropy terms may still update parameters."
+        },
+        {
+          "q": "Does the per-action ratio correct the new policy's state visitation distribution?",
+          "a": "No. PPO optimizes a surrogate over old-policy states. Large updates can make this approximation poor."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Deep-ML 485: PPO Clipped Surrogate Loss with Clip Diagnostics",
+          "url": "https://www.deep-ml.com/problems/485",
+          "locator": "Implement `ppo_clip_loss` and run the two public cases",
+          "note": "The cases check a batch with all ratios inside the clip interval and a batch with both ratios outside, returning loss and clip fraction. They do not test gradients or a hard KL bound; the statement's claim that clipping prevents excessive deviation is not a guarantee. The section mini-project adds sign-case and gradient regressions."
+        }
+      ],
+      "stopWhen": "You reproduce all four surrogate and gradient cases, pass the two named practice cases, and explain why ratio clipping is not a hard policy constraint.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The lecture, PPO paper and sign-case explanation cover derivation and implementation; the opened Deep-ML cases add a narrow public check."
+      }
+    },
+    {
+      "id": "ppo-kl-clip-epoch-drift",
+      "title": "Approximate KL, clip fraction and multiple-epoch off-policy drift",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "rl-4-approximate-kl-as-a-diagnostic-and-stop-signal",
+        "rl-4-clip-fraction-ratio-and-policy-update-diagnostics",
+        "rl-4-multiple-epochs-and-induced-off-policy-drift"
+      ],
+      "outcomes": [
+        "Measure old-to-new KL and ratio diagnostics with their sampling distribution stated.",
+        "Distinguish ratios outside the clip interval from samples on a flat surrogate branch.",
+        "Track policy drift across minibatch epochs and implement a declared KL stopping rule."
+      ],
+      "why": "A clipped objective can remain flat while the policy keeps moving. KL and ratio traces reveal that movement, but their aggregation and stop timing determine what they actually protect.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/ppo-value-advantage-losses",
+          "note": "Audit the other losses that can move the same parameters."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-berkeley-cs285-policy-gradients-actor-critic",
+          "title": "CS 185/285 Lecture 10: KL and clipping",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-10.pdf",
+          "locator": "Lecture 10, Advanced Policy Gradient, slides 21 to 22, sampled KL-penalized objective, and slide 32, clipping as a heuristic approximation",
+          "depth": "Skip the natural-gradient and monotonic-improvement derivations; they are outside the section gate."
+        },
+        {
+          "resource": "rl4-cleanrl-ppo",
+          "title": "CleanRL: ratio diagnostics and epoch stop",
+          "url": "https://github.com/vwxyzjn/cleanrl/blob/fe8d8a03c41a7ef5b523e2e354bd01c363e786bb/cleanrl/ppo.py#L241-L293",
+          "locator": "`ppo.py`, lines 241 to 258 and 292 to 293: minibatch epochs, `old_approx_kl`, `approx_kl`, `clipfracs` and `target_kl`",
+          "depth": "Read the stop timing carefully: this code checks the last minibatch estimate after the epoch. It does not recompute a full-rollout post-update KL."
+        },
+        {
+          "resource": "rl4-37-implementation-details-of-ppo",
+          "title": "PPO diagnostic checklist",
+          "url": "https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/#13-core-implementation-details",
+          "locator": "13 core implementation details, Debug variables; then 4 auxiliary implementation details, Early Stopping",
+          "depth": "The prose calls clip fraction the fraction triggering clipping. In the code it counts all out-of-interval ratios, including the harmful-direction cases that remain active."
+        }
+      ],
+      "focus": [
+        "For old-policy actions and common support, \\(\\mathbb{E}[-\\log\\rho]=D_{\\mathrm{KL}}(\\pi_{\\text{old}}\\|\\pi_{\\text{new}})\\). The control-variate estimate \\(\\mathbb{E}[\\rho-1-\\log\\rho]\\) has the same expectation because \\(\\mathbb{E}[\\rho]=1\\). A sampled mean is not the exact KL.",
+        "The sample mean of negative log ratio can be negative. The ratio-minus-log expression is nonnegative per sample in exact arithmetic, but neither estimator supplies a hard worst-state bound.",
+        "Track log-ratio quantiles, the out-of-interval fraction and the advantage-sign-aware flat-branch fraction separately. Clip fraction alone cannot tell whether the policy loss has saturated.",
+        "Several epochs reuse old states, actions and advantages while the learner changes. Freeze the denominator throughout and specify whether the stop signal is minibatch or full-rollout, pre-update or post-update. Early stopping does not undo an update already taken."
+      ],
+      "reproduce": "Enumerate a two-action state with old probabilities \\((0.5,0.5)\\), advantages \\((1,-1)\\) and \\(\\epsilon=0.2\\). Compare new probabilities \\((0.9,0.1)\\) and \\((0.999,0.001)\\). Both have clip fraction 1 and maximized clipped surrogate 0.2, but exact old-to-new KL is about 0.510826 and 2.761231 nats. Probability-weight the two KL estimators and verify agreement with the exact KL within \\(10^{-10}\\) in `float64`. Then keep the old probabilities frozen while varying the new policy toward a deterministic action.",
+      "traps": [
+        "Refreshing old log probabilities after each minibatch. Ratios then hide cumulative rollout-policy drift.",
+        "Reporting a final minibatch's KL as the whole update's KL. Recompute over the frozen rollout if that is the stated diagnostic.",
+        "Treating a stop threshold as a constraint. Sampling error, missed states and an already-completed optimizer step can all permit larger changes."
+      ],
+      "selfTest": [
+        {
+          "q": "Which KL direction does averaging negative log ratio over old-policy actions estimate?",
+          "a": "Old-to-new KL, averaged over the chosen old-policy state sample. Swapping the action sampling law changes the interpretation."
+        },
+        {
+          "q": "Does a high clip fraction imply most sample gradients are zero?",
+          "a": "No. Only favorable-direction out-of-range cases have a flat clipped policy branch. Harmful-direction cases keep an active gradient."
+        },
+        {
+          "q": "Why can parameters still change after many policy-surrogate samples saturate?",
+          "a": "Other samples, shared value or entropy terms, and optimizer state can move them. Saturation of individual terms is not a parameter constraint."
+        },
+        {
+          "q": "What happens to old-to-new KL if the new probability of an old-supported action tends to zero?",
+          "a": "It diverges, even when that sample's favorable negative-advantage PPO branch is already flat."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab per-epoch ratio and KL traces, a declared full-rollout stopping rule and a matched update-epoch ablation.",
+      "stopWhen": "You exhibit equal clipped objectives with different KL, distinguish both clip diagnostics, and your epoch trace preserves one behavior-policy denominator.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Lecture 10, the pinned CleanRL diagnostic code and the checklist cover KL, clipping and repeated epochs; policylab supplies drift measurements."
+      }
+    },
+    {
+      "id": "ppo-value-advantage-losses",
+      "title": "Value loss, value clipping, loss coefficients and advantage normalization",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rl-4-value-loss-value-clipping-and-loss-coefficients",
+        "rl-4-advantage-centering-scaling-and-minibatch-leakage"
+      ],
+      "outcomes": [
+        "Implement squared and pessimistically clipped value losses using frozen rollout targets and old values.",
+        "State the sign, scale and parameter ownership of policy, value and entropy losses.",
+        "Test how advantage centering and scaling depend on minibatch composition and standard-deviation convention."
+      ],
+      "why": "Two agents with the same PPO surrogate can take different updates because of value clipping, normalization and loss coefficients. These choices need explicit tests and ablations, not a claim that defaults are optimal.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/rollouts-policy-versions-tests",
+          "note": "Bind every target and loss weight to a tested rollout snapshot."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-proximal-policy-optimization-algorithms",
+          "title": "PPO combined actor, value and entropy objective",
+          "url": "https://arxiv.org/abs/1707.06347v2",
+          "locator": "arXiv:1707.06347v2, Section 5, Equation 9 and the squared-error value-loss definition",
+          "depth": "Do not attribute value clipping or advantage normalization to Equation 9; those are implementation choices in the companion code."
+        },
+        {
+          "resource": "rl4-cleanrl-ppo",
+          "title": "CleanRL: loss assembly and normalization",
+          "url": "https://github.com/vwxyzjn/cleanrl/blob/fe8d8a03c41a7ef5b523e2e354bd01c363e786bb/cleanrl/ppo.py#L260-L290",
+          "locator": "`ppo.py`, lines 260 to 290: minibatch normalization, clipped value loss, entropy, loss coefficients and optimizer step"
+        },
+        {
+          "resource": "rl4-37-implementation-details-of-ppo",
+          "title": "PPO normalization and value-loss audit",
+          "url": "https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/#13-core-implementation-details",
+          "locator": "13 core implementation details: Normalization of Advantages, Value Function Loss Clipping, Overall Loss and Entropy Bonus, and Global Gradient Clipping",
+          "depth": "Use Schedules, gradient accumulation and clipping for the earlier global-norm result; focus here on which losses feed that norm."
+        }
+      ],
+      "focus": [
+        "The rollout return target is frozen, often \\(\\hat A+V_{\\text{old}}\\). Normalize actor advantages separately; do not substitute normalized advantages into the critic's target.",
+        "Value clipping compares the raw squared error with the squared error at \\(V_{\\text{old}}+\\operatorname{clip}(V_{\\text{new}}-V_{\\text{old}},-\\epsilon_V,\\epsilon_V)\\), taking the maximum. It is not clipping the target or enforcing a hard bound on value changes.",
+        "Centering can change an advantage's sign and therefore its PPO clipping branch. Per-minibatch centering gives a sample different weights in different shuffles; this finite-sample coupling is not evidence of new experience.",
+        "Record the normalization scope, standard-deviation correction and small-denominator handling. CleanRL uses `std()` with the default sample correction; singleton minibatches require an explicit policy rather than a silent nonfinite weight."
+      ],
+      "reproduce": "On CPU in `float64`, use old value 0, new value 1, return target 2 and value-clip width 0.2. The half-scaled unclipped loss is 0.5; the maximum-based clipped loss is 1.62 and has zero derivative with respect to the new value at this point. Next center advantages \\((1,3)\\): population-standard-deviation scaling gives \\((-1,1)\\), while sample-standard-deviation scaling gives \\((-1/\\sqrt{2},1/\\sqrt{2})\\). Implement both conventions and keep the critic target unchanged.",
+      "traps": [
+        "Using a minimum for value clipping because the policy surrogate uses a minimum. The pessimistic squared-error loss uses a maximum.",
+        "Allowing gradients into old values or return targets. That lets the target move to accommodate the current prediction.",
+        "Comparing loss coefficients without recording sum, mean and half-squared-error conventions. Those change the effective gradient scale."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the reproduced clipped value loss have zero gradient?",
+          "a": "The larger error comes from the clamped value, which is constant in this region. The unclipped branch is smaller and therefore inactive."
+        },
+        {
+          "q": "Does centering preserve every sample's PPO clipping branch?",
+          "a": "No. A small positive advantage can become negative after subtracting the batch mean, which reverses the favorable clipping direction."
+        },
+        {
+          "q": "Does multiplying advantages by a positive constant change their signs?",
+          "a": "No. It scales the policy-surrogate gradient but not the value or entropy losses. It is not generally equivalent to scaling the whole optimizer's learning rate."
+        },
+        {
+          "q": "Should a normalized advantage be used to reconstruct the return target?",
+          "a": "No. Normalization changes the actor weight's units and offset. Use the original advantage plus the frozen old value for that target."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab value-clipping gradients, normalization-scope regressions and a matched value-loss or normalization ablation.",
+      "stopWhen": "Your loss reproduces the flat value-clipping case and both normalization conventions, and changing normalization cannot mutate the frozen return target.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper defines the combined loss, while pinned CleanRL and the checklist supply the missing implementation variants and policylab checks them."
+      }
+    },
+    {
+      "id": "rollouts-policy-versions-tests",
+      "title": "Vectorized rollouts, policy-version identity and fixed-trajectory tests",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rl-4-vectorized-rollouts-and-policy-version-identity",
+        "rl-4-fixed-trajectory-loss-ratio-gae-and-gradient-tests"
+      ],
+      "outcomes": [
+        "Implement a vector rollout buffer with immutable behavior-policy identity and explicit valid-transition masks.",
+        "Handle reset-only steps, final observations and nonterminal segment cuts without cross-episode advantage leakage.",
+        "Test log probabilities, GAE, ratios, clipped losses and gradients against independent fixed-batch oracles."
+      ],
+      "why": "PPO depends on the identity of the policy that generated each action. Vectorization must preserve that identity and the trajectory boundary, not just produce correctly shaped tensors.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-policy-gradient-actor-critic-ppo/policy-gradient-failures-evaluation",
+          "note": "Use these invariants to diagnose failed training."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-cleanrl-ppo",
+          "title": "CleanRL: rollout storage and flattening",
+          "url": "https://github.com/vwxyzjn/cleanrl/blob/fe8d8a03c41a7ef5b523e2e354bd01c363e786bb/cleanrl/ppo.py#L170-L239",
+          "locator": "`ppo.py`, lines 170 to 239: storage setup, collection, GAE and batch flattening",
+          "depth": "Audit rather than copy its boundary handling. It merges termination and truncation, cuts both bootstraps, and assumes episode information under `final_info`. With Gymnasium 1.4.0 next-step autoreset, reset-only steps also need masking; pinning 0.29.1 alone does not repair truncated targets."
+        },
+        {
+          "resource": "rl4-farama-vector-autoreset",
+          "title": "Farama: vector autoreset contract",
+          "url": "https://farama.org/Vector-Autoreset-Mode",
+          "locator": "Next-Step Mode, Same-Step Mode and Disabled Mode (page read 2026-10-14)",
+          "depth": "Use the mode descriptions, not the example loops as finished PPO collectors. In Disabled Mode, remember that `reset()` returns observations and information as a pair."
+        },
+        {
+          "resource": "rl4-farama-vector-autoreset",
+          "title": "Gymnasium: SyncVectorEnv API",
+          "url": "https://gymnasium.farama.org/api/vector/sync_vector_env/",
+          "locator": "SyncVectorEnv constructor, `reset()` and `step()` documentation; checked against Gymnasium 1.4.0 (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl4-reinforcement-learning-control-laboratory-policy-core",
+          "title": "Control Laboratory: update and identity tests",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/reinforcement-learning-control-laboratory.md",
+          "locator": "Architecture constraints; Milestone C, Main implementation; Milestone D, Failure handling; Correctness requirements"
+        }
+      ],
+      "focus": [
+        "Extend Trajectory schemas with environment, policy, seed and version identity. Store behavior log probabilities, critic values, observations, actions, rewards, both ending flags, final bootstrap observations and a policy-version identifier.",
+        "Keep time and environment axes until GAE is complete. Flatten every field with the same ordering and exclude reset-only entries from policy, critic, entropy and metric reductions.",
+        "In Gymnasium 1.4.0 next-step mode, the ending step returns the final observation. The following step ignores that lane's action and returns a reset observation with zero reward and false ending flags; it is not experience from that action.",
+        "Separate rollout snapshots from learner state. Re-evaluate stored actions under the unchanged snapshot before the first update; ratios should be 1 within tolerance. Use independent residual sums and finite differences away from clipping kinks as test oracles."
+      ],
+      "reproduce": "On CPU with Gymnasium 1.4.0, run `import gymnasium as gym` and `import numpy`, then construct `envs = gym.vector.SyncVectorEnv([lambda: gym.make('CartPole-v1', max_episode_steps=1)])` and call `envs.reset(seed=0)`. Step with `envs.step(numpy.array([0]))`, then `envs.step(numpy.array([1]))`. The first call has lane reward 1, termination false and truncation true; the second has lane reward 0 and both flags false. Store only the first as a valid transition and call `envs.close()`. Add a second lane with a different time limit and check that masking and GAE remain lane-local.",
+      "traps": [
+        "Storing a reset-only vector step as if its sampled action caused the reset. It creates a fake transition and changes the denominator of loss means.",
+        "Recording a policy version without binding observation normalization and action transforms to it. Those can change log probabilities even with unchanged network weights.",
+        "Checking only scalar loss equality. Ratio inversion, broadcasting or target detachment defects can require per-sample and gradient tests to expose."
+      ],
+      "selfTest": [
+        {
+          "q": "Why are two ending masks still needed with a valid-transition mask?",
+          "a": "Validity excludes reset-only records. Termination determines whether to bootstrap; episode boundaries determine whether the advantage trace may continue. They answer different questions."
+        },
+        {
+          "q": "Can a vector step contain both real transitions and reset-only entries?",
+          "a": "Yes. Lanes end independently, so validity must be tracked per lane, not with one batch-wide flag."
+        },
+        {
+          "q": "How do you test that flattening preserves the record?",
+          "a": "Give every time-lane pair a unique label and check that all flattened fields preserve the same label order. Then recover the original axes."
+        },
+        {
+          "q": "What must stay fixed during a finite-difference policy-loss check?",
+          "a": "Observations, actions, old log probabilities, advantages and transforms. Perturb only current policy parameters, and avoid nondifferentiable clip boundaries."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab immutable vector rollouts, identity-ratio checks, lane-local GAE and fixed-batch loss and gradient regressions.",
+      "stopWhen": "Your collector excludes reset-only entries, preserves final bootstrap observations and policy identity, and passes independent per-sample, shape and gradient tests.",
+      "fit": {
+        "verdict": "added",
+        "note": "Currency failed for vector reset semantics in the pool examples. The opened Farama mode explainer and current API documentation repair that gap; CleanRL remains the storage audit."
+      }
+    },
+    {
+      "id": "policy-gradient-failures-evaluation",
+      "title": "Policy collapse, critic failure, stale log probabilities and multi-seed evaluation",
+      "hours": 6,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "rl-4-policy-collapse-critic-failure-and-stale-log-prob-diagnosis",
+        "rl-4-multi-seed-return-entropy-kl-and-sample-efficiency-evaluation"
+      ],
+      "outcomes": [
+        "Diagnose stale denominators, entropy collapse and critic defects from stored rollouts before inspecting the offending code.",
+        "Evaluate a small policy across prespecified training seeds with separate evaluation streams and complete diagnostic traces.",
+        "Report interaction efficiency, wall time, uncertainty and failed runs without selecting the best seed."
+      ],
+      "why": "Improving reward does not establish a correct PPO implementation. A defensible result must survive fixed-batch failures, independent evaluation and the seed distribution.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/deep-exploration-empirical-method/evaluation-policies-uncertainty-units",
+          "note": "Deepen evaluation-policy and uncertainty design."
+        },
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/llm-policy-roles-identity",
+          "note": "Carry policy and critic identity into language-model RL without assuming model-scale post-training knowledge."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl4-37-implementation-details-of-ppo",
+          "title": "PPO debugging and reproducibility recommendations",
+          "url": "https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/#recommendations",
+          "locator": "Recommendations: Seed everything, Check if \\(\\text{ratio}=1\\), Check KL divergence, Check other metrics, Enumerate implementation details used, Release locked source code and Track experiments",
+          "depth": "Skip the Breakout score rule and do not use the article's typical KL value as a universal threshold. Match a reference only when its environment and implementation setup match yours."
+        },
+        {
+          "resource": "rl4-cleanrl-ppo",
+          "title": "CleanRL: what the logged metrics actually measure",
+          "url": "https://docs.cleanrl.dev/rl-algorithms/ppo/#explanation-of-the-logged-metrics",
+          "locator": "`ppo.py`, Explanation of the logged metrics (page read 2026-10-14)",
+          "depth": "Cross-check aggregation against the pinned code below. Its last minibatch losses are not full-rollout means, and clip fraction counts out-of-interval ratios rather than only flat objective branches."
+        },
+        {
+          "resource": "rl4-cleanrl-ppo",
+          "title": "CleanRL: explained variance and metric writes",
+          "url": "https://github.com/vwxyzjn/cleanrl/blob/fe8d8a03c41a7ef5b523e2e354bd01c363e786bb/cleanrl/ppo.py#L295-L309",
+          "locator": "`ppo.py`, lines 295 to 309: old-value explained variance, final-minibatch losses, averaged clip fractions and steps per second"
+        },
+        {
+          "resource": "rl4-reinforcement-learning-control-laboratory-policy-core",
+          "title": "Control Laboratory: failure and evaluation evidence",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/reinforcement-learning-control-laboratory.md",
+          "locator": "Milestone D, Failure handling; Milestone E, Measurement / optimization; Milestone F, Final evaluation; Measurement requirements"
+        }
+      ],
+      "focus": [
+        "Start with invariants: unchanged-policy ratios, reward/action alignment, target detachment and boundary masks. Rising KL, falling entropy or poor value fit are symptoms, not unique diagnoses.",
+        "Compare critic predictions with frozen targets using residuals and squared error as well as explained variance. Explained variance can miss a constant prediction offset and is undefined when target variance is zero.",
+        "On CPU, use your tested policylab PPO on `CartPole-v1` with Gymnasium 1.4.0. Prespecify five training seeds and 100000 valid environment transitions per seed; record hyperparameters, versions and all attempts. This is an experiment budget, not a return target.",
+        "Evaluate frozen checkpoints on separate seed streams, with the action rule declared as sampling or argmax. Plot per-training-seed returns and entropy, KL, value error, ratio and gradient diagnostics against interactions and wall time. Treat the training run, not its many evaluation episodes, as the unit for across-run uncertainty."
+      ],
+      "reproduce": "Build two fixed-batch defects on CPU. For old probabilities \\((0.5,0.5)\\) and new probabilities \\((0.8,0.2)\\), correct ratios are \\((1.6,0.4)\\) and exact old-to-new KL is about 0.223144 nats; replacing the denominator with the current policy falsely gives ratios \\((1,1)\\). Separately, use value targets \\((1,3)\\) and predictions \\((11,13)\\): mean squared error is 100 while explained variance is 1. Write regressions that detect both defects without a learning curve.",
+      "traps": [
+        "Calling low entropy policy collapse without checking the task and evaluation policy. A useful deterministic policy can have low entropy; poor independent return and lost action support supply the failure evidence.",
+        "Reporting only successful runs or the best checkpoint chosen on final evaluation seeds. Keep failures and separate tuning, checkpoint selection and final evaluation.",
+        "Treating training episode returns or a lower pseudo-loss as proof of generalization. Evaluate a frozen policy independently and keep evaluation out of the update data."
+      ],
+      "selfTest": [
+        {
+          "q": "Ratios remain exactly 1 after several optimizer steps. Is that reassuring?",
+          "a": "Not by itself. The actor may not have moved, but the old log probabilities may also have been refreshed incorrectly. Recompute against the immutable behavior snapshot."
+        },
+        {
+          "q": "Why can explained variance equal 1 for a poor critic?",
+          "a": "It uses the variance of residuals, which ignores a constant offset. Predictions shifted uniformly from the targets have zero residual variance but nonzero squared error."
+        },
+        {
+          "q": "Can many evaluation episodes from one trained model replace multiple training seeds?",
+          "a": "No. They estimate that model's evaluation variability, not variability caused by training randomness."
+        },
+        {
+          "q": "What does an entropy-coefficient ablation need for fair attribution?",
+          "a": "The same environment, seed set, interaction budget, evaluation policy and tuning budget, with all attempts retained. Keep unrelated algorithm choices fixed."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: policylab multi-seed PPO evidence, independent checkpoint evaluation and two induced ratio, critic or entropy failure postmortems.",
+      "stopWhen": "You detect both fixed-batch defects and retain a complete multi-seed evaluation report with two diagnosed induced failures, raw curves and no best-seed claim.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The checklist and pinned metric code support diagnosis; the pool's Control Laboratory specifies multi-seed measurement and the mini-project supplies the experiment."
+      }
+    }
+  ]
+}

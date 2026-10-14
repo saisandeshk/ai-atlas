@@ -1,0 +1,895 @@
+{
+  "section": "llm-direct-preference-optimization",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "kl-regularized-optimal-policy",
+      "title": "The KL-regularized objective and its optimal policy",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "rl-10-kl-regularized-reward-maximization-objective",
+        "rl-10-optimal-policy-form-under-a-reference-policy"
+      ],
+      "outcomes": [
+        "Derive the optimal completion distribution for a fixed reward and reference policy.",
+        "Explain how KL direction, reference support and the regularization coefficient constrain that solution."
+      ],
+      "why": "DPO starts with a reward-maximization problem, not a classification trick. Its closed-form solution tells you which reference and support assumptions the later loss inherits.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-derivation",
+          "note": "Invert the optimal-policy expression and eliminate the partition function."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: the optimal RLHF solution",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#dpo-derivation",
+          "locator": "Chapter 8, DPO Derivation: Deriving the Optimal RLHF Solution (page read 2026-10-14)",
+          "depth": "Stop before Deriving DPO Objectives for BT Models. Track maximizers, not equality of the objective values after sign changes and division by the regularization coefficient."
+        },
+        {
+          "resource": "rl10-direct-preference-optimization",
+          "title": "DPO: optimal-policy derivation",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 3 equation 3, Section 4 equation 4 and Appendix A.1"
+        }
+      ],
+      "focus": [
+        "For each prompt, maximize expected reward minus \\(\\beta D_{\\mathrm{KL}}(\\pi\\|\\pi_{\\mathrm{ref}})\\), with \\(\\beta>0\\). The expectation defining KL is under the policy being optimized.",
+        "The solution is \\(\\pi^*(y\\mid x)=\\pi_{\\mathrm{ref}}(y\\mid x)\\exp(r(x,y)/\\beta)/Z(x)\\). Require a finite partition function and optimize on reference support.",
+        "Reuse Entropy, cross-entropy, KL divergence and mutual information and Constraints, KKT conditions and proximal methods. Here the new step is rewriting the reward objective as \\(\\beta\\log Z(x)-\\beta D_{\\mathrm{KL}}(\\pi\\|\\pi^*)\\)."
+      ],
+      "reproduce": "Closed-book, derive the solution by normalization and certify it with the KL rewrite. For one prompt and two completions, take reference probabilities \\((1/4,3/4)\\), rewards \\((\\log 3,0)\\) and \\(\\beta=1\\). Obtain \\(Z=3/2\\), \\(\\pi^*=(1/2,1/2)\\) and optimal objective \\(\\log(3/2)\\). Check in CPU PyTorch with `torch.float64`, natural logs and absolute tolerance \\(10^{-12}\\); no sampling or model is needed.",
+      "traps": [
+        "Reversing KL. A reference-to-policy penalty yields a different optimization problem.",
+        "Reading the penalty coefficient as a hard KL budget. A finite-data DPO run does not attain a prescribed divergence simply by setting it.",
+        "Giving positive mass to a completion with zero reference probability. Its policy-to-reference KL is infinite."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the partition function not change while optimizing the policy?",
+          "a": "The reward, reference and regularization coefficient are fixed. The partition function depends on these and the prompt, not on the candidate policy."
+        },
+        {
+          "q": "What happens as the regularization coefficient grows without bound for bounded rewards?",
+          "a": "The exponential reward tilt approaches one, and the optimum approaches the reference distribution."
+        },
+        {
+          "q": "Can a single sampled log-ratio be negative although KL is nonnegative?",
+          "a": "Yes. Nonnegativity holds for the expectation under the policy, not for each completion's log-ratio."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Score a KL-Regularized Policy Batch",
+          "url": "https://www.tensortonic.com/problems/cs336-l15-kl-regularized-policy-objective",
+          "locator": "Language Modeling from Scratch: `kl_regularized_policy_objective`; all three public cases",
+          "note": "The free problem checks positive sampled divergence, a mixed masked batch and a fully masked response. It scores supplied log probabilities; it does not prove the optimal-policy formula or estimate KL from arbitrary offline preferences."
+        }
+      ],
+      "stopWhen": "You derive and certify the two-completion optimum unaided and pass the named problem without clamping negative sampled divergences.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book and paper provide the complete derivation and assumptions; the named free problem checks the sampled objective within four hours."
+      }
+    },
+    {
+      "id": "dpo-derivation",
+      "title": "Implicit rewards from policy ratios and the DPO derivation",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "rl-10-implicit-reward-reparameterization-from-policy-ratios",
+        "rl-10-bradley-terry-substitution-and-dpo-derivation"
+      ],
+      "outcomes": [
+        "Derive DPO by substituting policy-ratio rewards into a Bradley-Terry likelihood.",
+        "State the reward-identifiability, preference-model and coverage assumptions behind the substitution."
+      ],
+      "why": "The partition function is intractable, but comparisons at the same prompt remove it. Knowing exactly why it cancels prevents using the derivation for mismatched prompts or treating finite-data fitting as an optimality guarantee.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-loss-log-ratios",
+          "note": "Turn the likelihood into a stable tensor loss."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: Bradley-Terry substitution",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#dpo-derivation",
+          "locator": "Chapter 8, DPO Derivation: Deriving DPO Objectives for BT Models (page read 2026-10-14)",
+          "depth": "Stop before Deriving the BT DPO Gradient."
+        },
+        {
+          "resource": "rl10-direct-preference-optimization",
+          "title": "DPO: reparameterization and reward equivalence",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 4 equations 5 to 7, Section 5.1 Definition 1 and Lemmas 1 to 2, Appendix A.2"
+        },
+        {
+          "resource": "rl10-stanford-cs224r-2026-llm-preference-optimization",
+          "title": "Stanford CS224R Lecture 09: DPO in four steps",
+          "url": "https://cs224r.stanford.edu/slides/09_cs224r_rlhf_2026.pdf",
+          "locator": "PDF pages 43 to 45 (printed slide numbers 74 to 76): Can we simplify RLHF?, the closed-form optimum rearranged into a reward, and the Bradley-Terry loss on reward differences where the partition term cancels",
+          "depth": "The slides write the reference as \\(p^{PT}\\). Use them to check your derivation, not as a substitute for the paper's assumptions."
+        }
+      ],
+      "focus": [
+        "Inversion gives \\(r(x,y)=\\beta\\log(\\pi^*(y\\mid x)/\\pi_{\\mathrm{ref}}(y\\mid x))+\\beta\\log Z(x)\\). Keep the additive term until taking a same-prompt reward difference.",
+        "Bradley-Terry uses \\(P(y_c\\succ y_r\\mid x)=\\sigma(r(x,y_c)-r(x,y_r))\\). Substitute first, then take the dataset mean negative log likelihood.",
+        "The implicit log-ratio reward is one representative of a prompt-dependent reward equivalence class. Fitting it needs preference coverage and a suitable policy family; the algebra alone supplies neither."
+      ],
+      "reproduce": "Derive the likelihood and DPO loss without notes. Reuse the previous unit's two-completion setup: reference \\((1/4,3/4)\\), optimum \\((1/2,1/2)\\), \\(\\beta=1\\). The two log-ratio rewards differ by \\(\\log 3\\), so Bradley-Terry predicts preference probability \\(3/4\\). Add 7 to both original rewards and show that the normalized optimal policy and preference probability are unchanged, although the partition function changes.",
+      "traps": [
+        "Dropping the partition term while claiming an absolute reward identity. It cancels in comparisons, not in the original reward equality.",
+        "Comparing completions from different prompts. Their partition constants need not agree.",
+        "Equating a finite empirical loss minimum with recovery of human preferences on unseen completions. The derivation is not a coverage or generalization theorem."
+      ],
+      "selfTest": [
+        {
+          "q": "Which reward transformations preserve the Bradley-Terry probabilities?",
+          "a": "Adding any function of the prompt to every completion reward. Multiplying rewards by a non-unit scale generally changes preference probabilities."
+        },
+        {
+          "q": "Does the DPO derivation require training a separate reward network?",
+          "a": "No. It parameterizes the preference likelihood using policy-to-reference log ratios. The policy thereby supplies an implicit reward."
+        },
+        {
+          "q": "Why is same-prompt cancellation insufficient to justify arbitrary preference labels?",
+          "a": "Cancellation is algebraic. The likelihood still assumes Bradley-Terry-style reward differences; contradictory, cyclic or population-mixed preferences may not admit that model."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the DPO derivation in `policylab`, with a same-prompt reward-shift oracle and an explicit list of preference and reference assumptions.",
+      "stopWhen": "You reconstruct the loss from the regularized objective, recover the three-quarter preference probability, and explain both the cancellation and its assumptions.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The primary derivation and the paper's reward-equivalence result cover both topics at derive depth; the mini-project supplies the independent oracle."
+      }
+    },
+    {
+      "id": "dpo-loss-log-ratios",
+      "title": "Chosen and rejected log probabilities, reference log-ratio margins and the DPO loss",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-10-chosen-and-rejected-sequence-log-probabilities",
+        "rl-10-policy-and-frozen-reference-log-ratio-margins",
+        "rl-10-dpo-logistic-loss-and-beta"
+      ],
+      "outcomes": [
+        "Implement stable, pair-averaged DPO from four completion log-probability tensors.",
+        "Distinguish the raw policy gap, reference-adjusted margin and scaled reward margin.",
+        "Explain the regularization coefficient without assuming it fixes realized KL."
+      ],
+      "why": "A plausible loss curve can hide a reversed reference ratio or the wrong reduction. A fixed log-probability example gives you an oracle before any language-model update.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-gradient-label-invariants",
+          "note": "Check update pressure and label order, not only the scalar loss."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: DPO loss implementation",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#implementation-details",
+          "locator": "Chapter 8, Implementation Details: log-probability gaps, `losses` and detached rewards (page read 2026-10-14)",
+          "depth": "Use the code block. Do not adopt the following 'KL divergence is static' claim: finite gradient steps do not solve the objective exactly or set realized KL. Reference precomputation saves workload-dependent memory, not a guaranteed 50%."
+        },
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "DPO differential reference",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/direct_alignment/loss.py#L57-L135",
+          "locator": "`DPOLoss.forward`: difference of log ratios, stable loss and pair mean"
+        }
+      ],
+      "focus": [
+        "Let \\(m=(\\ell_c-\\ell_r)-(\\ell_{\\mathrm{ref},c}-\\ell_{\\mathrm{ref},r})\\) and \\(z=\\beta m\\). A pair contributes \\(-\\log\\sigma(z)\\); average over pairs, not completion tokens.",
+        "Use summed conditional completion log probabilities. The next unit checks gradient signs; Completion masks, length normalization and chat-template consistency checks how those sums are assembled.",
+        "Evaluate negative log-sigmoid directly, using `torch.nn.functional.logsigmoid`, rather than multiplying token probabilities or taking the log of an already saturated sigmoid.",
+        "For fixed rewards, larger \\(\\beta\\) keeps the optimal policy closer to reference. In a fixed empirical DPO batch it also rescales logits and gradients; neither statement guarantees monotonic measured KL during training."
+      ],
+      "reproduce": "On CPU, use PyTorch `torch.float64` leaf tensors for policy chosen and rejected log probabilities `[-1.0]` and `[-2.0]`, fixed reference tensors `[-1.5]` and `[-1.5]`, and \\(\\beta=0.5\\). Derive \\(m=1\\), \\(z=0.5\\), chosen reward 0.25, rejected reward -0.25 and loss 0.4740769841801067. Implement the loss from blank tensors and match `DPOLoss` to absolute tolerance \\(10^{-12}\\). Repeat at logits -1000 and 1000 and require finite losses and gradients.",
+      "traps": [
+        "Subtracting the chosen reference score but adding the rejected policy score. Write both chosen-minus-rejected gaps before subtracting the reference gap.",
+        "Detaching the policy log probabilities along with logging rewards. Only the logging path should lose its policy gradient.",
+        "Assuming positive adjusted margin means the chosen completion has greater raw probability. The reference gap can reverse the raw ordering."
+      ],
+      "selfTest": [
+        {
+          "q": "What is the loss when policy and reference score every completion identically?",
+          "a": "Each adjusted margin is zero, so each pair's loss is \\(\\log 2\\), irrespective of its length or raw likelihood gap."
+        },
+        {
+          "q": "Why not multiply token probabilities first?",
+          "a": "The product underflows for long sequences. Sum token log probabilities and keep the preference loss in a stable log-domain form."
+        },
+        {
+          "q": "Does setting the regularization coefficient to zero recover SFT?",
+          "a": "No. DPO logits become zero, the loss is constant \\(\\log 2\\), and its policy gradient vanishes."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Implement the DPO Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l15-direct-preference-optimization-loss",
+          "locator": "Language Modeling from Scratch: `direct_preference_optimization_loss`; all three public cases",
+          "note": "The free public cases cover positive and mixed margins and a zero margin with smoothing. Return the requested tensors, including strict reward-ranking accuracy where ties are incorrect. Add your own autograd and extreme-logit tests; the public cases do not establish them."
+        }
+      ],
+      "stopWhen": "Your scratch loss matches the numeric oracle and the book implementation, remains finite at extreme logits and passes the three public cases.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book's loss code reaches implementation depth and the free TensorTonic problem checks the tensor contract; misleading implementation prose is explicitly excluded."
+      }
+    },
+    {
+      "id": "dpo-gradient-label-invariants",
+      "title": "DPO gradient weighting and chosen-rejected order invariants",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-10-gradient-weighting-for-easy-hard-and-mislabeled-pairs",
+        "rl-10-chosen-rejected-order-sign-and-label-invariants"
+      ],
+      "outcomes": [
+        "Derive the margin-dependent DPO gradient and verify it with autograd.",
+        "Test chosen-rejected swaps, label inversion and pair-order invariance.",
+        "Explain why hard or mislabeled pairs can dominate update pressure."
+      ],
+      "why": "A correct scalar loss is not enough if labels, signs or gradients are wrong. These invariants isolate such failures without relying on a training curve.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-masks-length-templates",
+          "note": "Carry the verified gradient through the token-scoring path."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: DPO gradient derivation",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#dpo-derivation",
+          "locator": "Chapter 8, DPO Derivation: Deriving the BT DPO Gradient (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl10-direct-preference-optimization",
+          "title": "DPO: update weighting",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 4, What does the DPO update do?"
+        }
+      ],
+      "focus": [
+        "For unscaled adjusted margin \\(m\\), \\(\\partial L/\\partial m=-\\beta\\sigma(-\\beta m)\\). Thus the chosen and rejected log-probability partial derivatives have equal magnitudes and opposite signs.",
+        "Easy positive margins reduce this scalar weight. Hard negative margins increase it toward \\(\\beta\\), including confidently contradicted labels that may be wrong.",
+        "Swapping chosen and rejected in both policy and reference negates \\(z\\). With a fixed winner label, \\(L(-z)-L(z)=z\\). Swapping candidate positions and inverting a binary target preserves binary cross-entropy.",
+        "These are partial derivatives of supplied log probabilities. Shared model parameters couple completions, so a parameter update need not increase every chosen completion's absolute probability."
+      ],
+      "reproduce": "Derive the gradient closed-book. On CPU in PyTorch `torch.float64`, use unscaled margins `[-2.0, 0.0, 2.0]`, \\(\\beta=0.5\\), and sum the three pair losses. The margin derivatives are approximately -0.36552928931500245, -0.25 and -0.13447071068499755. Match the analytic derivative with autograd and `torch.autograd.gradcheck`. For the preceding unit's single pair, recover chosen and rejected log-probability gradients -0.18877033439907273 and 0.18877033439907273, then verify swap and batch-permutation invariants to absolute tolerance \\(10^{-12}\\).",
+      "traps": [
+        "Swapping only policy completions. Their reference scores must travel with their completion identities.",
+        "Checking the gradient of a mean against a derivative for a sum. A pair-averaged loss divides each pair contribution by batch size.",
+        "Calling gradient weighting a label-noise detector. A hard pair can be informative or mislabeled; its large weight does not distinguish those cases."
+      ],
+      "selfTest": [
+        {
+          "q": "At zero adjusted margin, what are the chosen and rejected partial derivatives?",
+          "a": "For one pair they are \\(-\\beta/2\\) and \\(+\\beta/2\\). Gradient descent therefore favors increasing the chosen-minus-rejected log-probability gap."
+        },
+        {
+          "q": "Does a chosen-rejected swap preserve the loss?",
+          "a": "Not with a fixed winner target. It negates the logit and changes the loss by the original logit. Inverting the binary target as well preserves the represented comparison."
+        },
+        {
+          "q": "Why might both completion probabilities fall even with correct gradient signs?",
+          "a": "The partial derivatives treat their log probabilities as separate inputs. A normalized model with shared parameters and other batch examples couples their changes and can move mass to other completions."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Canonicalize Pairwise Preference Data",
+          "url": "https://www.tensortonic.com/problems/cs336-l15-canonical-preference-pairs",
+          "locator": "Language Modeling from Scratch: `canonical_preference_pairs`; all three public cases",
+          "note": "The free public cases check all three pairs in a three-candidate strict ranking, unsorted input and preservation of two prompt records. They do not check ties, duplicate records or gradients. The section mini-project covers the analytic gradient and swap regression tests."
+        }
+      ],
+      "stopWhen": "You pass the canonicalization cases and your own gradient, swap and batch-order tests, and explain why a mislabeled hard pair receives a large weight.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book and original paper supply the gradient derivation; named canonicalization practice and mini-project invariants cover label identity and implementation."
+      }
+    },
+    {
+      "id": "dpo-masks-length-templates",
+      "title": "Completion masks, length normalization and chat-template consistency",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rl-10-completion-only-masks-and-prompt-cancellation",
+        "rl-10-summed-versus-length-normalized-log-probabilities",
+        "rl-10-tokenizer-chat-template-and-truncation-consistency"
+      ],
+      "outcomes": [
+        "Implement shifted completion-only sequence scoring with explicit EOS and padding rules.",
+        "Demonstrate that replacing token sums with token means changes the preference objective.",
+        "Audit prompt-token identity, chat templates and truncation before comparing policy and reference scores."
+      ],
+      "why": "DPO operates on conditional completion probabilities. Reuse The next-token objective: shifts, masks and perplexity and From documents to training examples: packing and loss masks; the new work is preserving that contract across four scores and two response lengths.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-reference-support",
+          "note": "Bind each reference score to the exact tokenized completion."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "Sequence scoring helper",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/direct_alignment/loss.py#L19-L54",
+          "locator": "`compute_logprobs`: shifted logits, labels and mask; `average_log_prob` branches",
+          "depth": "Pass a completion loss mask, not just the attention mask described in the docstring. Keep prompt tokens visible as context. Reject empty scored completions rather than letting the clamped mean denominator hide them."
+        },
+        {
+          "resource": "rl10-trl-dpo-trainer",
+          "title": "TRL 1.15.0: data and preprocessing contract",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/dpo_trainer#expected-dataset-type-and-format",
+          "locator": "Expected dataset type and format; Preprocessing and tokenization; DPOConfig parameters `max_length` and `truncation_mode`",
+          "depth": "Inspect the data contract only. Do not run the full quick start or assume its truncation matches the book's collator."
+        },
+        {
+          "resource": "rl10-simpo",
+          "title": "SimPO: changing the sequence score",
+          "url": "https://arxiv.org/abs/2405.14734v3",
+          "locator": "arXiv:2405.14734v3, Section 2.2 equations 3 to 4"
+        }
+      ],
+      "focus": [
+        "For each completion, sum \\(\\log\\pi(y_t\\mid x,y_{<t})\\) over scored target positions. Shift the completion mask with the labels exactly once.",
+        "A common prompt's joint log probability cancels algebraically in a same-prompt difference. Different templates, token boundaries or per-response prompt truncation invalidate that argument; compare actual prompt token IDs.",
+        "Token means are not sequence log probabilities. Unequal lengths change the adjusted margin and the gradient weighting, even when both policy and reference are normalized consistently.",
+        "Declare whether EOS is scored, where completion starts, how padding is excluded and what overlength pairs lose. Inspect rendered text and token IDs for both branches; do not silently train after truncation removes the preferred distinction."
+      ],
+      "reproduce": "On CPU with PyTorch `torch.float64`, use zero logits of shape `(1, 4, 2)`, token IDs `[[0, 1, 0, 1]]` and an unshifted completion mask `[[0, 0, 1, 1]]`. Derive the shifted selected targets, score \\(-2\\log 2\\), and mean \\(-\\log 2\\). Match `compute_logprobs` to absolute tolerance \\(10^{-12}\\). Only scoring-logit positions 1 and 2 receive gradients. Give the rejected branch one scored token: with identical policy and reference, adjusted margin stays zero although the raw policy gap is \\(-\\log 2\\). Then test an actual template's completion boundary and an overlength pair in your scorer.",
+      "traps": [
+        "Removing prompt tokens from attention to achieve completion-only loss. They remain necessary conditioning context.",
+        "Masking by token ID when padding reuses EOS. That can remove real EOS targets; mask by position and sequence ownership instead.",
+        "Comparing separately tokenized prompt lengths without checking the full sequence prefix. Tokenization at a text boundary can change IDs."
+      ],
+      "selfTest": [
+        {
+          "q": "Can changing prompt input tokens change a completion-only loss?",
+          "a": "Yes. Prompt targets are excluded, but prompt inputs still condition completion predictions. Only masked-out output logits are free to change without affecting the score; changing any input token can still move the scored completion logits."
+        },
+        {
+          "q": "Why does replacing sums by means not simply rescale the whole batch?",
+          "a": "Chosen and rejected lengths can differ within a pair and across pairs. Each score then gets a different divisor."
+        },
+        {
+          "q": "What should happen if truncation leaves no scored completion tokens?",
+          "a": "Reject or explicitly classify the record as invalid and count it. A zero sum or clamped denominator is not a meaningful preference example."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `policylab` completion-scoring oracles for shifts, unequal lengths, EOS-as-padding, templates, empty responses and truncation, with token-level evidence for each policy-reference pair.",
+      "stopWhen": "Your scorer passes the fixed-logit oracle and boundary tests, and you can exhibit an unequal-length pair whose adjusted margin changes under token means.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The scoring helper, versioned trainer contract and SimPO score definition cover masks, lengths and templates; mini-project boundary tests provide implementation practice."
+      }
+    },
+    {
+      "id": "dpo-reference-support",
+      "title": "Reference identity and drift, and preference-data support mismatch",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "rl-10-reference-policy-identity-and-drift",
+        "rl-10-preference-dataset-policy-and-support-mismatch"
+      ],
+      "outcomes": [
+        "Explain why a frozen reference checkpoint and reproducible score provenance define the DPO objective.",
+        "Distinguish zero reference support from poor practical coverage in an offline preference dataset.",
+        "Explain why data generated by another policy can leave deployment behavior unconstrained."
+      ],
+      "why": "The reference is part of the objective, not just an extra model in memory. Meanwhile, nonzero token probabilities do not mean the preference dataset covers what the trained policy will generate.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-offline-online-baselines",
+          "note": "Separate objective choice from how and when comparisons were collected."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: policy-dependent preference data",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#daas-with-synthetic-preference-data",
+          "locator": "Chapter 8, DAAs with Synthetic Preference Data (page read 2026-10-14)",
+          "depth": "Read the contrast between matching the generating policy and learning from chosen-rejected differences. Treat these as empirical data-design findings, not a theorem that one collection policy always wins."
+        },
+        {
+          "resource": "rl10-direct-preference-optimization",
+          "title": "DPO: reference initialization and support",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 4, DPO outline; Appendix A.6, full-support assumption in the proof of Theorem 1"
+        },
+        {
+          "resource": "rl10-trl-dpo-trainer",
+          "title": "TRL 1.15.0: reference behavior",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/dpo_trainer#trl.DPOConfig",
+          "locator": "DPOTrainer parameter `ref_model`; DPOConfig parameters `precompute_ref_log_probs`, `sync_ref_model` and `disable_dropout`"
+        }
+      ],
+      "focus": [
+        "Bind reference scores to checkpoint or adapter identity, tokenizer, template, exact token IDs, completion mask and truncation rule. A score keyed only by prompt text is insufficient.",
+        "Keep reference parameters outside the optimizer and score deterministically. Precomputed scores remain valid only while both reference identity and preprocessing stay fixed.",
+        "With \\(\\pi_{\\mathrm{ref}}(y\\mid x)=0\\), a positive policy probability gives infinite policy-to-reference KL. With a full-softmax model, the common problem is instead tiny probability and absent or unrepresentative comparisons.",
+        "Audit generating-policy and annotator provenance, prompt families and chosen-rejected likelihood and length distributions. A rising margin on collected pairs does not constrain all unobserved responses."
+      ],
+      "reproduce": "Draw the provenance chain for one preference pair and explain which artifacts invalidate precomputed scores. Use policy log probabilities -1 and -2, reference log probabilities -1.5 and -1.5, and \\(\\beta=0.5\\). Changing only the reference scores to -1 and -2 moves the loss from 0.4740769841801067 to \\(\\log 2\\) although the policy did not change. Explain why replacing the reference by a freshly detached copy of the policy resets margins but does not make policy gradients vanish.",
+      "traps": [
+        "Calling a reference frozen because its outputs are detached. Its parameters or adapters can still drift if shared with the policy or updated elsewhere.",
+        "Confusing reference support with dataset support. Full token support does not supply missing comparisons.",
+        "Enabling `sync_ref_model=True` while describing the experiment as fixed-reference DPO. Reference synchronization changes the training procedure."
+      ],
+      "selfTest": [
+        {
+          "q": "Does reusing cached scores survive a changed chat template?",
+          "a": "Not automatically. The tokenized event or context may change. Recompute after verifying the new input and mask identities."
+        },
+        {
+          "q": "Why can two identical checkpoints produce nonzero measured margins at initialization?",
+          "a": "Stochastic scoring, differing precision or preprocessing can produce different scores. Disable stochastic layers and compare identical tokenized inputs before attributing the difference to learning."
+        },
+        {
+          "q": "Must all preference responses come from the reference policy?",
+          "a": "No. The finite-data likelihood can be evaluated on other policies' responses where scores exist. Its usefulness still depends on coverage, labels and generalization to the policy's generated responses."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a reference-score manifest, a deliberate reference-drift failure and a preference-data support audit in `policylab`.",
+      "stopWhen": "You explain the reference-only loss change, identify every score-invalidating artifact and distinguish formal support failure from missing preference coverage.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book's data discussion, the paper's reference assumptions and versioned TRL options cover both explain targets; the mini-project supplies provenance and drift practice."
+      }
+    },
+    {
+      "id": "dpo-offline-online-baselines",
+      "title": "Offline versus online objectives, and SFT and no-reference baselines",
+      "hours": 3,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "rl-10-offline-objective-versus-online-rl-distinction",
+        "rl-10-sft-preferred-fine-tuning-and-no-reference-baselines"
+      ],
+      "outcomes": [
+        "Separate offline preference fitting from an online reward-guided policy update.",
+        "Specify SFT, preferred-only fine-tuning and a no-reference preference baseline on shared data.",
+        "Design a small comparison that isolates reference removal from length normalization and margin changes."
+      ],
+      "why": "A gain over an untouched model does not establish the value of preference optimization. Simple controls can reveal that preferred-response exposure or a changed sequence score explains it.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-variants-ipo-kto",
+          "note": "Compare objectives by their assumptions and gradient pressure."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: offline versus online data",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#daas-vs.-rl-online-vs.-offline-data",
+          "locator": "Chapter 8, DAAs vs. RL: Online vs. Offline Data (page read 2026-10-14)",
+          "depth": "Read the mechanism distinction. Do not generalize the cited model-scale comparisons into a universal ranking of algorithms."
+        },
+        {
+          "resource": "rl10-direct-preference-optimization",
+          "title": "DPO: preferred-only and selection baselines",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 6, Tasks, Evaluation and Methods"
+        },
+        {
+          "resource": "rl10-simpo",
+          "title": "SimPO: no-reference objective",
+          "url": "https://arxiv.org/abs/2405.14734v3",
+          "locator": "arXiv:2405.14734v3, Sections 2.2 to 2.3, equations 3 to 6"
+        }
+      ],
+      "focus": [
+        "Offline DPO differentiates a likelihood over fixed comparisons. Online policy gradients use newly sampled actions and reward feedback. Collecting on-policy pairs once does not make all subsequent offline epochs on-policy updates.",
+        "Keep an untouched SFT checkpoint and a preferred-only fine-tuning control initialized from it. The latter receives the same chosen responses but no explicit rejected-response comparison or frozen-reference term.",
+        "A reference-free raw-gap loss, \\(-\\log\\sigma(\\beta(\\ell_c-\\ell_r))\\), is a useful ablation. It is not full SimPO, whose scores are token means and whose logit includes a target margin.",
+        "For SimPO use \\(z=\\beta(\\bar\\ell_c-\\bar\\ell_r)-\\gamma\\). Record whether an implementation's margin parameter is \\(\\gamma\\) or \\(\\gamma/\\beta\\); otherwise comparisons silently change two scales."
+      ],
+      "reproduce": "Write a comparison table for untouched SFT, preferred-only SFT, DPO, a raw-gap no-reference ablation and SimPO: data consumed, score aggregation, reference, generated training samples and evaluation sampling. In CPU PyTorch `torch.float64`, check SimPO on mean log probabilities -1 and -2 with \\(\\beta=2\\) and final logit offset \\(\\gamma=0.5\\): \\(z=1.5\\), loss 0.2014132779827524. The book's `SimPOLoss` takes \\(\\gamma/\\beta\\) instead, so pass `gamma=0.25` there for the same \\(z\\); with `gamma=0.5` it computes \\(z=1\\) and loss 0.3132616875182229. Keep the raw-gap ablation separate rather than labeling every no-reference loss SimPO.",
+      "traps": [
+        "Attributing a gain to reference removal while also switching from sums to means, adding a margin and retuning learning rate.",
+        "Calling preferred-only fine-tuning a fair control after giving it fewer chosen-response exposures or no tuning budget.",
+        "Confusing best-of-many selection with a learned policy update. Selection changes the inference procedure without changing policy parameters."
+      ],
+      "selfTest": [
+        {
+          "q": "Does DPO need freshly generated completions for each gradient step?",
+          "a": "No. Standard offline DPO reuses a fixed preference dataset. Iterative data recollection is a separate procedure."
+        },
+        {
+          "q": "Why retain both the original SFT checkpoint and preferred-only fine-tuning?",
+          "a": "The original measures change from initialization; preferred-only fine-tuning controls for additional training on chosen responses. They answer different questions."
+        },
+        {
+          "q": "Is replacing the reference by zero log scores an unchanged KL-regularized objective?",
+          "a": "No. It removes the learned reference anchor. On a finite action space it resembles a uniform-reference comparison, but it does not retain the original reference or its induced regularization."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a shared-data baseline table and small SFT, DPO and no-reference comparison in `policylab`, separating score normalization from reference removal.",
+      "stopWhen": "Your comparison table specifies every data and score difference, the SimPO oracle passes, and your baseline results disclose training exposure and tuning budgets.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The primary book supplies the offline-online distinction, DPO names the SFT controls and SimPO defines the no-reference score; mini-project comparisons satisfy practice."
+      }
+    },
+    {
+      "id": "dpo-variants-ipo-kto",
+      "title": "IPO, label smoothing, conservative DPO and unpaired-feedback variants",
+      "hours": 5,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "rl-10-ipo-and-preference-model-misspecification",
+        "rl-10-label-smoothing-and-conservative-dpo-vocabulary",
+        "rl-10-kto-orpo-and-unpaired-feedback-vocabulary"
+      ],
+      "outcomes": [
+        "Derive the sampled IPO squared-margin objective and explain its departure from Bradley-Terry modeling.",
+        "Derive smoothed DPO and distinguish its label-noise convention from unbiased noise correction.",
+        "State which feedback KTO and ORPO consume without treating them as interchangeable DPO settings."
+      ],
+      "why": "Loss variants matter when they change an assumption you can test. IPO and label smoothing expose finite-margin behavior; KTO and ORPO clarify that feedback format and reference use are separate choices.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-diagnostics-tests",
+          "note": "Test each objective under its own score and normalization contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-a-general-theoretical-paradigm-to-understand-learning-from-human-preferences",
+          "title": "IPO: bounded preference transformation and sampled loss",
+          "url": "https://arxiv.org/abs/2310.12036v2",
+          "locator": "arXiv:2310.12036v2, Section 4.2; Section 5 equation 8; Sections 5.1 to 5.2 through equation 17 and Algorithm 1",
+          "depth": "Follow the symmetry argument yielding the half-inverse-regularization target. Skip the uniqueness proof on the first pass; do not skip the sampling assumptions."
+        },
+        {
+          "resource": "rl10-stanford-cs224r-2026-llm-preference-optimization",
+          "title": "Stanford CS224R project: DPO and IPO side by side",
+          "url": "https://cs224r.stanford.edu/material/CS224R_Default_Project_Guidelines.pdf",
+          "locator": "Section 1.3.2, Preference Optimization (IPO), pp. 7 to 8: the implicit reward (eq. 7), the DPO loss (eq. 8) and the IPO squared loss toward \\((2\\beta)^{-1}\\) (eq. 9)",
+          "depth": "Read as a design specification. The course action items are not your assignment."
+        },
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "Smoothed DPO and ORPO code",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/direct_alignment/loss.py",
+          "locator": "`DPOLoss.forward` smoothing expression; optional `ORPOLoss` docstring and `forward`",
+          "depth": "Use the executed smoothing expression, not its comment that replaces a sum of log-sigmoids by the log of their sum. That step is invalid. The book chapter's IPO bullet also assigns the logit transform to IPO; the original paper uses the identity transform."
+        },
+        {
+          "resource": "rl10-trl-dpo-trainer",
+          "title": "TRL 1.15.0: loss conventions",
+          "url": "https://github.com/huggingface/trl/blob/v1.15.0/trl/trainer/dpo_trainer.py#L1359-L1407",
+          "locator": "`_compute_loss`: `sigmoid`, `ipo` and `robust` branches",
+          "depth": "In this release `sigmoid` does not apply `label_smoothing`; use the explicit smoothed objective for cDPO. `robust` subtracts a flipped-label term and is not cDPO. IPO divides each score by completion length here, unlike a raw sequence-sum oracle."
+        },
+        {
+          "resource": "rl10-kto",
+          "title": "Optional: KTO feedback and reference point",
+          "url": "https://arxiv.org/abs/2402.01306v5",
+          "locator": "arXiv:2402.01306v5, Section 4.1, Derivation, equation 8, KL Estimate and Data",
+          "depth": "Vocabulary and one fixed-log-probability calculation only. Do not reproduce model-scale experiments."
+        }
+      ],
+      "focus": [
+        "For adjusted log-ratio gap \\(m\\), sampled IPO minimizes \\((m-1/(2\\tau))^2\\). The IPO paper's \\(\\tau\\) corresponds to DPO's \\(\\beta\\). Its identity preference transform is not the Bradley-Terry logit transform.",
+        "Smoothed DPO uses \\(-(1-\\epsilon)\\log\\sigma(z)-\\epsilon\\log\\sigma(-z)\\). For \\(0<\\epsilon<1/2\\), its single-pair optimum is \\(z=\\log((1-\\epsilon)/\\epsilon)\\), unlike hard-label DPO's unbounded preferred logit.",
+        "Conservative DPO often names this smoothing convention. It is neither a calibrated estimate of each label's correctness nor the separate unbiased label-flip correction called robust DPO.",
+        "Optional: KTO needs individually desirable or undesirable responses and a reference point, not matched winner-loser pairs. ORPO still uses paired responses and combines chosen-response likelihood with a reference-free odds-ratio term."
+      ],
+      "reproduce": "Derive IPO equation 17 by combining a labeled pair with its reverse and completing the square. For \\(\\tau=0.5\\), its target adjusted margin is 1. Derive the smoothed-logistic stationary point: with \\(\\epsilon=0.1\\), \\(z=\\log 9\\). Verify both stationary derivatives in CPU PyTorch `torch.float64` to absolute tolerance \\(10^{-12}\\). Optional: evaluate KTO equation 8 on one desirable log ratio 1 and one undesirable log ratio -1 with unit weights, \\(\\beta=1\\) and a fixed zero reference point; average their equal losses, rather than summing class means.",
+      "traps": [
+        "Comparing IPO and DPO by raw loss magnitude. Squared margin error and negative log likelihood have different scales and minima.",
+        "Assuming finite target margins guarantee robustness on arbitrary data. IPO still depends on sampling, score normalization, coverage and optimization.",
+        "Converting 'wins against this alternative' into 'globally desirable' without a labeling policy. Pairwise winners need not meet an absolute acceptability threshold."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can hard-label DPO overfit a separable pair for any fixed positive regularization coefficient?",
+          "a": "Its empirical logistic loss keeps decreasing as the preferred adjusted log-ratio gap grows. There is no finite single-pair minimum; the coefficient rescales that gap rather than imposing a hard KL cap."
+        },
+        {
+          "q": "What happens above IPO's target margin?",
+          "a": "The squared-loss derivative becomes positive, so descent reduces the margin. Hard-label DPO continues to favor increasing it."
+        },
+        {
+          "q": "At smoothing one half, where is the optimal logit?",
+          "a": "Zero. The soft target expresses indifference, so either positive or negative confidence increases the loss."
+        },
+        {
+          "q": "Does KTO dispense with a reference model because its feedback is unpaired?",
+          "a": "No. Its default loss still uses policy-to-reference log ratios and a reference point. Unpaired feedback and reference-free optimization are different properties."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a CPU synthetic preference comparison of DPO and IPO under controlled noise and data reuse, plus smoothed-loss stationary-point tests in `policylab`.",
+      "stopWhen": "You derive both finite-margin targets, verify their derivatives and explain the feedback and reference requirements of the optional variants without adding a variant survey.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The IPO paper reaches derive depth; the primary code and installed-release TRL branches disambiguate smoothing, and KTO supplies optional unpaired-feedback vocabulary. No new resource is needed."
+      }
+    },
+    {
+      "id": "dpo-diagnostics-tests",
+      "title": "DPO margin, reward, KL and length diagnostics and fixed-batch tests",
+      "hours": 4,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "rl-10-margin-reward-kl-entropy-length-and-validity-diagnostics",
+        "rl-10-fixed-batch-loss-gradient-and-invariance-tests"
+      ],
+      "outcomes": [
+        "Build fixed-batch tests for DPO loss, gradients, masking and reference invariants.",
+        "Measure margins, both completion likelihoods, generated-policy KL, entropy, length and validity with explicit sampling units.",
+        "Differential-test the scratch objective while recording the trainer's version and loss conventions."
+      ],
+      "why": "Preference accuracy is one training signal, not an evaluation suite. Diagnostics must separate objective correctness from movement in the policy's generated behavior.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-overoptimization-slices",
+          "note": "Use the checked metrics to detect proxy improvement with behavior decline."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-trl-dpo-trainer",
+          "title": "TRL 1.15.0: logged metrics and exact loss path",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/dpo_trainer#logged-metrics",
+          "locator": "Logged metrics; follow the DPOTrainer source link to `_compute_loss` for completion sums, loss branches and strict reward accuracy",
+          "depth": "Use standard sigmoid DPO for the differential test. Despite its documentation's SimPO attribution, this release's `sigmoid_norm` branch retains reference-adjusted scores and has no target-margin offset; it is not the complete SimPO baseline."
+        },
+        {
+          "resource": "rl10-hands-on-modern-rl-chapter-14-dpo",
+          "title": "DPO metrics: what the curves omit",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter17_dpo/metrics#reward-margin",
+          "locator": "Reward Margin, Reward Accuracy, and Chosen Reward vs Rejected Reward (page read 2026-10-14)",
+          "depth": "Skip the illustrative training logs and healthy-range targets. With identical deterministic policy and reference scores, strict reward accuracy is zero because all rewards tie; the page's near one half figure is for similar but untied scores at initialization."
+        },
+        {
+          "resource": "rl10-llm-post-training-laboratory-direct-preference-objective",
+          "title": "Post-training laboratory: instrumentation and tests",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md#milestone-b--instrumentation",
+          "locator": "Milestone B - Instrumentation; Correctness requirements; Failure-injection requirements; Hardware variants",
+          "depth": "Apply these to the DPO evidence pack only. No rollout service, distributed training or online objective is required here."
+        }
+      ],
+      "focus": [
+        "Log raw chosen and rejected sequence log probabilities, both reference-adjusted rewards, unscaled margins and scaled margins. Record pair weighting and tie treatment rather than conflating ranking with token prediction accuracy.",
+        "An offline pair's log-ratio is not policy KL. Estimate policy-to-reference KL on policy-sampled completions with declared decoding and stopping, or compute it exactly in a finite response space. Log its units as nats per sequence or nats per token.",
+        "Teacher-forced token entropy on preference contexts is different from entropy on generated contexts. Keep both context source and token reduction with the metric; report generated lengths and invalid or truncated outputs separately.",
+        "Test scalar values, analytic and numerical gradients, pair swaps, batch permutations, prompt-score cancellation, padding and frozen-reference identity. Use a tolerance appropriate to the dtype, not bitwise equality across execution paths."
+      ],
+      "reproduce": "Assemble the previous fixed-tensor loss, gradient and mask oracles into one CPU test suite. Compare your loss and policy-input gradients with the book's `DPOLoss` at the pinned commit using `torch.float64` and absolute tolerance \\(10^{-12}\\). Add equal policy-reference scores, duplicated batches and extreme logits: initialization loss is \\(\\log 2\\), strict reward accuracy is zero, and duplicating a batch preserves its mean loss. Inspect the TRL 1.15.0 sigmoid branch against that formula. With room on your GPU, also differential-test one tiny-model batch through `DPOTrainer`; use about 0.1 to 0.6 billion parameters, short completions and a frozen reference. Record dtype-specific discrepancies, padding, truncation, loss type, version and \\(\\beta\\), rather than expecting the float64 tensor tolerance from mixed-precision model scores.",
+      "traps": [
+        "Calling a rising implicit reward a reward-model or verifier improvement. It is computed from the policy being trained.",
+        "Using preference-data log-ratio means as generated-policy KL or interpreting their negative values as an implementation failure.",
+        "Requiring a CPU language-model run through TRL 1.15.0's fused trainer path. Keep CPU tensor and scorer tests independent; use the optional trainer comparison on your GPU."
+      ],
+      "selfTest": [
+        {
+          "q": "At identical policy and reference scores, do chosen and rejected completions receive zero policy gradients?",
+          "a": "No. Their reward difference is zero, but the logistic loss has nonzero derivative there. Detached reference scores do not cancel policy derivatives."
+        },
+        {
+          "q": "Why log both likelihoods if margin and accuracy already improve?",
+          "a": "Both completion probabilities can fall while the rejected one falls faster. Margin-only logs hide that displacement."
+        },
+        {
+          "q": "Can sequence KL and token-averaged KL be compared as the same quantity?",
+          "a": "No. They use different units and length weighting. State the reduction and compare like with like."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `policylab` DPO regression suite, differential loss and gradient checks, diagnostic records and deliberate mask, sign and reference failures.",
+      "stopWhen": "Your CPU oracles pass, deliberate sign, mask and reference bugs fail, and every diagnostic declares its sampling distribution, units and reduction.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Versioned TRL source, the bounded metrics page and project instrumentation requirements cover implementation and measurement; misleading metric and variant claims are routed around."
+      }
+    },
+    {
+      "id": "dpo-overoptimization-slices",
+      "title": "Preference accuracy versus behavior, overoptimization and held-out slices",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "rl-10-preference-accuracy-versus-downstream-behavior",
+        "rl-10-overoptimization-as-beta-epochs-or-data-reuse-increase",
+        "rl-10-held-out-prompt-and-annotator-slices"
+      ],
+      "outcomes": [
+        "Exhibit a preference-margin improvement accompanied by worse independent behavior.",
+        "Measure sensitivity to regularization, epochs, label noise and data reuse without selecting on final evaluation.",
+        "Report prompt-group and annotator slices with provenance and uncertainty."
+      ],
+      "why": "DPO can rank the recorded pair better while moving probability into unmeasured behavior. Held-out generations and slices are needed to tell a useful update from proxy overoptimization.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-controls-external-evaluation",
+          "note": "Test whether the apparent gain survives matched controls and an independent evaluator."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-rlhf-book-direct-alignment",
+          "title": "The RLHF Book: preference displacement",
+          "url": "https://rlhfbook.com/c/08-direct-alignment#numerical-concerns-weaknesses-and-alternatives",
+          "locator": "Chapter 8, Numerical Concerns, Weaknesses, and Alternatives: preference-displacement figure and discussion; Suggested Experiments, item 4, Change the data before changing the loss (page read 2026-10-14)",
+          "depth": "Read the displacement discussion, not the variant catalog. A probability decrease for both recorded completions is possible, not a necessary outcome of every update. Use only the bounded data-change idea from item 4."
+        },
+        {
+          "resource": "rl10-a-general-theoretical-paradigm-to-understand-learning-from-human-preferences",
+          "title": "IPO paper: weak regularization and overfitting",
+          "url": "https://arxiv.org/abs/2310.12036v2",
+          "locator": "arXiv:2310.12036v2, Section 4.2, Weak Regularisation and Overfitting; Sections 5.3 to 5.4, two-action and sampled-preference examples"
+        },
+        {
+          "resource": "rl10-llm-post-training-laboratory-direct-preference-objective",
+          "title": "Post-training laboratory: held-out behavior evidence",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md#core-requirements",
+          "locator": "Core requirements: immutable preference data with split and annotator provenance, independent metrics and adversarial set; Milestones D to F",
+          "depth": "Use prompt-group splits and annotator slices for the DPO study. If annotator identities are absent, report that limitation rather than inventing an annotator holdout."
+        }
+      ],
+      "focus": [
+        "Separate training pair accuracy, held-out pair accuracy and independently scored generated responses. The first two evaluate implicit reward ranking; neither measures the full policy distribution's task performance.",
+        "Split by prompt or duplicate group before creating pairs. Keep tuning prompts separate from a final held-out set. Where identities exist, distinguish a held-out annotator test from a per-annotator slice on seen annotators.",
+        "Prespecify a small \\(\\beta\\), epoch or reuse sweep, with a controlled noise condition. Larger \\(\\beta\\) does not inherently mean more overoptimization: for a fixed reward it strengthens regularization, while empirical training also changes gradient scales and fit.",
+        "Keep every checkpoint, failed run and length or style slice. Pair comparisons by prompt and estimate uncertainty over independent prompt groups and training seeds, not individual correlated pairs."
+      ],
+      "reproduce": "Construct an exact finite-response counterexample on CPU. For one prompt and responses chosen, rejected and unobserved, let the reference and initial policy be \\((0.4,0.3,0.3)\\). Change only the policy to \\((0.2,0.1,0.7)\\), keeping \\(\\beta=1\\). Pair loss falls from \\(\\log 2\\) to \\(\\log(5/3)\\), about 0.5108256237659907, and strict pair accuracy rises from 0 to 1. Define independent task reward as 1 for the chosen response and 0 for the others: expected task reward falls from 0.4 to 0.2. Verify the probability sums, margin \\(\\log(3/2)\\) and losses with `torch.float64` to absolute tolerance \\(10^{-12}\\). This is a constructed policy change, not a claim about a particular optimizer trajectory. Then use the mini-project's bounded sensitivity study to look for the same diagnostic pattern on held-out prompts.",
+      "traps": [
+        "Counting many pairs from one prompt as independent evaluation observations. Pair expansion does not create new prompts.",
+        "Selecting the best epoch or regularization value on the reported final test prompts. That set has become tuning data.",
+        "Treating length-controlled judgment as proof of safety or task correctness. It addresses one confound, not every evaluator shortcut."
+      ],
+      "selfTest": [
+        {
+          "q": "Where did the probability mass go in the counterexample?",
+          "a": "Both recorded completion probabilities fell; the unobserved response gained their lost mass. The pairwise loss constrains their ratio, not their combined probability."
+        },
+        {
+          "q": "Does a higher held-out pair accuracy establish a better generative policy?",
+          "a": "No. It establishes better ranking on those comparisons. Generated task quality, validity, diversity and safety need separate evaluation."
+        },
+        {
+          "q": "What can a fixed-coefficient DPO loss do on repeatedly reused, perfectly separable labels?",
+          "a": "It can keep pushing the preferred adjusted logit upward without a finite empirical optimum. Early stopping or other regularization is additional to choosing a coefficient."
+        },
+        {
+          "q": "What evidence supports generalization to new annotators?",
+          "a": "An identified annotator group excluded from training and tuning, with adequate prompt coverage and reported uncertainty. A source label or anonymous dataset split alone does not establish this."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `policylab` sensitivity to regularization, reuse or label noise, with held-out prompt and available annotator slices, raw generations and a retained proxy-versus-behavior failure.",
+      "stopWhen": "You reproduce the exact proxy-behavior reversal and report the bounded study's held-out slices, uncertainty and negative or null results without final-set selection.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The primary displacement discussion and IPO's finite-data analysis cover the mechanism; the laboratory's provenance and evaluation requirements supply slice design and mini-project practice."
+      }
+    },
+    {
+      "id": "dpo-controls-external-evaluation",
+      "title": "Compute-matched rejection and SFT controls and external evaluation",
+      "hours": 3,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "rl-10-compute-matched-rejection-and-sft-controls",
+        "rl-10-external-task-safety-and-style-evaluation"
+      ],
+      "outcomes": [
+        "Compare DPO with preferred-only SFT, rejection fine-tuning and inference-time selection under matched or disclosed budgets.",
+        "Evaluate held-out task behavior, safety and style independently of training preferences.",
+        "Defend the smallest improvement claim supported by raw outputs, uncertainty and negative evidence."
+      ],
+      "why": "An objective comparison is only credible when extra chosen examples, candidate sampling and judge calls cannot explain the gain. This unit turns the diagnostic study into an auditable behavior claim.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-online-policy-optimization/sequence-policy-gradient",
+          "note": "Contrast the checked offline objective with fresh policy-sampled reward optimization."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl10-direct-preference-optimization",
+          "title": "DPO: controls and external judgments",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 6, Evaluation and Methods; Sections 6.1 and 6.4",
+          "depth": "Read the baseline definitions, reward-KL frontier and human-versus-judge comparison. The paper's model-scale results are not local targets, and its best-of-many comparison does not by itself establish compute-matched superiority."
+        },
+        {
+          "resource": "rl10-llm-post-training-laboratory-direct-preference-objective",
+          "title": "Post-training laboratory: comparison and final evaluation",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md#milestone-e--measurement--optimization",
+          "locator": "Milestones E and F; Measurement requirements; Design-defense questions 2 to 6; Out of scope",
+          "depth": "Evaluate only the section's small DPO and control policies. Use pre-generated responses and a finite-response policy on CPU when model adaptation is impractical; limit conclusions to that reduced setting."
+        }
+      ],
+      "focus": [
+        "Distinguish rejection fine-tuning, which trains on selected candidates, from best-of-many, which selects at inference without updating parameters. Include untouched SFT and preferred-only fine-tuning so selection and extra supervised exposure are visible.",
+        "Share initialization, prompt splits, candidate pool where applicable, decoding and final evaluation. Track generation tokens, scoring calls, reference scoring, update tokens, tuning attempts and wall time separately; equal optimizer steps do not equal compute.",
+        "Use a task-specific executable check where possible, a separate safety set and style or verbosity slices. For subjective judgments, blind model identities, counterbalance answer order and audit a human-reviewed sample for position and length bias.",
+        "Freeze the evaluator and selection rule before final testing. Keep raw outputs and failures with prompt, policy, decoding and evaluator identity so every score and exclusion can be recomputed."
+      ],
+      "reproduce": "From the bounded study's raw records, rebuild a comparison ledger without using its summary metrics. Account for all candidates generated for rejection fine-tuning or best-of-many, including discarded and invalid outputs, and all reference and evaluator calls. Recompute paired held-out task outcomes and length, style and safety slices for the frozen SFT, preferred-only and DPO policies. Report uncertainty at the prompt-group level and disclose training-seed coverage. State separately whether the evidence supports learned change, inference-time selection or neither; retain a result where preference improvement fails an external check.",
+      "traps": [
+        "Charging a selection baseline only for its winning response. Discarded candidates and their scores are part of its cost.",
+        "Calling a judge independent because it was not trained during this experiment. It may still share training-label biases or have been used for model selection.",
+        "Calling a small adversarial set a safety certification, or a finite-response demonstration evidence of model-scale alignment."
+      ],
+      "selfTest": [
+        {
+          "q": "What does a best-of-many gain over single-sample SFT establish?",
+          "a": "A gain from the larger inference-time candidate budget and selection rule. It does not establish a learned parameter change."
+        },
+        {
+          "q": "Why are equal training steps insufficient for compute matching?",
+          "a": "Methods process different numbers and lengths of sequences and may require reference forwards, candidate generation and scoring. Count those costs and disclose what remains unmatched."
+        },
+        {
+          "q": "A DPO model wins more judge comparisons only when it is more verbose. What can you claim?",
+          "a": "An improvement under that judge and length distribution. A general quality claim needs length or style controls and independent task or human evidence."
+        },
+        {
+          "q": "What if the independent evaluation finds no improvement?",
+          "a": "Retain the null or negative result, its uncertainty and the proxy gains. It bounds the claim and can identify a data, objective or evaluator failure without inventing success."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `policylab` compute and data ledger, rejection and SFT controls, frozen external task, safety and style evaluation, and a raw-record-backed conclusion with negative evidence.",
+      "stopWhen": "A reader can recompute your held-out comparisons and full candidate costs from raw records, and your conclusion distinguishes learned behavior from selection, length and evaluator effects.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The DPO paper supplies named control mechanisms and external-judgment analysis; the laboratory specifies budget accounting and independent evaluation, bounded to the mini-project's small study."
+      }
+    }
+  ]
+}

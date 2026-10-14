@@ -1,0 +1,939 @@
+{
+  "section": "llm-policy-trajectory-contracts",
+  "addedResources": [
+    {
+      "id": "trl-grpo-trainer-kl",
+      "role": "reference",
+      "priority": "reference",
+      "name": "TRL GRPO Trainer - KL estimation and loss",
+      "provider": "Hugging Face",
+      "access": "Free",
+      "use": "Read Estimating the KL divergence for the k3 formula with the reference-over-policy ratio, and the default KL-coefficient note. Use it as the correct-ratio reference beside the RLHF Book code estimators.",
+      "url": "https://huggingface.co/docs/trl/v1.15.0/en/grpo_trainer"
+    }
+  ],
+  "units": [
+    {
+      "id": "prompts-tokens-trajectories",
+      "title": "Prompts as initial states, tokens as actions and trajectory choices",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "rl-8-prompt-distribution-context-and-task-instance-as-initial-state",
+        "rl-8-tokens-as-actions-and-autoregressive-policy-factorization",
+        "rl-8-completion-conversation-and-tool-episode-as-trajectory-choices"
+      ],
+      "outcomes": [
+        "Map a prompt, a completion and optional further turns onto an initial state, actions and a trajectory with an explicit episode boundary.",
+        "Write the factorized trajectory probability for a completion, marking which factors come from the policy and which are deterministic.",
+        "Choose a completion, conversation or tool episode for a task and state what the choice changes about rewards and evaluation."
+      ],
+      "why": "Every later estimator sums over these objects. A vague boundary attaches masks, rewards and KL terms to the wrong tokens.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/llm-rl-formulations-hidden-state",
+          "note": "Turn the trajectory into bandit, token and environment formulations."
+        },
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/masks-sequence-log-probabilities",
+          "note": "Score the trajectories defined here with masks and sequence log probabilities."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Trajectory distribution and the three RLHF changes",
+          "url": "https://rlhfbook.com/c/03-training-overview",
+          "locator": "Problem Formulation (trajectory Equation 1 and the Thermostat example) through Manipulating the Standard RL Setup: the three changes from standard RL, with Table 1"
+        },
+        {
+          "resource": "rl8-rlhf-book-course-lectures-0-and-1",
+          "title": "Language models as an MDP",
+          "url": "https://rlhfbook.com/teach/course/lec0-prereq-review/slides.pdf",
+          "locator": "Slides 27 and 28 of 31: the MDP-to-LM table (state as prompt plus tokens so far, deterministic append transition, terminal reward, \\(\\gamma = 1\\)) and the autoregressive factorization"
+        },
+        {
+          "resource": "rl8-hands-on-modern-rl-chapter-13-rlhf-pipeline",
+          "title": "Generation as an MDP",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/base-model-to-assistant",
+          "locator": "Rewriting Generation as an MDP: the MDP-to-generation table with the deterministic-transition and late-reward paragraphs (page read 2026-10-14)",
+          "depth": "Stop before A Minimal Probe. The probe compares base models, which is not this unit."
+        },
+        {
+          "resource": "rl8-berkeley-cs285-llm-rl-lecture",
+          "title": "One-step versus token-level formulation",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-14.pdf",
+          "locator": "Slides 20 and 21 of 51: A basic formulation (one-step RL on prompt and completion) and An equivalent formulation (token view for intermediate rewards and value baselines)"
+        }
+      ],
+      "focus": [
+        "The prompt distribution is the initial-state distribution. In single-turn RLHF the completion does not produce the next prompt, so there is no environment transition between episodes.",
+        "The transition inside a completion is deterministic appending: given state \\((x, y_{<t})\\) and action \\(y_t\\), the next state is \\((x, y_{<t+1})\\) with probability 1.",
+        "Completion, conversation and tool episode are modeling choices, not facts. Each choice moves the episode boundary and decides which tokens can earn reward.",
+        "The policy is the whole autoregressive factorization \\(\\pi_\\theta(y \\mid x) = \\prod_t \\pi_\\theta(y_t \\mid x, y_{<t})\\), not one response-level draw."
+      ],
+      "reproduce": "Closed-book, write \\(p_\\pi(\\tau)\\) for a prompt \\(x\\) and a 3-token completion. Expand the product over the 3 steps, mark each transition factor as 1, and state which factors the policy supplies.",
+      "traps": [
+        "Treating the next training prompt as caused by the previous completion. Single-turn sampling draws each prompt fresh from the dataset.",
+        "Calling the prompt a state while letting the tokenizer or chat template differ between sampling and scoring. The state includes the exact token string.",
+        "Confusing episode end with truncation. EOS ends the trajectory; a length cap cuts it, and the two need different reward handling."
+      ],
+      "selfTest": [
+        {
+          "q": "In single-turn RLHF, what is the initial-state distribution and what are the transition dynamics between episodes?",
+          "a": "The prompt dataset is the initial-state distribution. There are no transitions between episodes: each prompt is sampled fresh and the previous completion does not affect it."
+        },
+        {
+          "q": "Why is the token-append transition deterministic, and what does that remove from the trajectory probability?",
+          "a": "Appending the chosen token always yields the same next context, so every \\(p(s_{t+1} \\mid s_t, a_t)\\) factor equals 1. Only the initial-prompt factor and the policy factors remain."
+        },
+        {
+          "q": "A task needs two tool calls before the answer. What changes if the episode is one completion versus the full tool interaction?",
+          "a": "A one-completion episode ends at the first EOS and cannot assign credit to tool results. The full-interaction episode keeps tool outputs inside the trajectory so later tokens can condition on them and rewards can reflect the whole attempt."
+        },
+        {
+          "q": "Where does the discount factor go in the single-turn objective, and why?",
+          "a": "It is set to \\(\\gamma = 1\\). There is one response-level reward rather than a stream of per-step rewards, so there is no horizon to discount over. A \\(\\gamma < 1\\) in the token view would discount the outcome by completion length and favor shorter answers."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the state, action, trajectory and reward boundary for your task, checked against hand-computed trajectory probabilities.",
+      "stopWhen": "You can draw the boundary for a new task (states, actions, episode end) and expand its trajectory probability without notes.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book chapter, both lecture decks and the pipeline page each locate one piece (equations, MDP table, one-step versus token views) at explain depth."
+      }
+    },
+    {
+      "id": "llm-rl-formulations-hidden-state",
+      "title": "Bandit, token-MDP and environment-MDP formulations and hidden state",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "rl-8-contextual-bandit-versus-token-mdp-versus-environment-mdp-formulations",
+        "rl-8-hidden-user-evaluator-and-environment-state-limitations"
+      ],
+      "outcomes": [
+        "Contrast the contextual-bandit, token-MDP and environment-MDP formulations of one language task, naming what each treats as state, action and reward.",
+        "State where the token-MDP view helps (intermediate rewards, value baselines) and where it breaks (hidden user, evaluator and environment state).",
+        "Explain why single-turn RLHF is usually cast as a bandit problem and what must change for multi-turn tool tasks."
+      ],
+      "why": "The optimizer you can use follows from the formulation. Bandit methods cannot do token credit assignment, and token methods cannot see hidden state.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/llm-reward-placement",
+          "note": "Place rewards inside whichever formulation you chose."
+        },
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/llm-policy-roles-identity",
+          "note": "Assign the policy, reference, reward and verifier roles in that formulation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Bandit framing of single-turn RLHF",
+          "url": "https://rlhfbook.com/c/03-training-overview",
+          "locator": "Manipulating the Standard RL Setup, point 2 (no state transitions) and point 3 (single-step bandit structure with \\(\\gamma = 1\\)), with Table 1"
+        },
+        {
+          "resource": "rl8-rlhf-book-course-lectures-0-and-1",
+          "title": "Classical RL versus RLHF versus RLVR",
+          "url": "https://rlhfbook.com/teach/course/lec1-chap1-3/slides.pdf",
+          "locator": "Slides 32 and 55 of 70: Classical RL vs. RLHF (response-level bandit-style reward, KL penalty) and the Classical/RLHF/RLVR comparison table (transitions, granularity, challenge)"
+        },
+        {
+          "resource": "rl8-berkeley-cs285-llm-rl-lecture",
+          "title": "POMDP view and partial observability",
+          "url": "https://rail.eecs.berkeley.edu/deeprlcourse/static/slides/lec-14.pdf",
+          "locator": "Slide 14 of 51 (Language models like POMDP solvers) and slides 41 and 42 of 51 (Part 5 bonus: Beyond MDPs with non-Markov observations, then information-gathering actions under Partially observed MDPs can be weird)"
+        }
+      ],
+      "focus": [
+        "Bandit: state is the prompt, action is the whole completion, reward is response-level. Token-MDP: state is prompt plus prefix, action is the next token. Environment-MDP adds tool or user turns as transitions.",
+        "The token view pays off exactly when there are intermediate rewards or value baselines; with a single terminal reward it collapses back to the bandit objective.",
+        "Token strings are fully observed but the task state is not: user intent, evaluator criteria and tool side effects stay hidden, so the problem is partially observed even with a perfect context window."
+      ],
+      "reproduce": "From memory, fill a three-column table (bandit, token-MDP, environment-MDP) for a math-answer task: state, action, reward timing and one algorithm each formulation permits.",
+      "traps": [
+        "Reading fully observed token context as a fully observed state. The context is observed; the intent behind the prompt and the grader's rubric are not.",
+        "Treating \\(\\gamma = 1\\) as a theorem. It is the convention for response-level rewards; per-step KL penalties and multi-turn rewards can need discounting again.",
+        "Carrying the no-transitions claim into tool tasks. Once tool outputs condition later tokens, transitions exist and the bandit analysis no longer applies."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does the token-MDP view add nothing over the bandit view when the reward is a single terminal score and there is no critic?",
+          "a": "With \\(\\gamma = 1\\) and one terminal reward, every token shares the same return, so per-token advantages are all equal to the response-level advantage. The gradient matches the bandit gradient."
+        },
+        {
+          "q": "Name one hidden state in a code-repair task with a test-suite verifier.",
+          "a": "The contents of the hidden tests. The policy sees the prompt and its own code but not the tests the verifier will run, so identical contexts can have different true rewards."
+        },
+        {
+          "q": "A chat task scores only the final answer after three user turns. Which formulation fits, and why not the bandit?",
+          "a": "The environment-MDP (or multi-turn token-MDP). Later prompts depend on earlier answers through the user, so transitions exist and early turns need credit for steering the conversation."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: write the formulation choice for your task with the hidden-state list, and show which optimizer the choice permits.",
+      "stopWhen": "You can defend bandit versus token versus environment framing for a new task, including what is hidden and which methods the framing rules out.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book chapter plus Lectures 1 and 14 locate the bandit claim, the three-way comparison and the partial-observability limits at explain depth."
+      }
+    },
+    {
+      "id": "masks-sequence-log-probabilities",
+      "title": "Prompt, completion, padding and EOS masks and sequence log probabilities",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "rl-8-prompt-completion-padding-eos-and-truncation-masks",
+        "rl-8-per-token-and-sequence-log-probabilities",
+        "rl-8-summed-mean-and-length-normalized-sequence-scores"
+      ],
+      "outcomes": [
+        "Derive shifted per-token log probabilities and the masked sequence sum from a logits tensor.",
+        "Implement prompt, completion, padding and EOS masking that gives prompt positions exactly zero weight.",
+        "Predict how summed, mean and length-normalized scores rank two completions of different lengths."
+      ],
+      "why": "The policy gradient is a masked sum of per-token terms. One wrong mask position silently trains on prompts or padding.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/llm-reward-placement",
+          "note": "Attach rewards to the masked positions defined here."
+        },
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/logprob-oracles-prompt-splits",
+          "note": "Turn the mask and log-probability code into fixed oracles."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Prompt masking and multi-turn masking",
+          "url": "https://rlhfbook.com/c/04-instruction-tuning",
+          "locator": "Implementation Details: the Prompt masking bullet (loss on responses only) and the Multi-turn masking bullet (final-turn-only versus mask-user-turns-only, with the unrolling rule)"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Loss aggregation and completion masks",
+          "url": "https://rlhfbook.com/c/06-policy-gradients",
+          "locator": "Implementation, Loss Aggregation Tradeoffs: the three strategies with Equations 45 to 47 (per sequence, per token and fixed length), plus the `completion_mask` note that prompt tokens are masked out"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Gather and sum to sequence log probabilities",
+          "url": "https://rlhfbook.com/c/15-regularization",
+          "locator": "Implementation Example, Steps 1 to 5: generate, one forward pass, `log_softmax`, gather of generated tokens, sum to sequence log probabilities with `kl_approx`",
+          "depth": "Skip the `kl_full` line. It passes log probabilities as the target with `log_target` left False, so it returns NaN in torch 2.14."
+        },
+        {
+          "resource": "rl8-reasoning-model-generation-and-scoring",
+          "title": "Token probabilities to log probabilities",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 5, Sections 5.4 to 5.5, pp. 146 to 161: token probability scores, then From token probability scores to log probabilities (sequence likelihood as the product of per-token terms)"
+        }
+      ],
+      "focus": [
+        "Shift first: position \\(t\\) logits score token \\(t+1\\). Gather the log probability of the actual next token, then mask, then sum. Any other order mixes prompt prediction into the score.",
+        "Three masks do different jobs: the prompt mask removes conditioning text from the loss, the padding mask removes batch filler, and EOS handling decides whether the stop token itself is scored.",
+        "Summed scores grow (more negative) with length; mean scores divide by completion length; fixed-length scores divide by a constant. The choice reweights short versus long completions like a learning-rate change.",
+        "This unit builds on llm-foundations/tokenization-corpus-data/packing-and-loss-masks: packed SFT rows needed attention and loss masks, and rollouts need the same split with completion-only loss."
+      ],
+      "reproduce": "Closed-book, from logits rows `[1.0, 0.0, 2.0, -1.0]`, `[0.5, 1.5, -0.5, 0.0]`, `[2.0, 1.0, 0.0, -2.0]` with target ids `[2, 0, 3]`, derive per-token log probabilities `[-0.4402, -1.5460, -4.4197]`, sequence sum `-6.4059` and mean `-2.1353`.",
+      "traps": [
+        "Training on prompt tokens. The model then learns to predict user queries, which is exactly what prompt masking exists to prevent.",
+        "Averaging over the padded length. Padding positions contribute zero loss but a wrong denominator shrinks every gradient.",
+        "Dropping the EOS token from the sum without deciding to. The stop decision is policy behavior; excluding it changes which sequences score well."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must the gather use the generated token ids rather than the argmax of the logits?",
+          "a": "The sequence score is the log probability the policy assigned to what was actually generated. Scoring the argmax instead measures a different sequence and breaks the ratio and KL identities that consume these log probabilities."
+        },
+        {
+          "q": "Two completions have identical per-token log probabilities but lengths 4 and 8. How do summed and mean scores compare them?",
+          "a": "The summed score of the longer one is about twice as negative, so it ranks worse. The mean scores are equal. Summing penalizes length; averaging ignores it."
+        },
+        {
+          "q": "A batch has completions of lengths 4 and 7 in rows of width 7. What does per-sequence versus per-token normalization weight?",
+          "a": "Per-sequence gives each completion equal total weight, so short-sequence tokens get larger gradients. Per-token gives each completion token equal weight, so the longer completion dominates. The book prints 2.0 and 2.0 versus 1.1429 and 2.0 for the worked example."
+        },
+        {
+          "q": "Where does the prompt mask end and the completion mask begin when the template adds a trailing assistant header?",
+          "a": "At the first token the policy generated. Template tokens, including the assistant header, are conditioning context and stay masked; only generated tokens enter the loss."
+        }
+      ],
+      "practice": [
+        {
+          "name": "RLHF Book Chapter 6: masked aggregation script",
+          "url": "https://rlhfbook.com/c/06-policy-gradients",
+          "locator": "Implementation, Loss Aggregation Tradeoffs: run the `masked_mean` and `masked_sum` script on the 4-token and 7-token masks and match the printed `masked_mean`, `masked_sum` and token-level results",
+          "note": "Then repeat on your own rollout-shaped tensors. The section mini-project tests the same masks on your rollout records."
+        }
+      ],
+      "stopWhen": "Your mask code reproduces the hand-derived sum and mean on a padded batch, and you can predict the ranking flip between summed and mean scores.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book chapters supply masking rules, the three aggregation equations with a runnable script, and the gather-and-sum pattern at derive and implement depth."
+      }
+    },
+    {
+      "id": "llm-reward-placement",
+      "title": "Sequence, token and step rewards, reward placement and return propagation",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "rl-8-sequence-terminal-token-and-step-level-rewards",
+        "rl-8-reward-placement-and-return-propagation"
+      ],
+      "outcomes": [
+        "Place a terminal outcome reward, per-step KL penalties and optional step rewards onto token positions.",
+        "Derive per-token returns from that placement with \\(\\gamma = 1\\) by hand.",
+        "Distinguish EOS-terminated from truncated completions in reward assignment."
+      ],
+      "why": "Credit assignment is where language RL differs most from SFT. Placement decides which tokens the gradient reinforces.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/entropy-kl-estimators",
+          "note": "Account the per-step KL part of the reward with the right estimator."
+        },
+        {
+          "unit": "reinforcement-learning/llm-online-policy-optimization/token-reinforce-terminal-rewards",
+          "note": "Use terminal-reward propagation in the token REINFORCE update."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Response-level rewards and no discounting",
+          "url": "https://rlhfbook.com/c/03-training-overview",
+          "locator": "Manipulating the Standard RL Setup, point 3 (response-level attribution over token sequences) with the rewritten objective Equation 10 using \\(\\gamma = 1\\)"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Per-token rewards with the outcome at EOS",
+          "url": "https://rlhfbook.com/c/06-policy-gradients",
+          "locator": "The PPO critic header comment: rewards as (B, L) post-KL per-token tensors where the EOS row includes the outcome, with `done_mask` and \\(\\gamma\\) often 1.0 for LM RLHF"
+        },
+        {
+          "resource": "rl8-hands-on-modern-rl-chapter-13-rlhf-pipeline",
+          "title": "Token reward with the reward-model score at the end",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/ppo-rlhf-loop",
+          "locator": "The token-reward equation (per-step KL at every t, reward-model score only at t = T) with the Every preceding token versus Final EOS token box (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl8-rlhf-book-course-lectures-0-and-1",
+          "title": "Sparse and delayed rewards",
+          "url": "https://rlhfbook.com/teach/course/lec0-prereq-review/slides.pdf",
+          "locator": "Slide 28 of 31: one scalar at the end of the response (sparse, delayed, no token-level target) as the motivation for policy gradients"
+        }
+      ],
+      "focus": [
+        "Standard placement: every token gets \\(-\\beta(\\log \\pi_\\theta - \\log \\pi_{\\text{ref}})\\), and only the EOS position additionally gets the outcome score. The critic then spreads the total across tokens.",
+        "With \\(\\gamma = 1\\), the return at token \\(t\\) is the plain sum of later per-token rewards. Any \\(\\gamma < 1\\) discounts the terminal outcome and changes the optimum, not just the variance.",
+        "Truncated completions never emitted EOS, so their outcome score is missing. Score only EOS-terminated generations with the reward model and penalize overlong ones instead."
+      ],
+      "reproduce": "Closed-book, for a 4-token completion with per-step KL `[0.1, 0.2, 0.1, 0.4]`, \\(\\beta = 0.05\\), terminal score 1.3 and \\(\\gamma = 1\\), derive per-token rewards `[-0.005, -0.01, -0.005, 1.28]` and returns `[1.26, 1.265, 1.275, 1.28]`.",
+      "traps": [
+        "Discounting a terminal reward with \\(\\gamma < 1\\) out of habit. Earlier tokens then see a smaller return than later ones for no horizon reason.",
+        "Feeding truncated generations to the reward model. The model scores an unfinished answer out of distribution; cap length and penalize truncation instead.",
+        "Reading the per-step KL as environment reward. It depends on the policy that sampled the batch, so it is computed from the rollout-time log probabilities for each new batch and never carried over to data from another policy version."
+      ],
+      "selfTest": [
+        {
+          "q": "In Reproduce, why is the first return 1.26 and not 1.3?",
+          "a": "It sums all four per-token rewards: the terminal 1.3 minus the KL at EOS (0.02) minus the three earlier KL penalties (0.005, 0.01, 0.005). With \\(\\gamma = 1\\), every later penalty reaches the first token."
+        },
+        {
+          "q": "The policy hits the 4-token cap without emitting EOS, and the reward model would score the text 1.3. Where does the 1.3 go?",
+          "a": "Nowhere. A capped generation has no EOS outcome, so under the placement the book describes it gets no reward-model score. It keeps its per-step KL terms and takes the too-long penalty."
+        },
+        {
+          "q": "What breaks if the EOS position gets the outcome score but the EOS token is excluded from the completion mask?",
+          "a": "The outcome still enters returns through the critic, but the stop token itself gets no gradient. The policy never learns when to stop, and lengths drift."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-token reward placement with EOS versus truncated handling, and recorded KL, reward and return traces.",
+      "stopWhen": "You can propagate a terminal score plus per-step KL into per-token returns by hand and defend the truncation rule.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book chapters plus the loop page locate terminal placement, the (B, L) reward layout, \\(\\gamma = 1\\) and the truncation rule at derive depth."
+      }
+    },
+    {
+      "id": "llm-policy-roles-identity",
+      "title": "Policy, reference, critic, reward and verifier roles, and SFT as initialization",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "rl-8-policy-reference-critic-reward-model-and-verifier-roles",
+        "rl-8-sft-as-behavior-initialization-and-behavior-cloning",
+        "rl-8-base-sft-reference-and-trainable-policy-identity"
+      ],
+      "outcomes": [
+        "Assign each tensor in an RLHF step to exactly one of policy, reference, critic, reward model or verifier.",
+        "Explain SFT as behavior-cloned initialization and why RL starts from it rather than the base model.",
+        "Track base, SFT, reference and trainable-policy identity across stages, naming what is frozen."
+      ],
+      "why": "Swapping two roles (reference versus policy, critic versus reward) compiles fine and trains the wrong objective.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/rollout-records-version-binding",
+          "note": "Bind every role version into the rollout records."
+        },
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-reference-support",
+          "note": "Reuse the reference-identity discipline for preference data."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Three steps and the recipe walkthrough",
+          "url": "https://rlhfbook.com/c/01-introduction",
+          "locator": "RLHF in Three Steps and Walkthrough of an RLHF Recipe: SFT foundation, reward model as scalar signal, RL stage shifting parameters toward good tokens"
+        },
+        {
+          "resource": "rl8-hands-on-modern-rl-chapter-13-rlhf-pipeline",
+          "title": "Four collaborating roles",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/ppo-rlhf-loop",
+          "locator": "The four-role table (Actor/policy, frozen SFT Reference, Reward, Critic) with The Role of the Reference Model (page read 2026-10-14)"
+        },
+        {
+          "resource": "rl8-training-language-models-to-follow-instructions-with-human-feedback",
+          "title": "SFT initialization and the KL coefficient",
+          "url": "https://arxiv.org/abs/2203.02155",
+          "locator": "Section 3.5 (demonstration, comparison, PPO steps) with Appendix C.4 of arXiv:2203.02155v1: RL policies initialize from SFT, the KL reward uses the same SFT model, \\(\\beta = 0.02\\), 256k episodes over about 31k prompts"
+        },
+        {
+          "resource": "rl8-stanford-cs224r-2026-llm-rl-default-project",
+          "title": "SFT objective and checkpoint reuse",
+          "url": "https://cs224r.stanford.edu/material/CS224R_Default_Project_Guidelines.pdf",
+          "locator": "Sections 1.2.5 and 1.3.1 (pp. 6 and 7): dataset roles, the completion-only SFT objective eq. 6, and the official SFT checkpoint for later stages",
+          "depth": "Read as a design specification. The course action items are not your assignment."
+        }
+      ],
+      "focus": [
+        "Policy acts and learns. Reference is a frozen copy that only scores drift. Reward model (or verifier) scores outcomes and never supplies gradients directly. Critic predicts values to cut variance and is the only role that may need training alongside the policy.",
+        "SFT is behavior cloning on demonstrations: same next-token loss as pretraining, loss on completions only. It installs the assistant format that RL then refines.",
+        "Identity is a chain: base model, SFT checkpoint, reference frozen from SFT, policy initialized from SFT. After the first RL step the policy is no longer the reference.",
+        "This sharpens the earlier behavior-cloning unit (reinforcement-learning/deep-imitation-offline-ope/behavior-cloning-likelihood): SFT inherits its compounding-shift limits, which is why on-policy RL stages follow."
+      ],
+      "reproduce": "Closed-book, draw the five-role diagram for InstructGPT-style PPO: which checkpoint initializes which, which stay frozen, where \\(\\beta = 0.02\\) enters, and where the 31k prompts flow.",
+      "traps": [
+        "Letting the reference track the policy. The KL term then measures drift from a moving target and stops constraining anything.",
+        "Starting RL from the base model. Without the SFT format prior, sampling wastes budget on non-answers and the reward signal drowns in format noise.",
+        "Merging the critic and the reward model. The reward model is frozen outside the update; the critic is trained inside it, costs memory, and needs its own targets."
+      ],
+      "selfTest": [
+        {
+          "q": "Which roles need gradients in PPO-style RLHF, and which are frozen?",
+          "a": "Policy and critic train. Reference and reward model are frozen. The verifier is fixed code or a fixed model outside training entirely."
+        },
+        {
+          "q": "Why does InstructGPT compute the KL reward against the SFT model rather than the base model?",
+          "a": "The SFT model is the optimization start point with the assistant format. KL against it preserves that format while reward chasing; KL against base would permit forgetting instruction following."
+        },
+        {
+          "q": "SFT and the start of RL share an objective on completions. What changes at the RL stage?",
+          "a": "SFT imitates fixed demonstrations per token. RL samples its own completions and reinforces them by outcome score, so the data distribution follows the policy instead of the demonstration set."
+        },
+        {
+          "q": "Where does the value network initialize, and why does the choice matter?",
+          "a": "Commonly from the reward model (InstructGPT and Tulu 3) or from the SFT checkpoint with a fresh value head. A random start delays convergence because early value predictions, and hence advantages, are noise."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a frozen base, SFT and evaluation baseline with recorded checkpoint identity for every later stage.",
+      "stopWhen": "You can label every model call in an RL step with its role, checkpoint and frozen-or-trainable status.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book, the loop page, the InstructGPT paper and the project spec locate all five roles plus SFT-as-initialization at explain depth."
+      }
+    },
+    {
+      "id": "language-trajectory-sampling",
+      "title": "On-policy, off-policy and replayed language data, and sampling and inference policies",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "rl-8-on-policy-off-policy-and-replayed-language-trajectories",
+        "rl-8-sampling-temperature-top-p-top-k-and-generation-policy-identity",
+        "rl-8-greedy-sampling-best-of-n-rejection-and-search-as-distinct-inference-policies"
+      ],
+      "outcomes": [
+        "Classify a language rollout as on-policy, off-policy or replayed, and state which estimators each class permits.",
+        "Implement temperature scaling and top-p filtering on a logits vector and predict their effect on diversity.",
+        "Distinguish greedy, sampling, best-of-N, rejection and search as inference policies, and separate all of them from a learned policy change."
+      ],
+      "why": "Sampling settings are part of the policy. Unrecorded temperature or an unnamed rerank step invalidates every ratio and KL downstream.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/rollout-records-version-binding",
+          "note": "Record the generation policy identified here in every rollout."
+        },
+        {
+          "unit": "reinforcement-learning/llm-reasoning-agents-systems-research/search-test-time-compute",
+          "note": "Compare the search and sampling baselines at matched compute."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-reasoning-model-generation-and-scoring",
+          "title": "Temperature, top-p and self-consistency",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 4, Sections 4.4 to 4.6, pp. 103 to 135: temperature rescaling with Listing 4.8 `generate_text_temp_stream_cache`, the top-p filter with the 10-token toy in Listing 4.9, and self-consistency"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Rejection sampling and best-of-N",
+          "url": "https://rlhfbook.com/c/09-rejection-sampling",
+          "locator": "Training Process Step by Step (temperature, top-p, completions per prompt, then SFT on selected completions) and Related: Best-of-N Sampling"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "On-policy vocabulary",
+          "url": "https://rlhfbook.com/c/appendix-a-definitions",
+          "locator": "Reinforcement Learning, On-policy: the strict sense (data from exactly the current agent) and the preference-tuning sense (generations from that edition of the model)"
+        }
+      ],
+      "focus": [
+        "Temperature divides logits before softmax; top-p keeps the smallest set whose cumulative probability reaches \\(p\\). Both change the distribution, so both belong in the generation-policy record.",
+        "Greedy is temperature 0 (argmax). Sampling draws once per prompt. Best-of-N draws \\(N\\) and keeps the top scorer. Rejection fine-tunes on filtered draws. Search explores multiple paths with a selection rule. Only the fine-tuning and RL variants change weights.",
+        "On-policy needs the exact current parameters and sampler. Anything else (older checkpoint, different temperature, another model, replayed text) is off-policy and needs ratios or must stay out of the gradient.",
+        "This extends llm-foundations/causal-training-generation/decoding-policies: the decoding rules are the same, but here each setting defines the behavior policy for an estimator."
+      ],
+      "reproduce": "Closed-book, on toy logits `[-0.7, -3.0, 0.1, -1.2, 2.0, -1.0, -0.5, -2.0, 0.3, 1.5]` at temperature 1.0 with top-p 0.9, derive the kept set `{4, 9, 8, 2, 6}` from cumulative probabilities `[0.4538, 0.7290, 0.8119, 0.8798, 0.9170]`, and name the greedy token (index 4).",
+      "traps": [
+        "Logging the model version but not the sampler. A temperature or top-p change without new stored log probabilities turns on-policy data off-policy silently.",
+        "Reporting best-of-N accuracy as policy quality. Selection over N draws inflates scores without changing any weight; the baseline to beat is matched sampling budget, not greedy decoding.",
+        "Reusing old generations as if they were fresh. Replayed text is off-policy for the current parameters even when nothing else changed."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does raising temperature increase diversity but never change the argmax?",
+          "a": "Temperature above 1 flattens the softmax, so lower-ranked tokens get sampled more often. Dividing every logit by the same positive temperature keeps their order, so the argmax never moves."
+        },
+        {
+          "q": "Self-consistency with 3 samples at temperature and top-p 0.9 beats greedy on MATH-500. Is that a learned improvement?",
+          "a": "No. It is selection (majority vote over 3 draws) with more inference compute. A learned claim needs a weight update and a matched-compute baseline."
+        },
+        {
+          "q": "Data was sampled with top-p 0.9 but the stored log probabilities were recomputed with full softmax. What breaks?",
+          "a": "The stored probabilities describe a different distribution from the sampler, so ratios and KL terms are wrong. Store the log probabilities from the sampling pass itself."
+        },
+        {
+          "q": "When is data from last week's checkpoint on-policy?",
+          "a": "Never for the current parameters under the strict sense. Under the loose preference-tuning sense it counts as that edition's on-policy data, but it is off-policy for any gradient on today's policy."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Build a Reasoning Model, Exercise 4.2: temperature and top-p on MATH-500",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Exercise 4.2 at the end of Chapter 4: extend `evaluate_math500_stream` with temperature and top-p at 0.9 and compare against the base run",
+          "note": "Run on CPU with Qwen3-0.6B per the book hardware note. Record the sampler settings beside the accuracy."
+        },
+        {
+          "name": "Build a Reasoning Model, Exercise 4.3: self-consistency on MATH-500",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Exercise 4.3 at the end of Chapter 4: self-consistency with sample size 3 at temperature and top-p 0.9",
+          "note": "Report accuracy per draw versus majority-vote accuracy to separate selection from learning."
+        }
+      ],
+      "stopWhen": "You can implement temperature plus top-p from a blank file, predict the kept set on the toy logits, and classify any rollout batch by policy freshness.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The owned book supplies the sampler mechanics with named exercises, and the RLHF book supplies rejection, best-of-N and the on-policy vocabulary."
+      }
+    },
+    {
+      "id": "rollout-records-version-binding",
+      "title": "Version binding, immutable rollout records and outcome classes",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rl-8-policy-tokenizer-template-reward-verifier-and-rng-version-binding",
+        "rl-8-immutable-rollout-records-and-old-log-probabilities",
+        "rl-8-valid-invalid-refused-timed-out-and-truncated-outcomes"
+      ],
+      "outcomes": [
+        "Bind policy, tokenizer, template, reward, verifier and RNG versions to every rollout record.",
+        "Implement immutable rollout storage where old log probabilities are written once at sampling time.",
+        "Classify rollouts into valid, invalid, refused, timed-out and truncated outcomes without dropping any."
+      ],
+      "why": "Stale or version-mismatched rollouts are the quietest failure in LLM RL. Records make freshness checkable instead of assumed.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/logprob-oracles-prompt-splits",
+          "note": "Test the stored log probabilities and masks with fixed oracles."
+        },
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/entropy-kl-estimators",
+          "note": "Use version-bound records to attribute KL and entropy correctly."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-llm-post-training-laboratory-baseline-and-state-contract",
+          "title": "Version binding and immutable rollouts",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Architecture constraints (every record binds prompt, template, tokenizer, model, reference, reward, verifier and policy versions; rollouts immutable; old log probabilities never recomputed) with Correctness requirements"
+        },
+        {
+          "resource": "rl8-kl-estimators",
+          "title": "Experience record fields",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/policy_gradients/buffer.py",
+          "locator": "The Experience dataclass: `sequence_ids`, `attention_mask`, `action_mask`, advantages, `log_probs_old` from the rollout policy, `log_probs_ref`, `values_old`, and the rewards TensorDict (total, correctness, format, penalty, binary)"
+        },
+        {
+          "resource": "rl8-stanford-cs224r-2026-llm-rl-default-project",
+          "title": "Behavior versus target log probabilities",
+          "url": "https://cs224r.stanford.edu/material/CS224R_Default_Project_Guidelines.pdf",
+          "locator": "Section 1.3.3, Importance Weighting (p. 8): vLLM sampling versus Hugging Face update paths can yield different token log probabilities, so the update treats sampling as a behavior policy with per-sample importance weights",
+          "depth": "Read as a design specification. The course action items are not your assignment."
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Truncation practice",
+          "url": "https://rlhfbook.com/c/06-policy-gradients",
+          "locator": "Implementation opening paragraphs: hard generation cap, reward-model scoring only on the `eos_token`, and a penalty for generating too long"
+        }
+      ],
+      "focus": [
+        "Write the sampler's log probabilities at sampling time and never recompute them from a newer policy. A trainer-stack recomputation at the same weights is a second, different number (numerics differ); keep both if the update uses both, as the CS224R spec does with its behavior-policy weights.",
+        "Bind versions, not just names: policy checkpoint, tokenizer, chat template, reward or verifier build, and RNG seed. Any one of them can change the distribution.",
+        "Every rollout lands in exactly one outcome class (valid, invalid, refused, timed-out, truncated) and stays counted. These five labels operationalize the lab rule that failed and filtered rollouts remain counted with explicit reasons. Dropping failures changes the estimand toward easy prompts.",
+        "Separate the attention mask (valid tokens) from the action mask (generated tokens supervised by the loss), as the Experience record does."
+      ],
+      "reproduce": "From a blank file, implement a rollout record with all version fields plus stored old log probabilities, then write a test that mutates the policy and asserts the stored values are unchanged and still equal the sampling-time values.",
+      "traps": [
+        "Refreshing stored log probabilities with the policy being updated, mid-epoch. The ratio becomes 1 everywhere and clipping never binds, hiding all off-policy drift.",
+        "Deleting timed-out or refused rollouts. Timeouts correlate with hard prompts, so deletion biases returns upward; keep them with their outcome label.",
+        "Mixing sampling stacks without recording which produced each log probability. vLLM and Transformers numerics differ, so the mismatch looks like policy drift."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must old log probabilities be stored rather than recomputed, even with the same checkpoint?",
+          "a": "Recomputation may use a different code path, dtype or kernel with different numerics, and after any update the checkpoint itself differs. The stored values are the ones the sampler actually used."
+        },
+        {
+          "q": "A rollout timed out after 200 tool calls with no answer. Which class, and does it enter the gradient?",
+          "a": "Timed-out. It stays in the records with its penalty reward and enters accounting; whether it enters the gradient depends on the declared rule, but it must never vanish silently."
+        },
+        {
+          "q": "The tokenizer version changed between sampling and a later audit. Which records are still comparable?",
+          "a": "Only records sharing the full version binding. Token ids from different tokenizers are different objects, so log probabilities and masks do not transfer."
+        },
+        {
+          "q": "What distinguishes the attention mask from the action mask in the Experience record?",
+          "a": "The attention mask marks valid (non-padding) tokens for the forward pass. The action mask marks generated tokens that enter the loss; prompt tokens are valid but masked from supervision."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: immutable versioned rollout records with old log probabilities, outcome classes and a stored-versus-recomputed test.",
+      "stopWhen": "Your records carry every version, survive a policy update unchanged, and account for all five outcome classes with none dropped.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The lab spec plus the book code record, the project importance-weighting note and the truncation practice cover versions, immutability and outcomes."
+      }
+    },
+    {
+      "id": "entropy-kl-estimators",
+      "title": "Token entropy, sequence diversity, KL direction and KL estimators",
+      "hours": 5,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "rl-8-token-level-entropy-and-sequence-level-diversity",
+        "rl-8-forward-and-reverse-kl-direction-vocabulary",
+        "rl-8-reference-policy-kl-estimators-and-approximation-limits"
+      ],
+      "outcomes": [
+        "Derive token entropy and the reverse-KL penalty from their expectations, and state the sampling distribution each needs.",
+        "Compute the k1, k2 and k3 estimators on hand log probabilities and state the bias, sign and variance of each.",
+        "Measure token entropy and sequence diversity separately and name the estimator behind every reported KL number."
+      ],
+      "why": "KL and entropy traces are the early warning for collapse and drift. The wrong direction or estimator makes the warning point backwards.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-online-policy-optimization/online-kl-masks-length",
+          "note": "Use the estimators for reference KL penalties with masks and truncation."
+        },
+        {
+          "unit": "reinforcement-learning/llm-direct-preference-optimization/dpo-diagnostics-tests",
+          "note": "Reuse margin, reward, KL and length diagnostics for preference runs."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-course-lectures-0-and-1",
+          "title": "KL, entropy and the Monte Carlo estimators",
+          "url": "https://rlhfbook.com/teach/course/lec0-prereq-review/slides.pdf",
+          "locator": "Slides 23 and 24 of 31: cross-entropy as entropy plus KL, the Monte Carlo KL with the log-ratio integrand, the high-variance k1, and the low-variance non-negative k3 with r as reference over policy"
+        },
+        {
+          "resource": "rl8-kl-estimators",
+          "title": "Three estimators in code",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/policy_gradients/loss.py",
+          "locator": "`approx_kl1`, `approx_kl2` and `approx_kl3` with `masked_mean`, read against Schulman's note Approximating KL Divergence linked at the top of the file; `approx_kl1` returns the negated log ratio (expectation negative KL), `approx_kl3` uses the reciprocal ratio (policy over reference), and `approx_kl2` is symmetric under swapping the two policies"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Reverse KL and the implementation example",
+          "url": "https://rlhfbook.com/c/15-regularization",
+          "locator": "KL Divergence in RL Optimization (reverse KL to the reference, Equation 4 over samples from the trained model) with Implementation Example Steps 1 to 5 and `kl_approx`",
+          "depth": "Use `kl_approx` only. Skip the `kl_full` line: it returns NaN in torch 2.14."
+        },
+        {
+          "resource": "trl-grpo-trainer-kl",
+          "title": "Correct k3 reference",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/grpo_trainer",
+          "locator": "Estimating the KL divergence: the k3 formula with the reference-over-policy ratio, with the default KL-coefficient note beside it"
+        }
+      ],
+      "focus": [
+        "The RLHF penalty is reverse KL \\(\\mathcal{D}_{\\text{KL}}(\\pi_\\theta \\| \\pi_{\\text{ref}})\\): samples come from the trained policy. It penalizes most where the new policy puts mass the reference calls unlikely. Forward KL is the distillation direction.",
+        "k1 (mean log ratio) is unbiased but noisy and negative on single samples. k2 (half squared log ratio) is non-negative with small bias near the reference. k3 (mean \\(r - 1 - \\log r\\) with \\(r = \\pi_{\\text{ref}}/\\pi_\\theta\\)) is unbiased and non-negative.",
+        "The book code estimators do not match the slide: `approx_kl1` estimates negative KL and `approx_kl3` uses the reciprocal ratio, so its expectation misses exact KL (0.0247 versus 0.0253 on the hand example). Report traces with the slide and TRL form.",
+        "Token entropy (expected per-position spread) is not sequence diversity (spread across completions). A peaked-per-token policy can still repeat one answer; measure both."
+      ],
+      "reproduce": "Closed-book, for sampled policy `q = [0.5, 0.3, 0.2]` against reference `p = [0.4, 0.4, 0.2]`, derive exact KL 0.0253, Schulman k1 mean 0.0253, the book code `approx_kl1` mean of negative 0.0253, mean k2 of 0.0249, code-k3 mean of 0.0247, and true-k3 mean of 0.0253. State which estimators agree with the exact value.",
+      "traps": [
+        "Reading a negative k1 sample as negative divergence. Single-sample k1 can be negative; only its expectation estimates KL.",
+        "Copying `approx_kl1` or `approx_kl3` as the reported KL. One has the wrong sign and the other the wrong ratio; both disagree with the exact value on the hand example.",
+        "Calling low token entropy high diversity or vice versa. Entropy averages per-position uncertainty under one policy; diversity compares whole completions, for example by distinct n-grams or vote spread."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does reverse KL suit the RLHF penalty better than forward KL?",
+          "a": "Reverse KL averages under the trained policy and punishes mass where the reference is thin, which is exactly drift into unseen regions. Forward KL averages under the reference and punishes missing reference modes, which suits distillation, not drift control."
+        },
+        {
+          "q": "On the hand example, which estimators match exact KL in expectation, and what are the other two?",
+          "a": "Schulman k1 (0.0253) and true k3 (0.0253) match. k2 gives 0.0249 (small bias), the book code `approx_kl1` gives negative 0.0253 (negated) and `approx_kl3` gives 0.0247 (reciprocal-ratio bias)."
+        },
+        {
+          "q": "A trace shows KL near zero but outputs are near-identical across prompts. What happened?",
+          "a": "The policy collapsed while staying near the reference on average, or diversity was never measured. KL to the reference does not measure spread across completions; add a diversity metric."
+        },
+        {
+          "q": "Beta is 0.0 in the TRL default noted in the study. What does the KL term do then?",
+          "a": "Nothing, and there is no trace either: with `beta=0.0` TRL does not load the reference model, so no reference KL is computed or logged. Drift is unconstrained, so load a reference separately or log another drift signal."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Hands-on Modern RL 13.9: hand-calculate one token KL penalty",
+          "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter15_rlhf/ppo-rlhf-loop",
+          "locator": "Hand-calculate one token's KL penalty: actor log probability negative 1.2, reference negative 1.6, \\(\\beta = 0.05\\) giving negative 0.02 with reward-model score 1.3 at EOS (page read 2026-10-14)",
+          "note": "Then recompute the same token with the k3 form and state which estimator each of your traces uses. The section mini-project records the same diagnostics on your rollouts."
+        }
+      ],
+      "stopWhen": "You reproduce all five hand numbers, can derive each estimator expectation, and every KL you report names its estimator and direction.",
+      "fit": {
+        "verdict": "added",
+        "note": "The pool code carries flipped-ratio estimators, so the TRL versioned doc enters as a reference for the correct k3 form and default KL coefficient. For the diversity half of the outcomes, reuse the vote-spread and self-consistency material from language-trajectory-sampling."
+      }
+    },
+    {
+      "id": "logprob-oracles-prompt-splits",
+      "title": "Fixed-sequence log-probability and mask oracles and prompt separation",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rl-8-fixed-sequence-log-probability-and-mask-oracles",
+        "rl-8-sampling-training-and-evaluation-prompt-separation"
+      ],
+      "outcomes": [
+        "Implement a fixed-sequence oracle that checks gathered log probabilities and masks against hand values.",
+        "Separate sampling, training and evaluation prompts with dedup and split ownership.",
+        "Detect tokenizer or template mismatch between sampling and scoring from oracle failures."
+      ],
+      "why": "Oracles catch mask and scoring bugs before they become training runs. Split discipline keeps evaluation honest.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-policy-trajectory-contracts/rollout-compute-learning-selection",
+          "note": "Count the compute of the separated sampling and evaluation passes."
+        },
+        {
+          "unit": "reinforcement-learning/llm-preferences-rewards-verifiers/reward-evaluation-governance",
+          "note": "Reuse split ownership for reward governance."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Generate versus forward oracle pattern",
+          "url": "https://rlhfbook.com/c/15-regularization",
+          "locator": "Implementation Example, Steps 1 to 5: `generate()` sampling versus `forward()` scoring on the same tokens, with gather and sum as the oracle pattern"
+        },
+        {
+          "resource": "rl8-reasoning-model-generation-and-scoring",
+          "title": "Minimal generation function and model loading",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 2, Sections 2.4 to 2.7, pp. 25 to 45: input preparation, loading Qwen3-0.6B, the sequential generation process and the minimal generation function"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Prompt selection and reuse risk",
+          "url": "https://rlhfbook.com/c/09-rejection-sampling",
+          "locator": "Training Process Step by Step, step 0 (prompt selection; reusing every SFT prompt risks overfitting) with Generating Completions (N completions per prompt)"
+        },
+        {
+          "resource": "rl8-training-language-models-to-follow-instructions-with-human-feedback",
+          "title": "Prompt filtering and dedup at scale",
+          "url": "https://arxiv.org/abs/2203.02155",
+          "locator": "Appendix C.4 of arXiv:2203.02155v1: 256k episodes over about 31k unique prompts after PII filtering and common-prefix dedup, batch size 512 with minibatch 64"
+        }
+      ],
+      "focus": [
+        "The oracle fixes token ids once, runs policy and reference forwards, and asserts gathered per-token log probabilities, masks and sums against hand values. Same ids in, exact numbers out.",
+        "Sampling, training and evaluation prompts are disjoint sets with recorded ownership. Prefix dedup matters because shared prefixes leak across the split even when full prompts differ.",
+        "Format evaluation prompts with the identical template and tokenizer as training. The Stanford project formats conversation context consistently for this reason; a mismatch voids the comparison.",
+        "This mirrors llm-foundations/tokenization-corpus-data/packing-and-loss-masks split discipline: split ownership is fixed before fitting or packing, and the same rule holds before sampling."
+      ],
+      "reproduce": "From a blank file, build a fixed oracle on 5 token ids with a 2-row logits fixture: assert the gathered log probabilities, the prompt-zeroed mask and the sequence sum, then flip one template token and show the oracle failing.",
+      "traps": [
+        "Evaluating on sampling prompts and reporting the score as generalization. Resampled familiar prompts measure memory plus selection, not new-task behavior.",
+        "Deduping on full strings only. InstructGPT dedups on common prefixes because near-duplicate prompts leak just as well.",
+        "Unrolling multi-turn data into overlapping windows that include future turns. Each training example must exclude turns after the supervised one."
+      ],
+      "selfTest": [
+        {
+          "q": "What does the fixed-sequence oracle pin down that a loss-going-down check does not?",
+          "a": "Exact per-token log probabilities, exact mask positions and the exact sum on fixed ids. A falling loss is consistent with scoring the wrong tokens."
+        },
+        {
+          "q": "Why is prefix dedup needed on top of exact-match dedup?",
+          "a": "Prompts sharing a long prefix put nearly identical contexts in both splits. The model then completes a memorized continuation rather than solving the task."
+        },
+        {
+          "q": "Sampling used template version A and evaluation uses version B with one extra header token. What breaks?",
+          "a": "Token positions shift by one, so masks, gathered log probabilities and any position-sensitive reward attach to the wrong tokens. The oracle fails until versions match."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: fixed log-probability, mask and state-identity tests with sampling, training and evaluation prompt separation.",
+      "stopWhen": "Your oracle passes on fixed ids, fails on a template change, and no prompt id appears in two splits.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book scoring pattern, the generation companion, the prompt-selection rule and the InstructGPT dedup numbers cover oracles and separation."
+      }
+    },
+    {
+      "id": "rollout-compute-learning-selection",
+      "title": "Rollout compute accounting and learned change versus inference-time selection",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "rl-8-rollout-tokens-verifier-calls-latency-and-compute-accounting",
+        "rl-8-learned-policy-change-versus-inference-time-selection"
+      ],
+      "outcomes": [
+        "Account rollout tokens, verifier calls, latency and compute for a sampling run in a budget table.",
+        "Separate learned policy change from inference-time selection (best-of-N, self-consistency, search) at matched compute.",
+        "State which reported numbers are your measurements and which are paper setups you cite."
+      ],
+      "why": "More samples almost always score higher. Without accounting, selection looks like learning and papers look like your results.",
+      "next": [
+        {
+          "unit": "reinforcement-learning/llm-online-policy-optimization/online-rl-controls-traces",
+          "note": "Use matched-budget controls with SFT, DPO, rejection and best-of-N."
+        },
+        {
+          "unit": "reinforcement-learning/llm-reasoning-agents-systems-research/reasoning-agent-evaluation-hacking",
+          "note": "Carry the selection-versus-learning split into reasoning evaluation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl8-rlhf-book-course-lectures-0-and-1",
+          "title": "Test-time versus training-time scaling",
+          "url": "https://rlhfbook.com/teach/course/lec1-chap1-3/slides.pdf",
+          "locator": "Slides 54 and 55 of 70 (verifiable rewards and the Classical/RLHF/RLVR table) with slides 57 to 59 of 70 (the o1-preview scaling plot, o1 test-time scaling and o1 training-time scaling)"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Elicitation and frontier compute numbers",
+          "url": "https://rlhfbook.com/c/01-introduction",
+          "locator": "An Intuition for Post-Training: the elicitation theory with the DeepSeek R1 numbers (147K H800 GPU hours RL against 2.8M pretraining) and the Olmo 3.1 run (4 weeks on 200 GPUs)"
+        },
+        {
+          "resource": "rl8-rlhf-book-introduction-training-overview-and-instruction-tuning",
+          "title": "Rejection sampling as selection baseline",
+          "url": "https://rlhfbook.com/c/09-rejection-sampling",
+          "locator": "Training Process Step by Step (generate, score, fine-tune on selected completions) and Related: Best-of-N Sampling: selection without weight updates"
+        },
+        {
+          "resource": "rl8-llm-post-training-laboratory-baseline-and-state-contract",
+          "title": "Measurement contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Milestones B and E with Measurement requirements: tokens per second, rollout and update queues, invalid and failure counts, and matched or disclosed budgets"
+        }
+      ],
+      "focus": [
+        "Count everything selection spends: prompt plus completion tokens per draw, number of draws, verifier or reward calls, and latency. Verifier calls are compute too.",
+        "Learned change moves weights and persists across prompts; selection spends compute per prompt and vanishes with it. Compare them only at matched total sampling budget.",
+        "Do the accounting on pre-generated rollouts on CPU first. A live update loop comes second and stays conditional on your GPU.",
+        "Frontier GPU-hour figures are the paper's setup on the paper's hardware. Cite them with the setup named; your table holds your measurements."
+      ],
+      "reproduce": "From a blank sheet, table one run: 20 prompts, 4 rollouts each, 128 completion tokens per rollout. Derive 10,240 rollout tokens, 80 verifier calls for outcome scoring, and per-prompt cost of 512 tokens plus 4 calls, then state the best-of-N baseline that costs the same.",
+      "traps": [
+        "Comparing a best-of-4 policy against a greedy baseline and calling the gap learning. The gap is selection over 4 draws; the fair baseline samples 4 too.",
+        "Omitting verifier cost from the budget. A verifier call per rollout can dominate short completions and flips which method is cheaper.",
+        "Presenting DeepSeek or Olmo GPU hours as your plan. Those figures bound what is possible at frontier scale; your evidence is your measured tokens, calls and latency."
+      ],
+      "selfTest": [
+        {
+          "q": "Why must the best-of-N baseline match the RL method's total draws rather than its greedy output?",
+          "a": "Best-of-N gains come from taking the max over draws. Matching draws equalizes the selection advantage, so any remaining gap must come from the policy itself."
+        },
+        {
+          "q": "A run reports higher reward with 4 times the rollouts and no baseline. What is missing?",
+          "a": "A matched-compute control: the same budget spent on best-of-N or self-consistency with the starting policy. Without it, sampling explains the gain."
+        },
+        {
+          "q": "Where do verifier calls appear in the budget table, and why separately from tokens?",
+          "a": "As calls per rollout beside token counts. They scale with draws rather than length, use different hardware, and can dominate short-completion costs."
+        },
+        {
+          "q": "Self-consistency over 3 samples beats one RL-finetuned greedy decode. Which do you ship?",
+          "a": "Neither on that evidence alone. The comparison mixes 3 draws against 1; rerun both at matched draws, then weigh persistent weight change against per-prompt selection cost."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: raw token, verifier-call, latency and compute records with matched-budget controls and preserved failed runs.",
+      "stopWhen": "Your budget table accounts every token and verifier call, and every claimed improvement names the matched-compute selection baseline it beat.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The lecture scaling slides, the book compute numbers, the selection baseline and the lab measurement contract cover accounting and the learning-versus-selection split."
+      }
+    }
+  ]
+}
