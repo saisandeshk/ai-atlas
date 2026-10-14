@@ -16,47 +16,90 @@
         "automated-graph-partitioning"
       ],
       "outcomes": [
-        "TODO"
+        "Partition an ordered layer stack over \\(p\\) stages with embedding-first and output-last ownership and a stated remainder rule.",
+        "Estimate per-stage cost from forward plus backward time and name the critical stage that sets the makespan.",
+        "Explain why hand-placed splits are not automatic graph partitioning and what an automatic partitioner would still decide."
       ],
-      "why": "TODO",
+      "why": "A pipeline is only as fast as its slowest stage, and every later schedule assumes the partition. Placing embedding, layers and output head once, with cost attached, fixes the map the rest of the section executes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/pipeline-parallelism/pipeline-microbatch-dependencies",
+          "note": "Split batches into microbatches that flow across the stages built here."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/stage-ownership-tied-embeddings",
+          "note": "Give each stage its parameters, loss and optimizer state from this partition map."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-pp-dt6",
+          "title": "Split layers across devices",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#pipeline_parallelism",
+          "locator": "Pipeline Parallelism introduction through Splitting layers on various nodes - All forward, all backward: layer ranges per GPU, low-bandwidth activation transfers, and the note that activation memory stays flat because each stage holds \\(1/p\\) of the layers for \\(p\\) microbatches in flight"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "PipelineParallel stage construction",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/pipeline_parallel/pipeline_parallel.py",
+          "locator": "`PipelineParallel`: `distribute_layers` evening out remainder layers over early ranks, `embedding` on the first stage only, `final_norm` and `final_proj` on the last stage only, `forward` threading `hidden_states` through the assigned decoder layers"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Stage maps with embedding and output weights",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/pipeline_parallel.py",
+          "locator": "`generate_llm_fqn_per_model_part` with `input_weight` and `output_weight` charging `tok_embeddings` and `norm` plus `output` against the first and last stages, and `pipeline_module_split` looped versus V-shaped placement"
+        },
+        {
+          "resource": "pytorch-pp-dt6",
+          "title": "Manual and tracer model splits",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Step 1 (page read 2026-10-14): manual split deleting layers 4 to 7 or 0 to 3 with `ModuleDict` names kept, and tracer split with `SplitPoint.BEGINNING` at `layers.4` plus `build_stage`",
+          "depth": "Stop after Step 1. Schedules and loss placement belong to later units."
         }
       ],
       "focus": [
-        "TODO"
+        "Stages are ordered and contiguous: microbatch \\(i\\) leaves stage \\(s\\) for stage \\(s+1\\) in both directions, so any partition is a cut plan over the layer list.",
+        "First and last stages carry extra cost: the embedding lookup lives on stage 0 and the final norm plus output projection live on the last stage, and a balance that ignores them overloads both ends.",
+        "Equal layer counts do not imply equal stage cost: position-dependent work such as the vocabulary projection, plus backward costing about twice forward, moves the critical stage.",
+        "The tracer `split_spec` still takes hand-placed split points; it automates cutting, not choosing where to cut."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, partition a 10-layer stack over 3 stages with the remainder-to-early-ranks rule, mark embedding and output ownership, and write each stage's layer list with its per-stage layer count.",
       "traps": [
-        "TODO"
+        "Counting the embedding, norm and output projection as free when balancing. Measure them as layers would be measured, or the end stages become the bottleneck.",
+        "Assuming equal layer counts balance the pipe. Estimate forward plus backward seconds per stage and balance those, not layer counts.",
+        "Calling a tracer `split_spec` an automatic partitioner. It places cuts you chose; a true partitioner would also choose cut positions from a cost model, and that stays later work."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Split 10 layers over 3 stages with Picotron's remainder rule. Which layers land on each stage?",
+          "a": "Counts \\([4, 3, 3]\\): stage 0 holds layers 0 to 3, stage 1 holds 4 to 6, stage 2 holds 7 to 9. The \\(10 \\bmod 3 = 1\\) remainder layer goes to the earliest rank."
+        },
+        {
+          "q": "Why does the Playbook say pipeline parallelism saves no activation memory per GPU?",
+          "a": "Each stage holds \\(1/p\\) of the layers but \\(p\\) microbatches are in flight before the first backward, so the layer fraction times the microbatch count leaves activation memory about flat."
+        },
+        {
+          "q": "Why does the tutorial split delete `ModuleDict` entries instead of rebuilding a smaller list?",
+          "a": "Deleting keeps fully qualified names stable, so checkpoints save and load and FQN-addressed services keep resolving. Reindexing shifts every name."
+        },
+        {
+          "q": "A 12-layer model with `input_weight` 1 and `output_weight` 1 is split over 4 stages. How many transformer layers does each stage hold?",
+          "a": "14 effective layers split \\([4, 4, 3, 3]\\), minus the end weights: \\([3, 4, 3, 2]\\), which sums to 12."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "PyTorch pipelining tutorial: both splits, one output check",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
+          "locator": "Run the Step 2 script with `manual_model_split` and again with `tracer_model_split` under `torchrun --nnodes 1 --nproc_per_node 2`; assert rank 1 prints identical losses",
+          "note": "The script falls back to `torch.device(cpu)`, so CPU is enough. Keep the 8-layer split and 4 microbatches; the output-equality gate is the point, not step time."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both split modes print identical rank-1 losses, and you can write any small layer-to-stage map with embedding and output ownership from memory.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Playbook partition narrative plus Picotron, TorchFeather and PyTorch split implementations cover ordered stages, cost balance and hand-placed splits; automatic partitioners stay later per the section leaveForLater."
       }
     },
     {
@@ -72,47 +115,89 @@
         "uneven-microbatch-and-divisibility-constraints"
       ],
       "outcomes": [
-        "TODO"
+        "Derive global batch and token counts from microbatch size, microbatch count and data-parallel degree.",
+        "Draw the forward activation and backward gradient edges across stages and place the synchronous update.",
+        "State divisibility constraints and a remainder policy that keeps the loss mean correct."
       ],
-      "why": "TODO",
+      "why": "Microbatches turn a sequential layer stack into a parallel schedule, but only if batch accounting and cross-stage dependencies are exact. Every bubble number and equivalence check later divides by these counts.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/pipeline-parallelism/gpipe-1f1b-schedules",
+          "note": "Run GPipe and 1F1B over this dependency graph."
+        },
+        {
+          "unit": "distributed-training/pipeline-parallelism/pipeline-schedule-simulator",
+          "note": "Encode the graph as simulator events with validation checks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gpipe-paper-dt6",
+          "title": "Microbatching and synchronous accumulation",
+          "url": "https://arxiv.org/abs/1811.06965",
+          "locator": "Sections 2 and 3 (arXiv:1811.06965v5): splitting each mini-batch of size \\(N\\) into \\(M\\) equal microbatches, forward and backward dependencies across stages, gradients applied synchronously after accumulating over all \\(M\\)"
+        },
+        {
+          "resource": "torchfeather-pp-dt6",
+          "title": "Microbatch constants and divisibility gates",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "`LOCAL_BATCH_SIZE` 8 with `MICRO_BATCH_SIZE` 2, the `LOCAL_BATCH_SIZE % MICRO_BATCH_SIZE` guard, `inputs.split(MICRO_BATCH_SIZE)`, and each microbatch loss divided by `num_microbatches` before summing"
+        },
+        {
+          "resource": "picotron-pp-dt6",
+          "title": "grad_acc_steps as the microbatch count",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/train.py",
+          "locator": "`pp_engine` branch calling the AFAB or 1F1B step with `grad_acc_steps` microbatches, and `MicroBatchDataLoader` with `global_batch_size` equal to microbatch size times `grad_acc_steps` times `dp_world_size`"
+        },
+        {
+          "resource": "jax-pp-dt6",
+          "title": "Pipelining pseudocode and dependency walk",
+          "url": "https://jax-ml.github.io/scaling-book/training",
+          "locator": "Pipelining section: layer-by-layer forward with device handoffs, loss derivative seeding the backward walk, per-stage input-gradient and weight-gradient computation"
         }
       ],
       "focus": [
-        "TODO"
+        "Global batch is a product: microbatch size times microbatch count times data-parallel degree, and token counts multiply by sequence length on top.",
+        "Forward edges carry activations to the next stage; backward edges carry input gradients to the previous stage; weights never move between stages.",
+        "The synchronous update sits after the last microbatch's gradients accumulate at mini-batch end, which is what makes the pipeline update match a large-batch update.",
+        "Equal microbatches keep every mean exact; a short tail microbatch needs explicit reweighting or padding, never silent averaging."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the global-batch equation and the forward and backward dependency edges for \\(p\\) stages and \\(m\\) microbatches: which forward output feeds which stage, which gradient flows back, and where the synchronous update sits.",
       "traps": [
-        "TODO"
+        "Reading the microbatch size as the global batch. Multiply by the microbatch count and the data-parallel degree first.",
+        "Letting a short last microbatch keep weight 1 in the loss mean. Size-weight it or pad it, or the update drifts from the oracle.",
+        "Starting backward before microbatch 0 reaches the last stage. The loss seed does not exist until then, so early backward calls have nothing to differentiate."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Microbatch size 2, microbatch count 4, data-parallel degree 4. What is the global batch?",
+          "a": "\\(2 \\times 4 \\times 4 = 32\\) examples before any sequence-length factor."
+        },
+        {
+          "q": "Where does the synchronous update sit in GPipe, and why does that placement matter?",
+          "a": "After gradients accumulate over all \\(M\\) microbatches at mini-batch end. That placement is what equates one pipelined step with one large-batch synchronous step."
+        },
+        {
+          "q": "What happens on setting `MICRO_BATCH_SIZE` 3 with `LOCAL_BATCH_SIZE` 8 in the TorchFeather example?",
+          "a": "The divisibility guard raises. Either pad or re-split into equal microbatches, or implement a remainder policy that reweights the loss mean."
+        },
+        {
+          "q": "In the JAX pipelining pseudocode, what is copied between devices on the forward pass and on the backward pass?",
+          "a": "Forward copies activations to the next device; backward copies the loss derivative with respect to the input to the previous device. Weights stay sharded per device."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TorchFeather pp_gpipe: microbatch-count variation with reference check",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
+          "locator": "Run the stock 8-rank CPU launch with `MICRO_BATCH_SIZE` 2 and again with 4; both runs must print the GPipe PASS line",
+          "note": "Change only the microbatch constant and recompute the expected per-microbatch loss scaling. CPU gloo timings are not interconnect evidence; the reference match is the gate."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both microbatch settings print PASS, and you can write the global-batch product and the cross-stage edge directions without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "GPipe accumulation semantics plus TorchFeather divisibility gates and Picotron batch accounting cover microbatches, dependencies and divisibility; the JAX pseudocode gives the device-handoff walk."
       }
     },
     {
