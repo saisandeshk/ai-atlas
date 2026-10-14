@@ -516,47 +516,81 @@
         "kv-offload-across-hbm-dram-and-storage-tiers"
       ],
       "outcomes": [
-        "TODO"
+        "Derive handoff payload and transfer time from KV ownership, transport startup, effective bandwidth and layout work.",
+        "Trace connector control metadata, memory registration, data movement, completion and source-buffer retirement.",
+        "Explain valid overlap and bound in-flight KV with backpressure across HBM, DRAM and storage tiers."
       ],
-      "why": "TODO",
+      "why": "A fast data plane is not a complete handoff. The receiver must have space, layout and identity ready, and the sender must retain buffers until transfer completion makes reuse safe.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/cross-phase-identity-integrity",
+          "note": "Specify exactly which bytes and metadata the receiver is allowed to consume."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-inf7",
+          "title": "Pull handoff and burst buffering",
+          "url": "https://arxiv.org/html/2401.09670v3#S4.SS3",
+          "locator": "arXiv:2401.09670v3, Section 3.3 Practical Problems - Communication overhead; Section 4.3 Online scheduling - Combat burstiness",
+          "depth": "Recompute payload from your KV ledger instead of copying the paper's GB-labeled OPT-66B estimate. Pull buffering still needs a bound on retained prefill KV."
+        },
+        {
+          "resource": "trtllm-disagg-inf7",
+          "title": "Exchange, mapping and completion",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/kv-transfer.html",
+          "locator": "Introduction to KV Cache Transmission, page read October 14, 2026, generated from commit cc63e66: Workflow; Key Components - Peer Registrar and Mappers, Page Table and Transfer Agent; Current Limitations"
+        },
+        {
+          "resource": "trtllm-disagg-inf7",
+          "title": "Overlap across independent requests",
+          "url": "https://nvidia.github.io/TensorRT-LLM/features/disagg-serving.html#overlap-optimization",
+          "locator": "Disaggregated Serving, page read October 14, 2026, commit cc63e66: KV Cache Exchange - Overlap Optimization and Cache Layout Transformation, Figures 4 and 5"
+        },
+        {
+          "resource": "mooncake-inf7",
+          "title": "Remote and lower-tier KV",
+          "url": "https://www.usenix.org/system/files/fast25-qin.pdf",
+          "locator": "FAST 25 paper, Sections 3.1 Overview and 3.2.1 to 3.2.3 Mooncake Store, printed pp. 158 to 160, Figure 3 and Listing 1",
+          "depth": "Read storage ownership, registration and topology-aware transfer. Cluster reproduction is outside this unit; use deterministic tier and link costs in servelab."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Prefill-decode disaggregation and KV transfer from the GPU route. Start with unique logical KV bytes, then add physical replication, destination fragments, page padding, transport metadata and any layout-conversion work actually transferred.",
+        "A serialized transfer model is \(t_x = \alpha + K/W + t_{\text{layout}}\), with payload bytes \(K\), effective directional bytes/s \(W\), startup \(\alpha\) and exposed packing or conversion time. A shared bottleneck link also needs offered byte rate below its capacity for a stable queue.",
+        "The TensorRT-LLM Python workflow separates ZeroMQ control messages from one-sided NIXL writes. Completion requires every expected writer; submission alone does not make destination KV readable or source memory reusable.",
+        "Overlap with other requests differs from layer-wise transfer within one request. The cited Python transceiver currently moves a whole prompt slice after prefill. Offload adds restore latency and pinned or staged memory; HBM, DRAM and SSD capacities are not interchangeable decode-ready capacity."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use the memory unit's 131,072-byte synthetic KV payload with no padding, metadata or layout work. At a synthetic effective bandwidth of 1,000,000 bytes/s and 1 ms startup, derive a 132.072 ms serialized handoff. Draw producer-ready, destination-reserved, submitted and all-writers-complete events. Overlap unrelated request work, but forbid the dependent decode from consuming incomplete KV. Add a finite transfer-buffer limit and show that a stalled receiver eventually backpressures prefill instead of growing retained KV without bound.",
       "traps": [
-        "TODO"
+        "Treating nonblocking submission as transfer completion. Releasing or overwriting a source page can corrupt an in-flight write.",
+        "Subtracting an arbitrary overlap percentage without a dependency timeline or accounting for shared compute, HBM and link contention.",
+        "Assuming a pull protocol eliminates overload. It moves the waiting KV to the sender, whose memory is also finite."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which event allows a receiver with several source ranks to use the full KV?",
+          "a": "Successful completion and validation of all expected fragments or writers for that request attempt, followed by the required local visibility and rank agreement. The first completion is insufficient."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does overlap reduce the total KV bytes crossing a link?",
+          "a": "No. It may reduce exposed latency by scheduling independent work concurrently, but the link still carries the payload and can saturate."
+        },
+        {
+          "q": "Why can an SSD-resident prefix lose to recomputing it?",
+          "a": "Reading, staging and restoring its bytes can cost more than the saved prefill work for that prefix and workload. Compare complete paths, not cache-hit count."
+        },
+        {
+          "q": "Does a saturated receiver justify freeing sender KV immediately?",
+          "a": "No. The sender needs explicit bounded retention and rejection or cancellation policy. Its buffers remain owned until writes have completed or can no longer touch them."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's serialized and overlapped transfer timelines, finite handoff credits, slow-receiver backpressure and tier-restore cost comparison.",
+      "stopWhen": "Your handoff byte and time ledger agrees with the event trace, no dependent decode reads incomplete KV, and a stalled receiver cannot cause unbounded retained buffers.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DistServe covers burst backpressure, current TensorRT-LLM docs cover connector ownership and overlap limits, and Mooncake covers tiered KV; servelab supplies bounded handoff practice."
       }
     },
     {
