@@ -279,47 +279,76 @@
         "sequence-parallel-normalization-and-residual-layouts"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the all-gather/reduce-scatter boundaries between sequence-parallel norms and tensor-parallel projections in both passes.",
+        "Keep residual additions on matching token shards and sum replicated norm-parameter gradients.",
+        "Explain which saved activations shrink and which full-shaped temporary tensors remain."
       ],
-      "why": "TODO",
+      "why": "Plain TP leaves the residual stream replicated. Sequence parallelism reduces its saved activation footprint while preserving full feature vectors for each local token.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/dtensor-placements-redistribution",
+          "note": "Express these transitions as placement changes."
+        },
+        {
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-memory-communication-volume",
+          "note": "Separate saved-activation savings from temporary peaks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Sequence-parallel regions and norm gradients",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#sequence_parallelism",
+          "locator": "Sequence parallelism: region-transition diagram, TP versus TP+SP layout table and closing LayerNorm-gradient note",
+          "depth": "Skip benchmark plots. Do not adopt the claim that every maximum activation is divided by TP degree: the all-gathered input and full-shaped partial output remain live temporaries."
+        },
+        {
+          "resource": "sp-recompute-paper-dt5",
+          "title": "Sequence-parallel forward and backward derivation",
+          "url": "https://arxiv.org/abs/2205.05198v1",
+          "locator": "arXiv:2205.05198v1, Section 4.2.2, Figures 5 and 6, equations 3 and 4, including the saved-input/re-gather paragraph",
+          "depth": "Stop before Pipeline Parallelism. The equal ring-byte argument is not a guarantee of equal runtime or zero overhead; extra saved-input re-gathers must be counted when enabled."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "Sequence-parallel normalization and residual contract",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/TP_tutorial.html#apply-sequence-parallel-to-layernorm-rmsnorm-layers",
+          "locator": "Apply Sequence Parallel to LayerNorm/RMSNorm layers: block forward and adjusted parallelization plan (page read 2026-10-14)",
+          "depth": "Check `SequenceParallel` at https://docs.pytorch.org/docs/2.14/distributed.tensor.parallel.html#torch.distributed.tensor.parallel.SequenceParallel for sequence-axis defaults and the custom-initialization warning."
         }
       ],
       "focus": [
-        "TODO"
+        "For \([B,S,D]\) activations, each SP rank keeps \([B,S/p,D]\). Normalization reduces over features within each token, so it needs no cross-token statistics.",
+        "All-gather the normalized token shards before the column projection. Reduce-scatter the row projection's partial output along sequence before residual addition. Both operands then own the same tokens.",
+        "In backward, the forward all-gather has a reduce-scatter adjoint under this logical tensor contract; the forward reduce-scatter has an all-gather adjoint. Replicated norm weights receive different token contributions that must be summed.",
+        "The paper's activation formula counts saved tensors under its storage/recomputation choices. A transient replicated input does not disappear merely because the block's boundary layout is sharded."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Return to TorchFeather's `tp_swiglu.py` from the previous unit. Without notes, trace `x`, `normalized`, `replicated`, `hidden`, `down_partial`, `down_sequence` and the residual output through both passes. With its two-rank settings, the residual shards are \([2,2,8]\), the gathered input and partial down output are \([2,4,8]\), and the intermediate feature shards are \([2,4,8]\). Confirm these layouts and the norm-gradient oracle on CPU.",
       "traps": [
-        "TODO"
+        "Normalizing across the sharded sequence axis instead of the complete feature axis. That changes the model and may leak future tokens.",
+        "Adding two equal-shaped local tensors that own different token ranges. Shape equality is not layout equality.",
+        "Leaving custom-initialized norm gains different across ranks. `SequenceParallel` assumes the usual unit initialization; synchronize custom gains explicitly."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can SP normalization be local while feature-sharded normalization may not be?",
+          "a": "An SP shard contains every feature for its tokens. A feature shard lacks part of each token's normalization statistics."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why do norm weights need gradient reduction under SP but not necessarily under replicated plain TP?",
+          "a": "SP ranks process different tokens, so each gradient is a contribution to the shared weight. Plain TP replicated norms can compute identical complete gradients under identical input and loss semantics."
+        },
+        {
+          "q": "Does replacing an all-reduce with an all-gather plus reduce-scatter guarantee equal step time?",
+          "a": "No. Ideal ring payloads can match, but launch count, ordering, buffers, kernel shapes and extra re-gathers can differ."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: sequence-sharded norms and residuals, replicated gain-gradient sums, layout assertions and saved-versus-temporary tensor accounting in `trainlab`.",
+      "stopWhen": "Your forward/backward layout table matches the CPU example, the residual and norm gradients match the unsharded oracle, and the table includes gathered and partial temporaries.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook, verified paper derivation and current tutorial cover the SP contract; the earlier CPU example and the mini-project cover norm/residual practice in three hours."
       }
     },
     {
