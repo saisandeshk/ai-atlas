@@ -232,47 +232,71 @@
         "checkpoint-and-communication-buffer-memory"
       ],
       "outcomes": [
-        "TODO"
+        "Derive persistent parameter, gradient, master-weight and optimizer bytes from their actual owners and dtypes.",
+        "Account for gathered parameters, reduction buffers and checkpoint staging by lifetime and memory tier.",
+        "Find the worst rank rather than accepting an average per-rank fit."
       ],
-      "why": "TODO",
+      "why": "Build on Memory, arithmetic intensity and reconciling estimates. Composition adds different divisors for different state, plus transient gathers that can invalidate an otherwise correct persistent-state estimate.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-activation-memory",
+          "note": "Add schedule-dependent saved activations to this state ledger."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-math-dt8",
+          "title": "State ownership under ZeRO and model parallelism",
+          "url": "https://blog.eleuther.ai/transformer-math/",
+          "locator": "Distributed Training: Sharded Optimizers, 3D Parallelism and Sharded Optimizers + 3D Parallelism",
+          "depth": "Do not copy the 3D gradient-memory formula as universal: it omits the TP divisor for TP-sharded weight gradients. Derive each gradient from its local parameter shape. The 12-byte optimizer convention includes a master weight; it is not every PyTorch AdamW configuration."
+        },
+        {
+          "resource": "lambda-2d-dt8",
+          "title": "FSDP gathers a TP shard, not the whole model",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/07-2d-parallel/README.md",
+          "locator": "Six-device ownership example and Applying FSDP after TP"
+        },
+        {
+          "resource": "torchfeather-mesh-dt8",
+          "title": "Checkpoint state and asynchronous lifetime",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
+          "locator": "`CheckpointManager.__init__`, `dcp_save`, `save` and `close`: state inventory, save future and waiting",
+          "depth": "Trace retained state and completion only. Leave checkpoint durability and resume semantics for DT-9."
         }
       ],
       "focus": [
-        "TODO"
+        "Use the DT-4 dtype ledger, but apply TP, PP and state-sharding divisors only to tensors they actually partition. CP usually leaves dense weights replicated unless its ranks also participate in state sharding.",
+        "A gather materializes the stage's TP-local parameter unit. Prefetch may make multiple units live together. Do not divide this full compute window by the FSDP degree again.",
+        "Separate durable checkpoint bytes from additional staging allocations. State-dict views can alias existing tensors; clones do not. Charge host staging to RAM and concurrent device buffers to device memory.",
+        "Compute a timeline maximum of live allocations, not the sum of each category's separate maximum. Include tied state, padding, allocator reserve and the largest stage."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a synthetic model with 12 million evenly partitioned parameters, TP 2, PP 3 and FSDP 4, assume BF16 parameters and gradients, an FP32 master copy and two FP32 moments. Derive persistent tensor storage of 8,000,000 bytes per rank. Then draw a live-window ledger for one gathered TP-local layer, its prefetched successor, a gradient buffer and an asynchronous host checkpoint copy. Mark unknown workspace and allocator reserve separately; do not call the persistent total a peak.",
       "traps": [
-        "TODO"
+        "Treating the source's bytes-per-parameter convention as an AdamW default. Record the tensors your implementation actually stores.",
+        "Adding checkpoint file size to device memory even when staging lives on the host.",
+        "Averaging uneven stages. The smallest device must fit its assigned peak, not the fleet's average."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is the synthetic persistent ledger 8,000,000 bytes?",
+          "a": "Each rank owns 500,000 parameters after TP, PP and FSDP. The stated state uses 16 bytes per parameter, giving 8,000,000 bytes, before transient storage."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What parameter shape is gathered under FSDP plus TP?",
+          "a": "The complete TP-local shard for the wrapped unit, not the unpartitioned model tensor and not just the persistent FSDP fragment."
+        },
+        {
+          "q": "Does an asynchronous save necessarily double device memory?",
+          "a": "No. Extra storage depends on staging location, copying and aliasing. A retained host copy increases host memory while training continues."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab's per-rank state, communication-buffer and checkpoint-staging ledger with live-window tests.",
+      "stopWhen": "Every persistent tensor has a dtype and owner, and your peak ledger distinguishes device gathers, host staging, shared storage and reserve.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "EleutherAI provides the state model with an explicit correction; Lambda verifies 2D ownership and TorchFeather exposes checkpoint lifetimes. Trainlab checks the ledger."
       }
     },
     {
