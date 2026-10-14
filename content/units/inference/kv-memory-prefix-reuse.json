@@ -255,47 +255,65 @@
         "sequence-block-tables-and-append-semantics"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a free-list allocator with sequence tables and transactional append.",
+        "Derive additional page demand from committed length and scheduled writes.",
+        "Choose a reserve policy that leaves explicit headroom for running requests."
       ],
-      "why": "TODO",
+      "why": "Key-value append, gather, layout conversion and quantized loads supplied the write kernel. The allocator must now prove that each destination exists and has one writer before that kernel runs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/kv-memory-prefix-reuse/refcount-copy-on-write",
+          "note": "Extend private allocation to shared ownership."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: free list, admission and append",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`Block.reset`, `_allocate_block`, `_deallocate_block`, `can_allocate`, `allocate`, `can_append` and `may_append`",
+          "depth": "Trace private allocation first. Keep manager and sequence block sizes consistent. Do not copy the append boundary predicate without tracing when the sampled token enters the sequence."
+        },
+        {
+          "resource": "nano-vllm-inf3",
+          "title": "Nano-vLLM: logical length versus computed state",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/scheduler.py",
+          "locator": "`schedule` prefill/decode branches and `postprocess`; follow `num_cached_tokens`, `num_scheduled_tokens` and `append_token`",
+          "depth": "Draw the memory transitions only. Leave scheduling policy comparisons for Batching, Scheduling and Admission."
         }
       ],
       "focus": [
-        "TODO"
+        "For private append of \\(a\\) KV tokens to committed length \\(n\\), extra pages are \\(\\lceil(n+a)/P\\rceil-\\lceil n/P\\rceil\\). Validate capacity before changing the committed table or length.",
+        "Nano-vLLM records a sampled token before its KV is computed. Its decode boundary check uses that convention. A token list, computed-KV length and allocated capacity are three different quantities.",
+        "Allocation failure must leave the state unchanged or follow a documented rollback. A successful write publishes the new valid length only after its KV is ready.",
+        "Reserve is a policy, not missing memory. Keep a configurable number of pages outside new-request admission and state which operations may consume it; account for the next batch's growth before dispatch."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement a CPU private-page allocator from memory. With four pages of four slots and one page reserved from new-request admission, admit a five-token request, append three KV tokens without a new page, then append one with a new page. A further five-token append needs one more page: deny it if this append may not consume reserve, and verify unchanged length 9, table and free list. Release the request and recover all four pages. State your empty-request and duplicate-ID policies.",
       "traps": [
-        "TODO"
+        "Mutating length before checking free capacity. A rejected append can leave the valid length beyond allocated storage.",
+        "Using one-token decode logic for a multi-token append. Chunked prefill can cross several boundaries in one operation.",
+        "Counting reserve twice or silently consuming it. Separate hard capacity from each operation's admission policy."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "At committed KV length 5 with block size 4, how many extra pages does a three-token append require?",
+          "a": "None. It fills the existing second page to length 8. The following one-token append needs a third page."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can allocation succeed even though the newly reserved slots have no valid KV yet?",
+          "a": "Yes. Capacity can be reserved before computation. Consumers must still use the committed valid length and readiness state."
+        },
+        {
+          "q": "What must a failed append preserve?",
+          "a": "The committed tokens, valid length, ownership, block table and free-list accounting, unless an explicit rollback contract specifies equivalent restored state."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` private allocator, reserve-aware admission, multi-token append and failure-atomicity tests.",
+      "stopWhen": "Private allocate, append and release pass boundary, exhaustion, duplicate-ID and rollback checks against a separate logical-length ledger.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pinned manager and scheduler expose allocation and append ordering at implement depth; the capacity derivation and servelab reserve/failure tests complete the policy contract."
       }
     },
     {
