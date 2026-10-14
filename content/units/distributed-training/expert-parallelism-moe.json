@@ -8,7 +8,7 @@
       "name": "PyTorch Distributed - all-to-all collective",
       "provider": "PyTorch",
       "access": "Free",
-      "use": "Read `all_to_all_single` for `input_split_sizes` and `output_split_sizes` on dim 0, including uneven and empty splits. Use it for the dispatch and combine calls in the tiny oracle.",
+      "use": "Read `all_to_all_single` for `input_split_sizes` and `output_split_sizes` on dim 0 and its uneven-split example. Use it for the dispatch and combine calls in the tiny oracle, and check zero splits yourself.",
       "url": "https://docs.pytorch.org/docs/2.14/distributed.html#torch.distributed.all_to_all_single"
     }
   ],
@@ -59,14 +59,15 @@
           "resource": "torchfeather-ep-dt7",
           "title": "Router and MoE layer code",
           "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/moe/moe.py",
-          "locator": "`MoEArgs` defaults, `TokenChoiceTopKRouter.forward` and `MoE.forward`, including `score_func`, `route_norm`, `route_scale`, `expert_bias`, `score_before_experts` and the shared expert"
+          "locator": "`MoEArgs` defaults, `TokenChoiceTopKRouter.forward` and `MoE.forward`, including `score_func`, `route_norm`, `route_scale`, `expert_bias`, `score_before_experts` and the shared expert",
+          "depth": "Read the code. On CPU its forward stops at `torch.histc` on int64 expert indices (`histogram_cpu not implemented for Long`), so a CPU oracle counts with `torch.bincount` instead."
         }
       ],
       "focus": [
         "Router logits are \\(h = W_{r} x\\); scores are \\(\\operatorname{softmax}(h)\\) or \\(\\operatorname{sigmoid}(h)\\). The gate value that multiplies an expert output comes from the scores, not from the ranking.",
         "With top-\\(k\\) routing each token activates \\(k\\) of \\(E\\) experts. Active expert FLOPs scale with \\(k\\); total expert parameters scale with \\(E\\).",
         "A shared expert runs for every token and is added outside the top-\\(k\\) weighting. Fine-grained experts split the same capacity into more, smaller experts with larger \\(k\\).",
-        "TorchFeather computes the gate in float32 under autocast, then optionally normalizes (`route_norm`) and scales (`route_scale`) the selected scores. The bias term changes selection only, as in DeepSeek-V3."
+        "On a CUDA device TorchFeather computes the gate in float32 under autocast, then optionally normalizes (`route_norm`) and scales (`route_scale`) the selected scores. On CPU that autocast is disabled with a warning, so keep oracle inputs in float32. The bias term changes selection only, as in DeepSeek-V3."
       ],
       "reproduce": "Closed-book, compute router scores \\(s = x^{\\top} w\\) for \\(x = [1, 0]\\) and \\(w = [[1, 0, 1], [0, 1, 1]]\\), select top-\\(k\\) with \\(k = 2\\) under lower-index ties, renormalize the two weights with softmax, and combine the expert outputs \\([[10, 0], [0, 0], [0, 10]]\\) plus shared output \\([1, 1]\\) to get \\([6, 6]\\). State which parts change when the shared expert is removed.",
       "traps": [
@@ -189,7 +190,7 @@
           "name": "TensorTonic: Top-k MoE Router with Load Statistics",
           "url": "https://www.tensortonic.com/problems/cs336-l04-topk-moe-router",
           "locator": "Implement `topk_moe_router`; the three public cases check tied top-two routing, single-expert selection and all-tied selection with exact outputs, indices, weights, token fractions and probability masses",
-          "note": "Solve on paper before running. Use float32 routing, then cast to the input dtype, on the input device."
+          "note": "Solve on paper before running. Return `selected_experts` as int64 and everything else in the input dtype on the input device, as the statement requires."
         }
       ],
       "stopWhen": "Your implementation matches all three public cases exactly, including order, dtype and device, and you can redo case 1 by hand.",
@@ -248,7 +249,7 @@
           "resource": "pytorch-alltoall-docs",
           "title": "`all_to_all_single` split semantics",
           "url": "https://docs.pytorch.org/docs/2.14/distributed.html#torch.distributed.all_to_all_single",
-          "locator": "`input_split_sizes` and `output_split_sizes` for dim 0, including uneven and empty splits"
+          "locator": "`input_split_sizes` and `output_split_sizes` for dim 0 with the uneven-split example (zero entries also run: a 4-process `gloo` check with an empty expert completes, though the docs example does not show one)"
         }
       ],
       "focus": [
@@ -259,7 +260,7 @@
       ],
       "reproduce": "With 6 tokens, 4 experts, top-k of 2 and hidden width 4 on one process, pack rows by expert with a stable sort, record the inverse permutation, run a fixed split table with one empty expert by slicing rows, apply per-expert linear maps, unpermute and combine. Then run the same splits through `torchrun --nproc-per-node 4` on the `gloo` backend with `dist.all_to_all_single` and assert identical outputs and recovered order.",
       "traps": [
-        "Passing equal splits to the payload all-to-all when experts are imbalanced corrupts or hangs. Derive splits from exchanged counts every step.",
+        "Passing equal splits to the payload all-to-all when experts are imbalanced. If every rank uses the same wrong table, rows reach the wrong experts with no error (measured on 2 `gloo` processes); if send and receive splits disagree, `gloo` raises an enforce failure, and other backends need not check. Derive splits from exchanged counts every step.",
         "Padded grouped-MM row counts from `_permute` are multiples of 8 and are not token counts. Using them for load fractions or capacity overstates load.",
         "CPU `gloo` timings validate byte counts and identity, not GPU interconnect behavior. Do not quote them as NVLink or InfiniBand evidence."
       ],
@@ -282,12 +283,12 @@
         }
       ],
       "practice": [],
+      "practiceNote": "The section mini-project covers this: router-to-dispatch-to-combine oracle with uneven and empty splits, forward and gradient equivalence against a single process, and a 4-process `gloo` identity run.",
       "stopWhen": "Your oracle round-trips token identity through pack, uneven exchange and combine with an empty expert, and the `gloo` run matches it exactly.",
       "fit": {
         "verdict": "added",
         "note": "Coverage failed for uneven and empty split semantics; the PyTorch 2.14 `all_to_all_single` reference fills that gap beside the TorchFeather code and GShard math."
-      },
-      "practiceNote": "The section mini-project covers this: router-to-dispatch-to-combine oracle with uneven and empty splits, forward and gradient equivalence against a single process, and a 4-process `gloo` identity run."
+      }
     },
     {
       "id": "expert-groups-state-ownership",
@@ -375,12 +376,12 @@
         }
       ],
       "practice": [],
+      "practiceNote": "The section mini-project covers this: rank-coordinate mapper for EP and ETP groups with round-trip and invalid-configuration tests.",
       "stopWhen": "You can draw the dense and sparse meshes for the 8-rank example from memory, with every parameter family on its mesh and every rejected configuration named.",
       "fit": {
         "verdict": "kept",
         "note": "The playbook chapters, the TorchFeather video and code, and the TorchTitan mesh files cover groups, ETP vocabulary and state ownership at explain depth, with the mini-project as practice."
-      },
-      "practiceNote": "The section mini-project covers this: rank-coordinate mapper for EP and ETP groups with round-trip and invalid-configuration tests."
+      }
     },
     {
       "id": "expert-capacity-dropping",
@@ -467,12 +468,12 @@
         }
       ],
       "practice": [],
+      "practiceNote": "The section mini-project covers this: capacity derivation for one batch, drop and pad accounting, and overflow behavior under skewed routing.",
       "stopWhen": "You reproduce the 16-token capacity arithmetic from memory and predict drops and padding for a skewed assignment without notes.",
       "fit": {
         "verdict": "kept",
         "note": "Switch Section 2.2, the blog capacity sections, GShard Section 2.2 and ST-MoE Section 5.2 cover capacity and overflow semantics at derive and implement depth, with the mini-project as practice."
-      },
-      "practiceNote": "The section mini-project covers this: capacity derivation for one batch, drop and pad accounting, and overflow behavior under skewed routing."
+      }
     },
     {
       "id": "moe-balance-z-loss",
@@ -610,7 +611,7 @@
           "resource": "torchfeather-ep-dt7",
           "title": "Token counting instrumentation",
           "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/moe/moe.py",
-          "locator": "`TokenChoiceTopKRouter.forward` and `TokenReorderer.forward` (`torch.histc` counts), and `MoE.forward` accumulation into `tokens_per_expert`"
+          "locator": "`TokenChoiceTopKRouter.forward` and `TokenReorderer.forward` (`torch.histc` counts, which run on CUDA; on CPU use `torch.bincount`, since `torch.histc` on int64 indices raises `histogram_cpu not implemented for Long`), and `MoE.forward` accumulation into `tokens_per_expert`"
         },
         {
           "resource": "deepseek-v3-dt7",
@@ -650,12 +651,12 @@
         }
       ],
       "practice": [],
+      "practiceNote": "The section mini-project covers this: per-expert histograms, drop counts, per-rank timing and communication splits, and one diagnosed hotspot or empty-expert case.",
       "stopWhen": "Your oracle tables name the hot expert, the slow rank and the max-to-mean ratio from memory, with the hardware behind each number stated.",
       "fit": {
         "verdict": "kept",
         "note": "The TensorTonic statistics, the TorchFeather counters and DeepSeek-V3 Section 3.2.2 cover histograms and skew at measure depth, with the mini-project as practice."
-      },
-      "practiceNote": "The section mini-project covers this: per-expert histograms, drop counts, per-rank timing and communication splits, and one diagnosed hotspot or empty-expert case."
+      }
     },
     {
       "id": "moe-correctness-gradient-tests",
@@ -708,7 +709,7 @@
       ],
       "reproduce": "Closed-book, extend the oracle with three tests: repeated tokens produce identical outputs at both positions; converting combine weights with `float()` kills the router gradient while the tensor version keeps it; an expert with zero assigned tokens returns zeros with zero grads and matching empty splits.",
       "traps": [
-        "Wrapping a routing weight in `float()` inside the combine loop. It detaches the router graph: the measured run shows `grad Wg` present with tensors and `None` with floats.",
+        "Wrapping a routing weight in `float()` inside the combine loop. It detaches the router graph: in a measured example with 4 CPU processes on `gloo` and PyTorch 2.14.1, the tensor version keeps `grad Wg` while the `float()` version leaves it `None`.",
         "Testing dispatch with balanced splits only. Real routing is uneven; without an empty expert and a duplicated token the tests miss the exact cases that break collectives.",
         "Counting eval tokens in `tokens_per_expert`. The bias update then learns from inference-like passes; gate eval behind the training flag as the TorchTitan test demands."
       ],
@@ -823,12 +824,12 @@
         }
       ],
       "practice": [],
+      "practiceNote": "The section mini-project covers this: mesh table for one composition with validation checks, plus a rejected configuration for each rule.",
       "stopWhen": "Your mesh table places every parameter family correctly and rejects a bad degree with the exact rule it breaks.",
       "fit": {
         "verdict": "kept",
         "note": "The TorchTitan FSDP and sharding files plus Switch Sections 5.4 and 5.5 cover expert FSDP and group composition at explain depth, with the mini-project as practice."
-      },
-      "practiceNote": "The section mini-project covers this: mesh table for one composition with validation checks, plus a rejected configuration for each rule."
+      }
     },
     {
       "id": "moe-comm-memory-placement",
@@ -862,7 +863,7 @@
           "resource": "jax-ep-dt7",
           "title": "Expert-parallel roofline on GPUs",
           "url": "https://jax-ml.github.io/scaling-book/gpus",
-          "locator": "Rooflines for LLM Scaling on GPUs, Expert Parallelism: math versus communication time with the takeaway on small versus large feed-forward width; Quiz 5: LLM rooflines (page read 2026-10-14)",
+          "locator": "Rooflines for LLM Scaling on GPUs, Expert Parallelism: math versus communication time with the takeaway on small versus large feed-forward width (page read 2026-10-14); Quiz 5: LLM rooflines (page read 2026-10-14)",
           "depth": "Work Quiz 5 on paper before opening the answers. Use the all-to-all cost half for your own accounting; keep its H100 numbers labeled as H100 numbers."
         },
         {
@@ -879,7 +880,7 @@
         }
       ],
       "focus": [
-        "One all-to-all moves \\(T \\times k \\times d\\) elements; dispatch plus combine doubles it before bytes per element. Capacity padding adds rows that also move.",
+        "One all-to-all moves \\(T \\times k \\times d\\) elements; dispatch plus combine doubles it before bytes per element. In fixed-capacity schemes the padding rows move too; in dropless uneven dispatch padding is added locally after the exchange and never crosses the network.",
         "The JAX rule compares feed-forward width against scaled compute-to-bandwidth: narrow experts stay within about 2 nodes, wide experts scale further. Restate it with your own \\(C\\) and \\(W\\), never with borrowed constants.",
         "Node-limited routing caps the nodes each token touches (4 in DeepSeek-V3) so slow inter-node links carry less. Topology-aware placement then keeps hot experts behind fast intra-node links.",
         "DeepSeek-V3 trains without tensor parallelism by pairing 64-way EP with 16-way PP and 2-way DP. That mix is their cluster answer, not a universal recipe."
@@ -897,7 +898,7 @@
         },
         {
           "q": "Capacity factor rises from 1.0 to 1.5 with no routing change. What happens to bytes?",
-          "a": "Payload grows with padded rows: up to 1.5 times the rows move, so bytes and activation memory grow even though real tokens did not."
+          "a": "In a fixed-capacity scheme the buffer grows to 1.5 times the even share, so up to 1.5 times the rows move and activation memory grows with them even though real tokens did not. Dropless uneven dispatch moves only the real rows."
         },
         {
           "q": "What does node-limited routing buy?",
@@ -909,12 +910,12 @@
         }
       ],
       "practice": [],
+      "practiceNote": "The section mini-project covers this: byte and memory accounting for one MoE layer, a stated placement with its contended links, and one measured-versus-predicted residual.",
       "stopWhen": "Your byte derivation matches 2048 and 4096 from memory, and you can defend a placement with named links and labeled bandwidths.",
       "fit": {
         "verdict": "kept",
         "note": "The JAX EP roofline, the blog capacity-cost section and DeepSeek-V3 Sections 3.2 and 3.2.2 cover accounting and placement at derive depth, with the mini-project as practice."
-      },
-      "practiceNote": "The section mini-project covers this: byte and memory accounting for one MoE layer, a stated placement with its contended links, and one measured-versus-predicted residual."
+      }
     }
   ]
 }
