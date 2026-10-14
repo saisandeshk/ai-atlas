@@ -807,47 +807,78 @@
         "single-process-reconstruction-and-gradient-oracle-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Validate sequence, feature and head ownership under an explicit equal-shard, uneven-shard or padding policy.",
+        "Implement independent single-process forward, loss and gradient oracles for TP and CP layouts.",
+        "Catch wrong shard order, repeated bias, invalid targets and missing gradient sums with negative tests."
       ],
-      "why": "TODO",
+      "why": "A divisible shape does not prove correct ownership, and an uneven shape is not automatically illegal. Explicit policies and independent oracles separate implementation limits from mathematical limits.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-cp-degree-choice-async",
+          "note": "Reject incorrect plans before comparing their performance."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-tp-dt5",
+          "title": "Uneven DTensor shards and metadata checks",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.Shard",
+          "locator": "`Shard`: `torch.chunk` semantics and experimental uneven-sharding note; `DTensor.from_local`: `run_check`, `shape` and `stride`",
+          "depth": "Read these entries only. Uneven placement support does not imply every module or collective accepts ragged inputs."
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Equal-shard assertions and a linear oracle suite",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/tests/test_tensor_parallel.py",
+          "locator": "Reference weight transfer; forward comparisons; backward weight, bias and input-gradient checks",
+          "depth": "Also inspect constructor divisibility assertions in https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py . Port the CUDA/NCCL harness to CPU/Gloo as described in Practice."
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "Dense CP reconstruction and its missing checks",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/ring_attention.py",
+          "locator": "`main`: sequence partition, dense causal SDPA reference and output comparison",
+          "depth": "Reuse the dense reference, not the ring implementation, as the oracle. Add gradients and uneven-token cases in your deterministic simulation; the shipped suite checks neither."
         }
       ],
       "focus": [
-        "TODO"
+        "Record the ownership policy before launching. Picotron requires equal linear/vocabulary shards. Whole-head GQA without KV replication requires TP degree to divide query and KV head counts; retain the mapping checks from the attention unit.",
+        "DTensor uneven sharding follows `torch.chunk`, not a balanced remainder policy. On four ranks, ten elements have lengths `[3, 3, 3, 1]`. A custom CP simulation may use different boundaries if it preserves every logical token exactly once.",
+        "Reconstruct by logical indices and compare against ordinary PyTorch with the same global weights, inputs, masks, positions and loss denominator. Reusing the sharded mask builder in both paths can hide the same bug.",
+        "Compare input and reconstructed parameter gradients, not only output. Start with zero dropout and `torch.float64`; then add indexed RNG replay and justify lower-precision tolerances separately."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, simulate causal attention for ten tokens over four CPU shards with boundaries `[0, 3, 6, 9, 10]`. Compare outputs and query/key/value gradients against dense attention under squared-output sum loss. Separately reconstruct `torch.arange(10.)` from four Gloo DTensor shards and check lengths `[3, 3, 3, 1]`. Reject four-way equal KV-head sharding for eight query heads and two KV heads. Swap two output shards and remove one gradient contribution; each mutation must fail a specific oracle assertion rather than hang in a collective.",
       "traps": [
-        "TODO"
+        "Assuming `torch.chunk` assigns the remainder one element at a time. Its shard boundaries can differ from a balanced split.",
+        "Padding tokens without excluding padded keys and padded loss entries. The padded execution then changes the objective.",
+        "Testing only all-ones upstream gradients. Add a nonuniform or nonlinear scalar loss to expose indexing errors."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Must a ten-token sequence be rejected on four CP ranks?",
+          "a": "Only if the implementation requires equal shards and has no padding policy. An uneven implementation can be correct with explicit boundaries, valid masks and compatible communication."
+        },
+        {
+          "q": "Why can a correct output hide an incorrect backward pass?",
+          "a": "Missing input-gradient sums or remote KV-gradient returns do not change forward values. Compare each derivative under the same logical loss."
+        },
+        {
+          "q": "What makes the dense path an independent oracle?",
+          "a": "It uses ordinary full tensors and independently declared global visibility and positions. It does not reproduce the partitioned algorithm's ownership logic."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Picotron: tensor-parallel linear forward/backward tests",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/tests/test_tensor_parallel.py",
+          "locator": "At commit 59714b1, port `tests/test_tensor_parallel.py` and run it with four CPU processes",
+          "note": "Use CPU tensors, Gloo and `torch.manual_seed(42)` instead of the utility import; replace the column test's exact `torch.eq` with `torch.testing.assert_close`. Keep identical reference weights and inputs across TP partners. Run the port with `torchrun --nproc-per-node 4` and your file path. The section mini-project covers uneven CP, invalid targets, padding and ownership mutations in `trainlab`."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The CPU linear suite and uneven attention output/gradient oracle pass, and each declared illegal layout or injected ownership error fails before performance measurement.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The current DTensor reference distinguishes uneven semantics from Picotron's equal-shard limits; named linear tests and the mini-project supply independent reconstruction and failure practice."
       }
     },
     {
