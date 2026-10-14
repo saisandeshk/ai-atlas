@@ -735,47 +735,72 @@
         "optimizer-state-save-and-load-under-sharding"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish full logical state, layout-bound local state and metadata-bearing sharded state dictionaries.",
+        "Save and load model and optimizer state with named-parameter contracts instead of assuming rank-local optimizer IDs are portable.",
+        "Prove same-world-size checkpoint restore by comparing the next optimizer update, not just loaded weights."
       ],
-      "why": "TODO",
+      "why": "A shard's tensor values are not a checkpoint contract without its global identity and placement. The optimizer's moments and parameter mapping must survive the same transition as the weights.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/checkpoint-consolidation-resharding",
+          "note": "Change checkpoint representation and destination rank count."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "FSDP2 state dictionaries",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#state-dicts-with-dtensor-apis",
+          "locator": "State Dicts with DTensor APIs and State Dict with DCP APIs (page read 2026-10-14)",
+          "depth": "Use the sharded or DCP path for routine restore. For manual consolidation, every rank gathers, but only the designated writer should call `torch.save`; the example's final save line is outside its rank-zero branch."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Current model and optimizer state contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.checkpoint.html#torch.distributed.checkpoint.state_dict.get_state_dict",
+          "locator": "`get_state_dict`, `set_state_dict` and `StateDictOptions`; `state_dict_saver.save` and `state_dict_loader.load`",
+          "depth": "Use these current APIs, not the earlier FSDP1 `load_sharded_optimizer_state_dict` example on the same page."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Legacy format vocabulary",
+          "url": "https://docs.pytorch.org/docs/2.14/fsdp.html#torch.distributed.fsdp.StateDictType",
+          "locator": "FSDP1 `StateDictType`, `FullStateDictConfig`, `LocalStateDictConfig`, `ShardedStateDictConfig` and `FullyShardedDataParallel.optim_state_dict`",
+          "depth": "Read for full/local/sharded terminology only. FSDP1 is deprecated; do not implement its state-dict context manager in a new FSDP2 trainer."
         }
       ],
       "focus": [
-        "TODO"
+        "A full dictionary contains full logical tensors under model names. Legacy local dictionaries preserve rank-local flat layout and are tied to that partition. A sharded dictionary carries global tensor identities and layouts so a loader can locate each slice.",
+        "FSDP2's `model.state_dict()` retains parameter names and DTensor layouts without gathering all parameters. `to_local()` alone discards the information needed to identify a shard globally.",
+        "Use `get_state_dict` and `set_state_dict` for the model/optimizer pair. Their optimizer mapping uses canonical fully qualified parameter names rather than assuming numeric optimizer IDs mean the same thing after rebuilding.",
+        "Checkpoint after an optimizer step with initialized moments and cleared gradients. DCP requires allocated destination state and consistent keys across participating ranks. Weights alone are insufficient for training resume; the complete RNG, sampler and scheduler contract belongs to DT-9."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On two CPU Gloo ranks, train a tiny FSDP2 model with AdamW long enough to create moments. Use `get_state_dict` to save model and optimizer with DCP, rebuild the same sharded model and optimizer, load into the destination dictionaries, then apply `set_state_dict`. Compare reconstructed weights, moment tensors, step counters and the next fixed-batch update with an uninterrupted branch. Inspect local tensor sizes and placements so successful restore cannot hide full-state replication.",
       "traps": [
-        "TODO"
+        "Saving only rank zero's local shard and calling it a full model.",
+        "Treating `state_dict()` as an immutable snapshot while continuing to mutate the underlying tensors. Save synchronously here, or explicitly clone the reference branch.",
+        "Checking loaded weights but ignoring optimizer moments and counters. The first resumed update can diverge even if the forward initially matches."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What is missing from a saved `to_local()` tensor?",
+          "a": "Its global shape, shard placement, mesh and global parameter identity unless stored separately. Raw values alone do not identify where the shard belongs."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does an FSDP2 sharded `model.state_dict()` require full-parameter all-gathers?",
+          "a": "No. It exposes DTensor state in its sharded representation. Requesting full tensors or a full-state option does require consolidation work."
+        },
+        {
+          "q": "Why compare the next update after restore?",
+          "a": "It exercises parameter mapping, optimizer moments, counters and hyperparameters together. A weight-only comparison cannot detect missing or misassigned optimizer history."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab same-world-size model and optimizer checkpoint round-trip, next-update equivalence and rank-local ownership inspection.",
+      "stopWhen": "The restored next update matches the uninterrupted branch within stated tolerances, optimizer state is mapped correctly, and each rank still owns only its intended shards.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The FSDP2 tutorial and linked 2.14 state-dict APIs cover implementation; the legacy API labels the three formats and trainlab checks the round-trip."
       }
     },
     {
