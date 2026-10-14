@@ -514,47 +514,70 @@
         "model-runner-and-attention-backend-reconstruction"
       ],
       "outcomes": [
-        "TODO"
+        "Trace logical token positions through cache lookup, physical allocation and runner metadata to attention dispatch.",
+        "Identify cache ownership and lifetime boundaries in two miniature engines and vLLM V1.",
+        "Explain which runner assumptions constrain a scheduler or cache contribution."
       ],
-      "why": "TODO",
+      "why": "Reuse your allocator and paged-attention invariants. The new task is to find their actual enforcement points and follow a schedule into the selected backend.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/capacity-economics-engine-extension/engine-output-distributed-map",
+          "note": "Follow runner outputs through sampling and terminal cleanup."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mini-engines-inf9",
+          "title": "Nano-vLLM block ownership and attention addresses",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`can_allocate`, `allocate`, `deallocate`, `may_append` and `hash_blocks`; follow `nanovllm/engine/model_runner.py`: `allocate_kv_cache`, `prepare_prefill`, `prepare_decode` and `run_model`; then `nanovllm/layers/attention.py`: `Attention.forward`"
+        },
+        {
+          "resource": "mini-engines-inf9",
+          "title": "Mini-SGLang radix ownership and runner preparation",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/kvcache/radix_cache.py",
+          "locator": "`RadixPrefixCache.lock_handle`, `match_prefix`, `insert_prefix`, `evict` and `_tree_walk`; follow `python/minisgl/scheduler/scheduler.py`: `_prepare_batch`, including page-table allocation and attention metadata preparation"
+        },
+        {
+          "resource": "vllm-architecture-inf9",
+          "title": "vLLM 0.31.0 cache-manager entry points",
+          "url": "https://github.com/vllm-project/vllm/blob/v0.31.0/vllm/v1/core/kv_cache_manager.py",
+          "locator": "`KVCacheManager.get_computed_blocks`, `allocate_slots` and `free`; follow `vllm/v1/worker/gpu_model_runner.py`: `_prepare_inputs`, `_build_attention_metadata`, `execute_model` and `initialize_attn_backend`",
+          "depth": "Trace one supported dense text model and selected backend. Hybrid cache groups and distributed connectors are interface reading, not an implementation requirement."
         }
       ],
       "focus": [
-        "TODO"
+        "Record the cache key, lookup result, references, free/used accounting and invalidation scope. Equal prompt suffixes are not equal prefixes.",
+        "Separate cache storage from attention addressing. The allocator chooses physical pages; the runner supplies positions, lengths, slot mappings and block tables; the backend consumes them.",
+        "Nano-vLLM excludes the final prompt block from prefix lookup at this commit. Follow the exact recomputed suffix rather than assuming every complete prompt block is reused.",
+        "Graph replay, padding and asynchronously prepared metadata extend lifetimes. A free operation must respect in-flight consumers, not merely the host request status."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, map a cold prompt, an exact shared prefix and an append across a page boundary from request tokens to attention inputs. Use a CPU page-table fixture to compare gathered logical KV with a contiguous oracle and to recount references after release. Annotate the corresponding pinned source calls and graph/eager dispatch boundary; inspect GPU execution separately from this address-correctness check.",
       "traps": [
-        "TODO"
+        "Calling an unreferenced cached page unused memory. It may remain reusable until eviction; release and eviction are different operations.",
+        "Assuming a cache hash supplies model, tokenizer and tenant isolation. Verify the full identity scope separately.",
+        "Treating Mini-SGLang's `check_integrity` as a complete invariant suite. It is an empty method in the pinned radix implementation; write independent checks."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which two maps are needed to find a cached token's physical KV?",
+          "a": "The request's logical token position to logical page/offset, and its block table from logical page to physical page. Layer and KV-head layout then locate the values."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can released KV still occupy cache storage?",
+          "a": "Release removes active references, but a prefix index may retain reusable content. Eviction makes that storage available for replacement."
+        },
+        {
+          "q": "Does a prefix hit prove the runner skips the whole prompt?",
+          "a": "No. Lookup rules, block alignment and the need to recompute a final token or suffix determine actual skipped work. Trace returned token counts and scheduled inputs."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `servelab` cache/runner source map and CPU logical-to-physical KV oracle checks.",
+      "stopWhen": "Your three annotated cases reconcile token positions, page ownership and runner metadata, and each attention input has an identified producer and lifetime.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Pinned block/radix managers and runner/backend source reach the reconstruction target; existing allocator practice is extended by the mini-project's source-linked checks."
       }
     },
     {
