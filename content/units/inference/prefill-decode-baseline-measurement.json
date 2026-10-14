@@ -1,6 +1,37 @@
 {
   "section": "prefill-decode-baseline-measurement",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "sarathi-serve-inf2",
+      "role": "paper",
+      "priority": "support",
+      "name": "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve",
+      "provider": "Agrawal et al.",
+      "access": "Free",
+      "use": "Read arXiv v3, Chunked-prefills and Stall-free batching for the chunked-prefill vocabulary and the prefill-decode interference argument, and Overhead of chunked-prefills for the cost of splitting. Treat the reported capacity gains as the paper's result on its hardware.",
+      "url": "https://arxiv.org/abs/2403.02310"
+    },
+    {
+      "id": "py-spy-inf2",
+      "role": "tool",
+      "priority": "support",
+      "name": "py-spy - sampling profiler for Python",
+      "provider": "Ben Frederick",
+      "access": "Free",
+      "use": "Use py-spy record to take CPU flame graphs of tokenizer and detokenizer work, and py-spy top to watch the hot functions live. Launch the profiled process under py-spy.",
+      "url": "https://github.com/benfred/py-spy"
+    },
+    {
+      "id": "vllm-sampling-inf2",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM SamplingParams API (v0.31.0)",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Look up `temperature`, `seed`, `max_tokens`, `ignore_eos`, `stop` and `stop_token_ids` defaults when you fix the output contract. The link is pinned to v0.31.0; check the fields against the version you install.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/sampling_params/"
+    }
+  ],
   "units": [
     {
       "id": "tokenization-preprocessing-cost",
@@ -15,47 +46,78 @@
         "tokenizer-and-detokenizer-cpu-flame-graphs"
       ],
       "outcomes": [
-        "TODO"
+        "Explain where prompt tokenization and detokenization sit in a serving request and why their cost lands in TTFT and streaming gaps.",
+        "Measure tokenizer and detokenizer CPU time with a sampling flame graph and name the hottest functions.",
+        "State the prompt lengths and conditions under which tokenization can be ignored in a baseline."
       ],
-      "why": "TODO",
+      "why": "Tokenization runs on the host before the first device kernel, and detokenization runs between streamed tokens. A slow tokenizer looks exactly like slow prefill or ragged decode in a naive trace.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/latency-decomposition-timing",
+          "note": "Carry the tokenizer span into the TTFT decomposition."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/request-contract-latency-metrics",
+          "note": "Fix prompt lengths in tokens before comparing timings."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-ch16-inf2",
+          "title": "A CPU-bound tokenizer as the bottleneck",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Profiling, Debugging, and Tuning Inference Performance (pp. 959 to 964): the host-CPU-at-100-percent tokenization example and moving it to a GPU tokenizer or custom kernel",
+          "depth": "Read only the host-CPU tokenization example. Leave cache-hit tuning and tiered-cache sizing for the KV sections."
+        },
+        {
+          "resource": "vllm-metrics-inf2",
+          "title": "Where tokenization enters TTFT",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Frontend Stats Collection: `arrival_time` starts when tokenization begins, and TTFT is measured relative to it"
+        },
+        {
+          "resource": "py-spy-inf2",
+          "title": "CPU flame graphs with py-spy",
+          "url": "https://github.com/benfred/py-spy",
+          "locator": "README Usage: `py-spy record -o profile.svg -- python myprogram.py` for a flame graph, and `py-spy top` for the live view"
         }
       ],
       "focus": [
-        "TODO"
+        "Tokenization and detokenization are host work inside the request path. Tokenization adds to TTFT and scales with prompt length; detokenization adds to gaps between streamed tokens and scales with output length.",
+        "vLLM starts the TTFT clock when tokenization begins, so tokenizer time is inside TTFT by definition, not beside it.",
+        "A flame graph attributes host time to functions. Look for tokenizer encode and decode calls with regex or Python-loop frames, not device kernels.",
+        "Ignoring tokenization is a stated assumption, not a default. It fails for long prompts, slow tokenizers and per-token detokenization in streaming."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw the request path from arrival through tokenization, queue, prefill, first-token sampling and detokenization, and mark which spans vLLM counts in TTFT. Then profile a local tokenize and detokenize loop with py-spy record and name the two hottest frames.",
       "traps": [
-        "TODO"
+        "Reading TTFT as prefill time. TTFT includes queueing, tokenization, scheduling and host overhead around the prefill kernels.",
+        "Profiling the tokenizer once with a cold import. Import and cache warmup dominate the first call, so profile steady-state calls on your prompt distribution.",
+        "Detokenizing each token independently in analysis code. Streamed text uses incremental detokenization state, so naive per-token decoding can disagree with what the user saw."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Where does vLLM start the TTFT clock?",
+          "a": "When tokenization begins on the frontend. Tokenizer time is inside TTFT by construction."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A flame graph shows most request-wall time in a Python regex function under prefill-heavy load. Is the prefill kernel slow?",
+          "a": "There is no evidence for that. The host tokenizer or preprocessing is the bottleneck, and the device may be idle waiting for work."
+        },
+        {
+          "q": "When is it safe to ignore tokenization in a baseline?",
+          "a": "Only when you measured it small against TTFT on your prompts, with the tokenizer, cache state and lengths recorded. Long prompts or per-token detokenization break the assumption."
+        },
+        {
+          "q": "Why launch the process under py-spy record instead of attaching to a running server with a process id?",
+          "a": "Attaching to a process you did not start usually needs elevated permissions. Launching under py-spy record avoids that restriction."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: tokenizer and detokenizer spans in the request lifecycle trace, with a flame-graph attachment for the hottest host frame.",
+      "stopWhen": "You can point to the tokenizer span inside a TTFT trace and to the hottest tokenizer frame in your own flame graph, and state the prompt lengths where ignoring it stops being safe.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for CPU flame-graph tooling; py-spy supplies the verified record and top workflow beside the pool's tokenizer-bottleneck example."
       }
     },
     {
@@ -72,47 +134,84 @@
         "decode-matrix-vector-like-shapes"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why prefill exposes sequence parallelism while decode is sequential across generated tokens.",
+        "Derive the per-step shapes of a decode step as matrix-vector-like work against a growing KV cache.",
+        "Predict how prompt length and output length move prefill work versus decode steps."
       ],
-      "why": "TODO",
+      "why": "Every phase-separated measurement in this section assumes this split. If you cannot say which work is parallel and which is forced sequential, no TTFT or TPOT number means anything.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/serving-regimes-roofline",
+          "note": "Place the prefill and decode shapes on a roofline."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/batch-shape-phase-interference",
+          "note": "See how batching reuses decode weight loads."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Prefill parallelism and the decode dependency",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 2.2, Inference Setup (p. 3): prefill as one forward pass parallel over batch and prompt tokens, decode as sequential forward passes with one new token each"
+        },
+        {
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Why decode cannot parallelize across time",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 2.1 (p. 3): decode cannot batch across the sequence, and KV cache load per generated token grows with context and batch"
+        },
+        {
+          "resource": "hands-serving-ch5-inf2",
+          "title": "Decode shapes: one row at a time",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Applying Arithmetic Intensity Analysis to the LLM Prefill and Decode Phases (pp. 183 to 185): Figure 5-16 with \\(M = s\\) for prefill and \\(M = 1\\) for decode",
+          "depth": "Use the shape argument and the regime verdicts only. Recompute the arithmetic-intensity numbers yourself: the printed formula drops parentheses and understates short-sequence values by about half."
         }
       ],
       "focus": [
-        "TODO"
+        "Treat the Two regimes: prefill and decode unit as read. This unit adds the per-step shapes and the serving measurement consequences.",
+        "Prefill processes all prompt tokens together, so its work grows with prompt length but parallelizes across the sequence. Decode produces one token per step because each token needs the previous one.",
+        "A decode step loads the full weight set plus the whole KV cache to produce one token and append one entry: matrix-vector-like shapes with almost no reuse.",
+        "The KV cache turns quadratic recomputation into linear per-step reads. Without it, each decode step would rescan the full prefix."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the dependency chain for generating four tokens from a prompt, stating what each step reads and appends. Then solve the TensorTonic uniform two-position public case by hand to get output `[[[4]]]`.",
       "traps": [
-        "TODO"
+        "Calling decode compute-bound because the model is large. A decode step loads weights and cache for one token, so size raises the bytes moved, not the reuse.",
+        "Assuming prefill cost repeats per token. Prefill runs once; decode steps each read the cache but never redo the full prompt pass.",
+        "Treating batching as parallelism across time. Batching parallelizes across requests; the output steps of one request stay sequential."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can prefill use large matrix multiplies while decode cannot?",
+          "a": "Prefill holds all prompt tokens at once, so the multiply has \\(M = s\\) rows. Decode holds one new token because each token depends on the previous one, so \\(M = 1\\)."
+        },
+        {
+          "q": "What does one decode step read?",
+          "a": "The full weight set once plus the KV cache for all cached positions, to produce one token and append one entry."
+        },
+        {
+          "q": "In the TensorTonic public case with query 0 and keys 1 and 2, why is the output 4?",
+          "a": "Both scores are 0, so the weights are 0.5 and 0.5. Then \\(0.5 \\times 2 + 0.5 \\times 6 = 4\\)."
+        },
+        {
+          "q": "A batch holds 8 requests that each generate 50 tokens. How many sequential steps does each request need?",
+          "a": "50. Batching does not shorten any single request's dependency chain."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Decode Attention with a KV Cache",
+          "url": "https://www.tensortonic.com/problems/cs336-l10-kv-cache-decode-step",
+          "locator": "Implement `kv_cache_decode_step`; the public cases check cache extension, uniform two-position attention and two query heads sharing one KV head",
+          "note": "Solve the public cases by hand first, then implement. The grouped-query head mapping is the bridge to the attention-variant units."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the decode-step shapes without notes and your `kv_cache_decode_step` passes all public cases.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The scaling paper and the serving book cover all three topics at explain and derive depth, and the TensorTonic problem gives checked practice on decode shapes."
       }
     },
     {
@@ -129,47 +228,90 @@
         "arithmetic-intensity-and-roofline-position"
       ],
       "outcomes": [
-        "TODO"
+        "Derive arithmetic intensity for a matmul and place prefill and decode work on a roofline for your GPU.",
+        "Explain the compute, bandwidth, launch, capacity and queue-bound regimes and how batching moves each boundary.",
+        "Predict the bottleneck for short and long prompts with small and large batches before profiling."
       ],
-      "why": "TODO",
+      "why": "Regime classification is the prediction half of this section's checkpoint. Every later claim about a stall or a speedup is checked against the regime you declared first.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/batch-shape-phase-interference",
+          "note": "Move the boundaries with batch size and chunked prefill."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/prediction-residuals-goodput",
+          "note": "Turn regime predictions into residuals and goodput."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-ch5-inf2",
+          "title": "Roofline and arithmetic intensity, recomputed",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Boundaries of GPU Compute and Memory Bandwidth (pp. 178 to 180), Arithmetic Intensity in Matrix Multiplications (pp. 181 to 183) and Applying Arithmetic Intensity Analysis to the LLM Prefill and Decode Phases (pp. 183 to 185)",
+          "depth": "Recompute Table 5-9 and Table 5-10 with the parenthesized formula \\(M N K / (M K + K N + M N)\\). The printed formula omits the parentheses and its last denominator term is wrong: at \\(h = 4096\\) the correct prefill values are about 62 and 410 for \\(s = 64\\) and \\(s = 512\\), and the correct decode value is about 1.0, not 0.5. The verdicts are unchanged."
+        },
+        {
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Cost, MFU and the latency trade-off",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 2.1 (p. 3) and Section 4.4 with Tables 2 and 3 (pp. 9 to 10): small batches give low latency at worse MFU and higher cost, and the low-latency versus high-throughput configurations"
+        },
+        {
+          "resource": "aisys-ch16-inf2",
+          "title": "Small batches and the launch floor",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Inference Troubleshooting Recipes with Table 16-1 (pp. 973 to 978): the below-50-percent-SM-utilization small-batch row, which prescribes larger batches and fused kernels before reaching for the profiler"
+        },
+        {
+          "resource": "ttft-project-inf2",
+          "title": "The saturation knee",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Week 5: the concurrency sweep at 1, 2 and 4 up to 128, and the knee where throughput saturates while latency degrades"
         }
       ],
       "focus": [
-        "TODO"
+        "Arithmetic intensity is FLOPs per byte moved. The ridge is peak FLOPs per second divided by peak bytes per second, and work below it is bandwidth-bound.",
+        "Prefill intensity grows with sequence length while decode intensity stays near 1 FLOP per byte at any length. At very small shapes time stops falling with bytes: that flat floor is the launch-bound regime.",
+        "Batching raises intensity by reusing each weight load across requests, which moves the bandwidth boundary but never removes the sequential decode chain.",
+        "Capacity-bound means the KV cache does not fit, so the batch or the lengths must shrink. Queue-bound means waiting requests grow while the device stays busy. Diagnose both from KV-cache usage and waiting counts, not from kernel timings or memory used."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive \\(\\text{AI} = M N K / (M K + K N + M N)\\) for a matmul, evaluate it for \\(M = s\\) and \\(M = 1\\) at \\(h = 4096\\) and \\(s = 64\\), and place both points against your GPU's ridge and against 419 FLOPs per byte, the book's L40S example.",
       "traps": [
-        "TODO"
+        "Quoting the book's Table 5-10 decode value of 0.5. The printed denominator is wrong and the correct value is about 1.0. Both sit far below any GPU ridge, so the verdict stands but the number does not.",
+        "Comparing intensities across precisions or tokenizers without restating units. Bytes per element and tokens per request change the numbers, so a ratio without its setup is not comparable.",
+        "Naming a regime from memory used. vLLM preallocates its KV pool, so read `vllm:kv_cache_usage_perc`: near full with preemptions is capacity-bound, a busy device with a growing queue is queue-bound, and an idle device with a growing queue points at admission limits or host overhead."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the units of arithmetic intensity and of the roofline ridge?",
+          "a": "FLOPs per byte for intensity. The ridge is peak FLOPs per second divided by peak bytes per second, also FLOPs per byte."
+        },
+        {
+          "q": "At \\(h = 4096\\) on the book's L40S ridge of 419, which corrected Table 5-10 prefill values are compute-bound?",
+          "a": "Only \\(s = 4096\\) at about 1365. The corrected 62 at \\(s = 64\\) and 410 at \\(s = 512\\) are still bandwidth-bound, as is decode at about 1.0."
+        },
+        {
+          "q": "Why does batching move the bandwidth boundary?",
+          "a": "One weight load serves \\(B\\) tokens instead of one, so FLOPs per byte rise with \\(B\\) while the sequential steps per request stay fixed."
+        },
+        {
+          "q": "How do you tell capacity-bound from queue-bound without a profiler?",
+          "a": "Capacity-bound shows KV-cache usage near full with preemptions or a capped running batch. Queue-bound shows waiting requests growing while the device stays busy. Check `vllm:kv_cache_usage_perc` and `vllm:num_requests_waiting`."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of Inference Day 06: Ops-Byte Ratio and Roofline",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day06/ops-byte-ratio.ipynb",
+          "locator": "Run the roofline plot and the attention arithmetic-intensity cells for your GPU; reproduce the \\(N = 4096\\), \\(d = 128\\) example at about 31 ops per byte and sweep batch size to the compute-bound crossover",
+          "note": "The notebook's attention accounting follows its book's model. Check it against your matmul derivation rather than treating it as a measured result."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand-derived intensities match the corrected table values, and your roofline plot puts prefill and decode on opposite sides of the ridge for a long prompt.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The serving book's roofline sections with recomputed numbers, the scaling paper's cost trade-off, the troubleshooting table and the TTFT saturation knee cover all three topics with notebook practice."
       }
     },
     {
@@ -185,47 +327,84 @@
         "chunked-prefill-vocabulary-and-phase-interference"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how batch size and sequence shape move work between bandwidth-bound and compute-bound execution.",
+        "Explain chunked prefill and how unchunked prefills stall ongoing decodes.",
+        "Predict the interference a long-prompt request inflicts on concurrent decode streams."
       ],
-      "why": "TODO",
+      "why": "Batching is the main lever on serving cost, and naive batching taxes decode latency. Chunked prefill exists because one long prompt once stalled every other request on the server.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/latency-decomposition-timing",
+          "note": "Attribute interference delays to queue, prefill or decode spans."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/prefill-decode-mixing-chunking",
+          "note": "Design the mixing and chunking policy in the scheduler."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "sarathi-serve-inf2",
+          "title": "Chunked prefill and stall-free batching",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Sarathi-Serve arXiv:2403.02310v3, Section 4 Design and Implementation: 4.1 Chunked-prefills, 4.2 Stall-free batching and 4.3 Determining Token Budget; the prefill-prioritizing schedule that stalls ongoing decodes as the negative example",
+          "depth": "Skip the pipeline-parallel sections and the Evaluation capacity numbers. Treat the reported capacity gains as the paper's result on its hardware, not as your target."
+        },
+        {
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Batch size moves the bottleneck",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 4.1 with Figures 6 and 7 (p. 8): decode stays on the stationary layout while prefill switches layout by tokens per batch"
+        },
+        {
+          "resource": "ttft-project-inf2",
+          "title": "Chunked prefill as the preemption fix",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Week 5 decision point: when TTFT spikes and waiting requests climb before the target concurrency, stop and tune `--max-num-seqs`, `--gpu-memory-utilization` and chunked prefill first"
         }
       ],
       "focus": [
-        "TODO"
+        "A batch mixes prefill tokens and decode tokens in one iteration. Prefill tokens bring large parallel work; decode tokens bring one step each with their full cache reads.",
+        "An unchunked long prefill occupies iterations that ongoing decodes also need, so their inter-token gaps spike. Chunked prefill splits the prompt into near-equal chunks that fit beside decodes.",
+        "The token budget caps prefill tokens per iteration. A smaller budget protects decodes but stretches the new request's TTFT: that trade-off is the whole design.",
+        "Splitting is not free. Each chunk's attention rereads the KV cache of all earlier chunks, and small chunks run at lower GPU utilization; Section 4.3 and the Overhead of chunked-prefills ablation (Section 5.4.1) show the cost."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, sketch one iteration with a 4000-token prefill joining ten ongoing decodes, then the same arrival under a 512-token chunk budget, and state which requests slow down in each case and why.",
       "traps": [
-        "TODO"
+        "Assuming bigger batches always help both phases. Bigger batches raise throughput but an admitted long prefill still stalls the decodes it shares iterations with.",
+        "Treating the chunk budget as a latency knob for the new request only. The budget sets every concurrent decode's worst gap too.",
+        "Reading the paper's capacity multiples as expected gains. They hold for the paper's models, hardware and tail-latency constraints; your matrix decides yours."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does one long prompt hurt ongoing decodes under prefill-prioritizing scheduling?",
+          "a": "Its full prefill occupies whole iterations, so decode steps wait. The waits appear as inter-token gaps on unrelated requests."
+        },
+        {
+          "q": "What does chunked prefill change about that iteration?",
+          "a": "Only one chunk of the prompt joins each iteration, bounded by the token budget, so decodes keep making progress every iteration."
+        },
+        {
+          "q": "What does a smaller token budget cost?",
+          "a": "The new request's prefill spreads over more iterations, so its TTFT grows. Decode protection is paid in prefill latency."
+        },
+        {
+          "q": "Decode batch grows from 1 to 32 at fixed lengths. What happens to per-step time and to tokens per second?",
+          "a": "Per-step time rises sublinearly while weight reuse climbs, so tokens per second rise until the work turns compute-bound or hits capacity."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On LLM Serving companion: batching with vLLM",
+          "url": "https://github.com/orca3/llm-model-inference/blob/main/ch02/ch2_Batching.ipynb",
+          "locator": "Run the cell that times the four listed prompts as one vLLM batch against the same prompts one by one, then add per-request timing yourself; the notebook records only the two totals",
+          "note": "The notebook compares batched with one-by-one generation, not chunked prefill. Use it for batch-size effects and read chunking in Sarathi-Serve."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can predict, before running, whether a new arrival stalls concurrent decodes at a given chunk budget, and your batching measurements agree.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for chunked-prefill vocabulary; Sarathi-Serve supplies the verified chunking and stall-free sections beside the pool's batching material."
       }
     },
     {
@@ -241,47 +420,78 @@
         "model-sample-detokenize-and-stream-timing"
       ],
       "outcomes": [
-        "TODO"
+        "Decompose TTFT and per-token latency into queue, tokenize, schedule, host, model, sample, detokenize and stream parts.",
+        "Implement per-request instrumentation that attributes each part without changing outputs.",
+        "Read a slow request's spans and name the part to fix first."
       ],
-      "why": "TODO",
+      "why": "A single TTFT number cannot tell queueing from execution. Decomposition is what turns a slow request into a named part you can fix.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/device-timing-warm-state",
+          "note": "Time each span with correct synchronization and warm state."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/baseline-sweeps-matrix",
+          "note": "Collect the spans across sweeps and shapes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-metrics-inf2",
+          "title": "The five intervals behind every request",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Engine Core Events with Interval Calculations: QUEUED, SCHEDULED, PREEMPTED and NEW_TOKENS events with the queue, prefill, decode, inference and inter-token intervals; Frontend Stats Collection for `arrival_time` and end-to-end latency"
+        },
+        {
+          "resource": "hands-serving-ch5-inf2",
+          "title": "TTFT, ITL and end-to-end definitions",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Latency Metrics (pp. 150 to 151): Figure 4-9 with TTFT as prefill work, ITL as decode work, and the end-to-end formula over \\(N\\) generated tokens",
+          "depth": "Use the definitions and the final simplified forms. The printed ITL middle expression with a subtracted detokenization term is garbled; read it as one decode step plus its detokenization."
+        },
+        {
+          "resource": "vllm-bench-inf2",
+          "title": "Bench-side TTFT, ITL and TPOT",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/#understanding-the-latency-metrics",
+          "locator": "Understanding the Latency Metrics: bench-side TTFT, per-gap ITL and per-request TPOT with the speculative-decoding bundled-tokens example"
         }
       ],
       "focus": [
-        "TODO"
+        "Engine-side intervals and bench-side metrics differ by construction. The engine measures queue, prefill and decode between core events; the bench measures TTFT, gaps and TPOT at the client, including network and streaming.",
+        "ITL records each gap between streamed outputs, while TPOT amortizes one request's decode time over its tokens. They agree when each streamed output holds one token and diverge when one output bundles several tokens.",
+        "Sampling, detokenization and streaming sit after the last model kernel of each step. A ragged gap series with fast kernels points at these parts, not at attention.",
+        "Preemption re-enters the intervals: a preempted request restarts prefill, so its TTFT and decode spans include the repeated work."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the engine events and the five intervals for a request that queue-waits, prefills, decodes three tokens and finishes, then state the bench-side TTFT, the three ITL samples and the TPOT for \\(N = 4\\) output tokens.",
       "traps": [
-        "TODO"
+        "Averaging ITL samples across requests with different output lengths and calling it TPOT. Mean of gaps weights long requests more; per-request TPOT weights requests equally.",
+        "Comparing engine prefill time with bench TTFT directly. TTFT adds queueing, tokenization, network and streaming around the engine spans.",
+        "Trusting TPOT for single-token requests. vLLM records zero TPOT when there is at most one output token, and bench statistics exclude those requests."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A request generates 5 tokens with TTFT 100 ms and end-to-end 180 ms. What is its TPOT, and how many ITL samples does the bench record?",
+          "a": "TPOT is \\((180 - 100) / (5 - 1) = 20\\) ms per token. The bench records 4 ITL gap samples."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With speculative decoding, one streamed output carries three tokens after a 40 ms gap. How do ITL and TPOT treat those tokens?",
+          "a": "ITL records one 40 ms gap and adds no zero gaps for the bundled tokens. TPOT divides the request's decode time over all three tokens."
+        },
+        {
+          "q": "Queue time dominates a slow TTFT while prefill time is flat. What do you fix first?",
+          "a": "Admission, scheduling or load, not kernels. The model execution is fine; the request waited."
+        },
+        {
+          "q": "Why can two runs of the same prompt show different TTFT with identical prefill time?",
+          "a": "TTFT includes queueing, tokenization, scheduling and host overhead, which vary with server state even when the kernels do not."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-request queue, prefill, first-token, decode-step, sampling, streaming and completion spans with one worked slow-request trace.",
+      "stopWhen": "Given any slow request, you split its latency into spans from events you instrumented and name the dominant part with evidence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The vLLM metrics design, the book's latency definitions and the bench latency-metric section cover both topics at implement and measure depth, with practice in the mini-project harness."
       }
     },
     {
@@ -298,47 +508,83 @@
         "cold-versus-warm-model-and-cache-state"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why host timers need device synchronization and what stream-ordered event semantics guarantee.",
+        "Separate warmup, compilation and graph-capture state from steady-state timing.",
+        "Design a cold-versus-warm comparison that fixes model, cache and workload state."
       ],
-      "why": "TODO",
+      "why": "Asynchronous launch makes naive timers measure submission, not execution. Every timing in this section stands or falls on synchronization and warm state.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/baseline-sweeps-matrix",
+          "note": "Run warmed, synchronized baselines across sweeps and shapes."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/trials-variance-observer-effects",
+          "note": "Separate warm-state effects from trial variance."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-ch16-inf2",
+          "title": "Event and stream semantics with phase ranges",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Profiling with Nsight Systems and Nsight Compute (pp. 969 to 973): per-stream naming, NVTX Prefill and Decode step ranges, and the tightest scope around encode"
+        },
+        {
+          "resource": "tensorrt-bench-inf2",
+          "title": "Machine-state control before any timing",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/perf-benchmarking.html",
+          "locator": "Before Benchmarking: persistence mode with `sudo nvidia-smi -pm 1`, clock reset with `sudo nvidia-smi -rgc`, power limits and boost settings (page read 2026-10-05)"
+        },
+        {
+          "resource": "vllm-bench-inf2",
+          "title": "Cache-state control for latency runs",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/",
+          "locator": "Online Benchmark warning on prefix-cache reuse across repeated runs, with varying the seed, restarting the server or resetting caches between runs"
         }
       ],
       "focus": [
-        "TODO"
+        "Treat the Timed boundaries, asynchronous launch and event timing unit and the Warmup, compilation, allocator and cache state unit as read. This unit applies them to serving runs.",
+        "Kernel launches return before the work finishes. A host timer without synchronization measures queueing into the driver, and only stream-ordered events or a synchronize call bracket the device work.",
+        "First runs include compilation, graph capture, allocator setup and cold caches. Warm every shape you will time, then discard the warmup before recording.",
+        "Cold versus warm is a comparison of stated states: weights resident or not, compilation and graphs captured or not, allocator settled or not, prefix cache empty or populated, clocks settled or not. Name all five before quoting either number."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, list the five warm states that a first vLLM request passes through before steady state, and write the synchronized timing pattern that brackets one decode step without including queue submission.",
       "traps": [
-        "TODO"
+        "Timing a range that includes the first-ever request and calling it the baseline. Compilation and capture dominate it; it is a startup measurement, not a serving one.",
+        "Reusing prompts across repeated latency runs with prefix caching on. Later runs hit the cache and look faster without any real change.",
+        "Comparing a cold run at settled clocks with a warm run after thermal throttling started. Clocks and temperature are part of the state; record both."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does an unsynchronized host timer under-report GPU work?",
+          "a": "Launches are asynchronous, so the timer stops at submission. The device work continues after the host proceeds."
+        },
+        {
+          "q": "What does a stream-ordered event pair guarantee that a host timer does not?",
+          "a": "It timestamps when the stream reaches each event on the device, so the interval covers the device work enqueued between them, not the host's submission time. It still includes idle gaps if the host enqueues slowly, and other streams can slow the work it brackets."
+        },
+        {
+          "q": "Which states must a warmup cover before a latency baseline?",
+          "a": "Model weights resident, compilation and graph capture done, allocator settled, caches at their declared state, and clocks settled. Time only after all of them."
+        },
+        {
+          "q": "Two latency runs differ only in that the second reuses the first run's prompts. What explains a faster second run?",
+          "a": "Prefix-cache hits from the first run's KV blocks, not faster execution. Vary the seed or reset the server for a clean comparison."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On LLM Serving companion: run Qwen with vLLM versus transformers",
+          "url": "https://github.com/orca3/llm-model-inference/blob/main/ch02/ch2_Run_LLM_With_vLLM.ipynb",
+          "locator": "Run the vLLM timing cell and the transformers timing cell; add one warmup call before each timer and report steady-state versus first-call latency",
+          "note": "The notebook does not warm up or synchronize. Add the warmup run yourself and state which number is cold."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your warmed timings are stable across repeats, your cold-versus-warm gap names its five states, and no first-run artifact remains in the baseline.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Nsight event semantics, the benchmarking machine-state checklist and the bench cache-state warning cover all three topics with notebook practice."
       }
     },
     {
@@ -355,47 +601,77 @@
         "batch-invariant-kernels-and-deterministic-inference-vocabulary"
       ],
       "outcomes": [
-        "TODO"
+        "Fix identical prompts, output limits, stop behavior and cache state before any timing comparison.",
+        "Implement greedy and seeded-sampling comparisons, including a distributional check for sampled outputs.",
+        "Explain why batch invariance and determinism are vocabulary to verify, not guarantees to assume."
       ],
-      "why": "TODO",
+      "why": "Comparisons with different outputs compare different amounts of work. Fixed prompts plus fixed sampling are what make two timings comparable at all.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/baseline-sweeps-matrix",
+          "note": "Gate every sweep cell on the identical-output contract."
+        },
+        {
+          "unit": "inference/capacity-economics-engine-extension/fair-trials-raw-traces",
+          "note": "Reuse the contract for fair benchmark trials."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-sampling-inf2",
+          "title": "The sampling contract in one class",
+          "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/sampling_params/",
+          "locator": "SamplingParams attributes with defaults: `temperature` at 1.0 with 0 meaning greedy, `seed` at None, `max_tokens` at 16, `ignore_eos` at False, and `stop` with `stop_token_ids`"
+        },
+        {
+          "resource": "vllm-bench-inf2",
+          "title": "Fixed workloads and sampling flags",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/",
+          "locator": "Running With Sampling Parameters with the temperature, top-p and top-k example"
+        },
+        {
+          "resource": "ttft-project-inf2",
+          "title": "The fairness checklist",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Before-you-publish checklist: fixed input and output lengths, p50 with p95 and p99, TTFT and ITL kept separate, pinned versions with exact commands"
         }
       ],
       "focus": [
-        "TODO"
+        "Build on the Proving the cache correct unit: token identity plus a logits tolerance is the correctness gate, and this unit adds the serving comparison contract around it.",
+        "Greedy means `temperature=0` exactly: vLLM clamps any positive value below 1e-2 up to 1e-2. Sampled comparisons run many requests over a fixed list of seeds on both sides and compare output distributions, not single outputs.",
+        "Output limits and stop strings change the amount of work. Fix `max_tokens`, `ignore_eos`, `stop` and `stop_token_ids` identically, or the faster run may simply have generated less.",
+        "Batch sizes, kernel paths and cache states can move outputs and timings. State them in the contract and re-verify identity whenever any of them changes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the full comparison contract for two engine settings: identical prompts, `SamplingParams(temperature=0)` for the greedy gate and `SamplingParams(temperature=0.8, seed=s)` over a fixed seed list for the sampled check, fixed `max_tokens` and `stop` behavior, and declared cache state. Then show greedy token identity across reruns and distributional agreement across the seed list.",
       "traps": [
-        "TODO"
+        "Assuming the bench seed fixes engine sampling. `vllm bench serve --seed 0` samples the dataset; engine sampling needs its own `seed` in `SamplingParams(temperature=0.8, seed=1)` or the server `vllm serve --seed 1` argument.",
+        "Comparing a run that stopped early on EOS with one that ran to the token limit. Different output counts mean different decode work, not different speed.",
+        "Claiming determinism from one identical rerun. Greedy identity needs repeats across the batch sizes and cache states you will actually compare."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why must `max_tokens` and stop behavior match before comparing TPOT?",
+          "a": "They set how many decode steps run. A shorter output does fewer steps, so its TPOT can differ without any execution change."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "How do you compare two sampled configurations without requiring identical tokens?",
+          "a": "Run many requests per configuration over the same list of seeds and compare output distributions, such as length or score histograms, with identical prompts, limits and cache state."
+        },
+        {
+          "q": "Greedy outputs match at batch size 1 but differ at batch size 8. What broke?",
+          "a": "The comparison contract. A kernel path, scheduling or cache behavior changed with batch size, so identity must be re-established there, not assumed."
+        },
+        {
+          "q": "What does vLLM do with a small positive temperature below 1e-2?",
+          "a": "It warns and clamps it up to 1e-2. Use exactly 0 for greedy and a fixed seed for reproducible sampling."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the identical-output gate every timing comparison must pass, with fixed prompts, limits, stop behavior, seed and cache state.",
+      "stopWhen": "Any two timings you compare share a written contract, greedy reruns are token-identical under it, and sampled reruns agree distributionally.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for exact sampling-field semantics; the pinned SamplingParams API reference fills that gap beside the bench and checklist material."
       }
     },
     {
@@ -411,47 +687,77 @@
         "length-and-batch-shape-matrix"
       ],
       "outcomes": [
-        "TODO"
+        "Measure a single-request latency baseline with fixed lengths, warmup and raw per-request results.",
+        "Sweep concurrency and request rate through saturation and report the knee, not the collapse.",
+        "Cover a length-by-batch shape matrix with the workload contract fixed in every cell."
       ],
-      "why": "TODO",
+      "why": "One prompt at one concurrency is an anecdote. Sweeps over rate and shapes turn it into a baseline that later changes can be tested against.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/raw-records-resource-context",
+          "note": "Retain the raw records and resource context behind each cell."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/trials-variance-observer-effects",
+          "note": "Repeat each cell with trials and uncertainty."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-bench-inf2",
+          "title": "Phase and endpoint baselines with the bench CLI",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/",
+          "locator": "Online Benchmark with the vllm bench serve example and its Serving Benchmark Result format; Offline Throughput Benchmark with the vllm bench throughput example; Load Pattern Control Parameters for request-rate, burstiness and max-concurrency"
+        },
+        {
+          "resource": "ttft-project-inf2",
+          "title": "Sweeps to the knee and past it",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Week 5: the concurrency sweep at 1, 2 and 4 up to 128 with two-tool cross-checks, the session past 1000 concurrent runs, and the preemption-point decision rule"
+        },
+        {
+          "resource": "tensorrt-bench-inf2",
+          "title": "Synthetic datasets with fixed shapes",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/perf-benchmarking.html",
+          "locator": "Preparing a Dataset with the `task_id`, `prompt` or `input_ids` and `output_tokens` schema, and the `token-norm-dist` synthetic example at input mean 128 with output mean 128 (page read 2026-10-05)"
         }
       ],
       "focus": [
-        "TODO"
+        "The single-request cell comes first and stays fixed: one prompt shape, warmed state, identical-output contract, raw per-request results kept.",
+        "Sweep one variable at a time: concurrency with fixed rate, then rate with fixed concurrency. The knee where throughput stops rising while latency degrades is the result; points past preemption are not publishable.",
+        "Every matrix cell fixes input length, output length, batch size, sampling and cache state. A cell that changes two of them explains nothing.",
+        "Keep TTFT and ITL separate in every cell and every sweep. Blended latency hides whether the limit is prefill, decode or queueing."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the sweep plan for your model: the single-request cell, the concurrency ladder, the request-rate ladder, and three shape-matrix cells with every fixed field named. Then run the single-request cell with `vllm bench latency --input-len 32 --output-len 128 --batch-size 1`.",
       "traps": [
-        "TODO"
+        "Measuring at the preemption point and reporting it as capacity. When waiting requests climb and TTFT spikes, stop and tune admission and chunking first.",
+        "Sweeping with uniform synthetic lengths and claiming production coverage. Fixed shapes give comparability, but real distributions still need their own run.",
+        "Changing output length across cells to save time. Shorter outputs do less decode work, so the cells are no longer comparable."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What makes the single-request baseline a baseline rather than an anecdote?",
+          "a": "Fixed lengths, warmup, the identical-output contract and retained raw results, so any later change can rerun the same cell."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Throughput flattens while p99 climbs steeply with concurrency. Where are you?",
+          "a": "At the saturation knee. Report the knee; further points measure overload behavior, not serving capacity."
+        },
+        {
+          "q": "Why sweep rate and concurrency separately instead of together?",
+          "a": "They stress different limits: rate stresses arrivals and queueing, concurrency stresses resident batch and memory. Joint sweeps confound them."
+        },
+        {
+          "q": "What does vllm bench latency fix that vllm bench serve leaves open?",
+          "a": "Latency runs one fixed batch of fixed input and output lengths for phase timing. Serve replays arrivals over time for endpoint behavior under load."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the sweep harness with the single-request cell, the concurrency and rate ladders, and the shape matrix with raw results per cell.",
+      "stopWhen": "Your matrix reruns cell-for-cell with identical contracts, and you can point to the knee in your own sweep data.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The bench CLI, the TTFT sweep sessions and the synthetic-dataset checklist cover all three topics at measure depth, with practice in the mini-project harness."
       }
     },
     {
@@ -467,47 +773,84 @@
         "energy-normalized-serving-comparisons"
       ],
       "outcomes": [
-        "TODO"
+        "Retain raw per-request timestamps and per-token decode gaps instead of summary statistics.",
+        "Record memory, utilization and power beside every timing run.",
+        "Normalize energy comparisons per accepted token and state what the meter actually measures."
       ],
-      "why": "TODO",
+      "why": "Summaries hide the gaps and stalls that explain tails. Raw records plus resource context are what let you or anyone else re-analyze a run.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/trials-variance-observer-effects",
+          "note": "Repeat the raw records with trials and uncertainty."
+        },
+        {
+          "unit": "inference/capacity-economics-engine-extension/fair-trials-raw-traces",
+          "note": "Reuse the raw-trace discipline for fair benchmark trials."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-metrics-inf2",
+          "title": "Histograms and counters worth keeping",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "v1 Metrics with the TTFT, inter-token, per-request TPOT, end-to-end, prefill, decode and queue histograms (`vllm:time_to_first_token_seconds`, `vllm:inter_token_latency_seconds`, `vllm:request_time_per_output_token_seconds`, `vllm:e2e_request_latency_seconds`, `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds`, `vllm:request_queue_time_seconds`); Metrics Publishing - Logging with the 5-second summary; Prefix Cache metrics with hits and queries as counters"
+        },
+        {
+          "resource": "vllm-bench-inf2",
+          "title": "Per-request result files",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/",
+          "locator": "Custom Dataset example with save-result, save-detailed and result-dir; Results Visualization with the timeline and dataset-statistics plots"
+        },
+        {
+          "resource": "aisys-ch16-inf2",
+          "title": "Resource context beside every run",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Monitoring System Metrics and Counters (pp. 964 to 969): the Prometheus and Grafana stack with SM busy, memory used, copy-engine, link throughput, temperature, power and per-node request metrics"
+        },
+        {
+          "resource": "aisys-code16-inf2",
+          "title": "A monitoring bundle you can run",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch16/monitoring_bundle.py",
+          "locator": "`monitoring_bundle.py` writing the Prometheus scrape, recording-rule, alert and Grafana files; `monitoring_config.py` for the TTFT, prefill, decode and KV thresholds",
+          "depth": "Use the bundle as scaffolding for your own dashboard. Re-measure every bundled threshold on your device instead of adopting it, and check its metric names against v0.31.0 first: `vllm:time_per_output_token_seconds` and `vllm:gpu_cache_usage_perc` are now `vllm:inter_token_latency_seconds` and `vllm:kv_cache_usage_perc`, and `vllm:cudagraph_mode_info` does not exist."
         }
       ],
       "focus": [
-        "TODO"
+        "Keep arrival, first-token and per-token completion timestamps per request, plus the decode gaps between them. Percentiles are computed from these records, never stored instead of them.",
+        "Resource context means GPU memory used, utilization, copy-engine activity, power and temperature with timestamps aligned to the requests. A timing without its context is not re-analyzable.",
+        "Report memory in stated units with the dtype and configuration beside it. Gigabytes and gibibytes differ by about 7 percent, which exceeds many claimed wins.",
+        "Energy comparisons divide measured joules by accepted tokens under the same quality gate. Name the meter, its sampling interval and whether it covers the host or only the device."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, list the raw fields one request record needs for full re-analysis: arrival, queue, prefill, per-token and completion timestamps with prompt and output lengths, plus the aligned memory, utilization and power samples.",
       "traps": [
-        "TODO"
+        "Keeping only mean latency and throughput. Means hide gaps, stalls and tails; the per-token record is the evidence.",
+        "Quoting memory without units or dtype. A 14 GB weight total at 2 bytes per parameter is decimal gigabytes; mixing in gibibytes silently moves every capacity claim.",
+        "Comparing energy per token across runs with different output acceptance. Rejected or truncated outputs still cost energy; normalize by accepted tokens."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why keep per-token gaps when you already store TPOT per request?",
+          "a": "TPOT averages one request's decode time. Gaps show where stalls landed, which requests interfered, and what the tail is made of."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A run reports 14 GB model memory. What must accompany that number?",
+          "a": "The unit convention, the parameter count with bytes per parameter, and the configuration. Without them the number cannot be checked."
+        },
+        {
+          "q": "Two servers report the same tokens per joule. One meter covers the device, the other the whole host. Comparable?",
+          "a": "No. State the meter boundary and sampling interval first; host power includes work the device meter never sees."
+        },
+        {
+          "q": "Where do prefix-cache hits and queries belong in the raw record?",
+          "a": "As counters beside the requests, so hit rate is computed per interval. Storing only the rate loses the query volume behind it."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: raw arrival and completion records with decode gaps, aligned resource context, and the energy-per-accepted-token accounting.",
+      "stopWhen": "A stranger can recompute your percentiles, gaps and energy numbers from your stored records plus stated units and meter boundaries.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The metrics design, the bench result files and the monitoring chapter with its runnable bundle cover all three topics, with practice in the mini-project harness."
       }
     },
     {
@@ -522,47 +865,71 @@
         "measurement-overhead-and-observer-effects"
       ],
       "outcomes": [
-        "TODO"
+        "Run repeated interleaved trials and report uncertainty instead of single-shot means.",
+        "Quantify observer overhead from metrics, logging and profiling, and keep it out of the critical path.",
+        "Reuse the validated load generator so arrivals do not change between trials."
       ],
-      "why": "TODO",
+      "why": "One fast run proves nothing, and a heavy observer changes the result. Trials plus overhead accounting are what make a baseline trustworthy.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/profiling-stall-diagnosis",
+          "note": "Profile only after trials show a stable effect."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/prediction-residuals-goodput",
+          "note": "Carry trial uncertainty into residuals and goodput."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ttft-project-inf2",
+          "title": "Repeated sweeps with two-tool cross-checks",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Week 5 deliverable: the scripted concurrency sweep past 1000 concurrent runs cross-checked by two tools, with p50, p95 and p99 throughout"
+        },
+        {
+          "resource": "vllm-metrics-inf2",
+          "title": "Observer overhead and where metrics live",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Metrics Collection on moving bookkeeping out of the engine core into the frontend; KV Cache Residency Metrics with sampling keeping the overhead tiny"
         }
       ],
       "focus": [
-        "TODO"
+        "Use the interleaved-trial discipline from the Interleaved trials, raw samples and uncertainty unit: alternate conditions, seed the order, keep raw samples and report uncertainty, not just means.",
+        "Metrics, logging and tracing cost time and memory. Measure with the observer on and off, and sample expensive telemetry instead of recording everything.",
+        "Cross-check with a second tool before believing a number. Two harnesses that agree rule out harness bugs that repeats of one harness never catch.",
+        "Arrivals are part of the trial. Reuse the validated open- and closed-loop load generator so arrivals from `vllm bench serve --request-rate 4 --burstiness 1.0 --seed 0` stay fixed while you vary the engine."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, design a three-trial interleaved comparison of two chunk budgets: the trial order, the raw samples kept, the uncertainty reported, and the observer-on versus observer-off check.",
       "traps": [
-        "TODO"
+        "Averaging ratios across trials with an arithmetic mean. It is asymmetric, since the mean of A/B is not the inverse of the mean of B/A; report the ratio of aggregates or the geometric mean of per-trial ratios with uncertainty.",
+        "Profiling every trial. Full traces on all repeats inflate overhead and disk use; profile one localized case after trials establish the effect.",
+        "Changing the arrival process between trials. A different burstiness or seed moves queueing, which then masquerades as an engine difference."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why interleave trials instead of running all of condition A then all of B?",
+          "a": "Interleaving spreads slow drifts in temperature, clocks and background load across both conditions instead of confounding them with the condition."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "How do you show the observer did not distort a result?",
+          "a": "Run the same trials with the observer on and off, or with sampling on and off, and show the effect is unchanged within uncertainty."
+        },
+        {
+          "q": "Two tools disagree on TPOT for the same workload. What first?",
+          "a": "Check definitions and measurement points: per-gap ITL versus per-request TPOT, client versus engine clocks, and included versus excluded single-token requests."
+        },
+        {
+          "q": "When is a single trial enough?",
+          "a": "For a correctness gate or a smoke check, never for a performance claim. Claims need repeats with uncertainty."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: repeated interleaved trials with raw samples and uncertainty, the two-tool cross-check, and the observer overhead measurement.",
+      "stopWhen": "Every number you quote carries its trials, its uncertainty and its observer check, and a second tool agrees.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The TTFT cross-checked sweeps and the metrics-collection overhead material cover both topics at measure depth, with practice in the mini-project harness."
       }
     },
     {
@@ -577,47 +944,78 @@
         "queueing-versus-execution-stall-diagnosis"
       ],
       "outcomes": [
-        "TODO"
+        "Place profiler ranges across encode and decode steps and read prefill versus decode work off a systems timeline.",
+        "Distinguish queueing stalls from execution stalls using queue time, phase intervals and scheduler state.",
+        "Explain one failed bottleneck hypothesis from synchronized trace evidence."
       ],
-      "why": "TODO",
+      "why": "Profiles show where time went. Only the queue-versus-execution split says whether to fix scheduling or kernels.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/prediction-residuals-goodput",
+          "note": "Turn the diagnosis into a tested prediction with residuals."
+        },
+        {
+          "unit": "inference/inference-kernels-graph-execution/kernel-timing-accounting-profiles",
+          "note": "Continue with device-level kernel timing and accounting."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-ch16-inf2",
+          "title": "Timelines with phase ranges",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Profiling with Nsight Systems and Nsight Compute (pp. 969 to 973): NVTX Prefill and Decode step ranges, per-stream transfer and compute naming, and PC sampling before full tracing in production"
+        },
+        {
+          "resource": "aisys-code16-inf2",
+          "title": "Sequential versus overlapped runtime structure",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/main/code/ch16/baseline_runtime_scheduler.py",
+          "locator": "`baseline_runtime_scheduler.py` with sequential CPU preparation, GPU compute and per-token streaming against `optimized_runtime_scheduler.py`; read the overlap structure under NVTX ranges",
+          "depth": "Read the overlap structure, not the milliseconds. The matmul dimensions and the bundled per-architecture expectations are synthetic; re-measure everything on your device."
+        },
+        {
+          "resource": "vllm-metrics-inf2",
+          "title": "Queueing versus execution in metric form",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Interval Calculations with the queue, prefill, decode and inference intervals; Scheduler Stats with running and waiting counts including waiting by reason"
         }
       ],
       "focus": [
-        "TODO"
+        "Use the CPU-GPU timelines, NVTX ranges and trace-to-source correlation unit for timeline reading: union of busy lanes, not sums, and a CPU range is not device completion. This unit adds the serving stall split.",
+        "Scope ranges to phases: one Prefill range around encode, one Decode range per step. Phase lengths, overlaps and idle gaps on the timeline are the diagnosis.",
+        "A stall with growing queue time and waiting counts is queueing: fix admission, budget or load. A stall inside prefill or decode intervals with the device busy is execution: profile kernels.",
+        "Preemption looks like execution from one angle and queueing from another. Read the preemption events and the restarted prefill spans before naming the cause."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, annotate a timeline that shows a long TTFT with short prefill kernels: place the NVTX ranges, mark the queue span, and state whether the fix is scheduling or kernels with the evidence quoted.",
       "traps": [
-        "TODO"
+        "Summing busy times across streams and lanes. Overlapping work counts once; the union is the elapsed time.",
+        "Reading a long CPU-side range as slow device work. Host ranges include launch, synchronization and waiting; only device-side evidence classifies execution.",
+        "Profiling in production with full tracing first. Localize with counters and PC sampling, then trace one case."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Prefill kernels take 40 ms inside a 900 ms TTFT with high queue time. Scheduling or kernels?",
+          "a": "Scheduling. The kernels are a small fraction; the request waited. Fix admission, budget or load."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Decode gaps spike exactly when a new long prompt arrives. What confirms interference over a kernel regression?",
+          "a": "The gaps align with the new prefill's iterations on the timeline while decode kernels are unchanged, and per-step instrumentation shows the waits outside model execution."
+        },
+        {
+          "q": "Why scope NVTX ranges to phases instead of wrapping the whole server loop?",
+          "a": "Phase ranges separate prefill from decode work on the timeline. One outer range cannot attribute time to either phase."
+        },
+        {
+          "q": "A profile shows all-to-all above 5 ms per iteration on a disaggregated setup. What next?",
+          "a": "Treat communication as the hypothesis: verify against the timeline and counters, then test overlap or placement changes. Do not tune attention kernels first."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trace queries that explain a request's TTFT and every decode gap from synchronized ranges and scheduler state.",
+      "stopWhen": "You can take any slow request, split its stall into queueing versus execution from trace evidence, and kill one wrong hypothesis in writing.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Nsight ranges, the runtime-scheduler overlap code and the queue-versus-phase intervals cover both topics at measure depth, with practice in the mini-project harness."
       }
     },
     {
@@ -633,47 +1031,77 @@
         "goodput-under-explicit-ttft-and-tpot-targets"
       ],
       "outcomes": [
-        "TODO"
+        "Write a bottleneck prediction with numbers before profiling, then explain the residual from evidence.",
+        "Measure goodput under explicit TTFT and TPOT targets and report what meets the objectives.",
+        "Preserve one failed prediction with the observation that disproved it."
       ],
-      "why": "TODO",
+      "why": "A prediction written after the profile explains everything and predicts nothing. Residuals against a prior prediction are the only honest evidence in this section.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/capacity-economics-engine-extension/bottleneck-shift-capacity-decision",
+          "note": "Turn residuals into the capacity and cost decision."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/saturation-queue-recovery",
+          "note": "Extend goodput through saturation and recovery."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "A worked prediction table",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 4.4 with Tables 2 and 3 (pp. 9 to 10): the low-latency versus high-throughput rows as predictions, with cost as chip-seconds per token and MFU as the check"
+        },
+        {
+          "resource": "vllm-bench-inf2",
+          "title": "Goodput from the benchmark result format",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/",
+          "locator": "Online Benchmark result format with request, output-token and total-token throughput beside mean, median and P99 TTFT, TPOT and ITL; Load Pattern Control Parameters for testing against a target rate"
+        },
+        {
+          "resource": "inference-lab-inf2",
+          "title": "Prediction-first measurement",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Milestone E: validate the operation, byte, launch, resource, KV, queue and capacity model and quantify residuals; optimize only measured critical-path terms"
         }
       ],
       "focus": [
-        "TODO"
+        "Write the prediction before the profile: the regime, the expected TTFT and TPOT ranges, and the bottleneck with numbers. Date it; postdiction is the failure mode.",
+        "The residual is measured minus predicted with an attributed cause from spans or profiles, such as unmodeled launch overhead, queueing or cache effects.",
+        "Goodput counts only requests meeting the TTFT and TPOT targets. Throughput without targets is not goodput, and a faster engine can have worse goodput under tight targets.",
+        "Keep the failed prediction visible with its disproving observation. The checkpoint requires one, and it is the most portable artifact of the unit."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write a prediction for a short-prompt and a long-prompt workload: regime, TTFT and TPOT ranges, and the bottleneck. Then run `vllm bench serve --request-rate 4 --goodput ttft:500 tpot:50` against both, compute the residuals, and attribute each to evidence.",
       "traps": [
-        "TODO"
+        "Tuning the prediction after seeing the profile. A post-fit story has no residual; lock the numbers first.",
+        "Reporting goodput without stating the targets. The same run has different goodput under different objectives, so targets are part of the number.",
+        "Changing workload, cache state or versions between prediction and measurement. Residuals need identical contracts on both sides."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What must a prediction contain to admit a residual?",
+          "a": "The regime, numeric TTFT and TPOT ranges, and the named bottleneck, written before profiling under a fixed contract."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Measured TPOT doubles the prediction while TTFT matches. What class of cause fits?",
+          "a": "A decode-side miss: interference from concurrent prefills, cache pressure, or unmodeled per-step overhead. Prefill-side causes would move TTFT."
+        },
+        {
+          "q": "Engine A has higher throughput but lower goodput than engine B under strict targets. Consistent?",
+          "a": "Yes. Goodput counts only requests meeting the targets; A can serve more tokens while missing the objectives more often."
+        },
+        {
+          "q": "Why preserve a failed prediction instead of replacing it with the corrected one?",
+          "a": "The failure with its disproving observation records a tested boundary of the model. The corrected prediction alone hides what was ruled out."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the dated prediction, the residual attribution with evidence, and the goodput report under explicit TTFT and TPOT targets.",
+      "stopWhen": "You hold a dated prediction, measured residuals with attributed causes, a goodput number with stated targets, and one preserved failure.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The scaling paper's prediction table, the bench result format with target-rate controls, and the laboratory residual requirement cover both topics, with practice in the mini-project harness."
       }
     }
   ]
