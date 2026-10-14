@@ -212,47 +212,90 @@
         "outliers-and-activation-smoothing"
       ],
       "outcomes": [
-        "TODO"
+        "Run static and dynamic calibration on one linear layer and explain when each range goes stale.",
+        "Derive the SmoothQuant migration \\(Y = (X \\mathrm{diag}(s)^{-1})(\\mathrm{diag}(s) W)\\) and the per-channel factor from activation and weight maxima.",
+        "Contrast activation smoothing with salient-weight scaling on an outlier channel, with error numbers."
       ],
-      "why": "TODO",
+      "why": "Outliers decide whether activation quantization survives. Calibration picks the range, and smoothing or salient scaling decides which side absorbs the difficulty.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/quantization-speculative-decoding/quantization-methods-quality",
+          "note": "Place smoothing and salient scaling inside the GPTQ, AWQ and SmoothQuant comparison."
+        },
+        {
+          "unit": "inference/quantization-speculative-decoding/quantized-serving-measurement",
+          "note": "Check that the calibrated scales hold on your workload slice."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "smoothquant-inf6",
+          "title": "Outliers, smoothing and the O1 to O3 ladder",
+          "url": "https://arxiv.org/abs/2211.10438",
+          "locator": "SmoothQuant arXiv:2211.10438v1, Section 3 Review of Quantization Difficulty (outliers near 100x, fixed channels), Section 4 SmoothQuant with the migration equation and the alpha 0.5 and 0.75 settings, and Section 5.1 setups (512 Pile sentences, alpha grid search, O1 per-token dynamic versus O2/O3 per-tensor)",
+          "depth": "Read the O1, O2 and O3 rows as a cost ladder, not as three methods to deploy. Stop before the distributed results."
+        },
+        {
+          "resource": "awq-inf6",
+          "title": "Salient weights and activation-aware scaling",
+          "url": "https://arxiv.org/abs/2306.00978",
+          "locator": "AWQ arXiv:2306.00978v1, Section 3.1 (protecting 1 percent of salient weights, perplexity 43.2 to 13.0) and Section 3.2 (activation-aware scaling search), plus Figure 8 on smaller calibration sets and calibration distribution robustness"
+        },
+        {
+          "resource": "hundred-days-quant-spec-inf6",
+          "title": "Day 14: GPTQ, AWQ and SmoothQuant cells",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day14/quantization-gptq-awq-smoothquant.ipynb",
+          "locator": "Notebook day14/quantization-gptq-awq-smoothquant.ipynb: AWQ Activation-Aware Weight Quantization (`awq_get_scales`, `awq_quantize`) and SmoothQuant Migration Transform (`smoothquant_calibrate`)"
+        },
+        {
+          "resource": "mit65940-inf6",
+          "title": "MIT 6.5940 Lectures 5 and 6: quantization",
+          "url": "https://hanlab.mit.edu/courses/2024-fall-65940",
+          "locator": "Lecture 5 Quantization Part I and Lecture 6 Quantization Part II slide decks and videos, for the observer and granularity framing around the two papers"
         }
       ],
       "focus": [
-        "TODO"
+        "Static calibration fixes ranges from sample data and goes stale when the workload shifts; dynamic calibration reads ranges at runtime and costs compute per step. Name which one each scale uses.",
+        "SmoothQuant moves difficulty from activations to weights with a per-channel factor \\(s_j = \\max|X_j|^\\alpha / \\max|W_j|^{1-\\alpha}\\), fused offline into neighboring layers so inference sees ordinary INT8.",
+        "AWQ instead scales up the 1 percent of salient weight channels before rounding and folds the inverse into the activations. Same theme, opposite direction.",
+        "Calibration distribution matters: matched calibration and evaluation data wins, and AWQ reaches good perplexity with a much smaller set than GPTQ-style Hessian methods."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On one small linear layer with a planted outlier channel, compute per-channel maxima, apply the SmoothQuant factor with \\(\\alpha = 0.5\\), and show the activation range collapses while the product \\(XW\\) is unchanged up to floating-point tolerance.",
       "traps": [
-        "TODO"
+        "Calibrating on the evaluation set and reporting the error there. Calibration data is fitted state; score quality on held-out prompts.",
+        "Treating smoothing as free accuracy. It shifts quantization difficulty into the weights, so weight error rises; the win is that INT8 weights tolerate it better than INT8 activations tolerate outliers.",
+        "Assuming one alpha fits all models. The paper grid-searches alpha per model family, 0.5 for OPT and BLOOM and 0.75 for GLM-130B, because outlier strength differs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "An activation channel peaks at 100 while most peak near 1. What breaks under per-tensor INT8 activation quantization?",
+          "a": "The single scale stretches to the outlier, so the bulk rounds to a few codes near zero. Per-channel smoothing or per-token dynamic ranges contain the damage."
+        },
+        {
+          "q": "Why is the SmoothQuant transform mathematically equivalent before rounding?",
+          "a": "It inserts \\(\\mathrm{diag}(s)^{-1} \\mathrm{diag}(s) = I\\) between activation and weight. The product is unchanged; only the rounding that follows sees friendlier ranges."
+        },
+        {
+          "q": "Static activation scales calibrated on chat prompts now serve code. What symptom appears?",
+          "a": "Clipping or coarse steps on unseen magnitude patterns, hence quality drift. Recalibrate on the serving distribution or switch that tensor to dynamic ranges."
+        },
+        {
+          "q": "How do AWQ and SmoothQuant differ in what they protect?",
+          "a": "AWQ scales up salient weight channels identified through activation magnitudes, protecting weights. SmoothQuant scales down outlier activation channels, protecting activations at some cost to weight error."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of LLM Inference Day 14: SmoothQuant and AWQ cells",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day14/quantization-gptq-awq-smoothquant.ipynb",
+          "locator": "Experiments Try These in day14/quantization-gptq-awq-smoothquant.ipynb: run `smoothquant_calibrate` and `awq_get_scales` on a layer with a planted outlier channel and compare output error against naive round-to-nearest",
+          "note": "Report error per method on held-out inputs, and state which scales are static and which would need runtime statistics."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the migration factor from channel maxima, show the unchanged product on one layer, and can say for each scale in your pipeline whether it is static or dynamic and what data fixed it.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The two papers supply the derivations and calibration evidence at the unit target, with the Day 14 cells and MIT lectures as the executable and framing companions."
       }
     },
     {
@@ -269,47 +312,89 @@
         "fused-dequantization-and-hardware-kernel-support"
       ],
       "outcomes": [
-        "TODO"
+        "Compute served bits per weight from code width, group scales, zero points and alignment for one layout.",
+        "Explain why INT8 products accumulate in INT32 and where overflow would first appear.",
+        "Distinguish fused dequantization-free kernels from dequantize-then-compute paths, and check support on your GPU."
       ],
-      "why": "TODO",
+      "why": "Nominal width is not served width, and unpacked weights are not faster weights. The kernel decides whether quantization pays; the packing decides what it costs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/quantization-speculative-decoding/quantized-serving-measurement",
+          "note": "Measure whether the fused path wins on your shapes."
+        },
+        {
+          "unit": "gpu/gpu-gemm-tensor-low-precision/precision-formats",
+          "note": "Revisit input, product and accumulation precision from the hardware side."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "awq-inf6",
+          "title": "Packing, fusion and on-the-fly dequantization",
+          "url": "https://arxiv.org/abs/2306.00978",
+          "locator": "AWQ arXiv:2306.00978v1, Section 4.2 Deploy AWQ with TinyChat: on-the-fly weight dequantization, SIMD-aware weight packing with the reordered layout figure, and kernel fusion of QKV and position embeddings"
+        },
+        {
+          "resource": "hands-serving-ch67-inf6",
+          "title": "Mixed-precision kernels and quantization hardware notes",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 6 (printed pp. 211 to 213): the Marlin kernel for Ampere and Machete kernel for Hopper paragraph, the W4A16 with GPTQ or AWQ versus W8A8 table entries, and FP8 Is Not Always Applicable with the E4M3 and E5M2 table"
+        },
+        {
+          "resource": "aisys-quant-spec-inf6",
+          "title": "Fusing dequantization into the execution graph",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 16, Quantization Approaches for Real-Time Inference: Fusing Quantization-Dequantization Steps into the Execution Graph, with weight packing and the CUDA and Triton kernel notes"
+        },
+        {
+          "resource": "hundred-days-quant-spec-inf6",
+          "title": "Day 13 Part 4: microscaled block overhead",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day13/quantization-number-formats.ipynb",
+          "locator": "Notebook day13/quantization-number-formats.ipynb, Part 4 NVFP4: `quantize_nvfp` with block size 16 and the effective-bits accounting"
         }
       ],
       "focus": [
-        "TODO"
+        "Packing reorders sub-byte codes so vector loads stay aligned; the layout in the AWQ figure exists so one instruction feeds many lanes. Count the scale bytes beside the code bytes.",
+        "An INT8 product reaches \\(127 \\times 127 = 16{,}129\\), and a dot product over thousands of terms overflows INT16 quickly. Accumulate in INT32, then scale once at the end.",
+        "Fused kernels multiply INT4 or FP8 weights against FP16 activations in one pass. Dequantize-then-compute paths pay full high-precision arithmetic plus conversion overhead.",
+        "Hardware support is a table lookup, not a trend. FP8 needs Hopper or newer, Marlin targets Ampere-generation GPUs, and GGUF targets CPU and Apple Silicon instead."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute the served rate for group-64 INT4 with one FP16 scale and one INT8 zero point per group, and state the smallest dot-product length at which INT16 accumulation of INT8 products can overflow.",
       "traps": [
-        "TODO"
+        "Benchmarking unpacked reference code and calling it the quantized result. Without the packed layout and fused kernel the numbers describe dequantization overhead, not the method.",
+        "Accumulating in the quantized width. Saturation looks like a quality regression but is an arithmetic bug; widen the accumulator first.",
+        "Assuming an FP8 model runs anywhere. The weights load but the Tensor Core path is missing, so execution falls back or fails; check the support table before planning a run."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Group-64 INT4 stores one FP16 scale and one INT8 zero point per group. What is the served rate?",
+          "a": "\\(4 + (16 + 8) / 64 = 4.375\\) bits per weight, before any alignment padding."
+        },
+        {
+          "q": "Why must INT8 products accumulate in INT32?",
+          "a": "One product already reaches 16,129, and a 4096-term dot product can approach \\(6.6 \\times 10^7\\), beyond INT16 range. INT32 holds it; scale back after the sum."
+        },
+        {
+          "q": "What distinguishes the Marlin and Machete kernels from a naive dequantize-then-multiply path?",
+          "a": "They fuse quantized weight access into the matrix multiplication, so low-bit weights meet FP16 activations in one pass without materializing a full-precision copy."
+        },
+        {
+          "q": "NVFP4 reports about 4.5 effective bits. Where does the half bit come from?",
+          "a": "Each block of 16 values shares an FP8 scale: \\(8 / 16 = 0.5\\) bits per value on top of 4 code bits."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of LLM Inference Day 13: block-scale accounting",
+          "url": "https://github.com/elizabetht/100-days-of-inference/tree/main/day13/quantization-number-formats.ipynb",
+          "locator": "Part 4 NVFP4 cells: vary the block size in `quantize_nvfp`, measure error and effective bits per weight, and state which block size your error budget allows",
+          "note": "Keep the error tensor and the bit accounting in the same table; one without the other proves nothing."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You compute served bits for any group layout without notes and can say for a stated GPU whether the INT4 and FP8 paths are fused, emulated or absent.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AWQ deployment section, the book kernel paragraphs and the NVFP4 block cells cover packing, accumulation and fusion at the unit target."
       }
     },
     {
