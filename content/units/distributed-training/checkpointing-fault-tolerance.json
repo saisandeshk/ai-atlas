@@ -94,7 +94,7 @@
           "name": "Crash-and-restart loop with the guide `toy.py`",
           "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
           "locator": "Run `toy.py` with two CPU processes with GPUs hidden so it uses gloo: let it crash once, restart, and show `num_steps` continues from the saved state",
-          "note": "The script raises at random with probability 0.001 per step and loops forever, so bound the run: stop after the first crash, and compare post-restart values against a fixed-step uninterrupted reference."
+          "note": "Each rank raises with probability 0.001 per step, so a 2-process run crashes within a few hundred steps (step 402 in about 2 s on CPU with PyTorch 2.14.1) and leaves `toy-state.json`; a rerun continues from it, so delete the file before a fresh start. Compare post-restart draws with an uninterrupted run and explain the gap: the script reseeds from the step count instead of restoring the RNG state."
         }
       ],
       "stopWhen": "A mid-epoch resume reproduces the reference run's next batches and weights exactly on CPU, and you can name every stream in the checkpoint plus what breaks when each is dropped.",
@@ -253,7 +253,7 @@
         "Seed checkpoints separate initialization from training. TorchTitan builds weights once on one device and DCP-reshards them anywhere, so layout never leaks into the initial weights.",
         "Nanotron's format shows why manifests must record topology. Per-rank optimizer and RNG shards have no defined meaning under a new TP, DP or PP layout, so the honest manifest refuses rather than guesses."
       ],
-      "reproduce": "Write a three-key manifest (schema version, topology, config hash) for a toy checkpoint, then demonstrate all three refusals: bump the schema, rename one parameter under strict loading, and delete `.metadata`. Each must fail loudly with the cause named.",
+      "reproduce": "Write a three-key manifest (schema version, topology, config hash) for a toy checkpoint, then demonstrate all three refusals: bump the schema, rename one parameter under strict loading, and delete `.metadata`. Each must fail loudly with the cause named. Catch a failed `dcp.load` as `CheckpointException`: in PyTorch 2.14.1 it derives from `BaseException`, so `except Exception` lets it through.",
       "traps": [
         "Trusting file names as a manifest. `step-12` without a `.metadata` probe is an interrupted write; TorchFeather's loader skips it, and yours must too.",
         "Excluding a key from loading and forgetting to remove the exclusion. TorchTitan's EMA note shows the failure: every later resume cold-starts the EMA and discards its history.",
@@ -327,7 +327,7 @@
         {
           "resource": "stas-fault-dt9",
           "title": "Checksums on every sync",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/storage/README.md",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/storage/README.md",
           "locator": "Don't forget the checksums: verify MD5 or SHA256 on sync because some tools skip it; slow but safe"
         },
         {
@@ -340,7 +340,7 @@
           "resource": "mlsys-vol2-fault-dt9",
           "title": "Check-and-verify against silent corruption",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Check-and-Verify: Defending Against Silent Data Corruption, with Napkin Math 7.2: hash each gradient shard or reduced buffer and block the optimizer step on digest mismatch"
+          "locator": "Check-and-Verify: Defending Against Silent Data Corruption, with Napkin Math 1.2: hash each gradient shard or reduced buffer and block the optimizer step on digest mismatch"
         }
       ],
       "focus": [
@@ -353,7 +353,7 @@
       "traps": [
         "Writing shards straight into the final directory. A crash mid-write leaves the newest version half complete, and the loader cannot tell it from a good one.",
         "Checksumming the archive but skipping per-shard hashes. One corrupt shard then invalidates the whole checkpoint with no way to name the bad file.",
-        "Syncing file data but ignoring the directory entry. The earlier unit Files, page cache, fsync, atomic rename and durability covers the full contract: data first, then the rename, with the containing directory made durable."
+        "Syncing file data but ignoring the directory entry. The earlier unit Files, page cache, fsync, atomic rename and durability covers the full contract: each file made durable first, then the rename, with the containing directory made durable."
       ],
       "selfTest": [
         {
@@ -445,14 +445,14 @@
       "focus": [
         "Every rank participates in every save. DCP plans across the group, so a rank that skips `save` breaks the plan for all. Barrier before, join the future before the next save.",
         "Async staging copies parameters to CPU buffers first so training continues. The copy costs per-rank size times ranks of host memory, and pinned buffers persist between saves instead of releasing.",
-        "Two futures, two deadlines: `staging_completion` must resolve before `optimizer.step` mutates the parameters, and `upload_completion` must resolve before the next save reuses the buffers or the job exits.",
+        "With a `DefaultStager` doing asynchronous staging, `async_save` returns two futures with two deadlines: `staging_completion` must resolve before `optimizer.step` mutates the parameters, and `upload_completion` before the next save reuses the buffers or the job exits. The CPU default path stages synchronously and returns one future; join it before the next save or the exit.",
         "Isolate checkpoint collectives on their own process group, as TorchFeather's gloo `async_save_pg` does, so save coordination never interleaves with training collectives."
       ],
-      "reproduce": "Time 5 synchronous `dcp.save` calls against 5 `async_save` calls with joining on CPU, and report both totals plus how many staging copies are held at once. Then skip the join before exit and show the last checkpoint is incomplete.",
+      "reproduce": "Time 5 synchronous `dcp.save` calls against 5 `async_save` calls with joining on CPU, and report both totals plus how many staging copies are held at once. Then destroy the process group right after the last `async_save` without joining: on 2 CPU processes with PyTorch 2.14.1 this left `.metadata` plus only rank 0's shard, with exit code 0. A plain exit without the destroy still completes, because the interpreter waits for the background thread.",
       "traps": [
-        "Queueing a second `async_save` before joining the first. Each outstanding request holds a full staging copy; the recipe's one-at-a-time discipline bounds host memory.",
+        "Queueing a second `async_save` before joining the first. Each outstanding request holds a full staging copy, and on one `gloo` group the two background saves interleave their collectives: in a 2-process CPU run both timed out and neither checkpoint was written.",
         "Calling `optimizer.step` right after `async_save` with a `DefaultStager`. The device-to-host copy may still be in flight, so wait on `staging_completion` first or the checkpoint captures half-updated weights.",
-        "Exiting while the future is pending. `close` must join with `_async_wait` and destroy the group, or the final checkpoint is silently incomplete."
+        "Tearing down while the future is pending. Join first, as TorchFeather's `close` does with `_async_wait` before destroying its group: destroying the group with the save in flight produced `.metadata` plus one of two shards and a clean exit code."
       ],
       "selfTest": [
         {
@@ -480,7 +480,7 @@
           "note": "The recipe uses CUDA devices. On CPU there is no device-to-host copy, so timings compare API overhead and disk writes only. GPU staging overlap needs two or more GPUs; state that condition in your notes."
         }
       ],
-      "stopWhen": "Your CPU port joins exactly one outstanding request per step, separates staging from upload completion, and your timings state which costs transfer to GPUs and which do not.",
+      "stopWhen": "Your CPU port joins exactly one outstanding request per step, separates staging from upload completion in the `DefaultStager` variant, and your timings state which costs transfer to GPUs and which do not.",
       "fit": {
         "verdict": "kept",
         "note": "The async recipe plus the TorchFeather and TorchTitan isolation patterns cover coordination, staging memory and measurement at explain and measure depth."
@@ -519,18 +519,18 @@
           "resource": "mlsys-vol2-fault-dt9",
           "title": "The interval model",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Checkpointing: Preserving Progress with Definition 7.1; Checkpoint interval from failure analysis with Figure 7.25 and Napkin Math 7.3; Systems Perspective 7.3 on Young-Daly assumptions; Checkpoint overhead analysis; The stop-the-world cost"
+          "locator": "Checkpointing: Preserving Progress with Definition 1.1; Checkpoint interval from failure analysis with Figure 25 and Napkin Math 1.3; Systems Perspective 1.3 on Young-Daly assumptions; Checkpoint overhead analysis; The stop-the-world cost"
         },
         {
           "resource": "mlsys-vol2-fault-dt9",
           "title": "Recovery budgets and vocabulary",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Failure Detection and Recovery with equation 7.9 for recovery time; Checkpoint 7.4: Reasoning about the checkpoint tax; appendix Reliability Foundations: Checkpoint Optimization, Recovery Budgets, Strategy Selection"
+          "locator": "Failure Detection and Recovery with equation 9 for recovery time; Checkpoint 1.4: Reasoning about the checkpoint tax; appendix Reliability Foundations: Checkpoint Optimization, Recovery Budgets, Strategy Selection"
         },
         {
           "resource": "stas-fault-dt9",
           "title": "Frequency arithmetic from production",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
           "locator": "Frequent checkpoint saving: BLOOM-176B wrote 2.3TB in 40 seconds on 384 processes every 3 hours, 720 saves totalling 8 hours (0.37 percent); keep the 2 most recent checkpoints local for fast resume"
         },
         {
@@ -538,15 +538,22 @@
           "title": "Failure rates to plan against",
           "url": "https://arxiv.org/abs/2407.21783",
           "locator": "Section 3.3.4 Reliability and Operational Challenges with Table 5: 466 interruptions over a 54-day snapshot, 47 planned and 419 unexpected; Section 3.3.1 storage on bursty writes and minimizing pause time (arXiv:2407.21783v3)"
+        },
+        {
+          "resource": "mlsys-vol2-fault-dt9",
+          "title": "Incremental checkpoints and their restore chain",
+          "url": "https://mlsysbook.ai/vol2/data_storage/data_storage.html",
+          "locator": "Checkpoint Storage: the paragraph beginning \"Incremental checkpointing offers a further optimization\"",
+          "depth": "It defines an incremental checkpoint as changes since the last full one, which backup vocabulary calls differential, yet restores it by applying a chain of increments. Use this unit's two definitions and record in the manifest which one each partial checkpoint follows."
         }
       ],
       "focus": [
         "Total waste is write cost plus expected rework: \\(T_{\\text{write}} / \\tau + \\tau / (2 \\cdot \\text{MTBF})\\). The Young-Daly interval \\(\\tau_{\\text{opt}} = \\sqrt{2 \\cdot T_{\\text{write}} \\cdot \\text{MTBF}}\\) sits at its minimum. Derive it by differentiating, not by quoting.",
-        "Restart time is a per-failure term, not a smaller write time. Folding restart into the square root needs a recovery-aware model, as Systems Perspective 7.3 warns.",
-        "RPO is the oldest state you can lose, bounded by interval plus retention gaps. RTO is detect plus restart plus load plus warmup. Interval moves RPO; recovery engineering moves RTO.",
-        "Incremental checkpoints store changes since the last checkpoint of any kind; differential store changes since the last full one. Restore needs the base plus every incremental since, or the base plus the latest differential. Neither replaces a correct full checkpoint."
+        "Restart time is a per-failure term, not a smaller write time. Folding restart into the square root needs a recovery-aware model, as Systems Perspective 1.3 warns.",
+        "RPO is the oldest state you can lose, bounded by interval plus retention gaps. RTO is detect plus restart plus load plus warmup, the chapter's equation 9. Interval moves RPO; recovery engineering moves RTO. Both terms come from SLIs, SLOs, error budgets and recovery objectives, applied here to checkpoints.",
+        "Incremental checkpoints store changes since the last checkpoint of any kind; differential store changes since the last full one. Restore needs the base plus every incremental since, or the base plus the latest differential. Neither replaces a correct full checkpoint. The storage chapter uses incremental for since-last-full deltas, so name the definition you use."
       ],
-      "reproduce": "Closed-book, recompute Napkin Math 7.3 (37-second writes with 3.69-hour MTBF give a 991-second interval at 7.5 percent total waste) and the BLOOM overhead (720 saves of 40 seconds are 8 hours, 0.37 percent of 90 days).",
+      "reproduce": "Closed-book, recompute Napkin Math 1.3 (37-second writes with 3.69-hour MTBF give a 991-second interval at 7.5 percent total waste) and the BLOOM overhead (720 saves of 40 seconds are 8 hours, 0.37 percent of 90 days).",
       "traps": [
         "Setting the interval from write time alone, or quoting the chapter's 16.5-minute interval as a recommendation. The formula needs the fleet MTBF as its second input, and that worked number belongs to a 10,000-GPU cluster with 37-second writes.",
         "Trusting the printed Table 5 percentages. The counts sum to 419 but the Faulty GPU share (30.1 percent) disagrees with its count (148 of 419 is 35.3 percent), so plan from counts and recompute shares yourself.",
@@ -567,21 +574,21 @@
         },
         {
           "q": "A job keeps hourly checkpoints with a 10-minute RTO and the last two are corrupt. What are the realized RPO and recovery time?",
-          "a": "RPO is 3 hours (the oldest usable checkpoint) plus the 10-minute RTO on top for recovery. Retention depth is part of the RPO, not just the interval."
+          "a": "Up to 3 hours of lost work: the newest usable checkpoint is the third most recent. Recovery still takes the 10-minute RTO on top. Retention depth is part of the RPO, not just the interval."
         }
       ],
       "practice": [
         {
-          "name": "MLSys Checkpoint 7.4: Reasoning about the checkpoint tax",
+          "name": "MLSys Checkpoint 1.4: Reasoning about the checkpoint tax",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Checkpoint 7.4: Young-Daly shift, Two-sided tax, Faster writes, Square-root scaling",
-          "note": "Answer all four boxes on paper first: recompute Napkin Math 7.3 and the Llama 3 fleet MTBF (419 over 54 days) before checking against the text."
+          "locator": "Checkpoint 1.4: Young-Daly shift, Two-sided tax, Faster writes, Square-root scaling",
+          "note": "Answer all four boxes on paper first: recompute Napkin Math 1.3 and the Llama 3 fleet MTBF (419 over 54 days) before checking against the text."
         }
       ],
       "stopWhen": "You derive the interval from the tax expression without notes, recompute both worked numbers exactly, and can state your own job's RPO and RTO with the input each depends on.",
       "fit": {
         "verdict": "kept",
-        "note": "The chapter's interval model, recovery budgets and Checkpoint 7.4 plus the Stas and Llama 3 production numbers cover derivation and objectives at derive depth."
+        "note": "The chapter's interval model, recovery budgets and Checkpoint 1.4, the storage chapter's incremental paragraph and the Stas and Llama 3 production numbers cover derivation, vocabulary and objectives at derive depth."
       }
     },
     {
@@ -632,14 +639,14 @@
           "resource": "picotron-ckpt-dt9",
           "title": "The no-reshard baseline",
           "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/checkpoint.py",
-          "locator": "`load_checkpoint`: Assume the topology is the same, with per-TP and PP-rank file names; `adjust_tensor_size` slices full weights for a fixed TP degree but cannot remap across degrees"
+          "locator": "`load_checkpoint`: Assume the topology is the same, with per-TP and PP-rank `.pth` names, so resume never remaps across degrees; `adjust_tensor_size` belongs to the separate Hugging Face initialization path, where it slices embedding, output-projection and MLP weights by TP rank but takes the leading rows of q, k and v on every rank"
         }
       ],
       "focus": [
         "DCP resharding is a load-time plan from saved shards to live objects: same files, new layout, decided from the destination model's sharding. Nothing in the checkpoint changes.",
         "Parameters and their aligned optimizer moments remap; RNG streams do not. Two streams at \\(\\text{TP} = 2\\) have no \\(\\text{TP} = 1\\) equivalent, so a resharded resume reseeds or replays RNG explicitly.",
         "A seed checkpoint is the extreme case: build once at degree 1, reshard everywhere. It separates initialization randomness from layout.",
-        "Picotron's slicer handles same-degree shape edits, not degree changes. Shrinking weights from \\(\\text{TP} = 4\\) onto \\(\\text{TP} = 2\\) needs concatenation across files, which only a planner (DCP) or an explicit reshape provides."
+        "Picotron resumes only onto the saving layout. Its slicer serves initialization from full Hugging Face weights, and even there its q, k and v slices ignore the TP rank. Shrinking from \\(\\text{TP} = 4\\) onto \\(\\text{TP} = 2\\) needs concatenation across files, which only a planner (DCP) or an explicit reshape provides."
       ],
       "reproduce": "Save a `fully_shard` toy model plus Adam state at world size 2 on CPU, load it at world size 1 over differently seeded initialization, and show the full parameter tensors equal the world-size-2 reference exactly.",
       "traps": [
@@ -662,7 +669,7 @@
         },
         {
           "q": "Picotron's `adjust_tensor_size` pads a narrowed slice with `torch.empty` rows when the target is wider. What must happen before training on those rows?",
-          "a": "They must be re-initialized: `torch.empty` allocates without drawing values, so the padded rows are garbage until reset. That path only covers fixed-degree shape edits anyway."
+          "a": "They must be re-initialized: `torch.empty` allocates without drawing values, so the padded rows are garbage until reset. That path is Hugging Face initialization, not resume."
         }
       ],
       "practice": [
@@ -708,20 +715,20 @@
         {
           "resource": "stas-fault-dt9",
           "title": "Graceful exit before the time limit",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md",
-          "locator": "Dealing with forced job preemption: grace budget as iteration time plus save time, doubled; Approach A (`--exit-duration-in-mins` with an `all_reduce` MAX sync); Approach B.1 (`--signal=USR1@600` with a `SIGUSR1` handler and exit-asap flag); Approach B.2 (launcher signal forwarding with `B:USR1`, `trap` and `pgrep` children); QoS-based SLURM preemption"
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Dealing with forced job preemption: grace budget as iteration time plus save time, doubled; Approach A (a training-script exit-duration argument, `args.exit_duration_in_mins` in the quoted Megatron code, with an `all_reduce` MAX sync); Approach B.1 (the `#SBATCH --signal=USR1@600` directive with a `SIGUSR1` handler and exit-asap flag); Approach B.2 (launcher signal forwarding with `B:USR1`, `trap` and `pgrep` children); QoS-based SLURM preemption"
         },
         {
           "resource": "stas-fault-dt9",
           "title": "Kill and save switches",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
           "locator": "Kill switch: poll for a file before each iteration, save and exit; Save switch: save and continue, removing the switch file"
         }
       ],
       "focus": [
         "Grace time must cover a full started iteration plus the save: measure both, then double. Exiting early wastes nothing; exiting late loses the save.",
         "The exit decision is collective. Reduce one flag across ranks, as BLOOM's `all_reduce` MAX pattern does, so no rank saves while another trains on.",
-        "Signals do not pass through launchers by default. `torchrun` children need the B.2 forwarding trap, or the handler never fires.",
+        "Signals sent to the launcher do not reach the workers: a `SIGUSR1` sent to the `torchrun` agent terminated it, and no worker handler fired (2 CPU processes, PyTorch 2.14.1). Signal each worker process directly, or forward with the B.2 trap.",
         "Kill and save switches are the same mechanism without the scheduler. A file poll before each iteration gives operators a manual preemption path."
       ],
       "reproduce": "On CPU, run a two-process job with a `SIGUSR1` handler that sets a flag, finishes the iteration, saves model plus step, and exits. Send the signal mid-run and show both ranks exit 0 with a loadable checkpoint at the post-iteration step.",
@@ -751,7 +758,7 @@
       "practice": [
         {
           "name": "Stas `SIGUSR1` trap demo as a bounded-shutdown test",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
           "locator": "Approach B.1 `sigusr1.slurm` handler plus the train-loop flag pattern; test on a two-process CPU job by sending `kill -s USR1 \"$pid\"` mid-run and assert both ranks save and exit within the budget",
           "note": "No SLURM needed for the mechanism test: signal by PID and verify the checkpoint loads afterwards. The SLURM headers only schedule the signal."
         }
@@ -806,20 +813,20 @@
         {
           "resource": "torchft-dt9",
           "title": "Per-step healing as the contrast",
-          "url": "https://github.com/meta-pytorch/torchft",
+          "url": "https://github.com/meta-pytorch/torchft/blob/b8a096f9f23589ec93e988e2368a934cab01b890/README.md",
           "locator": "Overview: per-step fault tolerance without interrupting the job; Lighthouse: `torchft_lighthouse` quorum with step-granularity membership; Example Training Loop (DDP) with `Manager`, `ProcessGroupGloo` and `TORCHFT_LIGHTHOUSE`; Fault Tolerant HSDP Algorithm (page read 2026-10-14)"
         },
         {
           "resource": "mlsys-vol2-fault-dt9",
           "title": "Detection, teardown and warm versus cold",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Failure Detection and Recovery: heartbeat versus collective-timeout versus orchestration layers, the six-step recovery sequence, cold versus warm restart with Table 7.9; Checkpoint 7.5: Tuning detection and recovery"
+          "locator": "Failure Detection and Recovery: heartbeat versus collective-timeout versus orchestration layers, Figure 28's detect, pause, rescale and resume sequence with the equation 9 recovery budget, cold versus warm restart with Table 9; Checkpoint 1.5: Tuning detection and recovery"
         }
       ],
       "focus": [
-        "A crashed rank turns every pending collective into a hang. Survivors must tear down the process group and re-rendezvous; no rank is removed in place from a live communicator.",
+        "A crashed rank turns every pending collective into a hang or an error. Survivors must tear down the process group and re-rendezvous; no rank is removed in place from a live communicator. PyTorch 2.14.1 also ships an experimental, private reconfigure path behind `init_process_group(..., enable_reconfigure=True)`; this section does not rely on it.",
         "Elastic restart rebuilds the group of workers, not the failed rank. `RANK` and `WORLD_SIZE` can change, so resume keys state by global step, never by rank.",
-        "`--max-restarts` bounds crash loops. Each attempt re-runs from the last checkpoint, and exceeding the budget surfaces the failure instead of spinning forever.",
+        "`--max-restarts` bounds crash loops. Each attempt re-runs the script, which reloads the last checkpoint itself, and exceeding the budget surfaces the failure instead of spinning forever.",
         "torchft heals inside the job when replicas exist (lighthouse quorum per step, live peer transfer). Restart-from-checkpoint works with no replicas but loses work back to the last save. Replicas are the precondition, not the default."
       ],
       "reproduce": "Run a one-process job that exits 1 on its first attempt and 0 after, under `torchrun --max-restarts=1`. Show `TORCHELASTIC_RESTART_COUNT` reads 0 then 1 and the final exit code is 0.",
@@ -851,7 +858,7 @@
           "name": "torchrun bounded-restart test plus crash loop",
           "url": "https://docs.pytorch.org/docs/2.14/elastic/run.html",
           "locator": "Run the Reproduce script under `--max-restarts=1` and assert the retry runs with `TORCHELASTIC_RESTART_COUNT=1` and the job exits 0; then run the guide's `toy.py` with two CPU processes and inspect one crashing attempt's `error.json`",
-          "note": "Both run on CPU gloo. `toy.py` loops until its random crash, so bound each attempt externally."
+          "note": "Both run on CPU gloo. `toy.py` crashes on its own within seconds; delete `toy-state.json` before each fresh run and wrap it in `timeout`."
         }
       ],
       "stopWhen": "You can crash any rank of a CPU job, watch the agent restart within budget, resume from the checkpoint, and state when healing needs replicas.",
@@ -891,13 +898,13 @@
         {
           "resource": "stas-fault-dt9",
           "title": "Disk watchdogs and the 80 percent rule",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
           "locator": "Low disk space alerts: 80 percent is full on rebalancing filesystems, inode exhaustion, `df` staleness, `fs-watchdog.py`; Dealing with slow memory leaks: voluntary exit with `save_checkpoint` before OOM"
         },
         {
           "resource": "stas-fault-dt9",
           "title": "BLOOM retention arithmetic",
-          "url": "https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
           "locator": "Frequent checkpoint saving: 2.3TB every 3 hours is 18.4TB a day; keep the 2 most recent checkpoints local for fast resume"
         },
         {
@@ -910,7 +917,7 @@
           "resource": "mlsys-vol2-fault-dt9",
           "title": "Stragglers and slow ranks",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Distinguishing stragglers from failures with Definition 7.2 and the straggler step-time model; Napkin Math 7.5: the straggler tax"
+          "locator": "Distinguishing stragglers from failures with Definition 1.2 and the straggler step-time model; Napkin Math 1.5: the straggler tax"
         }
       ],
       "focus": [
@@ -936,7 +943,7 @@
         },
         {
           "q": "Checkpoints land every hour and each takes 6 minutes to write on the slowest rank. When is that rank a straggler to kill rather than wait for?",
-          "a": "When its slowdown costs more than recovery: sustained, it holds every step 10 percent longer. Past the break-even point of recovery-time share, replacing it is cheaper than waiting."
+          "a": "Sustained, it holds every step 10 percent longer (\\(6/60\\)). Napkin Math 1.5's rule: replace it once that slowdown share exceeds \\(T_{\\text{recovery}} / \\text{MTBF}_{\\text{system}}\\); past that break-even point, killing and recovering beats waiting."
         },
         {
           "q": "`df` shows free space but a save fails with no space. Name two non-capacity causes from the chapter.",
@@ -948,7 +955,7 @@
           "name": "Retention plus watchdog lab",
           "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/components/checkpoint.py",
           "locator": "TorchFeather `_purge_stale_checkpoints` with `keep_latest_k=2`: save 4 interval checkpoints, corrupt the newest, and show the loader falls back to the previous complete one while the purge removes only older ones; adapt the Stas `fs-watchdog.py` thresholds to your disk with a consumption-rate estimate",
-          "note": "Run on CPU with small shards; the purge and fallback logic is identical at scale. The Stas watchdog lives at https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md under Low disk space alerts."
+          "note": "Run on CPU with small shards; the purge and fallback logic is identical at scale. The Stas watchdog lives at https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md under Low disk space alerts."
         }
       ],
       "stopWhen": "A corrupted newest checkpoint falls back to the previous complete one, retention holds exactly 2, and your watchdog names the byte rate and the inode headroom.",
@@ -990,7 +997,7 @@
           "resource": "mlsys-vol2-fault-dt9",
           "title": "Fault injection and recovery validation",
           "url": "https://mlsysbook.ai/vol2/fault_tolerance/fault_tolerance.html",
-          "locator": "Fault Injection Tools and Frameworks; Failure Detection and Recovery: the six-step recovery sequence and recovery validation (shapes, dtypes, loss consistency, gradient statistics); Distributed Debugging and Observability"
+          "locator": "Fault Injection Tools and Frameworks; Failure Detection and Recovery: the detect, pause, rescale and resume sequence in Figure 28 and recovery validation (shapes, dtypes, loss consistency, gradient statistics); Distributed Debugging and Observability"
         },
         {
           "resource": "llama3-reliability-dt9",
@@ -1008,7 +1015,7 @@
           "resource": "bumblebee-dcp-dt9",
           "title": "Capstone-adjacent smoke tests (depth)",
           "url": "https://github.com/isLinXu/bumblebee/blob/5782386adbf5e518e42804597f7206b3fc9ce8cc/bumblebee/primitive/ckpt/dcp.py",
-          "locator": "`primitive/ckpt/dcp.py` save and load entry points with the checkpoint smoke tests in `tests/qwen3_moe/test_checkpoint_smoke.py`; the roadmap lists reshardable optimizer state as a P2 gap, so use it as a target, not a reference"
+          "locator": "`primitive/ckpt/dcp.py` entry points `save_training_checkpoint` and `load_training_checkpoint`; `tests/qwen3_moe/test_checkpoint_smoke.py` only asserts that the two exports resolve to the local DCP runtime and are callable, and `docs/roadmap.md` lists reshardable optimizer state as a P2 item, so treat it as an untested target, not a reference"
         }
       ],
       "focus": [
