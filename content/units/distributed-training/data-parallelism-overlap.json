@@ -1,6 +1,17 @@
 {
   "section": "data-parallelism-overlap",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-syncbn-dt3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch SyncBatchNorm API",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "Use `convert_sync_batchnorm` to convert BatchNorm layers before wrapping with DDP, and read the training-only sync plus single-GPU-per-process limits.",
+      "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.SyncBatchNorm.html"
+    }
+  ],
   "units": [
     {
       "id": "dp-replication-sampler-ownership",
@@ -15,47 +26,77 @@
         "disjoint-data-ownership-and-distributedsampler-invariants"
       ],
       "outcomes": [
-        "TODO"
+        "Explain what each data-parallel rank replicates and what it owns: full parameters, gradients and optimizer state are replicated, while the data shard is disjoint.",
+        "Build a disjoint sharding with `DistributedSampler`, calling `set_epoch` each epoch and stating the padding and drop policy.",
+        "Predict how a sharding bug (overlap, repeat, or miscounted padding) changes the global batch."
       ],
-      "why": "TODO",
+      "why": "Every rank trains a full copy of the model on its own shard. Overlapping shards or miscounted padding silently change the global batch, so ownership must be proved before any timing or scaling claim.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-update-equivalence",
+          "note": "Proves updates match one process on the disjoint shards built here."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Syncs the replicated grads over these shards with one explicit collective."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "lambda-ddp-dt3",
+          "title": "DDP construction, rank-zero-first downloads and rank-tagged logs",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "Lines 36 to 50: rank, device and process-group init with the `[rank=...]` log format; lines 55 to 68: `rank0_first` downloads plus the `DistributedDataParallel` wrap with `bucket_cap_mb=500`; lines 272 to 280: the `rank0_first` definition"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "DistributedSampler with per-epoch set_epoch",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/02-distributed-data-parallel/train_llm.py",
+          "locator": "Lines 76 to 84: the `DataLoader` with `DistributedSampler(train_data, shuffle=True, drop_last=True)`; lines 129 to 137: the `set_epoch` call before iterating, with the shuffle comment"
+        },
+        {
+          "resource": "dlas-dp-dt3",
+          "title": "Data partitioning and sampling strategies",
+          "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
+          "locator": "Chapter 7 Data Parallelism: Data Partitioning and Implications of Data Sampling Strategies (pp. 229 to 231); Distributed Data Parallel (pp. 242 to 243) including the Devil in the details box on DataLoaders and multiprocessing start methods (p. 243)"
         }
       ],
       "focus": [
-        "TODO"
+        "`DistributedDataParallel` broadcasts the `state_dict` from rank 0 at construction. It never shards data; the sampler or manual offsets own disjointness.",
+        "`DistributedSampler` deals strided shards. With `shuffle=False` over 10 items and 2 ranks, rank 0 owns `[0, 2, 4, 6, 8]` and rank 1 owns `[1, 3, 5, 7, 9]`.",
+        "`set_epoch` re-seeds the shuffle each epoch. Without it every epoch repeats the same order on every rank.",
+        "With `drop_last=False`, short datasets pad by repeating head indices. Over 10 items and 3 ranks each rank holds 4 indices and ranks 1 and 2 repeat 0 and 1, so token counts must account for the repeats."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with no process group, build a `TensorDataset` of 10 items and two `DistributedSampler` instances with `num_replicas=2` and `shuffle=False`. Print both index lists, assert they are disjoint and their union is 0 to 9. Then repeat with 3 replicas and `drop_last=False` and show each rank holds 4 indices with the head repeats.",
       "traps": [
-        "TODO"
+        "Assuming the DDP wrapper shards batches. The guide states it does not: the wrapper syncs grads while the sampler splits data.",
+        "Forgetting `set_epoch`, then reading correlated epochs as a data bug. Same order every epoch is the default without it.",
+        "Storing resume position in the sampler. It has no `state_dict`; the loop owns the epoch integer, and the dataset version plus worker RNG must be restored beside it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What state is replicated on each rank and what differs?",
+          "a": "Parameters, gradients and optimizer state are replicated; the data shard differs. After backward the grads are averaged, so the local optimizer steps agree."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Ten items over three ranks with `drop_last=False`. How many indices per rank, and which repeat?",
+          "a": "Four per rank. Rank 0 holds `[0, 3, 6, 9]`, rank 1 holds `[1, 4, 7, 0]` and rank 2 holds `[2, 5, 8, 1]`; 0 and 1 are the head repeats."
+        },
+        {
+          "q": "`set_epoch` is never called with `shuffle=True`. What breaks?",
+          "a": "Nothing crashes, but every epoch shuffles identically, so epochs are fully correlated and any epoch-dependent analysis is wrong."
+        },
+        {
+          "q": "Where does sampler resume position live?",
+          "a": "In the training loop as the epoch integer, not in the sampler. Resume must also fix the dataset version and worker seeding."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: sampler disjointness and union checks, padding versus drop policy, and epoch-resume equivalence.",
+      "stopWhen": "Your CPU script prints disjoint even and odd shards for two ranks and the padded 4-per-rank lists for three ranks, and you can state what each rank replicates and what it owns without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "Lambda covers construction plus sampler and set_epoch, Deep Learning at Scale covers partitioning and sampler warnings, and the mini-project supplies the sampler tests.",
+        "verdict": "kept"
       }
     },
     {
@@ -71,47 +112,83 @@
         "single-process-numerical-oracle-and-tolerance-policy"
       ],
       "outcomes": [
-        "TODO"
+        "Derive when averaged rank-local mean gradients equal the full-batch gradient, and how sum reduction changes the answer by a factor of the rank count.",
+        "Implement a single-process oracle and compare losses, gradients, parameters and optimizer state under a stated tolerance.",
+        "Explain why the CS336 test shuffles with one shared seed across ranks."
       ],
-      "why": "TODO",
+      "why": "Equivalence to one process is the contract that buckets, hooks, compression and sharding must all preserve. An oracle plus a tolerance turns silent scale bugs into loud failures.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-global-batch-no-sync",
+          "note": "Holds this equivalence fixed while accumulating over micro-steps."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/ddp-construction-reducer-buckets",
+          "note": "Shows how DDP preserves this contract with buckets and hooks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-ddp-dt3",
+          "title": "DDP oracle test: one process versus two disjoint shards",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Function `_test_DistributedDataParallel`: non-parallel baseline on all 20 fixture rows, per-rank disjoint 10-row shards at `offset = rank * local_bs`, 5 SGD steps at lr 0.1 with `torch.allclose` after each step, shared shuffle seed `42 + i`"
+        },
+        {
+          "resource": "ultrascale-dp-dt3",
+          "title": "Data-parallel averaging during backward",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#data_parallelism",
+          "locator": "Data Parallelism through the first optimization (overlap gradient synchronization with backward pass): per-GPU micro-batches with gradient averaging by all-reduce before the optimizer step"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "Sum versus mean loss across nodes",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "Note on training on M nodes with batch N: summed losses give M-times-smaller grads than the single-node batch M times N; treat mean-reduction models as equivalent at the same global batch"
         }
       ],
       "focus": [
-        "TODO"
+        "With per-rank mean loss, averaging local grads equals the full-batch mean grad. A 2-rank CPU run on an 8-row oracle matches params with `torch.allclose` at `atol=1e-6`.",
+        "With per-rank sum loss, averaging gives the full-batch sum divided by the rank count. Sum the grads, or scale the learning rate, to match a summed oracle.",
+        "The oracle fixes init, data pool and global batch, then compares loss, grads, params and optimizer state. Exact `torch.eq` can fail near `1.8e-7` across different GEMM blockings; use `assert_close` with a stated tolerance.",
+        "One shared shuffle seed keeps shards disjoint. Rank-dependent seeds can deal overlapping rows to both ranks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run two CPU ranks on a fixed 8-row linear-regression oracle with `MSELoss` mean reduction: rank shards of 4 rows, local backward, `all_reduce` SUM then divide by 2, one SGD step. Assert both ranks match the oracle params with `torch.allclose`. Then repeat with sum reduction and show averaging misses by the rank count unless grads are summed.",
       "traps": [
-        "TODO"
+        "Comparing a mean-reduction DP run against a sum-reduction oracle and blaming the collective for the factor-of-R gap.",
+        "Demanding bitwise equality between sharded and full GEMM paths. Rounding differs by blocking; tolerance is the contract.",
+        "Shuffling per rank with rank-dependent seeds and silently overlapping shards. The shared seed is load-bearing."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two ranks hold mean-loss grads over disjoint halves. What does their average equal?",
+          "a": "The gradient of the mean loss over the concatenated batch: \\((g_0 + g_1)/2\\) is the full-batch mean gradient."
+        },
+        {
+          "q": "Same setup with sum losses. What does averaging give relative to the full-batch sum gradient?",
+          "a": "The full-batch sum gradient divided by 2. Average to match a mean oracle; sum to match a sum oracle."
+        },
+        {
+          "q": "Why does the CS336 test use `torch.manual_seed(42 + i)` on every rank before shuffling?",
+          "a": "All ranks draw the identical permutation, so the two 10-row shards stay disjoint. Different seeds per rank could overlap rows."
+        },
+        {
+          "q": "Gathered outputs differ at `1.8e-7` on CPU. Is the all-reduce broken?",
+          "a": "No. Full versus sharded GEMM blocking rounds differently; the Picotron CPU port records exactly this gap and passes with `assert_close`."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Synchronize Data-Parallel Gradients",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-data-parallel-gradient-sync",
+          "locator": "Function `data_parallel_gradient_sync(parameter_replicas, gradient_replicas, learning_rate)`: public cases check two-rank means, a zero local gradient, and three ranks with two parameter shapes; mean grads are stored in each parameter dtype and updated replicas are independent copies",
+          "note": "Solve before the CS336 DDP tests, as the pool orders it. It checks the averaging arithmetic, not the collective."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your 2-rank gloo run matches the oracle with `assert_close`, and you can derive the sum-versus-mean factor without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 oracle test plus the DDP sum and mean note cover equivalence at implement depth, and the free TensorTonic problem checks the averaging arithmetic.",
+        "verdict": "kept"
       }
     },
     {
@@ -127,47 +204,77 @@
         "gradient-accumulation-with-no-sync"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the global batch in samples and tokens from microbatch, accumulation steps and DP degree.",
+        "Implement accumulation with `no_sync` so only the final micro-step synchronizes.",
+        "Explain the two failure modes: syncing every micro-step (correct but slow) and syncing none (stale grads)."
       ],
-      "why": "TODO",
+      "why": "Global batch is the fixed semantic; microbatch, accumulation and worker count are interchangeable ways to reach it. `no_sync` is what makes accumulation cheaper than repeating full syncs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/explicit-allreduce-dp",
+          "note": "Names the collective that `no_sync` skips on non-final steps."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Measures what skipping those syncs saves."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-dp-dt3",
+          "title": "Global batch across workers and accumulation",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#revisiting_global_batch_size",
+          "locator": "Revisiting global batch size: the batch equation of microbatch, accumulation and DP degree plus the maximize-dp-then-accumulate recipe; Our journey up to now for the worked large-batch example pattern"
+        },
+        {
+          "resource": "ultrascale-dp-dt3",
+          "title": "Microbatch accumulation on one GPU",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#gradient_accumulation",
+          "locator": "Gradient accumulation: microbatch versus global batch before data parallelism enters"
+        },
+        {
+          "resource": "lambda-ddp-dt3",
+          "title": "Accumulation with no_sync",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/gradient-accumulation/README.md",
+          "locator": "Standard Implementation versus DataDistributedParalell Implementation: `maybe_sync_grads` with `model.no_sync` on non-final steps and `nullcontext` on the final step, with forward and backward inside the context"
         }
       ],
       "focus": [
-        "TODO"
+        "Global batch is \\(\\text{gbs} = \\text{mbs} \\times \\text{grad\\_acc} \\times \\text{dp}\\) in samples, times sequence length in tokens. Example: \\(\\text{mbs} = 2\\), \\(\\text{grad\\_acc} = 4\\), \\(\\text{dp} = 128\\) gives 1024 samples, or 4,194,304 tokens at length 4096.",
+        "`no_sync` scopes forward plus backward on non-final micro-steps; grads accumulate locally and the first step outside the context syncs.",
+        "Under mean reduction each micro loss is scaled by one over the accumulation count before backward, so the accumulated grad equals the global mean grad. A 2-rank CPU run with two halved micro-steps matches the oracle.",
+        "The Lambda Ch2 README line that `optimizer.step()` synchronizes grads is wrong for DDP: the reducer all-reduces during backward and the step is local. During accumulation only the final backward syncs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Extend the unit-2 script: split each rank shard into two micro-batches, run forward and backward inside `no_sync` with each micro loss halved, then one averaging all-reduce and one SGD step. Assert oracle match. Then move the forward outside the context and show the saving disappears while results stay correct.",
       "traps": [
-        "TODO"
+        "Wrapping only backward in `no_sync`. The DDP docs require the forward inside too, or grads still sync.",
+        "Skipping the one-over-K loss scaling under mean reduction. Accumulated grads come out K times too large, which looks like a learning-rate bug.",
+        "Reading Lambda Ch2's `optimizer.step()` sync sentence as DDP behavior. With DDP the sync point is backward; the sentence describes no real DDP run."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Microbatch 2, 4 accumulation steps, 128 workers, sequence length 4096. Global batch?",
+          "a": "1024 samples; 4,194,304 tokens (about 4M)."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why scale each micro loss by one over K for K micro-steps under mean reduction?",
+          "a": "The K micro-means sum to K times the global mean; dividing restores the oracle gradient."
+        },
+        {
+          "q": "Forward runs outside `no_sync`, backward inside. Effect?",
+          "a": "Still correct, but DDP synchronizes on that step anyway, so the accumulation saving is lost."
+        },
+        {
+          "q": "Where does DDP synchronize: backward or optimizer step?",
+          "a": "Backward, through bucket all-reduces on grad-ready hooks. The optimizer step is local on identical averaged grads."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: accumulation and no_sync equivalence under a fixed global batch, including the loss-scaling check.",
+      "stopWhen": "You derive the global batch both ways without notes, and your no_sync run matches the oracle while the mis-scoped variant stays correct but syncs.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "Ultrascale covers the batch equations and the dp-first recipe, Lambda covers the no_sync pattern, and the mini-project supplies the equivalence tests.",
+        "verdict": "kept"
       }
     },
     {
