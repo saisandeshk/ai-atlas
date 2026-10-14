@@ -488,47 +488,75 @@
         "selective-offload-and-activation-aware-wrapping-study"
       ],
       "outcomes": [
-        "TODO"
+        "Measure recomputation and collective events when activation checkpointing is composed with FSDP groups.",
+        "Account for host memory, transfer traffic and CPU optimizer work under model-state offload.",
+        "Compare selective checkpointing, wrap boundaries and selective offload under a stated memory budget."
       ],
-      "why": "TODO",
+      "why": "Build on Activation checkpointing and recomputation. At distributed depth, recompute can cross gather boundaries, while offload moves pressure onto another memory tier rather than removing it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-peak-memory-comm-volume",
+          "note": "Include recompute and offload windows in the peak and traffic ledger."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "torchfeather-fsdp-dt4",
+          "title": "Activation-checkpoint placement and selective policies",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/activation_checkpoint.py",
+          "locator": "`_apply_full_ac`, `_apply_layer_sac`, `_apply_op_sac` and `apply_ac`; then `parallelize_deepseekv3` in `torchfeather/model/parallelize.py` at the same commit",
+          "depth": "Read the policy functions and checkpoint-before-FSDP call order only. Do not adopt the private compiler controls or the full framework. Open the second file at https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/parallelize.py."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "CPU offload in PyTorch 2.14",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.CPUOffloadPolicy",
+          "locator": "`CPUOffloadPolicy`, including `pin_memory`; `fully_shard` parameter `offload_policy`"
+        },
+        {
+          "resource": "deepspeed-zero-dt4",
+          "title": "CPU versus storage offload vocabulary",
+          "url": "https://www.deepspeed.ai/tutorials/zero/#offloading-to-cpu-and-nvme-with-zero-infinity",
+          "locator": "Offloading to CPU and NVMe with ZeRO-Infinity (page read 2026-10-14)",
+          "depth": "Read the tier and state-category distinction. Do not run the large-model scripts or port DeepSpeed's configuration keys into FSDP2."
         }
       ],
       "focus": [
-        "TODO"
+        "Checkpoint placement relative to the FSDP group decides whether recomputation re-enters gather hooks. Count actual all-gathers rather than assuming every checkpoint adds one or that recomputation is communication-free.",
+        "TorchFeather's checkpoint policies use `preserve_rng_state=False`. For a stochastic block, use preserved RNG state in your baseline and test the recomputed gradient; the source's choice is not safe for arbitrary dropout.",
+        "FSDP2 CPU offload keeps parameter and gradient shards and optimizer state on CPU. Copy shards to the training device before gathering, copy reduced gradients back, and run the optimizer on CPU. Full compute weights and activations must still fit on the training device.",
+        "NVMe adds a storage-to-host tier and staging buffers; `CPUOffloadPolicy` does not implement it. Use a deterministic tiered-transfer model on CPU first. With two or more GPUs, measure checkpoint and per-group CPU-offload variants with host traffic, memory peaks and fixed-workload step times."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU Gloo, compare a tiny block-sharded model with and without non-reentrant activation checkpointing. Keep inputs, weights and precision fixed; check gradients against the no-checkpoint oracle and count block re-execution and gather events. In a separate deterministic transfer simulation, move only selected groups' stored shards to a host or storage tier; record resident bytes and bytes crossing each link, including staging. Predict which tier becomes the bottleneck without claiming CPU timings measure GPU transfers.",
       "traps": [
-        "TODO"
+        "Assuming offload removes the full-layer working set. It can lower total device peak while leaving that gathered-layer requirement unchanged.",
+        "Treating pinned host memory as free. It is a constrained resource shared with input loading and checkpoint staging.",
+        "Selecting every group for offload without comparing recomputation or narrower wrap boundaries. Added transfers and CPU optimizer work can dominate."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does activation checkpointing reduce persistent Adam moments?",
+          "a": "No. It changes saved activations and recomputation. Sharding or offload changes optimizer-state ownership or placement."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can CPU offload lower peak GPU memory even though the largest full layer is unchanged?",
+          "a": "Yes. Removing resident model-state shards leaves more room for that layer and activations. It does not make an individually oversized compute group fit by itself."
+        },
+        {
+          "q": "Why can a checkpointed stochastic block give the wrong gradient?",
+          "a": "If recomputation uses different random draws, it differentiates a different realization. Preserve the needed RNG state or implement a tested equivalent RNG contract."
+        },
+        {
+          "q": "What extra costs appear with storage offload compared with CPU offload?",
+          "a": "Storage reads and writes, storage latency, host staging capacity and another transfer dependency. Their cost depends on the actual access and reuse schedule."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab recompute-equivalence and event-count checks plus a selective-offload tier ledger, with conditional device measurements.",
+      "stopWhen": "Your comparison preserves gradient correctness, explains the observed recompute and gather counts, and includes both memory saved and traffic added for each offloaded tier.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "TorchFeather locates selective recompute, the current API locates CPU offload, and DeepSpeed supplies storage-tier vocabulary; trainlab checks their composition."
       }
     },
     {
