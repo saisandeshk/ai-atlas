@@ -288,47 +288,83 @@
         "minimal-data-parallelism-with-explicit-all-reduce"
       ],
       "outcomes": [
-        "TODO"
+        "Implement naive data parallelism by hand: broadcast at init, shard the batch evenly, all-reduce and average grads, step locally.",
+        "Pass the CS336 DDP public tests for the plain and tied-weight toy models on CPU.",
+        "State the per-step collective volume for the toy model from its parameter count."
       ],
-      "why": "TODO",
+      "why": "One explicit collective loop, written by hand, is the reference every wrapper must match. Wrappers hide ordering; this unit makes it visible.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/ddp-construction-reducer-buckets",
+          "note": "Replaces the per-param loop with bucketed reducer hooks."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/bucket-size-overlap",
+          "note": "Groups the loop's launches into buckets and overlaps them."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-ddp-dt3",
+          "title": "Naive DDP: broadcast, shard, all-reduce, step",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.2 A Naive Implementation of Distributed Data Parallel Training (p. 33): broadcast from rank 0, shard batch n over d devices, local forward and backward, all-reduce average grads, local optimizer step; problems `naive_ddp` (5pt) and `naive_ddp_benchmarking` (3pt)"
+        },
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Public DDP tests and adapter contract",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Tests `test_DistributedDataParallel` over `ToyModel` and `ToyModelWithTiedWeights` at world size 2 on gloo: `validate_ddp_net_equivalence` broadcast check, disjoint 10-row shards, 5 SGD steps at lr 0.1 with `torch.allclose` per step; adapters `get_ddp` plus `ddp_on_after_backward`"
+        },
+        {
+          "resource": "picotron-dp-dt3",
+          "title": "Naive-path trap (read, do not copy)",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/data_parallel/data_parallel.py",
+          "locator": "Class `DataParallelNaive`: `register_backward_hook` with `register_post_accumulate_grad_hook` in `_allreduce_grads` (lines 33 to 49). Read-only trap: the hook receives the parameter, so this path averages parameters and leaves `param.grad` local."
         }
       ],
       "focus": [
-        "TODO"
+        "Init broadcasts params from rank 0; the CS336 check `validate_ddp_net_equivalence` all-gathers the `state_dict` and asserts `allclose` on every rank.",
+        "Each rank forwards its disjoint shard (20 rows over 2 ranks gives `offset = rank * local_bs` with 10 rows each), backprops a local mean loss, then `all_reduce` SUM plus divide by world size.",
+        "The optimizer step stays local: identical averaged grads plus identical init keep replicas in sync with no per-step broadcast.",
+        "Frozen params with `requires_grad=False` carry no grads: `no_grad_fixed_param` and the `_FC2` bias stay equal and untouched."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement `get_ddp` and `ddp_on_after_backward` in your own repo and run `pytest tests/test_ddp.py` on CPU (world size 2, gloo) until both model variants pass all 5 steps.",
       "traps": [
-        "TODO"
+        "Copying the Picotron naive hook. `register_post_accumulate_grad_hook` receives the parameter tensor, not the grad: the shipped code all-reduces weights while grads diverge (measured `-0.0538` versus `-0.0662` on two CPU ranks).",
+        "Dividing by world size twice, or never. All-reduce SUM followed by exactly one division matches the mean oracle.",
+        "Requiring grads for frozen params. The test asserts they stay equal without sync; only `requires_grad` params enter the collective."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What three operations does naive DDP need, and when?",
+          "a": "Broadcast params once at init; per step, all-reduce SUM grads plus one division; local optimizer step. No per-step broadcast."
+        },
+        {
+          "q": "The Picotron naive hook all-reduces its argument and divides. Why do grads still diverge across ranks?",
+          "a": "Its argument is the parameter. Parameters get averaged while `param.grad` stays local on every rank."
+        },
+        {
+          "q": "20 examples, world size 2. Which rows does rank 1 train on?",
+          "a": "Rows 10 to 19: `offset = rank * local_bs` with `local_bs` 10."
+        },
+        {
+          "q": "Why does the test call `ddp_on_after_backward` before the optimizer step?",
+          "a": "Async implementations wait on grad handles there. A blocking naive version implements it as a no-op."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `naive_ddp`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Problem (`naive_ddp`), Section 5.2; connect your container to `get_ddp` in `tests/adapters.py` and pass `tests/test_ddp.py`",
+          "note": "Runs on CPU with gloo. Implement in your own repository; keep the benchmark write-up even where two GPUs are unavailable."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both toy variants pass all 5 steps, and you can explain the Picotron hook trap without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 handout plus public tests cover explicit all-reduce at implement depth; Picotron supplies the documented trap.",
+        "verdict": "kept"
       }
     },
     {
@@ -343,47 +379,89 @@
         "reducer-buckets-and-reverse-gradient-ready-order"
       ],
       "outcomes": [
-        "TODO"
+        "Explain DDP construction: rank-0 broadcast, reducer creation, bucket formation in reverse registration order.",
+        "Explain gradient-ready order: one hook per parameter, async all-reduce per full bucket, blocking wait at end of backward.",
+        "Contrast bucketed DDP with the hand-rolled per-param loop on launch count and overlap."
       ],
-      "why": "TODO",
+      "why": "Buckets in reverse order are why communication starts before backward finishes. Misreading the order makes every later overlap prediction wrong.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/bucket-size-overlap",
+          "note": "Tunes the bucket size this unit forms."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/unused-params-divergent-control",
+          "note": "Shows when the readiness assumption breaks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-ddp-dt3",
+          "title": "DDP design note: construction and backward",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/ddp.html",
+          "locator": "Construction: broadcast of `state_dict` from rank 0, reducer with buckets sized by `bucket_cap_mb`, mapping in roughly reverse `Model.parameters()` order, one autograd hook per parameter; Backward Pass: per-ready-grad marking, async all-reduce per full bucket, blocking wait, averaged grads in `param.grad`"
+        },
+        {
+          "resource": "pytorch-ddp-dt3",
+          "title": "DDP constructor surface",
+          "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
+          "locator": "`bucket_cap_mb` default 25 MiB; parameters allreduce in reverse registration order; `find_unused_parameters` default `False`; `static_graph`, `gradient_as_bucket_view`, `no_sync` and `register_comm_hook` signatures"
+        },
+        {
+          "resource": "cs336-ddp-dt3",
+          "title": "Overlapped per-parameter DDP",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.3.2 Overlapping Computation with Communication of Individual Parameter Gradients (pp. 34 to 36): `register_post_accumulate_grad_hook` per param, `async_op=True` all-reduce per ready grad, `finish_gradient_synchronization` wait; problems `ddp_overlap_individual_parameters` (5pt) plus benchmarking (1pt)"
+        },
+        {
+          "resource": "ddp-paper-dt3",
+          "title": "PyTorch DDP paper: bucketing and overlap",
+          "url": "https://arxiv.org/abs/2006.15704",
+          "locator": "arXiv:2006.15704v1, Sections 3 and 5.2: reducer design, overlap through autograd hooks and buckets, default 25MB buckets with 10 to 25MB best on ResNet50 and BERT"
         }
       ],
       "focus": [
-        "TODO"
+        "Buckets are allocated at construction in roughly reverse `Model.parameters()` order because backward readies last-layer grads first.",
+        "The reducer fires one async all-reduce per full bucket and always launches buckets in index order on every rank; mismatched order hangs or corrupts.",
+        "After backward returns, `param.grad` already holds the averaged grad on every rank; the optimizer step is local.",
+        "The CS336 overlap build is per-parameter, not bucketed: one async all-reduce per ready grad plus an explicit finish wait. This handout has no bucketed problem; buckets come from Picotron in the next unit."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw a 4-parameter model with a cap covering 2 params: place grads into buckets per the reverse-order rule, mark which bucket all-reduces first, and state when each launches relative to backward.",
       "traps": [
-        "TODO"
+        "Assuming buckets follow forward order. They follow reverse registration; forward order delays every launch.",
+        "Assuming launches follow ready order across ranks. Index order is the safety rule; ready order can differ per rank.",
+        "Adding or removing params after construction. Hooks were registered at construction for the exact set and order."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why reverse order?",
+          "a": "Backward computes last-layer grads first, so reverse registration matches readiness and buckets fill at the earliest time."
+        },
+        {
+          "q": "The reverse-order assumption is wrong for a model. Consequence?",
+          "a": "Later launches and less overlap. Correctness holds; speed does not."
+        },
+        {
+          "q": "Why bucket index order instead of ready order?",
+          "a": "Every rank must invoke matching all-reduces in the same order; otherwise backward hangs or grads mismatch."
+        },
+        {
+          "q": "CS336 overlap versus DDP buckets?",
+          "a": "CS336 launches one async all-reduce per ready param plus a finish wait; DDP groups params into buckets for fewer launches with the same overlap idea."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `ddp_overlap_individual_parameters`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_ddp.py",
+          "locator": "Problem (`ddp_overlap_individual_parameters`), Section 5.3.2; connect to `get_ddp` plus `ddp_on_after_backward` and run `tests/test_ddp.py` 5 times",
+          "note": "Per-param overlap only. Bucketed overlap is built from Picotron in the next unit."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can narrate construction, buckets, hooks, ordered all-reduce and the `param.grad` handoff without notes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "The design note plus paper explain buckets and order, and the CS336 overlap problem gives checked practice; Picotron buckets follow next.",
+        "verdict": "kept"
       }
     },
     {
@@ -399,47 +477,99 @@
         "autograd-hooks-and-compute-communication-overlap"
       ],
       "outcomes": [
-        "TODO"
+        "Derive bucket count, launch count and per-step collective bytes from `bucket_cap_mb` and the parameter count.",
+        "Implement bucketed overlap on the Picotron bucket path with an equality test against one process.",
+        "Explain when smaller buckets help overlap and when launch overhead wins, citing the paper's middle-range result."
       ],
-      "why": "TODO",
+      "why": "Bucket size trades launch overhead against exposed communication. The default is a starting point, not an optimum.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/dp-timing-bucket-timelines",
+          "note": "Measures hidden versus exposed communication honestly."
+        },
+        {
+          "unit": "distributed-training/data-parallelism-overlap/dp-stragglers-scaling-efficiency",
+          "note": "Shows where overlap stops helping at scale."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "picotron-dp-dt3",
+          "title": "Bucketed overlap implementation",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/data_parallel/bucket.py",
+          "locator": "`BucketManager._initialize_buckets`: params grouped by `bucket_size` elements with per-param views into `grad_data`; `Bucket.sync_gradient`: divide by group size then async `all_reduce`; `mark_param_as_ready` launches when the bucket fills; `wait` blocks in `_post_backward`"
+        },
+        {
+          "resource": "picotron-dp-dt3",
+          "title": "DataParallelBucket wrapper",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/data_parallel/data_parallel.py",
+          "locator": "Class `DataParallelBucket`: `bucket_size` from `bucket_cap_mb` with 4 bytes per fp32 grad; grad-accumulator hooks accumulate into `main_grad`; `no_sync` skips marking; `_post_backward` waits then copies `main_grad` to `param.grad`"
+        },
+        {
+          "resource": "ddp-paper-dt3",
+          "title": "Bucket-size sweep",
+          "url": "https://arxiv.org/abs/2006.15704",
+          "locator": "arXiv:2006.15704v1, Section 5.2: bucket-size sweep with 10 to 25MB best on ResNet50 and BERT; extremes lose to launch overhead or late starts"
+        },
+        {
+          "resource": "aisys-overlap-dt3",
+          "title": "Bucket and overlap trade-offs",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 4: Overlapping Communication and Computation (Pipelining), Reducing Communication Frequency and Volume, and Achieving Maximal Overlap in Practice; default 25MB buckets, large buckets use bandwidth but delay first launch, small buckets start early but add overhead"
         }
       ],
       "focus": [
-        "TODO"
+        "Bucket count follows the cap: a 50 MiB fp32 grad set at a 25 MiB cap gives 2 buckets and 2 all-reduces per step. Total bytes stay identical; only launch count and timing change.",
+        "Picotron accumulates each ready grad into its `main_grad` bucket view, fires async all-reduce per full bucket during backward, and copies back to `param.grad` after the wait.",
+        "The paper sweep peaks in the middle (10 to 25MB): tiny buckets drown in launch overhead, giant buckets start late and barely overlap.",
+        "One giant bucket means one end-of-backward all-reduce with almost no overlap. Treat any larger-is-sooner claim as workload-specific until your timeline says otherwise."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On a 4-param toy with a cap covering exactly one param versus all params, count the launches per step (4 versus 1) and show identical averaged grads; state the launch-count rule.",
       "traps": [
-        "TODO"
+        "Reading fewer launches as fewer bytes. Bytes are fixed by the parameter count and rank count; bucketing only regroups them.",
+        "Expecting overlap from a single giant bucket. With one bucket the all-reduce waits for the last grad.",
+        "Quoting CPU gloo timings as NCCL evidence. Order and equality transfer; timings do not."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "50 MiB of fp32 grads, 25 MiB cap. Buckets and launches per step?",
+          "a": "2 buckets, 2 all-reduces. Same bytes as one 50 MiB all-reduce, different timing."
+        },
+        {
+          "q": "Why can smaller buckets hurt?",
+          "a": "Per-launch latency and overhead dominate, and fragmentation grows; the middle range wins."
+        },
+        {
+          "q": "What does `_post_backward` do and when does it run?",
+          "a": "Queued once per backward; waits for all bucket handles, then copies `main_grad` into `param.grad` before the optimizer step."
+        },
+        {
+          "q": "A source says raising the cap launches sooner. Right?",
+          "a": "Not in general. Larger buckets fill later; they move bytes more efficiently but start later."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `minimal_ddp_flat_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.3.1: single flattened all-reduce through `torch._utils._flatten_dense_tensors`; compare with the per-tensor version at 1 node by 2 GPUs on the xl model; report time per iter plus comm share plus 1 to 2 sentences"
+        },
+        {
+          "name": "CS336 Assignment 2: `naive_ddp_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.2: per-param all-reduce timing on the xl model at 1 node by 2 GPUs; total step time plus gradient-communication share"
+        },
+        {
+          "name": "CS336 Assignment 2: `ddp_overlap_individual_parameters_benchmarking`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 5.3.2: overlapped versus flat versus per-tensor timings plus Nsight screenshots proving overlap",
+          "note": "Needs 2 GPUs with NCCL plus Nsight. On CPU or one GPU, run the same three as labeled timing examples only; they are not interconnect evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your bucketed run matches the oracle, and you can predict launch count from the cap and explain a measured crossover.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "note": "Picotron supplies the bucket mechanism, the paper the size sweep, AISys the trade-off reading, and CS336 the benchmarking practice.",
+        "verdict": "kept"
       }
     },
     {
