@@ -13,47 +13,63 @@
         "replicated-data-parallel-memory-baseline-by-dtype"
       ],
       "outcomes": [
-        "TODO"
+        "Derive replicated parameter, gradient and Adam state bytes from the tensors actually kept by a precision policy.",
+        "Separate persistent model state from gathered weights, activations, temporary buffers and allocator reserve."
       ],
-      "why": "TODO",
+      "why": "Sharding savings are only meaningful against a stated baseline. Build on GPU memory: allocated, reserved, peak and memory models, and Optimizers from SGD to AdamW; here the new job is accounting by rank and dtype.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/zero-stage-partitioning",
+          "note": "Partition the baseline without changing the update."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "zero-paper-dt4",
+          "title": "ZeRO: the model-state baseline",
+          "url": "https://arxiv.org/abs/1910.02054v3",
+          "locator": "arXiv:1910.02054v3, Section 3.1, Model States: Optimizer States, Gradients and Parameters; Section 3.2, Residual Memory Consumption"
+        },
+        {
+          "resource": "ultrascale-zero-dt4",
+          "title": "Memory usage revisited",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#zero_redundancy_optimizer_(zero)",
+          "locator": "Zero Redundancy Optimizer (ZeRO), subsection Memory usage revisited",
+          "depth": "Stop before ZeRO-1. Its extra FP32 accumulation buffer is a specific storage choice, not a mandatory extra copy under every mixed-precision implementation."
         }
       ],
       "focus": [
-        "TODO"
+        "For parameter count \\(N\\), sum each stored category once. The paper keeps half-precision parameters and gradients plus FP32 master parameters and two FP32 moments: \\((2+2+4+4+4)N = 16N\\) bytes.",
+        "FP32 parameters with FP32 gradients and two FP32 Adam moments also use \\(16N\\) tensor bytes, but have different lifetimes and communication payloads. Autocast alone does not require a persistent half-precision parameter copy.",
+        "Inspect Adam after its first update, when moments exist. Count per-parameter step scalars separately; gradients may be absent after clearing them.",
+        "Use decimal GB for \\(10^9\\) bytes and GiB for \\(2^{30}\\) bytes. Persistent model-state totals are not peak process or device memory."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, make a rank-local byte ledger for a model with \\(N = 1{,}000{,}000\\) parameters under the paper's half-precision Adam layout. Derive 16,000,000 tensor bytes per replica, excluding step scalars, activations and temporaries. Then count parameters, gradients and Adam moments in a small FP32 CPU model after one update and explain why its main tensor categories have the same total but a different layout.",
       "traps": [
-        "TODO"
+        "Counting an FP32 master parameter twice when the optimizer already updates the original FP32 parameter.",
+        "Dividing activations by world size while holding local microbatch fixed. ZeRO changes model-state ownership, not that local workload.",
+        "Measuring only before the first optimizer step and concluding that Adam has no state."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does BF16 compute imply two-byte persistent parameters?",
+          "a": "No. FSDP2 can keep original FP32 shards for the optimizer while gathering BF16 parameters for compute. State the storage policy separately from compute precision."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is the paper's optimizer multiplier 12 rather than 8 bytes per parameter?",
+          "a": "It includes the four-byte FP32 master parameter as well as two four-byte Adam moments."
+        },
+        {
+          "q": "Can a model whose persistent state fits still run out of memory?",
+          "a": "Yes. Activations, full gathered weights, full local gradients, communication staging, optimizer temporaries and allocator reserve can raise the peak above capacity."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab dtype-aware replicated-state ledger, checked against actual tensors after the first optimizer update.",
+      "stopWhen": "Your ledger names every tensor category and reconciles its byte count with a small CPU model, without calling the persistent total a peak.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The paper and Playbook locate the dtype baseline and residual memory; trainlab supplies the tensor-level accounting check."
       }
     },
     {
