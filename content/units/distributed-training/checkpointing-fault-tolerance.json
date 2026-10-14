@@ -596,47 +596,88 @@
         "world-size-and-mesh-resharding-on-restore"
       ],
       "outcomes": [
-        "TODO"
+        "Load a sharded checkpoint onto a different world size and prove full-parameter equality.",
+        "Explain which state reshards cleanly (parameters, aligned optimizer moments) and which does not (RNG streams, topology-bound shards)."
       ],
-      "why": "TODO",
+      "why": "Jobs rarely restart on identical hardware. Resharding turns a checkpoint from a same-mesh snapshot into portable state.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/fault-injection-campaigns",
+          "note": "Resharding is one recovery path under test."
+        },
+        {
+          "unit": "distributed-training/zero-fully-sharded-training/checkpoint-consolidation-resharding",
+          "note": "Consolidation is the companion operation."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-dcp-dt9",
+          "title": "Reshard across topologies at load",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "How DCP works: save on any number of ranks, then re-shard across differing cluster topologies at load time; Loading: same or different world size with the pre-allocated destination plan; Formats for the single-file export path (page read 2026-10-14)"
+        },
+        {
+          "resource": "torchtitan-ckpt-dt9",
+          "title": "Seed checkpoints and resharding",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/docs/checkpoint.md",
+          "locator": "Creating a seed checkpoint: every parallelism degree set to 1 on one device, then loaded anywhere via DCP resharding"
+        },
+        {
+          "resource": "nanotron-ckpt-dt9",
+          "title": "Why resharding is hard",
+          "url": "https://github.com/huggingface/nanotron/blob/fb0747bac263a4c3a8ff4d724869a533afb561d8/docs/docs.md",
+          "locator": "Distributed serialization mechanism: checkpoints are NOT topology agnostic because of `random_states` and sharded tensors, with the `checkpoint_reshape` plan; optimizer states aligned with parameters as the reshardable part"
+        },
+        {
+          "resource": "picotron-ckpt-dt9",
+          "title": "The no-reshard baseline",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/checkpoint.py",
+          "locator": "`load_checkpoint`: Assume the topology is the same, with per-TP and PP-rank file names; `adjust_tensor_size` slices full weights for a fixed TP degree but cannot remap across degrees"
         }
       ],
       "focus": [
-        "TODO"
+        "DCP resharding is a load-time plan from saved shards to live objects: same files, new layout, decided from the destination model's sharding. Nothing in the checkpoint changes.",
+        "Parameters and their aligned optimizer moments remap; RNG streams do not. Two TP=2 streams have no TP=1 equivalent, so a resharded resume reseeds or replays RNG explicitly.",
+        "A seed checkpoint is the extreme case: build once at degree 1, reshard everywhere. It separates initialization randomness from layout.",
+        "Picotron's slicer handles same-degree shape edits, not degree changes. Shrinking TP=4 weights onto TP=2 needs concatenation across files, which only a planner (DCP) or an explicit reshape provides."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Save a `fully_shard` toy model plus Adam state at world size 2 on CPU, load it at world size 1 over differently seeded initialization, and show the full parameter tensors equal the world-size-2 reference exactly.",
       "traps": [
-        "TODO"
+        "Assuming shard files map to ranks. Planner-assigned ranges follow the destination layout; a new rank's slice may come from any old file.",
+        "Resharding the model but skipping the moments check. Moments follow parameters only while the parameter-to-state alignment holds, so verify moments per parameter after the move.",
+        "Expecting the sampler position to survive a world-size change. Per-rank data ownership changes with the new degree, so recompute the shard assignment and resume from a global step, not a rank offset."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A 4-rank checkpoint loads onto 2 ranks. Where does the second rank's new slice come from?",
+          "a": "Wherever the load plan puts it: DCP reads all saved shards and writes each destination rank its new slice. Files are not rank-addressed."
+        },
+        {
+          "q": "After a TP=2 to TP=1 restore, loss matches but later dropout draws differ from the same-mesh resume. Is the restore broken?",
+          "a": "No. Parameters and optimizer state reshard, but RNG streams have no cross-topology equivalent, so dropout draws legitimately differ. Statistical match is the right bar for that stream."
+        },
+        {
+          "q": "Why can a seed checkpoint initialize any mesh while a training checkpoint cannot resume on any mesh without extra work?",
+          "a": "The seed holds only initial weights, which slice cleanly. A training checkpoint also holds optimizer moments, scheduler position, RNG streams and data position, each with its own layout dependence."
+        },
+        {
+          "q": "Picotron's `adjust_tensor_size` pads a narrowed slice with `torch.empty` rows when the target is wider. What must happen before training on those rows?",
+          "a": "They must be re-initialized: `torch.empty` allocates without drawing values, so the padded rows are garbage until reset. That path only covers fixed-degree shape edits anyway."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "DCP recipe Loading example across world sizes",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html",
+          "locator": "Loading: rebuild the model at the new world size, then `dcp.load` the old `checkpoint_id`; assert full-parameter equality with a `full_state_dict=True` comparison",
+          "note": "Proven pattern on CPU gloo: save at 2 processes, load at 1, all 4 parameter tensors bit-exact. Check optimizer moments the same way when the optimizer configuration is unchanged."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "A 2-to-1 CPU restore matches the reference bit-exactly on parameters, and you can state for each state class (parameters, moments, RNG, sampler) whether it reshards, reseeds or recomputes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The DCP reshard contract, TorchTitan seed checkpoints, Nanotron's worked limits and the Picotron baseline cover the single resharding topic at implement depth."
       }
     },
     {
@@ -650,47 +691,76 @@
         "preemption-signals-and-bounded-graceful-shutdown"
       ],
       "outcomes": [
-        "TODO"
+        "Install a signal handler that finishes the current iteration, saves a checkpoint and exits inside a grace budget.",
+        "Derive the grace budget from iteration time plus save time, and synchronize the exit decision across ranks."
       ],
-      "why": "TODO",
+      "why": "Preemption is scheduled, not random. A bounded handler converts a killed job into a clean checkpoint instead of lost work.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/rank-crash-elastic-restart",
+          "note": "Unplanned failures need the restart side."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/storage-failures-retention",
+          "note": "A preemption save still needs a place to land."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "stas-fault-dt9",
+          "title": "Graceful exit before the time limit",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md",
+          "locator": "Dealing with forced job preemption: grace budget as iteration time plus save time, doubled; Approach A (`--exit-duration-in-mins` with an `all_reduce` MAX sync); Approach B.1 (`--signal=USR1@600` with a `SIGUSR1` handler and exit-asap flag); Approach B.2 (launcher signal forwarding with `B:USR1`, `trap` and `pgrep` children); QoS-based SLURM preemption"
+        },
+        {
+          "resource": "stas-fault-dt9",
+          "title": "Kill and save switches",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md",
+          "locator": "Kill switch: poll for a file before each iteration, save and exit; Save switch: save and continue, removing the switch file"
         }
       ],
       "focus": [
-        "TODO"
+        "Grace time must cover a full started iteration plus the save: measure both, then double. Exiting early wastes nothing; exiting late loses the save.",
+        "The exit decision is collective. Reduce one flag across ranks, as BLOOM's `all_reduce` MAX pattern does, so no rank saves while another trains on.",
+        "Signals do not pass through launchers by default. `torchrun` children need the B.2 forwarding trap, or the handler never fires.",
+        "Kill and save switches are the same mechanism without the scheduler. A file poll before each iteration gives operators a manual preemption path."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU, run a two-process job with a `SIGUSR1` handler that sets a flag, finishes the iteration, saves model plus step, and exits. Send the signal mid-run and show both ranks exit 0 with a loadable checkpoint at the post-iteration step.",
       "traps": [
-        "TODO"
+        "Relying on the default 30 to 60 seconds of `SIGTERM`. Large-model saves take minutes, so request the early signal (`USR1@600`) and handle that instead.",
+        "Saving inside the signal handler. Handlers run asynchronously, so set a flag and let the main loop finish the iteration, then save and exit.",
+        "Letting one rank exit on its signal while others continue. The job hangs in a collective, so synchronize the decision before anyone leaves."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "An iteration takes up to 2 minutes and a save takes up to 2 minutes. What grace period do you request, and why not exactly 4?",
+          "a": "At least 8 minutes (double the sum). Exact budgets fail on jitter: a slow iteration plus a slow save overruns 4 minutes and the kill lands mid-write."
+        },
+        {
+          "q": "Rank 0's handler sets its flag but rank 1 never receives the signal. How does the job still exit cleanly?",
+          "a": "The flag is reduced across ranks before acting (MAX over the done tensor), so one rank's signal becomes every rank's decision in the same iteration."
+        },
+        {
+          "q": "Why does Approach B.2 send the signal to the `sbatch` shell instead of the launcher?",
+          "a": "Launchers such as `torchrun` do not forward `SIGUSR1` to workers. The shell traps it and re-sends to the worker processes found with `pgrep`."
+        },
+        {
+          "q": "A QoS preemption can land at any time, unlike a time-limit preemption. What changes in the handler?",
+          "a": "Nothing in the handler: the same flag, collective decision and bounded save run. What changes is that the grace duration is fixed by policy, so the budget must fit the worst case, not the schedule."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Stas `SIGUSR1` trap demo as a bounded-shutdown test",
+          "url": "https://github.com/stas00/ml-engineering/blob/main/training/fault-tolerance/README.md",
+          "locator": "Approach B.1 `sigusr1.slurm` handler plus the train-loop flag pattern; test on a two-process CPU job by sending `kill -s USR1 \"$pid\"` mid-run and assert both ranks save and exit within the budget",
+          "note": "No SLURM needed for the mechanism test: signal by PID and verify the checkpoint loads afterwards. The SLURM headers only schedule the signal."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "A mid-iteration signal produces a complete checkpoint at a clean boundary on every rank, inside a budget you derived from measured iteration and save times.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Stas preemption approaches plus kill and save switches cover signals, budgets and collective exit at implement depth."
       }
     },
     {
