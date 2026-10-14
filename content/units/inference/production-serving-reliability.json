@@ -844,47 +844,96 @@
         "gpu-cpu-memory-and-network-telemetry"
       ],
       "outcomes": [
-        "TODO"
+        "Emit per-request logs, metrics and traces joined by `request_id` that explain one request's TTFT and every decode gap.",
+        "Build engine dashboards from queue, phase, token, cache and scheduler metrics with alerts on TTFT, KV pressure and stalls.",
+        "Contrast vLLM and SGLang phase boundaries so dashboards survive an engine swap."
       ],
-      "why": "TODO",
+      "why": "Undashboarded serving is unoperated serving. The metric names, phases and trace joins chosen here become every later diagnosis.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/serving-slis-error-budgets",
+          "note": "Promote the alert thresholds into SLOs."
+        },
+        {
+          "unit": "inference/production-serving-reliability/incident-runbooks-recovery-tests",
+          "note": "Query the same telemetry for first-cause timelines."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-metrics-inf8",
+          "title": "vLLM production metrics",
+          "url": "https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
+          "locator": "General Metrics table (`vllm:num_requests_waiting`, `vllm:num_requests_running`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_hits`, `vllm:request_success`, `vllm:time_to_first_token_seconds`, `vllm:request_queue_time_seconds`, `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds`, `vllm:e2e_request_latency_seconds`); Custom Histogram Buckets with `--custom-histogram-buckets`; MFU counters behind `--enable-mfu-metrics`; Deprecation Policy"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM metrics design and tracing",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Scheduler Stats and Engine Core Events, KV Cache Residency Metrics (`vllm:kv_block_lifetime_seconds`, `vllm:kv_block_idle_before_evict_seconds`), and Tracing with `--otlp-traces-endpoint` plus `--collect-detailed-traces`"
+        },
+        {
+          "resource": "sglang-observability-inf8",
+          "title": "SGLang production metrics",
+          "url": "https://docs.sglang.io/docs/references/production_metrics",
+          "locator": "TTFT definition (streaming ends at first output after detokenization, which may hold no printable text; non-streaming ends at first scheduler token); request TPOT as `(finished_time - first_token_time) / (completion_tokens - 1)` with its four exclusions; the p95 TPOT PromQL example"
+        },
+        {
+          "resource": "aisys-code-prod-inf8",
+          "title": "AI Systems ch16 monitoring bundle and load harness",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch16",
+          "locator": "`monitoring_config.py` metric names with alert thresholds (TTFT p90 warn 0.6s, p99 crit 1.5s, KV warn 90% crit 98%, stalled floor 50); `vllm_monitoring.py` recording rules with `VLLMHighTTFTP90` alerts and Grafana panels; `inference_server_load_test.py` load harness feeding `capacity_planner.py`",
+          "depth": "Re-measure every bundled expectation on your hardware. The B200 numbers in the expectations files are the authors' results, not your targets."
+        },
+        {
+          "resource": "inference-engineering-inf8",
+          "title": "Production observability checklist",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 7.4.3 (printed p. 203): volume, request and response sizes, response codes, latency as TTFT plus tokens per second plus end-to-end on P50/P90/P99, replica count, CPU, host memory, GPU and GPU-memory utilization, queue depth; server plus audit logs"
         }
       ],
       "focus": [
-        "TODO"
+        "One request, one ID, three signals: the log line carries `request_id` with queue, prefill, decode and stream timings; the histograms carry the same labels; the trace carries the same ID across frontend, scheduler and runner. Diagnosis starts by joining them.",
+        "Queue versus execution is a metric pair, not a feeling: `vllm:request_queue_time_seconds` against `vllm:request_prefill_time_seconds` plus `vllm:request_decode_time_seconds`. TTFT alone cannot separate them.",
+        "Gauges describe state (`vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc`); counters describe events (`vllm:request_success`, token totals). Rate the counters, read the gauges, never the reverse.",
+        "TTFT, TPOT and ITL are engine-defined. SGLang's streaming TTFT ends at first detokenized output (possibly empty text) while vLLM's measures first-token time; a dashboard that compares them across engines compares different quantities."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Under a short local load run, scrape `/metrics` before and after. Show `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc` and the `vllm:time_to_first_token_seconds` count moving with load, then pull one request's full timeline from logs by its `request_id`.",
       "traps": [
-        "TODO"
+        "Labelling metrics by prompt text or user ID. Cardinality explodes Prometheus; label by model, version and class, and join to raw text only through the request ID in logs.",
+        "Timing decode with per-token host synchronization. The observer serializes the pipeline it measures; prefer engine histograms and sampled profiler ranges over naive timers.",
+        "Treating `vllm:request_success` as a gauge. It is a cumulative counter split by `finished_reason` (`stop`, `length`, `abort`); alert on its rate, and count aborts as cancellations, not successes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "TTFT spikes but prefill time is flat. Queue or execution problem?",
+          "a": "Queue. Flat prefill with rising TTFT means `vllm:request_queue_time_seconds` grew while execution held; add replicas or shed instead of tuning kernels."
+        },
+        {
+          "q": "How do you compute per-request decode tokens per second from SGLang's TPOT histogram?",
+          "a": "Take the reciprocal of the TPOT quantile (p5 TPS equals 1 over p95 TPOT). The reciprocal of mean TPOT is not mean TPS; aggregate rates per request first."
+        },
+        {
+          "q": "Which requests never appear in SGLang's request-TPOT histogram?",
+          "a": "Requests with fewer than two output tokens, streaming requests finishing in their first output, aborted requests and disaggregated prefill workers."
+        },
+        {
+          "q": "KV usage sits at 0.97 with rising queue time. Which two alerts fire in the ch16 bundle, and what do they mean?",
+          "a": "The KV warn alert (usage 0.97 exceeds the 90% warn threshold; the 98% crit has not fired) and the TTFT p99 alert. Together they mean the engine is memory-full, not compute-slow: shed, evict or add capacity."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems ch16: monitoring bundle under load",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch16",
+          "locator": "Deploy `vllm_monitoring.py` with `configs/vllm_monitoring.yaml` against a local vLLM server, drive `inference_server_load_test.py`, and satisfy the validation checklist in `README.md`",
+          "note": "Show one alert (TTFT, KV or stalled) firing with its Grafana panel, and record exporter overhead beside the latency numbers."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "One request ID yields its full timeline across logs, metrics and traces, and your dashboard separates queue, prefill, decode and KV pressure without ambiguity.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The vLLM metrics reference and design page, SGLang phase definitions, the ch16 runnable bundle and the observability checklist cover request, engine and hardware telemetry at measure depth."
       }
     },
     {
@@ -899,47 +948,90 @@
         "slos-error-budgets-and-goodput"
       ],
       "outcomes": [
-        "TODO"
+        "Define quality, availability, latency and error SLIs with windows and measurement points.",
+        "Set tiered SLOs with error budgets, and state what consumes budget and what happens when it empties.",
+        "Compute goodput (SLO-meeting, accepted-quality work) distinct from raw throughput."
       ],
-      "why": "TODO",
+      "why": "Throughput without an SLO counts failures as output. Budgets turn latency, errors and quality into one decision currency: ship or harden.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/serving-failure-injection",
+          "note": "Spend budget deliberately in fault drills."
+        },
+        {
+          "unit": "systems/observability-reliability-design/slos-error-budgets-recovery",
+          "note": "Reuse the systems SLO and recovery-objective rules."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-ch34-inf8",
+          "title": "Latency and throughput metrics done right",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 4, Measuring Performance in LLM Serving (printed pp. 149-155): Latency Metrics with `E2E latency = TTFT + ITL x (N - 1)`; Throughput Metrics on why RPS is workload-sensitive and TPS counts output tokens only and inflates under short inputs; Best Practices (trade-off, latency goals, decompose, simulate real traffic, one knob at a time)"
+        },
+        {
+          "resource": "mlsys-inference-inf8",
+          "title": "Degradation monitoring and deployment health",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 7.10.3 Table 7.17 Action Map (fallback share above 5 minutes warns, default-feature share above 50% is critical, shed-rate growth triggers capacity review, primary-versus-fallback gap past 1 hour escalates); Section 10.8.8 Table 10.48 Global Deployment Health (error below 0.1%, P99 within target and below twice single-region, quality within bounds across regions)"
+        },
+        {
+          "resource": "aisys-code-prod-inf8",
+          "title": "AI Systems tiered QoS gates",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch17",
+          "locator": "`early_rejection.py` `QoSController` tiers: TTFT SLO 200, 500 and 1000ms with TPOT 30, 50 and 100ms per token and max concurrency 50, 100 and 200 for premium, standard and free; `dynamo_config.yaml` early-rejection and cache-hit-ratio QoS block",
+          "depth": "Use the tier numbers as worked examples of SLO shape, not as your SLOs. Derive thresholds from your workload and the ch16 alert bands."
+        },
+        {
+          "resource": "vllm-metrics-inf8",
+          "title": "vLLM error and quality counters",
+          "url": "https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
+          "locator": "General Metrics: `vllm:request_success` by `finished_reason`, `vllm:corrupted_requests` for NaN-logit generations, `vllm:num_preemptions`, and `vllm:e2e_request_latency_seconds` as the latency-SLO histogram"
         }
       ],
       "focus": [
-        "TODO"
+        "Latency decomposes as \\(E2E = TTFT + ITL \\times (N - 1)\\). SLO each piece: queue-heavy TTFT and decode-heavy ITL fail for different reasons and page different owners.",
+        "Goodput is \\(G = T \\times f_{SLO} \\times f_{quality}\\): raw token throughput discounted by the in-SLO fraction and the accepted-quality fraction. Retried, shed and over-SLO tokens are cost, not output.",
+        "Budgets are tiered because users are: premium buys 200ms TTFT with tight errors, free buys 1000ms with best effort. One fleet-wide SLO either over-delivers to free or starves premium.",
+        "TPS flatters short inputs and uniform batches; RPS flatters short requests. SLOs pin distributions (p50/p95/p99) on fixed workload mixes so neither metric can be gamed by reshaping traffic."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From one load-test trace with raw per-request records, compute TTFT p50 and p99, mean TPOT, error rate and goodput at declared SLOs (for example TTFT p99 under 1.5s with under 0.1% errors). Show goodput below throughput by exactly the over-SLO plus error plus rejected-quality share.",
       "traps": [
-        "TODO"
+        "SLOing the mean. Means hide the p99 that users feel; the MLSys queueing analysis shows tails growing 5 to 10 times while means barely move near saturation.",
+        "Counting aborted and preempted requests as successes. `vllm:request_success` splits by `finished_reason`; aborts are cancellations and preemptions are scheduler work, and both leave goodput.",
+        "Treating quality as latency's afterthought. NaN logits, template skew and quantization drift all pass latency SLOs while failing users; sample outputs against acceptance checks as a first-class SLI."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A request generates 9 tokens with TTFT 0.4s and ITL 0.05s. What is its E2E latency?",
+          "a": "\\(0.4 + 0.05 \\times (9 - 1) = 0.8\\)s. TTFT covers the first token; each of the remaining 8 pays one ITL."
+        },
+        {
+          "q": "Throughput reads 1000 tokens/s but 5% of requests breach TTFT SLO and 2% fail quality checks. What is goodput?",
+          "a": "About \\(1000 \\times 0.95 \\times 0.98 = 931\\) tokens/s. The over-SLO and rejected-quality shares are cost, not useful work."
+        },
+        {
+          "q": "Why do premium and free tiers need different TTFT SLOs instead of one fleet SLO?",
+          "a": "One SLO either wastes capacity over-delivering to free traffic or starves premium of its 200ms guarantee. Tiered SLOs with separate concurrency caps let each class buy its own latency."
+        },
+        {
+          "q": "The error budget empties two weeks into the quarter. What changes operationally?",
+          "a": "Feature rollouts and risky config changes freeze; engineering time goes to reliability (capacity, rollback speed, flake removal) until burn stops and budget recovers."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AI Systems ch17: tiered QoS gates",
+          "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code/ch17",
+          "locator": "Port `early_rejection.py` `QoSController` tiers into your gateway and demonstrate, under one pressure burst, a free-tier request rejected while a premium request passes with TTFT inside 200ms",
+          "note": "Derive the tier thresholds from your unit-9 load trace, not from the file defaults. Record budget burn per tier during the burst."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your trace yields SLIs, tiered SLOs, budget burn and goodput from the same raw records, with no metric comparable across different workloads.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Hands metric discipline, MLSys degradation and health tables, the ch17 runnable QoS tiers and vLLM error counters cover SLIs, budgets and goodput at derive depth."
       }
     },
     {
