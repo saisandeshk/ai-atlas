@@ -328,7 +328,7 @@
         {
           "name": "100 Days day24: routing experiments 1 to 3",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
-          "locator": "Try These Experiments: 1, consistent-hash ring under rolling restart with 1/N movement; 2, circuit breaker that stops above queue 10 and drains below 5; 3, LIFO versus FIFO tails under a 10x burst",
+          "locator": "Try These Experiments: 1, consistent-hash ring under rolling restart with 1/N movement; 3, LIFO versus FIFO tails under a 10x burst",
           "note": "Run all three in the notebook, then port the hashing ring to your own gateway sketch with model version and tenant in the key."
         }
       ],
@@ -654,47 +654,89 @@
         "retry-budgets-and-storm-prevention"
       ],
       "outcomes": [
-        "TODO"
+        "Admit by work (tokens and KV), not by count: reject at the edge with 429 before the scheduler degrades everyone.",
+        "Shed by priority and deadline so premium survives a 10x burst while batch waits.",
+        "Cap retries with budgets and break circuits so one slow replica stops recruiting the fleet."
       ],
-      "why": "TODO",
+      "why": "Past saturation every accepted request harms admitted ones. Explicit shedding plus bounded retries turns collapse into degraded but predictable service.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/tenant-isolation-privacy",
+          "note": "Apply quotas per tenant before fleet-wide shedding."
+        },
+        {
+          "unit": "inference/production-serving-reliability/serving-slis-error-budgets",
+          "note": "Count shed load and breaker trips as SLO signals."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-inference-inf8",
+          "title": "Load shedding, circuit breakers and backpressure",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 7.10.2.3 with priority shedding, admission control at entry and the closed, open, half-open breaker (Fig 7.30 with 5 failures in 30s and 60s timeout); Section 10.6.10 with backpressure 503s and the three KV-pressure reliefs; Listing 7.1 trigger rules"
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 24 burst queue notebook",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
+          "locator": "Part 4 `InferenceQueue` with `max_size=150`, premium, standard and batch tiers at 30s, 120s and 600s deadlines, burst of 300 over 30s at 1 req/s drain: 150 dropped-full, 22 expired, premium mean 26.05s against its 30s deadline"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM waiting-queue signals",
+          "url": "https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
+          "locator": "General Metrics: `vllm:num_requests_waiting`, `vllm:num_requests_waiting_by_reason` with `capacity` versus `deferred` labels (LoRA budget, KV transfer, blocked status), and `vllm:num_requests_running`"
+        },
+        {
+          "resource": "infra-llm-project-inf8",
+          "title": "Project 103 shed rule",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/docs/TROUBLESHOOTING.md",
+          "locator": "Section 10: shed load with 429 once `num_requests_waiting` passes N, with `RateLimitMiddleware` keyed by API key returning `Retry-After: 60`"
         }
       ],
       "focus": [
-        "TODO"
+        "Admission control rejects at entry what the engine cannot serve. Shedding inside the engine degrades admitted requests too; edge 429 with `Retry-After` preserves their SLOs and coordinates clients.",
+        "Random drop treats premium and batch as equals. Shed by declared QoS class and deadline: expire overdue work first, protect interactive classes, make batch wait.",
+        "A retry without a budget multiplies a partial failure. Cap retries as a fraction of active traffic and break the circuit (open on repeated failure, single half-open probe) so a slow replica fails fast instead of queueing the fleet.",
+        "`capacity` waiting means add replicas or shed; `deferred` waiting means a transient constraint (LoRA budget, KV transfer, blocked status). Shedding fixes only the first; the second needs investigation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Replay the day24 Part 4 burst from a blank script: 300 requests over 30s into a queue of 150 at 1 req/s drain with the three tier deadlines. Match about 150 dropped-full, 22 expired, and premium mean near 26s inside its 30s deadline.",
       "traps": [
-        "TODO"
+        "Returning 429 without `Retry-After`. Clients retry immediately and the shed load returns as a synchronized second wave.",
+        "Counting requests instead of work at admission. One 100000-token prefill consumes the KV pool that hundreds of short chats would share; admit on tokens and KV, not on count.",
+        "Half-opening the breaker with full traffic. One probe decides recovery; a flood of probes is just the outage again."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "The queue is full and premium, standard and batch requests wait. Which drops first?",
+          "a": "Expired and lowest-class work first: batch past its deadline, then standard over deadline, protecting premium inside 30s. Random drop would sacrifice premium equally."
+        },
+        {
+          "q": "What do the three breaker states do?",
+          "a": "Closed passes requests and counts failures; open fails fast without touching the sick replica; half-open admits one probe, closing on success and reopening on failure."
+        },
+        {
+          "q": "Waiting-by-reason shows `deferred` climbing while `capacity` is flat. Shed harder or investigate?",
+          "a": "Investigate. Deferred means LoRA budget, KV transfer or blocked status, which shedding does not fix; check adapter load, transfer health and blocked requests."
+        },
+        {
+          "q": "Why must retries carry a budget during a replica slowdown?",
+          "a": "Each retry re-adds work the sick replica already holds, spreading its queue to healthy replicas. A capped budget plus an open breaker converts the slowdown into fast failures instead of fleet-wide queueing."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days day24: burst shed and breaker drill",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
+          "locator": "Part 4 burst replay with tier deadlines; Try These Experiments 2: circuit breaker that stops above queue 10 and drains below 5, measured on tails before and after one slowed replica",
+          "note": "Match the drop and expiry counts first, then add a 429-with-Retry-After admission rule and show premium p95 back inside deadline."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your burst replay matches the drop and tier means, and a slowed replica trips the breaker instead of growing every queue.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MLSys shedding and breaker theory, the day24 runnable burst, vLLM waiting signals and the Project 103 shed rule cover admission, shedding and retry bounds at implement depth."
       }
     },
     {
@@ -709,47 +751,83 @@
         "prompt-output-and-trace-privacy"
       ],
       "outcomes": [
-        "TODO"
+        "Explain the three noisy-neighbor channels (KV memory, network, time-sharing) and which quota stops each.",
+        "Choose quota, priority and bulkhead isolation per tier, and state what each costs.",
+        "Define the prompt, output and trace retention policy: what is logged, salted, billed and deleted."
       ],
-      "why": "TODO",
+      "why": "Sharing one fleet across tenants without boundaries turns every burst into everyone's incident, and every shared cache into a privacy review.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/overload-shedding-retry-budgets",
+          "note": "Enforce the per-tenant quotas at admission."
+        },
+        {
+          "unit": "inference/production-serving-reliability/serving-telemetry-signals",
+          "note": "Emit the per-tenant dimensions without leaking prompts."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-inference-inf8",
+          "title": "Multi-tenancy and isolation",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 10.7: the noisy-neighbor Example 10.18 with Table 10.35 (all tenants violated at 22 to 45ms) versus quotas in Example 10.19 with Table 10.36 (only the burster throttled); Listing 10.1 quota admission (`max_concurrent`, `max_kv_cache_mb`, `max_qps`, `max_batch_tokens`); max-min fairness in token rate; Table 10.37 priority tiers; the bulkhead Fig 10.20 with Example 10.20; Listing 10.2 model-load eviction guard"
+        },
+        {
+          "resource": "hands-serving-ch34-inf8",
+          "title": "Tenant-aware model selection",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 4, Implementing Model Selection (printed pp. 129-130): `choose_endpoint` with canary weight, tenant override `route[\"tenants\"][tenant][\"url\"]`, and 404 on unknown model"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM prefix-cache salt",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/openai_compatible_server/",
+          "locator": "Chat and Completions extra parameters: `cache_salt` (up to 1024 characters) salting the prefix cache against prompt guessing in multi-user environments"
+        },
+        {
+          "resource": "inference-engineering-inf8",
+          "title": "Security, compliance and data handling",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 7.3.4 (printed p. 198): the three areas (user data, weights, infrastructure), the rule against storing inputs and outputs without a retention need, and data-residency routing; Section 7.4.3 (printed p. 203): server and audit logs as the observability record"
         }
       ],
       "focus": [
-        "TODO"
+        "Bursts propagate through three channels at once: long sequences swell KV and evict others, large responses saturate egress, and time-sharing adds variance. One quota on request count stops none of them; quota KV megabytes, token rate and concurrency together.",
+        "Isolation is a ladder with explicit costs: quotas throttle the burster, priorities preempt for critical tiers, bulkheads dedicate replicas at idle cost. Soft quotas flex below 50% utilization and harden near 90%.",
+        "Shared prefix state is a cross-tenant channel. Salt the cache per tenant and scope affinity keys by tenant and version, or a timing probe guesses another tenant's prompt.",
+        "Retention is a design choice with a default of least data: log IDs, sizes, latencies and salted hashes for billing and debugging; keep raw prompts and outputs only with a declared need, owner and deletion path."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, replay the two MLSys tables: ten tenants at 100 QPS each with one bursting to 500. Without quotas every tenant violates at 22 to 45ms; with quotas only the burster is throttled at 120 while the rest hold 10ms. Then list the four per-tenant observability dimensions.",
       "traps": [
-        "TODO"
+        "Treating equal request counts as fair shares. A long summarization tenant consumes the KV pool of many short-chat tenants; fairness is denominated in token-generation rate, not request count.",
+        "Sharing one prefix cache across tenants for hit rate. Hits across tenants leak prompt bytes through timing; salt per tenant and accept the lower shared hit rate.",
+        "Logging prompts to make debugging easy. The debug value is real and so is the breach surface; hash or drop raw text and keep the request ID as the join key."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "One tenant bursts 5x with no quotas. What happens to the other nine?",
+          "a": "All violate: P99 climbs to 22 to 30ms against a 10ms contract while the burster itself hits 45ms. Shared pools propagate one burst to every tenant."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Same burst with quotas. Who sees what?",
+          "a": "Only the burster is throttled (admitted at 120 with 50ms latency); the other nine hold 10ms. Quotas convert a fleet incident into one tenant's throttle."
+        },
+        {
+          "q": "Why is token-generation rate the fairness unit instead of request count?",
+          "a": "KV bytes and decode steps scale with tokens, so equal counts let long requests starve short ones. Rate in tokens per second bounds throughput and memory together."
+        },
+        {
+          "q": "What are the four per-tenant observability dimensions?",
+          "a": "Request volume with P50/P95/P99 latency, GPU and KV utilization, throttling and preemption counts, and errors by type. Without them a quota violation is invisible until it becomes an SLO breach."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-tenant quota admission from Listing 10.1, a salted-cache isolation test proving no cross-tenant prefix hit, and a cross-tenant key attack drill with first-cause evidence.",
+      "stopWhen": "You can replay both burst tables from memory and defend your retention policy field by field: logged, salted, billed or deleted.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MLSys tenancy machinery, Hands tenant routing, the vLLM cache salt and Inference Engineering security cover isolation and privacy at explain depth, with hands-on isolation assigned to the mini-project."
       }
     },
     {
