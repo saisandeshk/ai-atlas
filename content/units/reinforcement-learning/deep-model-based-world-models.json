@@ -56,7 +56,7 @@
         "The reward model is learned too. MBPO fits \\(p_{\\theta}(s'|s,a)\\) and \\(r\\) together by maximum likelihood on the environment dataset.",
         "System identification is regression, not control. Fit first, report held-out one-step error, and only then plan."
       ],
-      "reproduce": "From a blank file, fit \\(s' = w_1 s + w_2 a\\) by least squares on 200 transitions from \\(s' = 0.9 s + a\\) plus small Gaussian noise, collected near \\(s = 0\\) with NumPy seed 2. Recover \\(w_1 = 0.9123\\) and \\(w_2 = 1.0003\\) with training MSE 0.00239, then report the MSE on held-out data from the same policy before any planning claim.",
+      "reproduce": "From a blank file, with `np.random.default_rng(seed)`, draw 200 states \\(s \\sim U(-0.5, 0.5)\\), then 200 actions \\(a \\sim N(0, 0.5^2)\\), then 200 noise values \\(N(0, 0.05^2)\\), and set \\(s' = 0.9 s + a\\) plus the noise. Fit \\(s' = w_1 s + w_2 a\\) by least squares with no intercept. Over seeds 0 to 9 the weights land within about 0.03 of \\((0.9, 1)\\) and the training MSE sits near the noise variance 0.0025 (0.0022 to 0.0028). Then report the MSE on 200 fresh transitions from the same policy before any planning claim. Run on CPU.",
       "traps": [
         "Calling simulator access a learned model. A planner that queries privileged state has no sampling error, so its success says nothing about learning.",
         "Reporting training error only. A dynamics fit can memorize its training transitions and still drift off distribution; held-out error under the collecting policy is the minimum report.",
@@ -150,7 +150,7 @@
         "Planning V2 adds a terminal value \\(\\hat{V}(\\hat{s}_{t+H+1})\\) to the reward sum over \\(H\\) steps. Without it a short horizon is myopic; with a bad one it inherits value error.",
         "MPC executes only the first planned action. The planning horizon \\(H\\) is a compute knob, not the task horizon."
       ],
-      "reproduce": "Closed-book, write the objective over \\(H\\) steps \\(\\sum_{t'=t}^{t+H} r(\\hat{s}_{t'}, a_{t'}) + \\hat{V}(\\hat{s}_{t+H+1})\\) from the current state, then implement receding-horizon control on a deterministic 1D toy and hand-check one 3-step rollout value before executing the first action.",
+      "reproduce": "Closed-book, write the objective over \\(H\\) steps \\(\\sum_{t'=t}^{t+H} r(\\hat{s}_{t'}, a_{t'}) + \\hat{V}(\\hat{s}_{t+H+1})\\) from the current state (\\(H + 1\\) reward terms, as slide 26 writes it), then implement receding-horizon control on a deterministic 1D toy and hand-check one 3-step rollout value before executing the first action.",
       "traps": [
         "Executing the full planned sequence in a stochastic system. The later actions were optimized for predicted states, not for the states that occur.",
         "Setting the planning horizon from the task horizon. A short horizon with a terminal value solves long tasks; a task-length horizon with model error solves none.",
@@ -220,7 +220,7 @@
           "resource": "rl7-pets",
           "title": "PETS, CEM versus random shooting",
           "url": "https://arxiv.org/abs/1805.12114",
-          "locator": "arXiv:1805.12114v2, Sections 5 to 6 with the appendix comparison: CEM with 5 iterations of 2500 samples against random shooting on half-cheetah dynamics (Figure A.11), and the horizon note (Figure A.8)"
+          "locator": "arXiv:1805.12114v2, Sections 5 to 6 with Appendix A.8: CEM with 5 iterations of 500 samples (2500 in total) against random shooting with 2500 samples on the true half-cheetah simulator, so the optimizers are compared without model error (Figure A.11), and the horizon note (Figure A.8)"
         },
         {
           "resource": "rl7-stanford-cs224r-spring-2026-model-based-rl",
@@ -231,10 +231,10 @@
       ],
       "focus": [
         "Random shooting samples \\(N\\) sequences and keeps the best. CEM fits the next Gaussian to the elite fraction and repeats, so later samples concentrate where returns were high.",
-        "The comparison is only fair on equal model queries. CEM with 5 iterations of 2500 samples beats shooting with 2500 samples because it reallocates them, not because it uses more.",
+        "The comparison is only fair on equal model queries. CEM with 5 iterations of 500 samples (2500 in total) beats shooting with 2500 samples because it reallocates them, not because it uses more.",
         "The oracle uses true dynamics. Its return is the planner ceiling: a learned model that scores below a simple controller on the oracle has a planning problem, not a modeling problem."
       ],
-      "reproduce": "From a blank file with NumPy seed 0, plan \\(s' = s + a\\) with reward \\(-(s')^2 - 0.01 a^2\\) from \\(s_0 = 2\\) over \\(H = 3\\) with actions in \\([-1, 1]\\). Random shooting with 200 sequences scores best value -1.4964 at \\([-0.810, -0.990, -0.354]\\); CEM with 200 samples and a 20 percent elite reaches elite-mean values -2.4868, -1.2234 and -1.0640 across 3 iterations. Run on CPU and match all four numbers.",
+      "reproduce": "From a blank file with one `np.random.default_rng(0)` stream, plan \\(s' = s + a\\) with reward \\(-(s')^2 - 0.01 a^2\\) from \\(s_0 = 2\\) over \\(H = 3\\) with actions in \\([-1, 1]\\). Draw 200 uniform sequences for random shooting: the best scores -1.4964 at \\([-0.810, -0.990, -0.354]\\). Continue the same stream for CEM from mean 0 and standard deviation 1: each iteration draws 200 Gaussian sequences clipped to \\([-1, 1]\\), keeps the top 20 percent, and refits the mean and per-step standard deviation to them. The mean return of the elites is -2.4868, -1.2234 and -1.0640 across 3 iterations, against an optimum of about -1.02 near \\([-1, -0.99, 0]\\). CEM spent 600 samples, so rerun shooting with 600 before claiming a win on equal samples. Run on CPU.",
       "traps": [
         "Refitting CEM to all samples instead of the elites. The mean then barely moves and the method degrades to shooting with extra steps.",
         "Letting the elite fraction collapse the variance to zero in one iteration. Keep a small variance floor so later iterations can still search.",
@@ -247,7 +247,7 @@
         },
         {
           "q": "What does PETS Figure A.11 establish, exactly?",
-          "a": "On half-cheetah dynamics, CEM with 5 iterations of 2500 samples plans significantly better than random shooting with 2500 samples. It is the paper's planning comparison on the paper's setup, not a learner target."
+          "a": "On the true half-cheetah simulator, CEM with 5 iterations of 500 samples (2500 in total) plans significantly better than random shooting with 2500 samples. It is the paper's planning comparison on the paper's setup, not a learner target."
         },
         {
           "q": "Your learned-model planner scores below random shooting on the true dynamics. What is broken?",
@@ -402,7 +402,8 @@
           "resource": "rl7-pets",
           "title": "PETS, uncertainty model and trajectory sampling",
           "url": "https://arxiv.org/abs/1805.12114",
-          "locator": "arXiv:1805.12114v2, Section 4 (probabilistic ensemble: each member outputs a Gaussian) and Section 5.1 (trajectory sampling TS1: one bootstrap per rollout)"
+          "locator": "arXiv:1805.12114v2, Section 4 (probabilistic ensemble: each member outputs a Gaussian) and Section 5.1 (trajectory sampling: TS1 resamples a bootstrap for each particle every time step, TS\\(\\infty\\) keeps one bootstrap per particle for the whole trial)",
+          "depth": "The Hands-on model-based page calls the one-member-per-rollout scheme TS1; in the paper that scheme is TS\\(\\infty\\)."
         },
         {
           "resource": "rl7-stanford-cs224r-spring-2026-model-based-rl",
@@ -416,11 +417,11 @@
         "Each PETS member outputs a Gaussian mean and diagonal variance for \\((s', r)\\). Disagreement of means across members estimates the epistemic part; the predicted variances carry the aleatoric part.",
         "Pessimism penalizes or constrains plans by uncertainty. Expected value under a high-variance prediction can look fine while the pessimistic value is very low."
       ],
-      "reproduce": "From a blank file, build 3 fixed one-step predictors that agree near training inputs and diverge outside them. At \\(x = 0.0\\), \\(1.0\\) and \\(3.0\\) the prediction standard deviations are 0.0000, 0.0707 and 0.9721: reproduce all three numbers, then derive the diagonal-Gaussian negative log-likelihood your probabilistic member would minimize.",
+      "reproduce": "From a blank file, build 3 fixed one-step predictors \\(f_1(x) = x\\), \\(f_2(x) = x + 0.1 x^2\\) and \\(f_3(x) = x - 0.1 x^2\\), which agree at the training input \\(x = 0\\) and diverge away from it. With the population standard deviation (`np.std` with `ddof=0`), the disagreement at \\(x = 0.0\\), \\(1.0\\) and \\(3.0\\) is 0.0000, 0.0816 and 0.7348: reproduce all three on CPU, then derive the diagonal-Gaussian negative log-likelihood your probabilistic member would minimize.",
       "traps": [
         "Training every member on identical data with an identical seed. Without initialization or batch diversity the members agree everywhere and the disagreement statistic is theater.",
         "Reading predictive variance as model uncertainty. An output variance can encode pure environment noise; epistemic doubt needs member disagreement or a posterior.",
-        "Planning on the ensemble mean as if it were a real dynamics. The mean of plausible models is itself an artificial environment; PETS samples whole rollouts per member (TS1) instead."
+        "Planning on the ensemble mean as if it were a real dynamics. The mean of plausible models is itself an artificial environment; PETS propagates particles through sampled members instead (TS1 resamples every step, TS\\(\\infty\\) once per trial)."
       ],
       "selfTest": [
         {
@@ -432,8 +433,8 @@
           "a": "It conflates the two kinds: a model can be certain about a noisy world (high aleatoric, low epistemic) or uncertain about a deterministic one (low aleatoric, high epistemic)."
         },
         {
-          "q": "What is TS1 in one sentence, and why not resample a member every step?",
-          "a": "Each rollout keeps one randomly drawn ensemble member for all its steps. Per-step resampling would average members into an artificial dynamics and suppress multimodality."
+          "q": "How do TS1 and TS\\(\\infty\\) differ, and what does keeping one member per particle buy?",
+          "a": "TS1 resamples each particle's bootstrap every time step; TS\\(\\infty\\) keeps it for the whole trial. Holding the member fixed respects time-invariant dynamics and makes the uncertainties separable: variance within one member is aleatoric, variance across members is epistemic. The paper notes TS1 softly restricts trajectory multimodality."
         },
         {
           "q": "What does a pessimistic penalty change about the chosen plan?",
@@ -482,7 +483,7 @@
           "title": "Model-Based RL: error recursion",
           "url": "https://walkinglabs.github.io/hands-on-modern-rl/en/chapter11_continuous_control/model-based#a-key-limitation-of-dyna",
           "locator": "A Key Limitation of Dyna: the recursion \\(e_{t+1} \\le L e_t + \\epsilon\\) with the three regimes (page read 2026-10-14)",
-          "depth": "Recompute the numbers yourself: with \\(L = 1.01\\) and \\(\\epsilon = 0.01\\) the exact bounds are 0.01, 0.051, 0.220 and 1.705 at 1, 5, 20 and 100 steps, so the page's 2.7 at 100 steps (which quotes \\(1.01^{100}\\)) is a slip."
+          "depth": "Recompute the numbers yourself: with \\(L = 1.01\\) and \\(\\epsilon = 0.01\\) the exact bounds are 0.01, 0.051, 0.220 and 1.705 at 1, 5, 20 and 100 steps, so the page's 2.7 at 100 steps (which quotes \\(1.01^{100}\\)) is a slip. Its \"about \\(1174\\epsilon\\)\" for \\(L = 1.1\\) and \\(T = 50\\) also drops the \\(-1\\): the sum is \\(1163.9\\epsilon\\), or 11.6391 at \\(\\epsilon = 0.01\\)."
         },
         {
           "resource": "rl7-sutton-barto-chapter-8",
@@ -594,7 +595,7 @@
         "Aggregation answers with fresh real data: run the new policy in the system, append the transitions, refit. Imitation has the same loop under the name DAgger, except here the system (not an expert) labels the new states.",
         "Fallback is a predeclared rule, not a feeling: above an uncertainty threshold, shorten \\(H\\), replan every step, or refuse the imagined plan and collect real data."
       ],
-      "reproduce": "From a blank file with NumPy seed 2, fit \\(s' = w_1 s + w_2 a\\) on 200 transitions of \\(s' = 0.9 s + a\\) collected near \\(s = 0\\). Training MSE is 0.00239 but MSE on data from a policy living near \\(s = 5\\) is 0.00727. Aggregate both datasets and refit: the far-policy MSE falls to 0.00235. Reproduce all three numbers on CPU.",
+      "reproduce": "From a blank file with `np.random.default_rng(seed)`, let the true system bend slightly: \\(s' = 0.9 s + a + 0.02 s^2\\) plus \\(N(0, 0.05^2)\\) noise, with actions \\(a \\sim N(0, 0.5^2)\\). Fit \\(s' = w_1 s + w_2 a\\) on 200 transitions with \\(s \\sim U(-0.5, 0.5)\\); its held-out MSE stays near the noise variance 0.0025. Test it on 200 transitions from a policy living at \\(s \\sim U(4.5, 5.5)\\): over seeds 0 to 9 the MSE jumps to 0.13 to 0.30. Append 200 real far transitions, refit, and test on fresh far data: the MSE falls to about 0.003, while near-data error rises only slightly. Run on CPU.",
       "traps": [
         "Refitting on imagined rollouts. The model teaching itself confirms its own errors; only real transitions from the new policy fix the shift.",
         "Constraining the policy so tightly to the data that it cannot improve. The trust region must bind the step, not freeze it; aggregation (not a smaller step) is what permits progress.",
@@ -620,7 +621,7 @@
       ],
       "practice": [],
       "practiceNote": "The section mini-project covers this: the data-aggregation loop and fallback-replanning tests under uncertainty.",
-      "stopWhen": "You reproduce the three MSE numbers and can state your aggregation and fallback rules before running any planner.",
+      "stopWhen": "You reproduce the before and after MSE ranges and can state your aggregation and fallback rules before running any planner.",
       "fit": {
         "verdict": "kept",
         "note": "Berkeley shift slides, CS224R mismatch slides and MBPO Section 4.3 cover shift, aggregation and fallback at explain and implement depth."
@@ -639,7 +640,7 @@
         "rl-7-model-based-policy-optimization"
       ],
       "outcomes": [
-        "Derive why branched rollouts beat full rollouts: the bound trades a geometrically decaying term against a term growing with rollout length.",
+        "Derive the branched-rollout bound's trade-off between a term decaying in \\(k\\) and one growing in \\(k\\), and explain why only the measured model error under the new policy makes a nonzero \\(k\\) optimal.",
         "Implement MBPO-style branched rollouts: sample a real state from the buffer, roll \\(k\\) model steps under the current policy, store the transitions.",
         "Sweep the rollout horizon \\(k\\) and retain the value where model bias reverses the gain, with a matched model-free control."
       ],
@@ -659,7 +660,7 @@
           "resource": "rl7-when-to-trust-your-model-model-based-policy-optimization",
           "title": "MBPO: bound, algorithm and horizon evidence",
           "url": "https://arxiv.org/abs/1906.08253",
-          "locator": "arXiv:1906.08253v3, Section 4.1 (Theorem 4.1, monotonic improvement with model bias), Section 4.2 (Theorem 4.2, branched rollouts), Section 5 with Algorithm 2 (ensemble, SAC, k-step rollouts from buffer states), Section 6.2 with Figure 3 (Hopper schedule, single-step baseline, no-model control)"
+          "locator": "arXiv:1906.08253v3, Section 4.1 (Theorem 4.1, monotonic improvement with model bias), Section 4.2 (Theorem 4.2, branched rollouts), Section 4.3 with Figure 1 and Theorem 4.3 (model error under the updated policy), Section 5 with Algorithm 2 (ensemble, SAC, k-step rollouts from buffer states), Section 6.2 with Figure 3 (Hopper schedule, single-step baseline, no-model control)"
         },
         {
           "resource": "rl7-stanford-cs224r-spring-2026-model-based-rl",
@@ -676,7 +677,7 @@
       ],
       "focus": [
         "A branched rollout starts from a real buffer state and runs \\(k\\) model steps. Short \\(k\\) keeps every query near data; the buffer (not the model) supplies coverage of later task stages.",
-        "Theorem 4.2 bounds true return by branched return minus terms that decay geometrically in \\(k\\) plus terms that grow with \\(k\\). That shape, not the constants, motivates nonzero but short rollouts.",
+        "Theorem 4.2 bounds true return by branched return minus a term that decays exponentially in \\(k\\) and one that grows linearly in \\(k\\). Taken literally its constants put the best \\(k\\) at 0, no model at all. Section 4.3 measures that model error grows slowly with policy shift, and Theorem 4.3, written with that error, has its optimum at \\(k > 0\\) when the error is low enough.",
         "The paper's numbers are the paper's results: Hopper's best schedule rises from \\(k = 1\\) to 15, fixed \\(k = 1\\) keeps most of the gain, 200-step rollouts underperform, 500-step rollouts fail, and Ant at 300k steps matches SAC at 3M. Reproduce the design on your task, not these returns."
       ],
       "reproduce": "Closed-book, state Algorithm 2 lines 6 to 8 in your own words (sample \\(s_t\\) from the environment dataset, perform a model rollout of \\(k\\) steps under the current policy, add the transitions to the model dataset), then implement that sampler against a scripted buffer and verify every stored transition carries its branch-start state.",
@@ -691,8 +692,8 @@
           "a": "Branch starts are sampled from every stage of real trajectories in the buffer. Each rollout is short, but the set of starts covers the task."
         },
         {
-          "q": "What in Theorem 4.2 argues for short but nonzero \\(k\\)?",
-          "a": "One error term decays geometrically with \\(k\\) while another grows with \\(k\\). The sum is minimized at a small positive length under realistic model error."
+          "q": "Does Theorem 4.2 by itself argue for a short but nonzero \\(k\\)?",
+          "a": "No. It has one term decaying exponentially in \\(k\\) and one growing linearly, but with its constants the bound is maximized at \\(k = 0\\). The case for short nonzero rollouts is Theorem 4.3, which replaces the pessimistic model error with the measured error under the new policy (Figure 1)."
         },
         {
           "q": "What does the no-model (G) control in Figure 3 rule out?",
@@ -785,7 +786,7 @@
         },
         {
           "q": "What do free bits do in one sentence?",
-          "a": "They clip each KL loss below 1 nat so already-predictable dimensions stop pulling representations toward the prior and keep their information."
+          "a": "Each KL loss becomes \\(\\max(1, \\text{KL})\\), so once a term is below 1 nat it stops pulling and learning focuses on the prediction loss."
         }
       ],
       "practice": [],
@@ -849,11 +850,11 @@
         "Inside the tree, actions come from a UCB-style tree policy balancing value and visit counts. Beyond the tree, actions come from the (possibly random) rollout policy, and those states save nothing.",
         "The delivered action is a function of root statistics (best value or most visits), and the next move reruns the whole process from the new state, optionally keeping the surviving subtree."
       ],
-      "reproduce": "From a blank file, implement selection, expansion, simulation and backup on tic-tac-toe or a small gridworld with a known model. Separately, hand-compute UCB with \\(c = \\sqrt{2}\\) at a node with 10 visits and children \\((n=7, Q=0.6)\\) and \\((n=3, Q=0.9)\\): scores 1.4111 and 2.1390, so selection picks the less-visited child despite its lower visit count. Match both numbers.",
+      "reproduce": "From a blank file, implement selection, expansion, simulation and backup on tic-tac-toe or a small gridworld with a known model. Separately, hand-compute UCB with \\(c = \\sqrt{2}\\) at a node with 10 visits and children \\((n=7, Q=0.9)\\) and \\((n=3, Q=0.6)\\): scores 1.7111 and 1.8390, so selection picks the less-visited child despite its lower value. Match both numbers.",
       "traps": [
         "Backing up values into states visited only by the rollout policy. Only tree edges traversed by the tree policy are updated; rollout states beyond the tree save nothing.",
         "Applying UCB to unvisited actions. With \\(n = 0\\) the bonus divides by zero; expand untried actions first instead of scoring them.",
-        "Picking the final action by noisy value when visit counts disagree. The book's robust rule is the most-visited root action, which resists outlier simulations."
+        "Picking the final action by noisy value when visit counts disagree. The book offers the most-visited root action as the choice that avoids selecting outliers."
       ],
       "selfTest": [
         {
@@ -862,7 +863,7 @@
         },
         {
           "q": "In the hand case above, why does selection pick the child with fewer visits?",
-          "a": "Its UCB score 2.1390 exceeds 1.4111: the exploration bonus for 3 versus 7 visits outweighs the value gap, which is exactly the intended explore-exploit trade."
+          "a": "Its UCB score 1.8390 exceeds 1.7111: the larger exploration bonus for 3 visits against 7 outweighs the 0.3 value gap, which is exactly the intended explore-exploit trade."
         },
         {
           "q": "What do the policy and value networks contribute in AlphaZero's MCTS?",
