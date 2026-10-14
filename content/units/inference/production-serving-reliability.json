@@ -245,47 +245,97 @@
         "multi-lora-adapter-residency-and-affinity-routing"
       ],
       "outcomes": [
-        "TODO"
+        "Separate router placement (per-request, model and cache aware) from load balancing (system-level capacity spreading).",
+        "Implement prefix-hash routing with bounded imbalance and a FailOpen fallback for picker failure.",
+        "Route LoRA traffic by adapter residency so adapter swaps stay off the critical path."
       ],
-      "why": "TODO",
+      "why": "Round-robin across replicas collapses tail latency on heterogeneous LLM requests. Placement must see tokens, prefixes and adapters, not just connection counts.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/overload-shedding-retry-budgets",
+          "note": "Shed and break circuits when routing cannot place a request."
+        },
+        {
+          "unit": "inference/distributed-disaggregated-inference/replica-cache-aware-routing",
+          "note": "Extend the same routing math to replicas and disaggregated phases."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-inference-inf8",
+          "title": "Load balancing and request routing",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 10.6: power of two choices with Algorithm 10.2 and Eq 10.13, weighted and adaptive routing, least-connections, consistent hashing with Example 10.15, and Section 10.6.8 health checking with the liveness, readiness and deep levels plus Table 10.31 cadences"
+        },
+        {
+          "resource": "gateway-inference-inf8",
+          "title": "Gateway API Inference Extension routing",
+          "url": "https://gateway-api-inference-extension.sigs.k8s.io/",
+          "locator": "Introduction: Key Features (model-aware and smart load balancing), API Resources, Request Flow five steps; InferencePool page at /api-types/inferencepool: `vllm-qwen3-32b` example with `endpointPickerRef` and `failureMode: FailOpen`; Implementer's Guide at /guides/implementers: EPP callout with `x-gateway-destination-endpoint` headers and FailOpen versus FailClose"
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 24 routing, load balancing and queueing notebook",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
+          "locator": "Part 1 token-aware routing (load CV 0.066 to 0.005 over 1000 requests on 4 replicas), Part 2 cache-aware routing (hit rate 8.8% to 30.7%), Part 3 LoRA-aware routing (swaps 804 to 280 at 200ms each), Part 5 Little's law table and the 80% utilization rule",
+          "depth": "Use the simulator cells as runnable claims, not as production code. Replace the fixed 200ms swap and 90% sharing with your own workload numbers."
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM LoRA serving and adapter accounting",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
+          "locator": "Instrumentator APIs: LoRA dynamic loading endpoints (`/v1/load_lora_adapter`, `/v1/unload_lora_adapter`, local development only); serve with `--enable-lora --max-loras` and watch `vllm:lora_requests_info` in /metrics",
+          "depth": "Do not use the dynamic load endpoints outside local development. Production adapter placement belongs in the router."
+        },
+        {
+          "resource": "inference-engineering-inf8",
+          "title": "Router versus load balancer and smart routing",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 7.2.3 (printed pp. 190-191): router as request-level placement versus load balancer as system-level capacity, token-aware and KV-aware routing, LoRA-aware routing, FIFO and priority queues"
         }
       ],
       "focus": [
-        "TODO"
+        "The router answers per request where it should go (model name, prefix overlap, adapter residency, priority). The load balancer answers where it could go (healthy endpoints with headroom). Mixing the two jobs hides placement bugs behind connection counts.",
+        "Two-choice routing cuts the worst queue from \\(\\Theta(\\log R / \\log \\log R)\\) to \\(\\Theta(\\log \\log R)\\) with one extra probe, but only when the work signal matches LLM load: active tokens or KV pressure, not request count.",
+        "Prefix affinity needs the full identity in the hash key: prompt bytes plus model version, tenant scope and cache salt. Hashing raw text alone reuses across versions and tenants.",
+        "The picker is a single point of failure. `FailClose` drops every request when the picker fails; `FailOpen` falls back to gateway-picked endpoints. Choose explicitly per pool."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Rerun the day24 Part 1 simulation: 1000 requests with clipped-exponential prompt lengths over 4 replicas. Show round-robin load CV near 0.07, then add token-aware placement and show CV near 0.005 with the same mean.",
       "traps": [
-        "TODO"
+        "Calling round-robin fair on 10-token and 100000-token requests. Equal counts are unequal load; the long request pins its replica while short ones queue elsewhere.",
+        "Leaving the default `FailClose` on the endpoint picker. A picker bug then becomes a full outage instead of a routing degradation.",
+        "Using `/v1/load_lora_adapter` in production. The docs mark it local-development only; live adapter swaps belong in deployment and router affinity, not in request-time calls."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does token-aware two-choice routing beat least-connections on LLM load?",
+          "a": "Least-connections counts requests, so one 500-token decode counts the same as one 10-token reply. Token-aware two-choice compares post-admission load in tokens or KV pages, exposing the real remaining work."
+        },
+        {
+          "q": "The endpoint picker crashes under `FailClose`. What do clients see, and what changes under `FailOpen`?",
+          "a": "Under `FailClose` the gateway drops requests (503) even though replicas are healthy. Under `FailOpen` it forwards to a gateway-picked endpoint, trading smart placement for availability."
+        },
+        {
+          "q": "Two tenants share a system prompt. Why must the prefix-hash key include tenant scope?",
+          "a": "Otherwise tenant B hits tenant A's cached prefix, leaking prompt bytes through timing and breaking isolation. Salt or scope the key per tenant."
+        },
+        {
+          "q": "LoRA-aware routing cut swaps from 804 to 280 in the simulation. What does each avoided swap save?",
+          "a": "One 200ms adapter load off the request path, plus the KV and batch disruption around it. Affinity keeps hot adapters resident instead of churning them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days day24: routing experiments 1 to 3",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day24/routing-load-balancing-queueing.ipynb",
+          "locator": "Try These Experiments: 1, consistent-hash ring under rolling restart with 1/N movement; 2, circuit breaker that stops above queue 10 and drains below 5; 3, LIFO versus FIFO tails under a 10x burst",
+          "note": "Run all three in the notebook, then port the hashing ring to your own gateway sketch with model version and tenant in the key."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your simulation shows the CV drop, your hash key names version and tenant, and you can defend FailOpen versus FailClose for one pool.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MLSys routing theory, the Gateway EPP contract, day24 runnable simulations and the vLLM LoRA surfaces cover all three topics at explain and implement depth."
       }
     },
     {
@@ -302,47 +352,96 @@
         "graceful-drain-and-process-termination"
       ],
       "outcomes": [
-        "TODO"
+        "Split a cold start into provision, image, weight-load and warmup phases and name which dominates for a large model.",
+        "Wire liveness, readiness and inference-health probes with thresholds, and state what each gates.",
+        "Drain a server gracefully: stop admission, finish in-flight work, then terminate, without stranding billed requests."
       ],
-      "why": "TODO",
+      "why": "Autoscaling and rollout math both rest on startup time and honest readiness. A server that reports ready before warmup, or dies with a full queue, voids every downstream guarantee.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/compatibility-canary-rollback",
+          "note": "Gate canary promotion on the same readiness signals."
+        },
+        {
+          "unit": "inference/production-serving-reliability/autoscaling-failure-reserve",
+          "note": "Feed measured startup lag into replica planning."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-inference-inf8",
+          "title": "Cold starts and health checking",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 10.8.2 with Eq 10.14, Table 10.39 load bandwidths (SSD versus S3) and Example 10.21 (Llama-70B totaling 420s with a 300s S3 download); Section 10.6.8 with the liveness, readiness and deep probe levels, Table 10.31 cadences and the warmup startup check"
+        },
+        {
+          "resource": "inference-engineering-inf8",
+          "title": "Containerization and cold starts",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Section 7.1 (printed pp. 179-183): base images, version pinning, large weights loaded separately; Section 7.2.2 (printed pp. 188-190): the four cold-start factors and the engine-startup trade-off between fast-start engines and compile-heavy ones",
+          "depth": "Skip the vendor-specific image advice. Keep the startup-phase split and the pinning rule."
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 23 cold-start stages and frontier",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day23/autoscaling-concurrency-cold-starts.ipynb",
+          "locator": "Part 2 `cold_start_stages` table (baseline 927s versus optimized 102s for 70B FP16) and the scale-to-zero frontier table; Try These Experiments 6: time `vllm serve` startup on a small model against the theory"
+        },
+        {
+          "resource": "infra-llm-project-inf8",
+          "title": "Project 103 deployment probes",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/kubernetes/llm-deployment.yaml",
+          "locator": "Container probes: `livenessProbe` on `/health` with `initialDelaySeconds: 300`, `readinessProbe` on `/health` with `initialDelaySeconds: 60`; resource requests with `nvidia.com/gpu: 1`, model-cache PVC and 8Gi `shm` volume"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM health endpoint",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
+          "locator": "Instrumentator APIs, Basic APIs: `/health` health check, which returns 200 while the engine answers and 503 once it is dead"
         }
       ],
       "focus": [
-        "TODO"
+        "Cold start is \\(T_{cold} = T_{provision} + T_{load} + T_{warmup}\\). For large models \\(T_{load}\\) dominates: 140GB at S3 rates is minutes, and no scheduler tuning removes it.",
+        "Three probe levels answer different questions: liveness (is the process alive), readiness (weights loaded, GPU initialized, warmup done, dependencies up), deep inference health (a known input returns sane output). `/health` 200 answers only the first.",
+        "Warmup is real work: dummy generations that compile graphs and fill pools before the first billed request. First-request latency without warmup measures compilation, not serving.",
+        "Drain order matters: stop admission, finish in-flight within the timeout, persist what must survive, deregister, then terminate. SIGKILL skips every step and strands billed work."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Time your local server from process start to the first successful deep inference-health probe. Split the total into container, weight-load and warmup phases, and show `/health` turning 200 strictly before inference readiness.",
       "traps": [
-        "TODO"
+        "Reading `/health` 200 as ready for traffic. vLLM's check answers engine-alive; weights, warmup and dependencies need their own readiness gates.",
+        "Copying the Project 103 troubleshooting doc probe path without reading the manifest. The doc text names `/ready` while the deployment YAML probes `/health`; the manifest wins.",
+        "Baking large weights into the container image. That path is obsolete past small models; load hundred-gigabyte weights from near-GPU storage at startup instead."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A Llama-70B server cold-starts in 420s. Which phase dominates, and what removes the most time?",
+          "a": "Weight download at 300s over S3 dominates. Moving weights to in-node NVMe-class storage and shrinking them with quantization removes most of it; scheduler tuning removes almost none."
+        },
+        {
+          "q": "What does each probe level gate, and how often does it run?",
+          "a": "Liveness gates process restart (10s interval, 5s timeout, 3 failures); readiness gates routing (5s, 3s, 2 failures); deep inference health gates silent corruption with a known input (30s, 10s, 1 failure)."
+        },
+        {
+          "q": "Why must warmup finish before the first billed request?",
+          "a": "The first generations compile graphs and initialize pools, so their latency reflects one-time setup. Billing or SLO-measuring them charges setup cost to the user."
+        },
+        {
+          "q": "A deploy sends SIGKILL to a server with 25 queued requests. What breaks that graceful drain would have saved?",
+          "a": "In-flight generations lose their KV state and billed tokens, queued requests get no retryable rejection, and the load balancer keeps routing until its own health check notices. Drain stops admission first, finishes in-flight, then terminates."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days day23: startup timing experiment",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day23/autoscaling-concurrency-cold-starts.ipynb",
+          "locator": "Try These Experiments 6: time `vllm serve` startup on a small model and reconcile each phase with the `cold_start_stages` table",
+          "note": "Record provision, image, weight-load and warmup separately. Then add a deep inference-health probe beside `/health` and show the gap between them."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your phase-split timing reconciles with the cold-start equation, and your probes distinguish alive, ready and correctly-inferring states.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MLSys cold-start arithmetic and probe levels, day23 runnable stages, the Project 103 manifests and the vLLM health endpoint cover startup, readiness and drain at measure depth."
       }
     },
     {
