@@ -390,47 +390,91 @@
         "approximate-autoregressive-decode-operations-per-token"
       ],
       "outcomes": [
-        "TODO"
+        "Derive dense operations per token as \\(2P\\) from the qkv, output and MLP walk.",
+        "Derive prefill attention and decode attention counts separately and state when attention rivals dense work.",
+        "State what a FLOP count omits and when the omission stops being safe."
       ],
-      "why": "TODO",
+      "why": "Operation counts are the numerator of every intensity and bound. A count that mixes prefill with decode corrupts all of them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Divide these counts by bytes for step time."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/serving-regimes-roofline",
+          "note": "Place prefill and decode on the roofline."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "transformer-arithmetic-inf1",
+          "title": "Dense walk: 2P operations per token",
+          "url": "https://kipp.ly/transformer-inference-arithmetic/",
+          "locator": "flops counting with the How many flops in a matmul box in kv cache (qkv, output and MLP sum to about \\(2P\\); 52B example at 51.5B)",
+          "depth": "The \\(2P\\) count covers dense weights once per token in prefill and decode alike. Attention comes on top and grows with prompt length in prefill."
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Linear and attention operations",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Linear operations: what bottlenecks us? with \\(2*B*D*F\\) per matmul, and What about attention? with \\(4*B*S*T*D\\) for scores plus values"
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Prefill versus decode work with numbers",
+          "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
+          "locator": "Prefill: compute-bound with `prefill_FLOPs ~= 2*N_params*S` plus `4*S^2*d_model` per layer; Decode: memory-bound with per-token matmul `2*N_params` (16.1 GFLOP for Llama-3-8B); Math by hand at S=2048 with 32.9 TFLOP plus 2.2 TFLOP attention"
+        },
+        {
+          "resource": "hundred-days-inf1",
+          "title": "Matmul and attention intensity",
+          "url": "https://github.com/elizabetht/100-days-of-inference",
+          "locator": "`day06/ops-byte-ratio.ipynb`: matmul `comp=2MKN` with `mem=(MK+KN+MN)*2`, attention `mem=8N^2+8Nd` with `comp=4N^2d+3N^2`, prefill compute-bound versus decode memory-bound",
+          "depth": "Use the count formulas only. The GB10 timings are the author's hardware result, not your target; your target is the crossover and the knee on your GPU in a later section."
         }
       ],
       "focus": [
-        "TODO"
+        "One matmul through all params costs \\(2P\\) by the \\(2mnp\\) rule. The qkv, output and MLP walk sums to the same within 2%.",
+        "Decode attention per token scales with cached length; prefill attention scales with prompt length squared. At 8192 cached tokens the invented model adds \\(1.72 \\times 10^{10}\\) to \\(3.68 \\times 10^{10}\\) dense.",
+        "Softmax, norms, sampling and unembedding are \\(O(d_{\\text{model}})\\) per layer against \\(O(d_{\\text{model}}^2)\\) dense. They matter only when dense shrinks or a profile says so.",
+        "Use KV heads times head dim where they differ from query heads. The count uses \\(K\\) and \\(H\\), not model width."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive decode operations per token for the invented 18.4e9-param model at cached length 8192: dense \\(2 \\times 18.4 \\times 10^9 = 3.68 \\times 10^{10}\\), attention \\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), total about \\(5.4 \\times 10^{10}\\).",
       "traps": [
-        "TODO"
+        "Taking \\(2P\\) per token as the whole prefill cost. Prefill pays dense per prompt token plus attention that grows with prompt length squared; at 32k the attention term passes the dense term.",
+        "Writing the attention scale as division by head dim. The implemented scale is \\(1/\\sqrt{d_{\\text{head}}}\\); the count is unchanged but a later kernel must use the root.",
+        "Calling decode attention free because dense dominates. At 8192 it is nearly half the dense count; recompute the share before dropping it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "How many dense operations does one decode step take for the invented 18.4e9-param model?",
+          "a": "About \\(3.68 \\times 10^{10}\\), from \\(2 \\times 18.4 \\times 10^9\\)."
+        },
+        {
+          "q": "At cached length 8192, what is its decode attention count and share?",
+          "a": "\\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), nearly half the dense count, so it cannot be dropped there."
+        },
+        {
+          "q": "Why is \\(2P\\) per token not the whole cost of a prefill at S=2048?",
+          "a": "\\(2P\\) counts dense once per token (32.9 TFLOP for 8B at 2048). Prefill adds about 2.2 TFLOP of attention there, and at longer prompts attention dominates."
+        },
+        {
+          "q": "Without a cache, how does per-step work grow with length \\(n\\)?",
+          "a": "Each step recomputes keys and values for all \\(n\\) tokens, or \\(n/6\\) of a one-token forward pass, so totals grow quadratically."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of LLM Inference Day 06: ops-byte experiments",
+          "url": "https://github.com/elizabetht/100-days-of-inference",
+          "locator": "`day06/ops-byte-ratio.ipynb`, Try These Experiments: redo intensity with `d=64`, find the crossover batch with `cuda.get_device_properties`, and the 7B fp16 14GB with 14 GFLOP per token calc",
+          "note": "Show every substitution with prefill and decode kept apart. Verify the 208 versus ridge relation independently because this journal is practice, not authority."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the 5.4e10 decode count at 8192 without notes and complete the d=64 redo with the crossover stated.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The arithmetic article plus the inference chapter linear and attention sections with Tushar and Day 06 cover dense and attention counts at derive depth."
       }
     },
     {
@@ -447,47 +491,84 @@
         "multimodal-encoder-and-media-token-budgeting"
       ],
       "outcomes": [
-        "TODO"
+        "Describe a workload by input and output length medians plus spread, not points.",
+        "Describe prompt reuse and cache-locality distributions and state when reuse helps outcomes.",
+        "Budget media tokens for a multimodal input with encoder and longer-context effects."
       ],
-      "why": "TODO",
+      "why": "Averages hide the shapes that set cost. Spread, reuse and image tokens decide which batch, cache and SLO hold.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/arrivals-open-closed-load",
+          "note": "Add arrival rate and bursts to these shapes."
+        },
+        {
+          "unit": "inference/kv-memory-prefix-reuse/prefix-reuse-outcomes",
+          "note": "Test reuse against TTFT and goodput there."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "etalon-evaluation",
+          "title": "Length spread and day-long variation",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 3.1 with Figures 1 and 2 (Yi-34B on 2 H100 prefill versus length; Arxiv-Summarization at 1.5 QPS with 60% over 25 s scheduling and 228 median decode tokens); Section 4.1 (LMSys-Chat-1M 417 median and 1418 p90 prefill tokens; prefill deadline fitted from 10 isolated repeats); Section 5.1 (hourly runs over 24 hours, 256 to 8k prefill with 256 gen)"
+        },
+        {
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Prefix reuse and median lengths",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Designing an Effective Inference Engine: Prefix caching with the dogs and cats example, chat append, few-shot and system prompts, affinity routing, LRU trie and host DRAM"
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Cache reuse and fragmentation",
+          "url": "https://inference.tusharamrit.in/modules/kv-cache.html",
+          "locator": "Fragmentation: the waste nobody budgets for with 20.4-38.2% useful; Cache reuse: the free win hiding in chat with 30x TTFT example from 3000 to 100 tokens",
+          "depth": "Treat the 30x as the author's workload result, not your target. Your target is the reuse distribution and the TTFT move on your corpus."
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Benchmark dimensions and vision tokens",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for sequence lengths, traffic volume and pattern, request contents and input params; Section 6.1 for vision encoders, about a thousand visual tokens per high-resolution image, and longer prefill, decode and KV effects"
         }
       ],
       "focus": [
-        "TODO"
+        "Report medians with spread: 417 median against 1418 p90 prefill tokens, 256 to 8k sliders, 228 median decode tokens, hourly runs over 24 hours. Points hide padding, blocking and queueing.",
+        "Prefill grows about quadratically, so a static TTFT target is slack for short prompts and impossible for long ones. Fit the prefill deadline from the isolated curve per length.",
+        "Reuse is a distribution with routing and eviction costs. Affinity routing, LRU trie and DRAM decide whether shared prefixes move TTFT and goodput.",
+        "A high-resolution image adds about a thousand visual tokens to prefill and KV. The encoder is small but fragmented runtime support makes engine choice matter."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the workload card for \\(P = 4096\\), \\(G = 1024\\), \\(B = 16\\): sequences finishing per step \\(16/1024 = 1/64\\), tokens evicted per step \\(16 \\times 5120/1024 = 80\\), plus medians 417 and 1418, decode median 228, reuse line and image-token line at 1000 per high-resolution image.",
       "traps": [
-        "TODO"
+        "Sweeping batch at fixed length and calling it a workload. Prompts spread widely and decode lengths vary as much, so fix both axes.",
+        "Reading hit rate as outcome. Low reuse with lookup, routing, reservation or eviction can lose even at high hit rate; check TTFT and goodput.",
+        "Treating image tokens as free. They are prefill tokens with KV that live for the whole decode; budget them as input length."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which spreads does this unit cite, and why medians plus spread?",
+          "a": "LMSys-Chat-1M 417 median with 1418 p90 prefill tokens, 256 to 8k sliders, 228 median decode tokens, hourly runs over 24 hours. Points hide the padding, blocking and queueing that spreads cause."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why must the prefill deadline be fitted per length?",
+          "a": "Prefill grows about quadratically (Figure 1), and scheduling delay mixes with processing. A static target is slack or impossible across 417 to 1418 tokens."
+        },
+        {
+          "q": "At \\(P = 8192\\), \\(G = 4096\\), \\(B = 32\\), how many tokens leave the cache per step?",
+          "a": "96: \\(32/4096\\) sequences finish per step, each evicting \\(P + G = 12288\\), so \\(32 \\times 12288/4096 = 96\\)."
+        },
+        {
+          "q": "When does prefix reuse lose despite hits?",
+          "a": "When lookup, routing, reservation, eviction or low reuse costs more than recompute. Hit rate alone does not establish TTFT or goodput gain."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: length, reuse and media-token distributions measured from your retained corpus with medians, spread and n.",
+      "stopWhen": "Your workload card states medians, spread, reuse and image-token lines with n, and you can defend the fitted prefill deadline against a static one.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for length, reuse and media-token distributions; Etalon supplies spreads and recipes and Inference Engineering supplies benchmark dimensions and vision tokens."
       }
     },
     {
@@ -503,47 +584,84 @@
         "open-loop-versus-closed-loop-load"
       ],
       "outcomes": [
-        "TODO"
+        "Explain arrival rate, concurrency and burst shape with peak windows stated.",
+        "Derive concurrency from \\(L = \\lambda W\\) with units and the stability assumption.",
+        "Distinguish open-loop from closed-loop load and state which to trust for tails."
       ],
-      "why": "TODO",
+      "why": "Capacity math predicts; load proves. A closed driver hides the queue that users feel.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Turn arrival and service time into token rates."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Build the open and closed generators compared here."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tushar-inference-inf1",
+          "title": "Throughput when the loop is serial",
+          "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
+          "locator": "What throughput means when the loop is serial: TTFT, TPOT and ITL, end-to-end, throughput, and `concurrency = arrival_rate * latency`"
+        },
+        {
+          "resource": "gil-tene-latency",
+          "title": "Coordinated omission and latency correction",
+          "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU",
+          "locator": "Full talk: closed-loop testers that wait for each reply, missing samples under queueing, and the correction concept of recording intended send time",
+          "depth": "Watch for vocabulary and the correction idea. Do not adopt `wrk`, `hey` or `ab`; write the small Python generator in the load-generator unit."
+        },
+        {
+          "resource": "etalon-evaluation",
+          "title": "Capacity recipe under an SLO",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.2 Capacity Evaluation with different request loads to max capacity under fluidity-index SLOs; Section 5.2 with vLLM and Sarathi-Serve at 0.6 QPS under a 25 ms TBT SLO"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Traffic volume and pattern",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for volume and pattern of traffic with jittered traffic to mimic real usage beside sequence lengths and request contents"
         }
       ],
       "focus": [
-        "TODO"
+        "The Systems unit Little's Law, capacity and queueing approximations gives \\(L = \\lambda W\\) with matching units. Here arrival rate times time in system is the concurrency you must bound.",
+        "\\(L = \\lambda W\\) holds for long-run averages in a stable system. It predicts nothing about tails; size the bound for the peak window, not the daily mean.",
+        "Open-loop sends on a schedule whether replies returned; closed-loop waits for each reply. Past the knee closed-loop self-throttles and reports flat latency while the queue explodes.",
+        "Keep every raw sample with \\(n\\). Percentiles come from retained records; the generator log with intended send times is part of the evidence."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, solve all three directions: \\(100 \\text{ rps} \\times 0.05 \\text{ s} = 5\\) requests, \\(5/0.05 = 100\\) rps, \\(5/100 = 0.05\\) s. Then state why open-loop p99 near 759 ms is honest against closed-loop p99 near 540 ms on the same slow server.",
       "traps": [
-        "TODO"
+        "Applying \\(L = \\lambda W\\) to percentiles or a draining queue. It relates long-run averages in a stable system only.",
+        "Tuning the closed loop until latency looks good. Fewer clients or think time hides the queue; the offered load is no longer the stated load.",
+        "Reading server-side latency only. Queue wait before the handler is user-visible; instrument arrival-to-start separately."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "100 rps with 50 ms in system: average concurrency?",
+          "a": "5 requests (\\(100 \\times 0.05\\)). Units: \\((\\text{requests}/\\text{s}) \\times \\text{s} = \\text{requests}\\)."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Single server at high utilization: which multiple of service time does mean wait approach?",
+          "a": "It grows with \\(\\rho/(1 - \\rho)\\) form; state M/D/1 versus M/M/1 before quoting 9.5x versus 19x at 0.95."
+        },
+        {
+          "q": "Open-loop p99 is 759 ms and closed-loop p99 is 540 ms on the same server. Which is honest?",
+          "a": "Open-loop. Closed-loop skips the requests it never sent; the missing samples are the omitted coordination."
+        },
+        {
+          "q": "Throughput rises with offered load, then flattens while p95 climbs. What happened?",
+          "a": "First saturation: the bottleneck reached high utilization. Extra offered load becomes queue wait and errors, not completions."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: an open-loop sweep through the predicted knee with retained raw records, measured p50, p95 and p99 with n, queue depth and recovery, reconciled against the Little's Law prediction.",
+      "stopWhen": "You solve all three Little's Law directions without notes and can point at the knee with the bottleneck named.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for coordinated-omission vocabulary; the verified Tene talk fills that gap beside Tushar, Etalon and Inference Engineering load material."
       }
     },
     {
