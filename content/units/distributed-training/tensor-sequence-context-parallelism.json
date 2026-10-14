@@ -16,47 +16,78 @@
         "colwise-to-rowwise-communication-cancellation"
       ],
       "outcomes": [
-        "TODO"
+        "Derive local outputs, weight gradients and input-gradient reductions for column- and row-parallel linear layers.",
+        "Implement a paired sharded MLP and reconstruct its forward and backward results against an unsharded oracle.",
+        "Explain why keeping the intermediate features sharded removes communication between the two projections."
       ],
-      "why": "TODO",
+      "why": "TP changes which rank computes each part of one layer. A plausible forward output can hide a missing input-gradient reduction or a repeated bias.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/tp-attention-mlp-partitioning",
+          "note": "Carry the paired projection layout into attention and SwiGLU."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-tpcp-dt5",
+          "title": "Two matrix partitions and their composition",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#tensor_parallelism",
+          "locator": "Tensor Parallelism; Tensor parallelism in a transformer block, opening feedforward example",
+          "depth": "Stop before the attention discussion. Do not gather column outputs when the next row-parallel layer consumes the same feature shards."
+        },
+        {
+          "resource": "megatron-paper-dt5",
+          "title": "Megatron-LM: forward and backward communication",
+          "url": "https://arxiv.org/abs/1909.08053v4",
+          "locator": "arXiv:1909.08053v4, Section 3, equations 1 to 3, Figure 3a and Code 1",
+          "depth": "Read through the MLP derivation. Leave self-attention and vocabulary sharding to the next units."
+        },
+        {
+          "resource": "picotron-tpcp-dt5",
+          "title": "Weight storage and conjugate autograd operators",
+          "url": "https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tensor_parallel.py",
+          "locator": "`ColumnParallelLinear` and `RowParallelLinear`, including initialization and `forward`",
+          "depth": "Also open https://github.com/huggingface/picotron/blob/59714b1bf25541dbeb6f5a721ed15f6d0768e786/picotron/tensor_parallel/tp_communications.py and read `CopyToModelParallelRegion`, `ReduceFromModelParallelRegion` and `GatherFromModelParallelRegion`. Defer the asynchronous operator."
         }
       ],
       "focus": [
-        "TODO"
+        "Use the paper's convention \(Y=XW\), then translate to PyTorch's stored \(W\) of shape \([D_{\text{out}},D_{\text{in}}]\). Column parallelism shards stored rows; row parallelism shards stored columns.",
+        "Column outputs own distinct features. Their input gradients are partial contributions that must be summed. Row outputs are full-shaped partial sums; their forward reduction must happen before adding a replicated bias.",
+        "An elementwise activation preserves feature ownership. Pair matching column output shards with row input shards instead of gathering and splitting again.",
+        "Megatron's identity-backward reduction assumes replicated outputs represent one logical loss, not separate independent losses on every TP rank. Reconstruct gradients under that contract."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive and simulate a bias-free column-GELU-row MLP on CPU with two shards, \(X\) shaped \([2,3,4]\), first stored weight \([8,4]\) and second \([4,8]\). Generate all tensors once with seed 0 in `torch.float64`, slice the same weights, and use squared-output mean loss. Match output, input gradient and both reconstructed weight gradients with `torch.testing.assert_close`. Then add one shared output bias after summation.",
       "traps": [
-        "TODO"
+        "Applying GELU to each row-parallel partial sum before reduction. Nonlinearity does not commute with summation.",
+        "Adding a full output bias on every rank before a sum. The result contains one bias per rank.",
+        "Comparing bitwise equality after changing GEMM partitioning. Floating-point reduction order changes; use a justified tolerance."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does the first projection need a backward sum even though its forward pass is local?",
+          "a": "Each feature shard contributes to the same input. The full input gradient is the sum of those contributions."
+        },
+        {
+          "q": "For stored weights shaped \([8,4]\) and \([4,8]\) on two ranks, what shapes stay local?",
+          "a": "The first weight is \([4,4]\), the intermediate is \([2,3,4]\), and the second weight is \([4,4]\). Each second-projection partial output is \([2,3,4]\) and must be summed."
+        },
+        {
+          "q": "Does column-to-row pairing eliminate all communication?",
+          "a": "No. It eliminates the intermediate gather. With replicated block boundaries, the row output still needs a forward sum and the column input gradient a backward sum."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Reconstruct a Column-Parallel MLP Layer",
+          "url": "https://www.tensortonic.com/problems/cs336-l07-column-parallel-mlp",
+          "locator": "Implement `column_parallel_mlp(x, weight_shards, bias_shards)`; public cases: Two single-column shards, Uneven biased shards and One shard",
+          "note": "This free problem reconstructs a linear projection only, despite its title. Its weights use input-by-output storage. It checks rank-ordered outputs, not collectives or gradients. The section mini-project covers the paired TP MLP, explicit communication and gradient oracle in `trainlab`."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The three public cases and your paired MLP output and gradient checks pass, and you draw both passes with no intermediate gather and exactly one output bias.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook and Megatron supply the derivation; Picotron exposes ownership and autograd; the named free problem plus the mini-project cover implementation and gradients within five hours."
       }
     },
     {
