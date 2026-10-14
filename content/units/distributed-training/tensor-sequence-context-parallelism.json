@@ -364,47 +364,71 @@
         "redistribution-as-collective-communication"
       ],
       "outcomes": [
-        "TODO"
+        "Explain Replicate, Shard and Partial as ownership states of one logical tensor.",
+        "Implement redistribution checks and predict which transitions require communication.",
+        "Distinguish a logical layout transition from the backend algorithm used to execute it."
       ],
-      "why": "TODO",
+      "why": "DTensor automates communication from layout metadata. Incorrect metadata can silently turn a valid local tensor into the wrong logical tensor.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/device-mesh-layout-contracts",
+          "note": "Attach those placements to the intended rank groups and module boundaries."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-sharding-dt5",
+          "title": "Sharded contractions and unreduced results",
+          "url": "https://jax-ml.github.io/scaling-book/sharding#computation-with-sharded-arrays",
+          "locator": "Chapter 3, Computation With Sharded Arrays: Cases 1, 2 and 3",
+          "depth": "Stop before Case 4. Translate unreduced outputs to `Partial()` rather than copying JAX syntax into PyTorch."
+        },
+        {
+          "resource": "pytorch-tp-dt5",
+          "title": "PyTorch 2.14 placement and redistribution reference",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.tensor.html#torch.distributed.tensor.DTensor.redistribute",
+          "locator": "DTensor Placement Types: `Shard`, `Replicate`, `Partial`; `DTensor.redistribute` transition list; `DTensor.from_local`, `to_local`, `full_tensor` and `distribute_tensor`",
+          "depth": "Stay on one DeviceMesh. Skip private placement types and tensor factory functions."
+        },
+        {
+          "resource": "torchfeather-examples-dt5",
+          "title": "A real Partial result before reduction",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/tp_swiglu.py",
+          "locator": "`main`: `down_partial` placement assertion, `partial_to_sequence` redistribution and `describe` output"
         }
       ],
       "focus": [
-        "TODO"
+        "`Replicate()` means identical complete values; `Shard(dim)` means distinct indexed pieces; `Partial()` means full-shaped contributions awaiting a sum by default. Equal local shapes do not imply equal ownership.",
+        "On one mesh axis, shard-to-replicate is an all-gather, partial-to-replicate an all-reduce, and partial-to-shard a reduce-scatter. Replicate-to-shard needs local slicing only.",
+        "Changing the sharded tensor dimension requires a logical all-to-all. In PyTorch 2.14.1 CPU DTensor execution can fall back to all-gather plus chunking; do not assign the ideal all-to-all byte count to that fallback.",
+        "`distribute_tensor` starts from a global leaf tensor. `DTensor.from_local` declares ownership of existing local values and is differentiable; with `run_check=False`, correctness is your responsibility. `full_tensor()` can communicate."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On four CPU processes with Gloo, distribute `torch.arange(16, dtype=torch.float64).reshape(4, 4)` with `Shard(0)`. Reconstruct it, redistribute to `Shard(1)`, and reconstruct again. Separately wrap full-shaped local matrices filled with rank plus one using `DTensor.from_local` and `Partial()`: reduction must give 10 in every entry. Obtain both replicated and row-sharded reduced layouts and verify the same logical value. Predict each collective before executing it.",
       "traps": [
-        "TODO"
+        "Wrapping different complete values as replicas without synchronizing them. Metadata does not make unequal data identical.",
+        "Gathering Partial values as if they were distinct output features. Partial values must be reduced, not concatenated.",
+        "Calling `full_tensor()` only on rank zero. Every participating rank must execute the required collective in the same order."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A local row-parallel matmul has the full output shape. Is it replicated?",
+          "a": "Not before reduction. Each rank used only part of the contracting dimension, so its result is a Partial contribution."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Which placement change can avoid communication in forward?",
+          "a": "Replicate-to-Shard: every rank already has all values and can keep its own slice. Backward still follows the chosen gradient-layout contract."
+        },
+        {
+          "q": "Does `to_local()` return the global tensor?",
+          "a": "Only when the placement is already replicated. For Shard it returns a shard; for Partial it returns an unreduced contribution."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a CPU placement-transition suite with logical reconstruction, rank-owned metadata and backend-aware collective records in `trainlab`.",
+      "stopWhen": "Every reconstruction agrees, your transition table predicts local versus communicating operations, and your logs distinguish logical all-to-all from the CPU fallback.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "JAX gives contraction semantics and the pool's explicitly linked 2.14 DTensor reference gives current placements and redistributions; the mini-project supplies CPU transition practice."
       }
     },
     {
