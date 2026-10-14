@@ -171,7 +171,7 @@
     {
       "id": "fsdp-gather-reduce-scatter",
       "title": "Parameter all-gather before compute and gradient reduce-scatter after backward",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "explain",
         "implement"
@@ -181,47 +181,70 @@
         "gradient-reduce-scatter-after-backward"
       ],
       "outcomes": [
-        "TODO"
+        "Implement gather-before-use, release-after-use and reduced-gradient ownership in a tiny fully sharded trainer.",
+        "Match gradients and parameter updates to an unsharded oracle with the same global batch and loss normalization.",
+        "Explain when backward needs a full weight and when the optimizer needs only a shard."
       ],
-      "why": "TODO",
+      "why": "Correct ownership is not enough if weights are absent when autograd uses them. This unit makes the parameter and gradient lifecycle explicit before adding scheduling optimizations.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/reshard-prefetch-policies",
+          "note": "Change the lifecycle while preserving the oracle result."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "The current FSDP lifecycle",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#how-fsdp2-works",
+          "locator": "How FSDP2 works and How to use FSDP2 / Model Initialization (page read 2026-10-14)"
+        },
+        {
+          "resource": "cs336-sharding-dt4",
+          "title": "Build fully sharded training",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 7, problem `fsdp`, printed pp. 38 to 39; Section 8.3, equations (34) to (44), pp. 42 to 43",
+          "depth": "Implement and test the CPU Gloo path first. Leave GPU profiling in `fsdp_accounting` to the peak-memory unit. The handout's FP32 master-weight prescription is its implementation contract, not a theorem forbidding other training formats."
         }
       ],
       "focus": [
-        "TODO"
+        "For a sharded linear layer, gather the full compute weight before forward. If released afterward, gather it again before backward computes input gradients. Reducing weight gradients does not replace that second gather.",
+        "Reduce-scatter combines contributions from all data ranks and gives each owner its reduced gradient slice. For equal local mean losses, divide the summed gradient by the data-parallel degree exactly once.",
+        "Resharding parameters normally means freeing the gathered representation and re-registering the stored shard. It is not another scatter collective.",
+        "The assignment shards Linear and Embedding weights and keeps norms replicated. Replicated parameters still need gradient synchronization. Build the optimizer against the parameters it must update."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a tiny gather-compute-release-backward-reduce-scatter-update cycle on CPU Gloo. Use your DT-3 single-process oracle with identical initial weights, the concatenated global batch and equal local batch sizes. Record each rank's shard ranges and collective order; compare reconstructed gradients and several updates within explicit floating-point tolerances.",
       "traps": [
-        "TODO"
+        "Freeing a tensor still needed by autograd. The hook schedule and saved-tensor lifetime must agree; swapping storage blindly can corrupt backward.",
+        "Reducing only sharded weights while silently leaving replicated normalization gradients local.",
+        "Comparing each rank's local mean loss with the global mean and calling their difference an FSDP error. Reduce the metric separately."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can a linear layer need its full weight during backward?",
+          "a": "Its input gradient multiplies the output gradient by the weight. Releasing the forward compute weight therefore requires restoring it before that multiplication."
+        },
+        {
+          "q": "Is parameter resharding a network transfer?",
+          "a": "Not ordinarily. Each rank retains its persistent shard and frees the transient gathered copy. Gradient reduce-scatter is the network operation that produces the owned reduced gradient."
+        },
+        {
+          "q": "When does a mean of local mean gradients equal the global mean gradient?",
+          "a": "When local losses use the same normalization and each rank has the same number of contributing examples or tokens. Unequal counts require weighting by those counts."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `fsdp`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_fsdp.py",
+          "locator": "Section 7; implement `get_fsdp`, `fsdp_on_after_backward` and `fsdp_gather_full_params` in `tests/adapters.py`; run `pytest tests/test_fsdp.py`",
+          "note": "Two CPU Gloo ranks. `test_fsdp_correctness` compares three SGD updates with full-batch training in FP32 and FP16 compute. `test_fsdp_gradient_sync` checks gradient shape and master dtype, and cross-rank agreement of replicated gradients. The section mini-project adds shard ownership and lifecycle evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your educational FSDP passes the public correctness and gradient tests, and its rank logs explain where each full weight and reduced shard lives.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies the implementation contract and CPU public tests; the maintained tutorial supplies the current lifecycle vocabulary."
       }
     },
     {
