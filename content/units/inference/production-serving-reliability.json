@@ -81,11 +81,11 @@
       ],
       "focus": [
         "The typed contract is `model`, `messages`, sampling fields such as `temperature`, `top_k` and `seed`, plus vLLM extras (`structured_outputs`, `request_id`, `session_id`, `cache_salt`, `priority`) passed through `extra_body`. `suffix` is unsupported and `user` is ignored.",
-        "Each SSE chunk is one `data:` line with a JSON delta; the stream ends with a bare `data: [DONE]` line, not with connection close. With \\(N\\) output tokens and `stream_interval` \\(= k\\), expect about \\(\\lceil N/k \\rceil\\) data chunks plus `[DONE]`, since the first and last chunks are always sent immediately.",
+        "Each SSE chunk is one `data` line carrying a JSON `delta` object; the stream ends with a bare `[DONE]` data line, not with connection close. With \\(N\\) output tokens and `stream_interval` \\(= k\\), expect about \\(\\lceil N/k \\rceil\\) data chunks plus `[DONE]`, since the first and last chunks are always sent immediately.",
         "Backpressure lives in per-request queues between the decode loop and the HTTP connection. A slow reader grows queueing and connection time; it does not pause generation or reduce billed tokens.",
         "A structured-output grammar is compiled per distinct schema and reused on repeat. Rotating schemas per request turns every call into a cold compile; keep a small fixed schema set."
       ],
-      "reproduce": "Against a local vLLM server, send one chat request with `stream=True` and `max_tokens=8`. Save the raw bytes, list every `data:` line, point at the `[DONE]` terminator, and reassemble the assistant text from the delta fields only.",
+      "reproduce": "Against a local vLLM server, send one chat request with `stream=True` and `max_tokens=8`. Save the raw bytes, list every `data` line, point at the `[DONE]` terminator, and reassemble the assistant text from the `delta` fields only.",
       "traps": [
         "`temperature=0` does not silence reasoning models. A local Qwen3-0.6B with `temperature=0` and `seed=1` still opens with `<think>`; temperature controls sampling, not the thinking trace.",
         "The server applies the model's `generation_config.json` from its Hugging Face repository over your defaults. Pass `--generation-config vllm` when you want explicit control of sampling.",
@@ -220,7 +220,7 @@
       "practice": [
         {
           "name": "Project 103: stubbed API, middleware and streaming tests",
-          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/tests/test_api.py",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/blob/main/projects/project-103-llm-deployment/tests/test_api.py",
           "locator": "`TestMiddleware::test_rate_limiting` and `test_authentication`, `TestGenerateEndpoint::test_generate_streaming`; implement `src/api/middleware.py` and `src/api/streaming.py` per their comments until all seven tests pass",
           "note": "The bodies are `pass` stubs with the contract in comments. Implement token-bucket limiting, key auth with public `/health`, and SSE with heartbeat before running the suite."
         }
@@ -390,7 +390,7 @@
         {
           "resource": "infra-llm-project-inf8",
           "title": "Project 103 deployment probes",
-          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/kubernetes/llm-deployment.yaml",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/blob/main/projects/project-103-llm-deployment/kubernetes/llm-deployment.yaml",
           "locator": "Container probes: `livenessProbe` on `/health` with `initialDelaySeconds: 300`, `readinessProbe` on `/health` with `initialDelaySeconds: 60`; resource requests with `nvidia.com/gpu: 1`, model-cache PVC and 8Gi `shm` volume"
         },
         {
@@ -401,7 +401,7 @@
         }
       ],
       "focus": [
-        "Cold start is \\(T_{cold} = T_{provision} + T_{load} + T_{warmup}\\). For large models \\(T_{load}\\) dominates: 140GB at S3 rates is minutes, and no scheduler tuning removes it.",
+        "Cold start is \\(T_{\\text{cold}} = T_{\\text{provision}} + T_{\\text{load}} + T_{\\text{warmup}}\\). For large models \\(T_{\\text{load}}\\) dominates: 140GB at S3 rates is minutes, and no scheduler tuning removes it.",
         "Three probe levels answer different questions: liveness (is the process alive), readiness (weights loaded, GPU initialized, warmup done, dependencies up), deep inference health (a known input returns sane output). `/health` 200 answers only the first.",
         "Warmup is real work: dummy generations that compile graphs and fill pools before the first billed request. First-request latency without warmup measures compilation, not serving.",
         "Drain order matters: stop admission, finish in-flight within the timeout, persist what must survive, deregister, then terminate. SIGKILL skips every step and strands billed work."
@@ -593,15 +593,15 @@
         {
           "resource": "infra-llm-project-inf8",
           "title": "Project 103 HPA and scaling guidance",
-          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/kubernetes/hpa.yaml",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/blob/main/projects/project-103-llm-deployment/kubernetes/hpa.yaml",
           "locator": "`hpa.yaml`: `minReplicas: 1`, `maxReplicas: 3`, CPU 70% and memory 80% signals, scale-down stabilization 300s, commented per-second custom metric; `docs/TROUBLESHOOTING.md` section 9: replacing CPU with `vllm:num_requests_waiting` through the Prometheus adapter or KEDA"
         }
       ],
       "focus": [
-        "Three replica rules must agree: Little's law \\(L = \\lambda W\\) for the workload, queue-depth \\(Desired = \\lceil Queue/target \\times Current \\rceil\\) for the backlog, and the P99-ratio rule for SLO defense. When they disagree, the pool is either cold or saturated.",
-        "Response time is \\(T_{response} = T_{detect} + T_{decide} + T_{provision} + T_{warmup}\\), and provisioning dominates by an order of magnitude. Warm pools buy down the dominant term; faster metrics never will.",
+        "Three replica rules must agree: Little's law \\(L = \\lambda W\\) for the workload, queue-depth \\(\\text{Desired} = \\lceil \\text{Queue}/\\text{target} \\times \\text{Current} \\rceil\\) for the backlog, and the P99-ratio rule for SLO defense. When they disagree, the pool is either cold or saturated.",
+        "Response time is \\(T_{\\text{response}} = T_{\\text{detect}} + T_{\\text{decide}} + T_{\\text{provision}} + T_{\\text{warmup}}\\), and provisioning dominates by an order of magnitude. Warm pools buy down the dominant term; faster metrics never will.",
         "CPU at 70% is the wrong signal for decode-bound serving: a few long prefills saturate HBM while CPUs idle. Scale on `vllm:num_requests_waiting`, queue depth and TTFT, not on CPU.",
-        "Availability \\(A_{system} = 1 - (1 - A_{single})^k\\) assumes independent failures. Shared power, networking or a fleet-wide bad config removes the exponent, so failure reserve also needs failure diversity."
+        "Availability \\(A_{\\text{system}} = 1 - (1 - A_{\\text{single}})^k\\) assumes independent failures. Shared power, networking or a fleet-wide bad config removes the exponent, so failure reserve also needs failure diversity."
       ],
       "reproduce": "For arrivals \\(\\lambda = 30\\) requests/s and service time \\(W = 3\\)s, Little's law gives \\(L = 90\\) in flight. At 5 concurrent requests per replica that is 18 replicas at full load, or 23 under the 80% headroom rule. Recompute with the queue-depth rule for a backlog of 60 against a target of 10 per replica and explain the gap.",
       "traps": [
@@ -691,7 +691,7 @@
         {
           "resource": "infra-llm-project-inf8",
           "title": "Project 103 shed rule",
-          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/tree/main/projects/project-103-llm-deployment/docs/TROUBLESHOOTING.md",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/blob/main/projects/project-103-llm-deployment/docs/TROUBLESHOOTING.md",
           "locator": "Section 10: shed load with 429 once `num_requests_waiting` passes N, with `RateLimitMiddleware` keyed by API key returning `Retry-After: 60`"
         }
       ],
@@ -864,7 +864,7 @@
           "resource": "vllm-metrics-inf8",
           "title": "vLLM production metrics",
           "url": "https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
-          "locator": "General Metrics table (`vllm:num_requests_waiting`, `vllm:num_requests_running`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_hits`, `vllm:request_success`, `vllm:time_to_first_token_seconds`, `vllm:request_queue_time_seconds`, `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds`, `vllm:e2e_request_latency_seconds`); Custom Histogram Buckets with `--custom-histogram-buckets`; MFU counters behind `--enable-mfu-metrics`; Deprecation Policy"
+          "locator": "General Metrics table (`vllm:num_requests_waiting`, `vllm:num_requests_running`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_hits`, `vllm:request_success`, `vllm:time_to_first_token_seconds`, `vllm:request_queue_time_seconds`, `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds`, `vllm:e2e_request_latency_seconds`); Custom Histogram Buckets section with per-family bucket overrides; MFU counters behind `--enable-mfu-metrics`; Deprecation Policy"
         },
         {
           "resource": "vllm-production-inf8",
@@ -991,8 +991,8 @@
         }
       ],
       "focus": [
-        "Latency decomposes as \\(E2E = TTFT + ITL \\times (N - 1)\\). SLO each piece: queue-heavy TTFT and decode-heavy ITL fail for different reasons and page different owners.",
-        "Goodput is \\(G = T \\times f_{SLO} \\times f_{quality}\\): raw token throughput discounted by the in-SLO fraction and the accepted-quality fraction. Retried, shed and over-SLO tokens are cost, not output.",
+        "Latency decomposes as \\(\\text{E2E} = \\text{TTFT} + \\text{ITL} \\times (N - 1)\\). SLO each piece: queue-heavy TTFT and decode-heavy ITL fail for different reasons and page different owners.",
+        "Goodput is \\(G = T \\times f_{\\text{SLO}} \\times f_{\\text{quality}}\\): raw token throughput discounted by the in-SLO fraction and the accepted-quality fraction. Retried, shed and over-SLO tokens are cost, not output.",
         "Budgets are tiered because users are: premium buys 200ms TTFT with tight errors, free buys 1000ms with best effort. One fleet-wide SLO either over-delivers to free or starves premium.",
         "TPS flatters short inputs and uniform batches; RPS flatters short requests. SLOs pin distributions (p50/p95/p99) on fixed workload mixes so neither metric can be gamed by reshaping traffic."
       ],
@@ -1048,47 +1048,84 @@
         "bad-model-or-configuration-rollout-injection"
       ],
       "outcomes": [
-        "TODO"
+        "Kill a worker process under load and show bounded detection, reroute and recovery with no cross-request corruption.",
+        "Inject dependency delay and cache disablement and show the degradation ladder engaging instead of total failure.",
+        "Ship a bad model or configuration version and roll it back on canary gates without corrupting request or KV state."
       ],
-      "why": "TODO",
+      "why": "Recovery is a tested path, not a hoped-for property. Each failure class needs a drill that proves detection, bounded blast radius and clean rejoin.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/incident-runbooks-recovery-tests",
+          "note": "Turn each drill into a timed runbook entry."
+        },
+        {
+          "unit": "inference/production-serving-reliability/compatibility-canary-rollback",
+          "note": "Promote the bad-version drill through canary gates."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-inference-inf8",
+          "title": "Serving fault tolerance",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 7.9: stateless versus stateful serving with Table 7.12, health checking with liveness plus readiness plus inference correctness, Table 7.13 state-recovery options, Table 7.14 model-specific policies with the KV box (70B, 80 layers, 8 KV heads, 128K context at 128 dim BF16 near 43GB per conversation)"
+        },
+        {
+          "resource": "mlsys-inference-inf8",
+          "title": "Graceful degradation",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 7.10: Definition 7.4 with the pre-engineered fallback requirement, Table 7.15 degradation dimensions, the model-fallback cascade (307M at 88% down to 5.4M at 75% then cached), Table 7.16 feature ladder, and Listing 7.1 trigger rules"
+        },
+        {
+          "resource": "vllm-production-inf8",
+          "title": "vLLM disruption and corruption surfaces",
+          "url": "https://docs.vllm.ai/en/v0.31.0/serving/online_serving/",
+          "locator": "Server in development mode: Cache Management APIs (`/reset_prefix_cache`, `/reset_mm_cache`, `/reset_encoder_cache`) marked as service-disrupting and never for production; `/abort_requests` for in-flight abort; `/metrics` carries `vllm:corrupted_requests` for NaN-logit generations"
+        },
+        {
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 25 failover experiment",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day25/multi-cloud-capacity.ipynb",
+          "locator": "Try These Experiments 2: fail over 30% of one region and measure redirect plus latency against the active-active versus active-passive discussion",
+          "depth": "Run it as a paper drill on your topology first. Real multi-region failover waits for the distributed section."
         }
       ],
       "focus": [
-        "TODO"
+        "A kill proves nothing without traffic: the drill must exercise detection (probe thresholds), action (routing away) and state (session and KV fate). Stateless workers rejoin in milliseconds; stateful LLM sessions regenerate over seconds to minutes.",
+        "A 43GB conversation KV cannot fail over in milliseconds. Budget the loss honestly: accept regeneration, checkpoint high-value sessions, replicate only what the product contract demands, and keep shared prefixes separate from session state.",
+        "Degradation is a ladder built before the incident: smaller model, default features, cached content, then shed load. Each rung needs a measured quality cost and a trigger rule, or operators will not pull it.",
+        "The NaN-logit counter only exists when the build enables it, and the cache-reset endpoints disrupt service by design. Silent GPU degradation is caught by the deep inference-health probe, not by process liveness."
       ],
-      "reproduce": "TODO",
+      "reproduce": "With two local engine processes behind your router and a steady burst running, SIGKILL one engine mid-burst. Show the health check marking it unhealthy within its thresholds, traffic moving to the survivor, in-flight requests on the dead worker reported failed rather than hung, and clean rejoin after restart.",
       "traps": [
-        "TODO"
+        "Testing failover with an idle standby and no load. Detection latency, queue transfer and KV rebuild only appear under traffic; idle drills certify the easy half.",
+        "Reaching for `/reset_prefix_cache` to simulate degradation in a shared server. It disrupts every tenant's cache by design; scope cache drills to a sacrificial instance.",
+        "Treating a restarted worker as a recovered session. The process is back but conversation KV is gone; clients must see a declared state-loss path, not silent context amnesia."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does killing an LLM worker hurt more than killing a stateless classifier replica?",
+          "a": "The classifier holds no per-request state, so any replica retries in milliseconds. The LLM worker holds KV cache and session context (tens of GB), which must regenerate over seconds to minutes or restore from a checkpoint."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Dependency latency triples. Which degradation rung fires first, and what proves it worked?",
+          "a": "Feature fallback first (cached or default features per Table 7.16), then model fallback, then shedding. Table 7.17 evidence proves it: fallback share, default-feature share and shed rate each stay inside their alert bands."
+        },
+        {
+          "q": "A bad config ships to 5% and p99 doubles with flat errors. Which prior unit's machinery stops it?",
+          "a": "The canary tail gate (p99 below 1.5 times baseline) rolls it back, and rollback restores the full tuple: weights, template, config and routing."
+        },
+        {
+          "q": "The process is alive but outputs are garbage after a GPU fault. Which probe catches it?",
+          "a": "Only the deep inference-health probe with a known input and sane-output bounds. Liveness and readiness both pass while the model computes nonsense."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: worker-death drill with bounded detection and rejoin, dependency-delay and cache-disablement drills up the degradation ladder, and a bad-version rollout with canary-gated rollback, each with stored evidence.",
+      "stopWhen": "Each failure class has a drill with detection time, blast radius and recovery evidence, and no drill corrupts another tenant's requests or cache.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MLSys fault-tolerance and degradation chapters, the vLLM disruption surfaces and the day25 failover drill cover all three injection classes, with multi-process drills assigned to the mini-project."
       }
     },
     {
@@ -1104,47 +1141,90 @@
         "saturation-recovery-and-rollback-load-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Diagnose one seeded performance incident and one seeded lifecycle or security incident from stored evidence alone.",
+        "Write runbooks with first-cause timelines that a second operator can execute.",
+        "Run saturation, recovery and rollback load tests and show capacity returning without state corruption."
       ],
-      "why": "TODO",
+      "why": "The section checkpoint is met here: under saturation, cancellation, worker death and bad rollout, the learner still diagnoses from evidence and recovers cleanly.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/production-serving-reliability/serving-slis-error-budgets",
+          "note": "File the incident's budget burn with the SLO record."
+        },
+        {
+          "route": "inference",
+          "note": "Carry the runbooks into the capacity and engine-extension stage."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hundred-days-prod-inf8",
+          "title": "Day 26 seeded regression and drain",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
+          "locator": "Part 2 Scenario B as the seeded performance incident (p99 380, 420, 820 against the 500ms baseline with flat errors, rollback at 5%); Part 4 `GracefulShutdown` drain as the recovery procedure; Part 3 cost-per-million-tokens table for the recovery capacity plan",
+          "depth": "Treat the notebook outputs as stored evidence for timeline practice. Derive your own gate numbers from your workload; the 500ms baseline is the notebook's, not yours."
+        },
+        {
+          "resource": "mlsys-inference-inf8",
+          "title": "Degradation monitoring and cross-user failure",
+          "url": "https://mlsysbook.ai/vol2/inference/inference.html",
+          "locator": "Section 7.10.3 Table 7.17 Action Map with its four post-incident questions (root cause, fallback effectiveness, user impact, improvements); Section 10.8.8 Table 10.48 Global Deployment Health; War Story 10.1 in Section 10.6.6 (shared client state leaking responses across users, March 2023) as the security-timeline example"
+        },
+        {
+          "resource": "infra-llm-project-inf8",
+          "title": "Project 103 troubleshooting runbook scaffold",
+          "url": "https://github.com/ai-infra-curriculum/ai-infra-engineer-learning/blob/main/projects/project-103-llm-deployment/docs/TROUBLESHOOTING.md",
+          "locator": "Sections 5 (GPU cache and preemption signals), 6 (SSE drops and proxy timeouts), 7 (probe paths), 9 (scaling signals) and 10 (shed rule): use as runbook headings, and verify each command against your manifests before trusting it"
+        },
+        {
+          "resource": "vllm-metrics-inf8",
+          "title": "vLLM recovery evidence",
+          "url": "https://docs.vllm.ai/en/v0.31.0/usage/metrics/",
+          "locator": "Recovery load-test evidence: `vllm:num_requests_waiting` and `vllm:num_requests_running` returning to baseline, `vllm:kv_cache_usage_perc` draining, latency histograms back inside SLO, and `vllm:request_success` by `finished_reason` accounting every in-flight request"
         }
       ],
       "focus": [
-        "TODO"
+        "A timeline entry is a timestamp plus the metric or log line that proves it. Narrative without evidence is a story; the Table 7.17 questions (root cause, fallback value, impact, improvements) each need a cited reading.",
+        "First cause is the earliest evidenced deviation, not the proved root cause. Scenario B's first cause is a version-correlated p99 breach at the 5% step; the mechanism waits for a profile.",
+        "Recovery is declared on distributions returning inside bounds: p99, queue depth, KV usage and error classes, plus passing inference-health probes. Falling averages alone can hide a stuck tail.",
+        "Security incidents need isolation fixes, not capacity. A cache-timing prompt guess or a cross-user leak is closed by salting, scoping and key drills, and the timeline must show the attack stopped, not just the traffic."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Take the day26 Scenario B outputs as stored evidence. Write the timeline (first anomaly, gate breach, rollback decision), name the first cause with the metric that proves it, and list one blind spot the stored evidence cannot answer.",
       "traps": [
-        "TODO"
+        "Diagnosing from the live system instead of stored evidence. Live state has already moved on; the discipline is reconstructing from retained logs, metrics and traces only.",
+        "Writing a runbook only its author can run. Every step needs the literal command, the expected output and the abort condition, or the second operator improvises under pressure.",
+        "Closing a security incident on latency recovery. Prompt-leak and cross-tenant drills pass only with attack-stopped evidence: repeated probes after the fix that return no foreign bytes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Scenario B's errors stay flat while p99 breaches at the 5% step. What is the first cause, and what remains unknown?",
+          "a": "First cause: version-correlated tail regression in the new build at 5% traffic, evidenced by p99 820ms against the 750ms gate with flat errors. Unknown: the mechanism (decode path, template, config) until a profile separates them."
+        },
+        {
+          "q": "What declares the recovery load test passed?",
+          "a": "Saturation, then rollback and drain, then waiting and running counts back to baseline, KV usage drained, latency histograms inside SLO, every in-flight request accounted by finished reason, and inference-health probes passing."
+        },
+        {
+          "q": "What does the War Story 10.1 timeline teach about shared state?",
+          "a": "Shared client and pool state turned one user's response into another's: isolation of caches, pools and keys is a correctness boundary, and cross-user drills belong in the fault campaign."
+        },
+        {
+          "q": "A runbook step says to restart the slow replica. What is missing?",
+          "a": "The literal command, the expected output, the abort condition if output differs, and the evidence to retain. Without those the second operator cannot execute or audit the step."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days day26: seeded diagnosis and recovery",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day26/zero-downtime-deployment.ipynb",
+          "locator": "Scenario B as stored evidence for a first-cause timeline with one named blind spot; Part 4 `GracefulShutdown` drain plus the Part 3 capacity table as the executed recovery with costed capacity",
+          "note": "Write the timeline before re-reading the scenario code. Then run the drain and show waiting, running and KV evidence returning to baseline."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your Scenario B timeline cites evidence per entry with one blind spot, and your recovery run shows distributions back inside bounds with every request accounted.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The day26 seeded regression and drain, MLSys monitoring tables and war story, the Project 103 runbook scaffold and vLLM recovery metrics cover diagnosis, timelines and recovery tests at measure depth."
       }
     }
   ]
