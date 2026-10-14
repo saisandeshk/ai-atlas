@@ -373,47 +373,90 @@
         "chunked-prefill-and-decode-protection"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-iteration cost with and without chunking for a stated prompt size and decode batch.",
+        "Predict how a chunk budget moves TTFT, worst inter-token latency and total prefill time.",
+        "Measure the chunk-budget tradeoff on your GPU or simulator and name the budget region that holds."
       ],
-      "why": "TODO",
+      "why": "One long prefill can freeze every streaming user for hundreds of milliseconds. Chunking bounds each iteration to a token budget, which protects decode without a separate prefill fleet.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/batching-scheduling-admission/policy-ablation-engine-change",
+          "note": "Ablate chunking against the simpler scheduler and keep the losing regime."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/saturation-queue-recovery",
+          "note": "See how the budget behaves from light load through saturation."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-ch6-inf4",
+          "title": "Chunked prefill against decode stalls",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Continuous Batching with Chunked Prefill (pp.195-198): Fig 6-6 happy path, Fig 6-7 prefill-priority stall, Fig 6-8 hybrid batching still stalls, Fig 6-9 chunked prefill; the ITL gain against TTFT and prefill-overhead cost; chunk size as part of max batched tokens"
+        },
+        {
+          "resource": "sarathi-inf4",
+          "title": "Sarathi-Serve stall-free batching and token budget",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Sections 3.2 (arXiv:2403.02310v3) generation stalls with Fig 7; 4.1 chunked-prefills; 4.2 stall-free batching with Algorithm 3, which packs running decodes first, then a partial prefill, then new requests within the token budget; 4.3 token-budget choice from the TBT SLO with tile-quantization and profiling notes",
+          "depth": "Skip the pipeline-parallel bubble analysis in Fig 8 and Section 5.3 until the distributed section. Treat Fig 10, Fig 11, Fig 14 and Table 4 numbers as the paper's results on its hardware, not targets."
+        },
+        {
+          "resource": "aisys-scheduling-inf4",
+          "title": "Stall-free scheduling cost analysis",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Stall-Free Scheduling (Chunked Prefill) (p.998) with Table 16-5 chunk costs; the N(N + 1)/2 per-layer-per-head attention analysis (p.1001), which shows chunking smooths latency without reducing total work"
+        },
+        {
+          "resource": "tushar-batching-inf4",
+          "title": "Interference numbers and budget tradeoff",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Concepts 03 and 04: the four scheduling policies with their costs; the token-budget fill order with decode tokens first; the budget tradeoff table for 256, 2048 and 8192 tokens"
         }
       ],
       "focus": [
-        "TODO"
+        "Prefill-priority gives best TTFT and worst token-stream stability, decode-priority gives smooth streams and starving prefills, chunking bounds every iteration, and disaggregation removes the conflict with separate hardware.",
+        "Each iteration fills decode tokens first because they are cheap and latency-critical, then one prefill chunk with the remainder of the budget, so iteration time stays near constant.",
+        "Chunking changes when attention work runs, not how much: self-attention still performs about \\(N(N + 1)/2\\) QK dot products per layer per head. The mixed iteration is nearly free because decode leaves arithmetic capacity unused.",
+        "Small budgets steady the stream but underfeed the GPU and add chunk overhead; large budgets approach unchunked stalls. Production defaults sit in the middle, around 512 to 2048 tokens."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, price an 8000-token prompt arriving while 32 sequences decode, at 70% of 989 TFLOP/s with the module's bandwidth model: unchunked prefill costs about 186 ms, which is the worst inter-token latency the decoders see. At a 2048-token budget the prefill takes 4 iterations of about 47 ms each, total about 188 ms, so worst inter-token latency falls to about 47 ms while TTFT barely moves.",
       "traps": [
-        "TODO"
+        "Saying chunked prefill reduces total attention work. It replays KV reads per chunk and adds launch overhead, so total work is unchanged or slightly higher; the win is bounded iteration time.",
+        "Calling chunking a pure TTFT-for-TPOT trade. The mixed iteration moves the same bytes as a decode-only one while doing far more arithmetic, so both phases beat running separately.",
+        "Setting the smallest budget that fits. Down at 256 tokens the GPU starves and overhead dominates, which the paper's Fig 14 shows as up to about 25% extra prefill cost at chunk 512 against negligible cost at 2048."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does one 8000-token prefill stall 32 decoders for about 186 ms?",
+          "a": "The prefill runs as one compute-bound unit costing \\(2 \\times 8.03 \\times 10^{9} \\times 8000\\) FLOP, about 186 ms at 70% of 989 TFLOP/s. The decoders share the same hardware turn by turn, so they emit nothing until it finishes."
+        },
+        {
+          "q": "At a 2048-token budget with 32 decoders, how many iterations does that prefill take and what bounds each one?",
+          "a": "4 iterations of about 2016 tokens each. Each iteration is bounded by the budget, so the worst inter-token latency is one chunk cost, about 47 ms, instead of the full 186 ms."
+        },
+        {
+          "q": "Does chunking change the total QK work of the prefill?",
+          "a": "No. Self-attention still performs about \\(N(N + 1)/2\\) dot products per layer per head; chunking only spreads them across iterations. Repeated KV reads add a small overhead."
+        },
+        {
+          "q": "The budget drops from 2048 to 256. What improves and what degrades?",
+          "a": "Worst inter-token latency improves toward pure decode steps. TTFT stretches over more iterations, throughput dips because 256 tokens underfeed the GPU, and per-chunk overhead grows."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "LLM Inference Module 05 code lab: chunk-budget sweep",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Code lab: run the budget table for 256, 512, 1024, 2048 and 8192 and record throughput with ITL p50, p99 and max",
+          "note": "Expect ITL max to fall sharply as the budget shrinks with ITL p50 nearly flat and a slight throughput dip at 256. Absolute numbers depend on the sampling seed; keep the table for the ablation unit."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the 186 ms stall and the 4-iteration chunked schedule without notes and can defend a budget choice from a measured table.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book, Sarathi-Serve Sections 3 to 4, the AI Systems cost analysis and the module code lab cover mixing and chunking at derive and measure depth."
       }
     },
     {
@@ -430,47 +473,77 @@
         "head-of-line-blocking-and-convoy-effects"
       ],
       "outcomes": [
-        "TODO"
+        "Explain priority classes, deadlines, fairness, starvation, priority inversion and head-of-line blocking with scheduler examples.",
+        "Derive the convoy delay a long prompt imposes on short requests behind it under FCFS.",
+        "Define an aging rule that bounds maximum wait without abandoning priority order."
       ],
-      "why": "TODO",
+      "why": "FCFS treats unequal work equally, so one pasted document can delay every request behind it. Priority fixes that for some users by hurting others, which is why fairness needs an explicit definition.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/batching-scheduling-admission/adversarial-scheduler-workloads",
+          "note": "Build priority and bursty workloads that expose starvation."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/cancellation-overload-goodput",
+          "note": "Shed and reject when priority alone cannot meet deadlines."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tushar-batching-inf4",
+          "title": "Queueing policy, fairness and the starvation trap",
+          "url": "https://inference.tusharamrit.in/modules/batching.html",
+          "locator": "Concept 05: FCFS against shortest-job-first with unknown output lengths; the priority and fairness discussion with its unclear unit of fairness in requests, tokens or GPU time; the starvation trap of decode-priority policies"
+        },
+        {
+          "resource": "aisys-scheduling-inf4",
+          "title": "Latency-aware scheduling and tiered quality of service",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Latency-Aware Scheduling and Dynamic Routing (p.1001) with the six-prompt two-GPU routing example; Quality of Service (p.1147) with `configs/qos.yaml` reserving 10%, 30% and 60% of prefill and decode workers for premium, standard and free tiers"
+        },
+        {
+          "resource": "orca-inf4",
+          "title": "Iteration-level FCFS and the batch-size tradeoff",
+          "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+          "locator": "Section 4.2 iteration-level FCFS definition: an earlier arrival runs the same or more iterations than a later one; the max batch size knob trading throughput against latency"
         }
       ],
       "focus": [
-        "TODO"
+        "FCFS is fair in arrival order but blind to size, so a long prefill at the head blocks every short request behind it. That convoy is head-of-line blocking in scheduler form.",
+        "The fair unit is a choice, not a fact. One 100k-token request and a thousand 100-token requests consume comparable resources through different shapes, so state whether you equalize requests, tokens or GPU time.",
+        "Any strict priority can starve the bottom class under sustained load, because higher-priority work always exists. Aging raises a waiter's priority with its wait until it must win.",
+        "Reserved capacity shares the machine under contention; it does not promise latency. A premium tier with 10% reserved still queues when its own demand exceeds that share."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive convoy delay under FCFS with prefill throughput \\(R = 43{,}000 \\text{ tokens/s}\\): one 100000-token prompt ahead of ten 100-token prompts adds about \\(100000 / 43000 = 2.3 \\text{ s}\\) to every short request's TTFT, independent of their size. Then state an aging rule, such as effective priority rising linearly with wait, that bounds any request's wait under continuous decode-priority load.",
       "traps": [
-        "TODO"
+        "Promising that priority lowers latency for everyone. It redistributes wait from one class to another; the total work is unchanged and the bottom class waits longer.",
+        "Reading a reserved fraction as a latency guarantee. `reserved_fraction` splits workers under contention, so a tier still queues past its share and still suffers its own convoys.",
+        "Reaching for shortest-job-first to fix convoys. Output length is unknown at admission and predictions are poor, so exact SJF is unavailable; size-aware admission needs an honest proxy such as prompt length."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does FCFS produce convoys even though it is fair?",
+          "a": "It orders by arrival without regard to size. A long prefill at the head occupies the shared hardware while short requests behind it wait, so small jobs pay for work unrelated to their size."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What makes priority inversion possible in a serving scheduler?",
+          "a": "A low-priority request holds a contended resource, such as the running batch or KV blocks, while a high-priority waiter cannot proceed until it releases. The priority order says the waiter matters more, but the resource order serves the holder first."
+        },
+        {
+          "q": "A decode-priority scheduler never idles under load. Why can a new request still starve?",
+          "a": "There is always more decode work under sustained load, so prefills never win an iteration. Without aging, a request can wait unboundedly while the machine looks fully utilized."
+        },
+        {
+          "q": "Premium reserves 10% of workers. Does a premium request skip queueing?",
+          "a": "No. The reserve protects premium from free-tier contention, not from premium-tier contention. Past its share it queues like everyone else."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: priority classes with aging, a convoy workload, and a starvation test that fails without the aging rule.",
+      "stopWhen": "You derive a convoy delay without notes and can show which workload starves under each policy you studied.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The module policy section, the AI Systems QoS and routing sections and Orca FCFS cover all three topics at explain and derive depth, with practice in the mini-project."
       }
     },
     {
