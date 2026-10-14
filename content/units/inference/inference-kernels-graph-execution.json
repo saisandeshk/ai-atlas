@@ -418,47 +418,71 @@
         "operator-fusion-and-intermediate-traffic"
       ],
       "outcomes": [
-        "TODO"
+        "Derive physical addresses from strides, storage offsets and element sizes for serving views.",
+        "Count intermediate traffic removed by a legal fusion while retaining required residual outputs.",
+        "Choose a fusion boundary that preserves reduction ownership, cast points and supported layouts."
       ],
-      "why": "TODO",
+      "why": "Build on SwiGLU MLP and epilogue fusion boundaries and the earlier KV layout work. A serving optimization must include conversion and dispatch costs, not just the traffic of a convenient contiguous benchmark.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/kernel-timing-accounting-profiles",
+          "note": "Test the traffic prediction against the selected serving path."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-docs-inf5",
+          "title": "Physical KV layouts",
+          "url": "https://docs.flashinfer.ai/tutorials/kv_layout.html#layout-nhd-hnd",
+          "locator": "FlashInfer 0.7.1 documentation: Layout: NHD/HND and Page Table Layout",
+          "depth": "Skip MLA and cascade layouts. Use `plan`/`run` from the current API instead of the tutorial's older `begin_forward` example."
+        },
+        {
+          "resource": "flashinfer-paper-inf5",
+          "title": "Sparse gathers and fusion, arXiv:2501.01005v1",
+          "url": "https://arxiv.org/html/2501.01005v1#S3.SS2",
+          "locator": "Sections 3.2.1 and 3.2.3, data movement and transformation functors; Section 4.3, fused versus unfused RoPE evaluation",
+          "depth": "Read Section 4.3 for its comparison boundary, not the source's hardware-specific speedup as an expected result."
+        },
+        {
+          "resource": "flashinfer-docs-inf5",
+          "title": "Outputs that fusion must retain",
+          "url": "https://docs.flashinfer.ai/generated/flashinfer.norm.fused_add_rmsnorm.html",
+          "locator": "Step 1 and Step 2 of `fused_add_rmsnorm`"
         }
       ],
       "focus": [
-        "TODO"
+        "With element strides \(s_j\), storage offset \(o\) and element size \(b\), byte address is \(a_0+b(o+\sum_j i_js_j)\), where \(a_0\) is the storage base. Alignment depends on the resulting address, not just allocation alignment.",
+        "A transpose view changes strides without moving data. Making it contiguous performs a copy; include that read/write traffic and allocation when deployment needs it.",
+        "For a materialized intermediate with \(n\) elements of \(b\) bytes, removing one write and one read saves \(2nb\) requested bytes. That is not a measurement of DRAM traffic after caches.",
+        "Residual fusion still writes the retained sum and normalized activation. A full-row norm cannot generally be fused into one projection tile without coordinating the row reduction."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU, construct `torch.arange(24, dtype=torch.float32).reshape(4, 6)[:, 1::2]`. Derive shape `[4, 3]`, element strides `[6, 2]` and storage offset 1, then verify every element by independent indexing. Explain why this view loses 16-byte base alignment despite an aligned storage allocation. For a hypothetical one-pass residual-add plus norm with both outputs required, derive \(5nb\) vector bytes for separate add and norm versus \(4nb\) for fusion: two input reads, two output writes and one eliminated reread. State that weights, statistics, repeated loads and cache effects are excluded.",
       "traps": [
-        "TODO"
+        "Assuming a view's last dimension is contiguous because the original tensor was contiguous.",
+        "Counting a retained residual write as removed traffic. It is part of the output contract.",
+        "Treating fewer launches as proof of lower latency. Larger fusion can increase register pressure, spills or padding."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does changing an NHD tensor's layout label create HND storage?",
+          "a": "No. The consumer needs matching dimensions and strides. A real contiguous conversion moves data; a view may be supported only if the kernel accepts its strides."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is the fused residual example saving only one vector read?",
+          "a": "The sum must remain as a residual output. Fusion removes normalization's reread of that sum, but not its write."
+        },
+        {
+          "q": "Can nominal saved bytes predict speedup by themselves?",
+          "a": "No. Cache filtering, transaction utilization, launch costs and resource changes determine actual time. The ledger gives a hypothesis to measure."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` stride/alignment dispatch cases and a fusion ledger including conversion and retained-output costs.",
+      "stopWhen": "Your address calculation matches the strided view, and your fusion diagram accounts for every required read, write, conversion and reduction boundary.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: layout documentation, transformation/fusion design and the residual contract support derivation without repeating generic kernel construction."
       }
     },
     {
