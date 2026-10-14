@@ -1,6 +1,37 @@
 {
   "section": "prefill-decode-baseline-measurement",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "sarathi-serve-inf2",
+      "role": "paper",
+      "priority": "support",
+      "name": "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve",
+      "provider": "Agrawal et al.",
+      "access": "Free",
+      "use": "Read Chunked-prefills and Stall-free batching for the chunked-prefill vocabulary and the prefill-decode interference argument, and Overhead of chunked-prefills for the cost of splitting. Treat the reported capacity gains as the paper's result on its hardware.",
+      "url": "https://arxiv.org/abs/2403.02310"
+    },
+    {
+      "id": "py-spy-inf2",
+      "role": "tool",
+      "priority": "support",
+      "name": "py-spy - sampling profiler for Python",
+      "provider": "Ben Frederick",
+      "access": "Free",
+      "use": "Use py-spy record to take CPU flame graphs of tokenizer and detokenizer work, and py-spy top to watch the hot functions live. Launch the profiled process under py-spy.",
+      "url": "https://github.com/benfred/py-spy"
+    },
+    {
+      "id": "vllm-sampling-inf2",
+      "role": "reference",
+      "priority": "reference",
+      "name": "vLLM SamplingParams API (v0.31.0)",
+      "provider": "vLLM Project",
+      "access": "Free",
+      "use": "Look up temperature, seed, max_tokens, ignore_eos, stop and stop_token_ids defaults when you fix the output contract. The link is pinned to v0.31.0; check the fields against the version you install.",
+      "url": "https://docs.vllm.ai/en/v0.31.0/api/vllm/sampling_params/"
+    }
+  ],
   "units": [
     {
       "id": "tokenization-preprocessing-cost",
@@ -15,47 +46,78 @@
         "tokenizer-and-detokenizer-cpu-flame-graphs"
       ],
       "outcomes": [
-        "TODO"
+        "Explain where prompt tokenization and detokenization sit in a serving request and why their cost lands in TTFT and streaming gaps.",
+        "Measure tokenizer and detokenizer CPU time with a sampling flame graph and name the hottest functions.",
+        "State the prompt lengths and conditions under which tokenization can be ignored in a baseline."
       ],
-      "why": "TODO",
+      "why": "Tokenization runs on the host before the first device kernel, and detokenization runs between streamed tokens. A slow tokenizer looks exactly like slow prefill or ragged decode in a naive trace.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/latency-decomposition-timing",
+          "note": "Carry the tokenizer span into the TTFT decomposition."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/request-contract-latency-metrics",
+          "note": "Fix prompt lengths in tokens before comparing timings."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-ch16-inf2",
+          "title": "A CPU-bound tokenizer as the bottleneck",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Profiling, Debugging, and Tuning Inference Performance (pp. 959 to 964): the host-CPU-at-100-percent tokenization example and moving it to a GPU tokenizer or custom kernel",
+          "depth": "Read only the host-CPU tokenization example. Leave cache-hit tuning and tiered-cache sizing for the KV sections."
+        },
+        {
+          "resource": "vllm-metrics-inf2",
+          "title": "Where tokenization enters TTFT",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Frontend Stats Collection: arrival_time starts when tokenization begins, and TTFT is measured relative to it"
+        },
+        {
+          "resource": "py-spy-inf2",
+          "title": "CPU flame graphs with py-spy",
+          "url": "https://github.com/benfred/py-spy",
+          "locator": "README Usage: py-spy record -o profile.svg -- python myprogram.py for a flame graph, and py-spy top for the live view"
         }
       ],
       "focus": [
-        "TODO"
+        "Tokenization and detokenization are host work inside the request path. Tokenization adds to TTFT and scales with prompt length; detokenization adds to gaps between streamed tokens and scales with output length.",
+        "vLLM starts the TTFT clock when tokenization begins, so tokenizer time is inside TTFT by definition, not beside it.",
+        "A flame graph attributes host time to functions. Look for tokenizer encode and decode calls with regex or Python-loop frames, not device kernels.",
+        "Ignoring tokenization is a stated assumption, not a default. It fails for long prompts, slow tokenizers and per-token detokenization in streaming."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw the request path from arrival through tokenization, queue, prefill, first-token sampling and detokenization, and mark which spans vLLM counts in TTFT. Then profile a local tokenize and detokenize loop with py-spy record and name the two hottest frames.",
       "traps": [
-        "TODO"
+        "Reading TTFT as prefill time. TTFT includes queueing, tokenization, scheduling and host overhead around the prefill kernels.",
+        "Profiling the tokenizer once with a cold import. Import and cache warmup dominate the first call, so profile steady-state calls on your prompt distribution.",
+        "Detokenizing each token independently in analysis code. Streamed text uses incremental detokenization state, so naive per-token decoding can disagree with what the user saw."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Where does vLLM start the TTFT clock?",
+          "a": "When tokenization begins on the frontend. Tokenizer time is inside TTFT by construction."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A flame graph shows most request-wall time in a Python regex function under prefill-heavy load. Is the prefill kernel slow?",
+          "a": "There is no evidence for that. The host tokenizer or preprocessing is the bottleneck, and the device may be idle waiting for work."
+        },
+        {
+          "q": "When is it safe to ignore tokenization in a baseline?",
+          "a": "Only when you measured it small against TTFT on your prompts, with the tokenizer, cache state and lengths recorded. Long prompts or per-token detokenization break the assumption."
+        },
+        {
+          "q": "Why launch the process under py-spy record instead of attaching to a running server with a process id?",
+          "a": "Attaching to a process you did not start usually needs elevated permissions. Launching under py-spy record avoids that restriction."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: tokenizer and detokenizer spans in the request lifecycle trace, with a flame-graph attachment for the hottest host frame.",
+      "stopWhen": "You can point to the tokenizer span inside a TTFT trace and to the hottest tokenizer frame in your own flame graph, and state the prompt lengths where ignoring it stops being safe.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for CPU flame-graph tooling; py-spy supplies the verified record and top workflow beside the pool's tokenizer-bottleneck example."
       }
     },
     {
@@ -72,47 +134,84 @@
         "decode-matrix-vector-like-shapes"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why prefill exposes sequence parallelism while decode is sequential across generated tokens.",
+        "Derive the per-step shapes of a decode step as matrix-vector-like work against a growing KV cache.",
+        "Predict how prompt length and output length move prefill work versus decode steps."
       ],
-      "why": "TODO",
+      "why": "Every phase-separated measurement in this section assumes this split. If you cannot say which work is parallel and which is forced sequential, no TTFT or TPOT number means anything.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/serving-regimes-roofline",
+          "note": "Place the prefill and decode shapes on a roofline."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/batch-shape-phase-interference",
+          "note": "See how batching reuses decode weight loads."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Prefill parallelism and the decode dependency",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 2.2, Inference Setup (p. 3): prefill as one forward pass parallel over batch and prompt tokens, decode as sequential forward passes with one new token each"
+        },
+        {
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Why decode cannot parallelize across time",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 2.1 (p. 3): decode cannot batch across the sequence, and KV cache load per generated token grows with context and batch"
+        },
+        {
+          "resource": "hands-serving-ch5-inf2",
+          "title": "Decode shapes: one row at a time",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Applying Arithmetic Intensity Analysis to the LLM Prefill and Decode Phases (pp. 183 to 185): Figure 5-16 with M = s for prefill and M = 1 for decode",
+          "depth": "Use the shape argument and the regime verdicts only. Recompute the arithmetic-intensity numbers yourself: the printed formula drops parentheses and understates short-sequence values by about half."
         }
       ],
       "focus": [
-        "TODO"
+        "Treat the Two regimes: prefill and decode unit as read. This unit adds the per-step shapes and the serving measurement consequences.",
+        "Prefill processes all prompt tokens together, so its work grows with prompt length but parallelizes across the sequence. Decode produces one token per step because each token needs the previous one.",
+        "A decode step loads the full weight set plus the whole KV cache to produce one token and append one entry: matrix-vector-like shapes with almost no reuse.",
+        "The KV cache turns quadratic recomputation into linear per-step reads. Without it, each decode step would rescan the full prefix."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the dependency chain for generating four tokens from a prompt, stating what each step reads and appends. Then solve the TensorTonic uniform two-position public case by hand to get output [[[4]]].",
       "traps": [
-        "TODO"
+        "Calling decode compute-bound because the model is large. A decode step loads weights and cache for one token, so size raises the bytes moved, not the reuse.",
+        "Assuming prefill cost repeats per token. Prefill runs once; decode steps each read the cache but never redo the full prompt pass.",
+        "Treating batching as parallelism across time. Batching parallelizes across requests; the output steps of one request stay sequential."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can prefill use large matrix multiplies while decode cannot?",
+          "a": "Prefill holds all prompt tokens at once, so the multiply has M = s rows. Decode holds one new token because each token depends on the previous one, so M = 1."
+        },
+        {
+          "q": "What does one decode step read?",
+          "a": "The full weight set once plus the KV cache for all cached positions, to produce one token and append one entry."
+        },
+        {
+          "q": "In the TensorTonic public case with query 0 and keys 1 and 2, why is the output 4?",
+          "a": "Both scores are 0, so the weights are 0.5 and 0.5. Then 0.5 x 2 + 0.5 x 6 = 4."
+        },
+        {
+          "q": "A batch holds 8 requests that each generate 50 tokens. How many sequential steps does each request need?",
+          "a": "50. Batching does not shorten any single request's dependency chain."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Decode Attention with a KV Cache",
+          "url": "https://www.tensortonic.com/problems/cs336-l10-kv-cache-decode-step",
+          "locator": "Implement kv_cache_decode_step; the public cases check cache extension, uniform two-position attention and two query heads sharing one KV head",
+          "note": "Solve the public cases by hand first, then implement. The grouped-query head mapping is the bridge to the attention-variant units."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the decode-step shapes without notes and your kv_cache_decode_step passes all public cases.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The scaling paper and the serving book cover all three topics at explain and derive depth, and the TensorTonic problem gives checked practice on decode shapes."
       }
     },
     {
@@ -129,47 +228,90 @@
         "arithmetic-intensity-and-roofline-position"
       ],
       "outcomes": [
-        "TODO"
+        "Derive arithmetic intensity for a matmul and place prefill and decode work on a roofline for your GPU.",
+        "Explain the compute, bandwidth, launch, capacity and queue-bound regimes and how batching moves each boundary.",
+        "Predict the bottleneck for short and long prompts with small and large batches before profiling."
       ],
-      "why": "TODO",
+      "why": "Regime classification is the prediction half of this section's checkpoint. Every later claim about a stall or a speedup is checked against the regime you declared first.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/batch-shape-phase-interference",
+          "note": "Move the boundaries with batch size and chunked prefill."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/prediction-residuals-goodput",
+          "note": "Turn regime predictions into residuals and goodput."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-ch5-inf2",
+          "title": "Roofline and arithmetic intensity, recomputed",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Boundaries of GPU Compute and Memory Bandwidth (pp. 178 to 180), Arithmetic Intensity in Matrix Multiplications (pp. 181 to 183) and Applying Arithmetic Intensity Analysis to the LLM Prefill and Decode Phases (pp. 183 to 185)",
+          "depth": "Recompute Table 5-9 and Table 5-10 with the parenthesized formula M x N x K / (M x K + K x N + M x N). The printed formula omits the parentheses and its last denominator term is wrong: at h = 4096 the correct prefill values are about 62 and 410 for s = 64 and 512, and the correct decode value is about 1.0, not 0.5. The verdicts are unchanged."
+        },
+        {
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Cost, MFU and the latency trade-off",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 2.1 (p. 3) and Section 4.4 with Tables 2 and 3 (pp. 9 to 10): small batches give low latency at worse MFU and higher cost, and the low-latency versus high-throughput configurations"
+        },
+        {
+          "resource": "aisys-ch16-inf2",
+          "title": "Small batches and the launch floor",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Inference Troubleshooting Recipes with Table 16-1 (pp. 973 to 978): the below-50-percent-SM-utilization small-batch row, which prescribes larger batches and fused kernels before reaching for the profiler"
+        },
+        {
+          "resource": "ttft-project-inf2",
+          "title": "The saturation knee",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Week 5: the concurrency sweep at 1, 2 and 4 up to 128, and the knee where throughput saturates while latency degrades"
         }
       ],
       "focus": [
-        "TODO"
+        "Arithmetic intensity is FLOPs per byte moved. The ridge is peak FLOPs per second divided by peak bytes per second, and work below it is bandwidth-bound.",
+        "Prefill intensity grows with sequence length while decode intensity stays near 1 FLOP per byte at any length. At very small shapes time stops falling with bytes: that flat floor is the launch-bound regime.",
+        "Batching raises intensity by reusing each weight load across requests, which moves the bandwidth boundary but never removes the sequential decode chain.",
+        "Capacity-bound means the KV cache does not fit, so the batch or the lengths must shrink. Queue-bound means waiting requests grow while the device stays busy. Diagnose both from occupancy and waiting counts, not from kernel timings."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive \\(\\text{AI} = M N K / (M K + K N + M N)\\) for a matmul, evaluate it for \\(M = s\\) and \\(M = 1\\) at \\(h = 4096\\) and \\(s = 64\\), and place both points against a ridge of 419 FLOPS per byte.",
       "traps": [
-        "TODO"
+        "Quoting the book's Table 5-10 decode value of 0.5. The printed denominator is wrong and the correct value is about 1.0. Both sit far below any GPU ridge, so the verdict stands but the number does not.",
+        "Comparing intensities across precisions or tokenizers without restating units. Bytes per element and tokens per request change the numbers, so a ratio without its setup is not comparable.",
+        "Naming a regime from device utilization alone. Low SM use with full memory is capacity-bound; low SM use with empty memory and a growing queue is queue-bound."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the units of arithmetic intensity and of the roofline ridge?",
+          "a": "FLOPs per byte for intensity. The ridge is peak FLOPs per second divided by peak bytes per second, also FLOPs per byte."
+        },
+        {
+          "q": "At h = 4096 on a ridge of 419, which corrected Table 5-10 prefill values are compute-bound?",
+          "a": "Only s = 4096 at about 1365. The corrected 62 at s = 64 and 410 at s = 512 are still bandwidth-bound, as is decode at about 1.0."
+        },
+        {
+          "q": "Why does batching move the bandwidth boundary?",
+          "a": "One weight load serves B tokens instead of one, so FLOPs per byte rise with B while the sequential steps per request stay fixed."
+        },
+        {
+          "q": "How do you tell capacity-bound from queue-bound without a profiler?",
+          "a": "Capacity-bound shows full memory with small admitted batches. Queue-bound shows waiting requests growing while the device stays busy. Check occupancy and waiting counts."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of Inference Day 06: Ops-Byte Ratio and Roofline",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day06/ops-byte-ratio.ipynb",
+          "locator": "Run the roofline plot and the attention arithmetic-intensity cells for your GPU; reproduce the N = 4096, d = 128 example at about 31 ops per byte and sweep batch size to the compute-bound crossover",
+          "note": "The notebook's attention accounting follows its book's model. Check it against your matmul derivation rather than treating it as a measured result."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your hand-derived intensities match the corrected table values, and your roofline plot puts prefill and decode on opposite sides of the ridge for a long prompt.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The serving book's roofline sections with recomputed numbers, the scaling paper's cost trade-off, the troubleshooting table and the TTFT saturation knee cover all three topics with notebook practice."
       }
     },
     {
