@@ -13,47 +13,63 @@
         "replicated-data-parallel-memory-baseline-by-dtype"
       ],
       "outcomes": [
-        "TODO"
+        "Derive replicated parameter, gradient and Adam state bytes from the tensors actually kept by a precision policy.",
+        "Separate persistent model state from gathered weights, activations, temporary buffers and allocator reserve."
       ],
-      "why": "TODO",
+      "why": "Sharding savings are only meaningful against a stated baseline. Build on GPU memory: allocated, reserved, peak and memory models, and Optimizers from SGD to AdamW; here the new job is accounting by rank and dtype.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/zero-stage-partitioning",
+          "note": "Partition the baseline without changing the update."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "zero-paper-dt4",
+          "title": "ZeRO: the model-state baseline",
+          "url": "https://arxiv.org/abs/1910.02054v3",
+          "locator": "arXiv:1910.02054v3, Section 3.1, Model States: Optimizer States, Gradients and Parameters; Section 3.2, Residual Memory Consumption"
+        },
+        {
+          "resource": "ultrascale-zero-dt4",
+          "title": "Memory usage revisited",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#zero_redundancy_optimizer_(zero)",
+          "locator": "Zero Redundancy Optimizer (ZeRO), subsection Memory usage revisited",
+          "depth": "Stop before ZeRO-1. Its extra FP32 accumulation buffer is a specific storage choice, not a mandatory extra copy under every mixed-precision implementation."
         }
       ],
       "focus": [
-        "TODO"
+        "For parameter count \\(N\\), sum each stored category once. The paper keeps half-precision parameters and gradients plus FP32 master parameters and two FP32 moments: \\((2+2+4+4+4)N = 16N\\) bytes.",
+        "FP32 parameters with FP32 gradients and two FP32 Adam moments also use \\(16N\\) tensor bytes, but have different lifetimes and communication payloads. Autocast alone does not require a persistent half-precision parameter copy.",
+        "Inspect Adam after its first update, when moments exist. Count per-parameter step scalars separately; gradients may be absent after clearing them.",
+        "Use decimal GB for \\(10^9\\) bytes and GiB for \\(2^{30}\\) bytes. Persistent model-state totals are not peak process or device memory."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, make a rank-local byte ledger for a model with \\(N = 1{,}000{,}000\\) parameters under the paper's half-precision Adam layout. Derive 16,000,000 tensor bytes per replica, excluding step scalars, activations and temporaries. Then count parameters, gradients and Adam moments in a small FP32 CPU model after one update and explain why its main tensor categories have the same total but a different layout.",
       "traps": [
-        "TODO"
+        "Counting an FP32 master parameter twice when the optimizer already updates the original FP32 parameter.",
+        "Dividing activations by world size while holding local microbatch fixed. ZeRO changes model-state ownership, not that local workload.",
+        "Measuring only before the first optimizer step and concluding that Adam has no state."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does BF16 compute imply two-byte persistent parameters?",
+          "a": "No. FSDP2 can keep original FP32 shards for the optimizer while gathering BF16 parameters for compute. State the storage policy separately from compute precision."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why is the paper's optimizer multiplier 12 rather than 8 bytes per parameter?",
+          "a": "It includes the four-byte FP32 master parameter as well as two four-byte Adam moments."
+        },
+        {
+          "q": "Can a model whose persistent state fits still run out of memory?",
+          "a": "Yes. Activations, full gathered weights, full local gradients, communication staging, optimizer temporaries and allocator reserve can raise the peak above capacity."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab dtype-aware replicated-state ledger, checked against actual tensors after the first optimizer update.",
+      "stopWhen": "Your ledger names every tensor category and reconciles its byte count with a small CPU model, without calling the persistent total a peak.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The paper and Playbook locate the dtype baseline and residual memory; trainlab supplies the tensor-level accounting check."
       }
     },
     {
@@ -69,53 +85,93 @@
         "zero-3-parameter-gradient-and-optimizer-state-partitioning"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-rank model-state memory for ZeRO-1, ZeRO-2 and ZeRO-3 from ownership, including the unsharded floor.",
+        "Explain which rank updates each shard and how all ranks obtain the next parameter version.",
+        "Distinguish the assignment's whole-parameter optimizer partition from ideal evenly pooled sharding."
       ],
-      "why": "TODO",
+      "why": "Each ZeRO stage removes a different replicated category. That distinction predicts both the memory floor and the communication needed to preserve data-parallel updates.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-gather-reduce-scatter",
+          "note": "Turn ownership diagrams into a fully sharded step."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-zero-dt4",
+          "title": "The three ZeRO stages",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#zero_redundancy_optimizer_(zero)",
+          "locator": "Zero Redundancy Optimizer (ZeRO): ZeRO-1: Partitioning optimizer states; ZeRO-2: Adding gradient partitioning; ZeRO-3: Adding parameter partitioning (FSDP)",
+          "depth": "Stop before Tensor Parallelism. Read the 'two times faster' aside as an equal-payload ring byte comparison, not a measured latency guarantee."
+        },
+        {
+          "resource": "zero-paper-dt4",
+          "title": "Ownership and memory savings",
+          "url": "https://arxiv.org/abs/1910.02054v3",
+          "locator": "arXiv:1910.02054v3, Sections 5.1 to 5.3, Deep Dive into ZeRO-DP; Figure 1 and Table 1"
+        },
+        {
+          "resource": "cs336-sharding-dt4",
+          "title": "Optimizer-state sharding contract",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 6, problems `optimizer_state_sharding` and `optimizer_state_sharding_accounting`, printed pp. 37 to 38",
+          "depth": "Implement the CPU correctness part now. For accounting parts (a) and (b), use a CPU tensor ledger first; with two or more GPUs, measure a model that fits your GPUs rather than requiring the handout's xl configuration."
         }
       ],
       "focus": [
-        "TODO"
+        "Let \\(P\\), \\(G\\) and \\(O\\) be total parameter, gradient and optimizer bytes, and \\(R\\) the rank count. Ideal even-shard persistent totals are \\(P+G+O\\), \\(P+G+O/R\\), \\(P+(G+O)/R\\) and \\((P+G+O)/R\\) for DDP through ZeRO-3.",
+        "In the paper's layout, \\(P=2N\\), \\(G=2N\\) and \\(O=12N\\). The advertised fourfold and eightfold stage-1 and stage-2 savings are large-degree limits, not exact savings at every rank count.",
+        "The assignment retains replicated parameters and gradients, updates only owned whole parameters, then broadcasts them. Its public test supplies matching gradients on both ranks; gradient averaging on disjoint data remains your trainer's responsibility.",
+        "Whole-parameter ownership, per-tensor dim-0 sharding, padding and pooled-byte ceilings are different allocation models. Write down which one your calculation uses."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the four memory expressions without looking. For the paper's layout with \\(N=1{,}000{,}000\\) and \\(R=4\\), obtain 16,000,000, 7,000,000, 5,500,000 and 4,000,000 persistent bytes per rank. Then draw which rank owns a parameter's moments, reduced gradient and stored weight at each stage; add the transient full weight needed by stage 3.",
       "traps": [
-        "TODO"
+        "Calling optimizer-state sharding gradient synchronization. Ownership of moments does not itself average different ranks' gradients.",
+        "Assigning tied parameter aliases to different owners and applying the update twice.",
+        "Using the ideal persistent ZeRO-3 total as an OOM prediction without a gather window."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What memory floor remains as the rank count grows under ZeRO-2?",
+          "a": "The full replicated parameter storage. Gradients and optimizer state shrink ideally, but parameters do not."
+        },
+        {
+          "q": "Does ZeRO-3 split a layer's matrix multiplication across the ranks?",
+          "a": "No. It splits stored model state; each rank gathers the required weights and computes on its own data. Tensor parallelism splits the layer computation."
+        },
+        {
+          "q": "Why does the assignment need broadcasts after the optimizer step?",
+          "a": "Each owner changes only its parameters. Broadcasting those updates restores a consistent full parameter replica for the next forward on every rank."
+        },
+        {
+          "q": "Do equal-payload reduce-scatter and all-gather always cost exactly the same as an all-reduce?",
+          "a": "Their total ring send volume equals a bandwidth-optimal ring all-reduce. Different dtypes, launch counts, topology, implementation and overlap can change elapsed time."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Account for ZeRO Memory by Stage",
+          "url": "https://www.tensortonic.com/problems/cs336-l08-zero-memory-accounting",
+          "locator": "Implement `zero_memory_accounting(parameter_bytes, gradient_bytes, optimizer_bytes, world_size)`",
+          "note": "Free. Public cases cover even four-way sharding, an uneven three-way byte pool and one rank. Follow its pooled-byte ceilings; they are not PyTorch's per-tensor allocation rule."
+        },
+        {
+          "name": "CS336 Assignment 2: `optimizer_state_sharding`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_sharded_optimizer.py",
+          "locator": "Section 6; implement `get_sharded_optimizer` in `tests/adapters.py`, then run `pytest tests/test_sharded_optimizer.py`",
+          "note": "The two-process CPU Gloo tests compare AdamW final parameters after ten updates, including tied weights. They do not check disjoint-data gradient reduction or memory savings; add those checks in trainlab."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive each stage's persistent-state ledger, pass both named practice suites and explain what their tests leave unproved.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Playbook and paper cover all three stages at derive depth; TensorTonic checks accounting and CS336 checks optimizer ownership with tied weights."
       }
     },
     {
       "id": "fsdp-gather-reduce-scatter",
       "title": "Parameter all-gather before compute and gradient reduce-scatter after backward",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "explain",
         "implement"
@@ -125,47 +181,70 @@
         "gradient-reduce-scatter-after-backward"
       ],
       "outcomes": [
-        "TODO"
+        "Implement gather-before-use, release-after-use and reduced-gradient ownership in a tiny fully sharded trainer.",
+        "Match gradients and parameter updates to an unsharded oracle with the same global batch and loss normalization.",
+        "Explain when backward needs a full weight and when the optimizer needs only a shard."
       ],
-      "why": "TODO",
+      "why": "Correct ownership is not enough if weights are absent when autograd uses them. This unit makes the parameter and gradient lifecycle explicit before adding scheduling optimizations.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/reshard-prefetch-policies",
+          "note": "Change the lifecycle while preserving the oracle result."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "The current FSDP lifecycle",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#how-fsdp2-works",
+          "locator": "How FSDP2 works and How to use FSDP2 / Model Initialization (page read 2026-10-14)"
+        },
+        {
+          "resource": "cs336-sharding-dt4",
+          "title": "Build fully sharded training",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 7, problem `fsdp`, printed pp. 38 to 39; Section 8.3, equations (34) to (44), pp. 42 to 43",
+          "depth": "Implement and test the CPU Gloo path first. Leave GPU profiling in `fsdp_accounting` to the peak-memory unit. The handout's FP32 master-weight prescription is its implementation contract, not a theorem forbidding other training formats."
         }
       ],
       "focus": [
-        "TODO"
+        "For a sharded linear layer, gather the full compute weight before forward. If released afterward, gather it again before backward computes input gradients. Reducing weight gradients does not replace that second gather.",
+        "Reduce-scatter combines contributions from all data ranks and gives each owner its reduced gradient slice. For equal local mean losses, divide the summed gradient by the data-parallel degree exactly once.",
+        "Resharding parameters normally means freeing the gathered representation and re-registering the stored shard. It is not another scatter collective.",
+        "The assignment shards Linear and Embedding weights and keeps norms replicated. Replicated parameters still need gradient synchronization. Build the optimizer against the parameters it must update."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a tiny gather-compute-release-backward-reduce-scatter-update cycle on CPU Gloo. Use your DT-3 single-process oracle with identical initial weights, the concatenated global batch and equal local batch sizes. Record each rank's shard ranges and collective order; compare reconstructed gradients and several updates within explicit floating-point tolerances.",
       "traps": [
-        "TODO"
+        "Freeing a tensor still needed by autograd. The hook schedule and saved-tensor lifetime must agree; swapping storage blindly can corrupt backward.",
+        "Reducing only sharded weights while silently leaving replicated normalization gradients local.",
+        "Comparing each rank's local mean loss with the global mean and calling their difference an FSDP error. Reduce the metric separately."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can a linear layer need its full weight during backward?",
+          "a": "Its input gradient multiplies the output gradient by the weight. Releasing the forward compute weight therefore requires restoring it before that multiplication."
+        },
+        {
+          "q": "Is parameter resharding a network transfer?",
+          "a": "Not ordinarily. Each rank retains its persistent shard and frees the transient gathered copy. Gradient reduce-scatter is the network operation that produces the owned reduced gradient."
+        },
+        {
+          "q": "When does a mean of local mean gradients equal the global mean gradient?",
+          "a": "When local losses use the same normalization and each rank has the same number of contributing examples or tokens. Unequal counts require weighting by those counts."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `fsdp`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_fsdp.py",
+          "locator": "Section 7; implement `get_fsdp`, `fsdp_on_after_backward` and `fsdp_gather_full_params` in `tests/adapters.py`; run `pytest tests/test_fsdp.py`",
+          "note": "Two CPU Gloo ranks. `test_fsdp_correctness` compares three SGD updates with full-batch training in FP32 and FP16 compute. `test_fsdp_gradient_sync` checks gradient shape and master dtype, and cross-rank agreement of replicated gradients. The section mini-project adds shard ownership and lifecycle evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your educational FSDP passes the public correctness and gradient tests, and its rank logs explain where each full weight and reduced shard lives.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies the implementation contract and CPU public tests; the maintained tutorial supplies the current lifecycle vocabulary."
       }
     },
     {
@@ -181,47 +260,64 @@
         "forward-and-backward-prefetch-ordering"
       ],
       "outcomes": [
-        "TODO"
+        "Predict full-parameter lifetimes and gather counts for reshard-after-forward policies.",
+        "Compare prefetch depth using a live-state timeline and identify communication that remains exposed.",
+        "Explain the memory cost of keeping weights through backward or gathering future groups early."
       ],
-      "why": "TODO",
+      "why": "A policy can save one gather yet retain a large full tensor. Prefetch can hide a gather yet create an OOM. Both choices need a lifecycle timeline, not a universal fastest setting.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-peak-memory-comm-volume",
+          "note": "Count the live windows and bytes introduced by each policy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Reshard policy in PyTorch 2.14",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.fully_shard",
+          "locator": "`fully_shard`, parameter `reshard_after_forward`; `FSDPModule.set_modules_to_forward_prefetch`, `set_modules_to_backward_prefetch` and `unshard`",
+          "depth": "Read the Boolean and default policies first. Use the integer policy only in the simulator unless you have a suitable mesh; only a non-trivial divisor of the mesh shard dim size gives distinct behavior: 1 collapses to `False` and the shard size itself to `True`, both without an error."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Implicit and explicit prefetch",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#forward-backward-with-prefetching",
+          "locator": "Forward/Backward with Prefetching, including both timeline diagrams and explicit-prefetch code (page read 2026-10-14)"
         }
       ],
       "focus": [
-        "TODO"
+        "With `reshard_after_forward=True`, discard the full weight after forward and gather it for backward. With `reshard_after_forward=False`, retain it until backward and avoid that gather.",
+        "In 2.14, `reshard_after_forward=None` resolves to true for non-root modules and false for the forward root. Set the policy explicitly when comparing schedules; do not assume a root-only run has two gathers.",
+        "Backward's default prefetch follows reverse post-forward order. An explicit list overrides it; deeper prefetch increases simultaneous gathered state and is only useful if earlier launch reduces waiting.",
+        "Use a deterministic event simulator first to measure live bytes and dependency stalls. With two or more GPUs, compare synchronized fixed-workload traces, allocated peaks and step times for these policies. CPU Gloo timings do not establish GPU overlap or interconnect performance."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw a three-group forward/backward event trace twice: first release every group's full weights after forward, then retain them until backward. Assume each group needs its weight in both passes, no accumulation and no prefetch. Count two gathers per group in the first trace and one in the second; compute the simultaneous full-weight bytes. Add one-group-ahead prefetch and show the extra live window before testing the schedules in trainlab.",
       "traps": [
-        "TODO"
+        "Treating asynchronous launch as proof of overlap. Only a timeline with concurrent work and satisfied dependencies establishes overlap.",
+        "Copying a fixed prefetch list onto rank-divergent execution. Every group must still execute compatible collectives in the same order.",
+        "Using `unshard()` on the root and assuming it recursively gathers every nested FSDP group. It is not recursive."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What does retaining full parameters after forward buy?",
+          "a": "It removes the backward parameter all-gather for those parameters, at the cost of a longer full-parameter lifetime. Gradient reduction is still required."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can deeper prefetch make a previously fitting model fail?",
+          "a": "Several gathered groups and their staging buffers can coexist with current compute and saved activations. The persistent shards have not changed, but the live peak has."
+        },
+        {
+          "q": "Why might the default keep the root's full parameters?",
+          "a": "The root is needed near the forward/backward boundary. Freeing and immediately gathering its parameters again can add traffic with little lifetime reduction. This is a heuristic, not proof that every root should be retained."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab event timelines for reshard and prefetch policies, with oracle checks and conditional multi-GPU traces.",
+      "stopWhen": "Your policy comparison gives gather counts, peak live bytes and dependency stalls for identical work, and explains one case where more prefetch is worse.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The tutorial's timelines and 2.14 API entries cover both policies at explain and measure depth; trainlab provides CPU simulation and conditional GPU evidence."
       }
     },
     {
@@ -237,47 +333,71 @@
         "hybrid-sharded-data-parallel-vocabulary"
       ],
       "outcomes": [
-        "TODO"
+        "Explain FSDP1 flat storage, original-parameter views and communication grouping without treating them as FSDP2's representation.",
+        "Choose wrapping boundaries from the largest live group, launch count and shared-parameter ownership.",
+        "Map hybrid sharding's sharding and replication groups and explain both gradient reductions."
       ],
-      "why": "TODO",
+      "why": "Wrapping determines what must fit in memory at once and which ranks communicate. Understanding both FSDP generations lets you read legacy code without importing its configuration into FSDP2.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp2-mixed-precision",
+          "note": "Implement the per-parameter DTensor representation."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "fsdp-paper-dt4",
+          "title": "Legacy flat parameters and hybrid sharding",
+          "url": "https://arxiv.org/abs/2304.11277v2",
+          "locator": "arXiv:2304.11277v2, Sections 3.2.1 Full Sharding, 3.2.2 Hybrid Sharding and 3.2.3 Autograd; Figures 3 and 4",
+          "depth": "Read the representation and ownership design, not the paper's cluster benchmarks. This paper describes FSDP1."
+        },
+        {
+          "resource": "torchtitan-fsdp-dt4",
+          "title": "From flat parameters to DTensor",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/docs/fsdp.md",
+          "locator": "Why FSDP2? and FSDP1 <> FSDP2 API Differences, including the mesh and state-dict tables",
+          "depth": "Use the tables for migration vocabulary only. The statements that forward prefetch is 'not yet implemented' or 'under discussion' are stale; use the 2.14 prefetch APIs from the preceding unit."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Current grouping and mesh contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#communication-grouping-and-scheduling",
+          "locator": "Communication Grouping and Scheduling; `fully_shard` parameter `mesh` and the FSDP1 comparison"
         }
       ],
       "focus": [
-        "TODO"
+        "FSDP1 flattens and concatenates a group's parameters, pads, then chunks the flat storage. Original parameter tensors are views into that storage. A handle manages this group's lifecycle; it is not a separate model-state category.",
+        "FSDP2 shards each parameter as a DTensor, normally along dim 0, but still groups communication by `fully_shard` calls. Per-parameter representation does not mean one collective per parameter.",
+        "Apply `fully_shard` bottom-up to blocks, then the root. The root owns remaining parameters such as embeddings and the output head. Root-only grouping materializes the whole model's managed weights together.",
+        "For a 2D hybrid mesh, the first dimension replicates and the second shards. Reduce-scatter within each shard group, then all-reduce matching gradient shards across replicas. Model-state memory scales with shard degree, not total world size."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw a deterministic four-rank mesh with rows `[0, 1]` and `[2, 3]`. Identify sharding groups `[0, 1]` and `[2, 3]`, replication groups `[0, 2]` and `[1, 3]`, and each parameter shard's two copies. Sum gradient contributions within rows, then across columns; show that each owner obtains the same averaged shard as a global single-process oracle. Contrast root-only, per-block and per-linear communication groups on a two-block model.",
       "traps": [
-        "TODO"
+        "Dividing persistent memory by all four ranks in a two-by-two hybrid mesh. Each shard is replicated twice.",
+        "Wrapping tied aliases as unrelated groups. A shared parameter needs one compatible ownership and gather lifecycle for every use.",
+        "Assuming smaller groups always run faster. They lower individual gather sizes but increase collective launches and can expose latency."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does FSDP2 use a `FlatParameter` for each group?",
+          "a": "No. It stores per-parameter DTensor shards and groups them for communication. `FlatParameter` is the legacy FSDP1 representation."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why does hybrid sharding need a second gradient reduction?",
+          "a": "The reduce-scatter only combines data contributions inside one shard group. Matching shards in other replicated groups saw other data and must also be combined."
+        },
+        {
+          "q": "What happens to parameters not assigned by the inner sharding calls?",
+          "a": "A later root call groups the remaining parameters. Omitting that call can leave intended-to-be-sharded parameters unmanaged."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab wrap-group inventory and four-rank hybrid ownership and reduction simulation.",
+      "stopWhen": "You can reconstruct the hybrid reduction by hand, identify every group's parameters, and explain why your chosen granularity differs from both root-only and per-parameter grouping.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The FSDP1 paper locates flat views and hybrid sharding; TorchTitan and the 2.14 API distinguish the current representation and grouping."
       }
     },
     {
@@ -292,47 +412,67 @@
         "fsdp2-dtensor-native-configuration"
       ],
       "outcomes": [
-        "TODO"
+        "Apply FSDP2 bottom-up on a CPU device mesh and inspect local DTensor shards before and after a step.",
+        "Choose parameter, reduction and output dtypes separately and account for their storage and communication.",
+        "Construct the optimizer after sharding and verify global gradient clipping against an unsharded oracle."
       ],
-      "why": "TODO",
+      "why": "Build on Precision formats, autocast and gradient scaling. The new issue is where casts occur across ranks: compute weights, reduction payloads and optimizer shards can have three different roles.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-equivalence-failure-modes",
+          "note": "Test precision and ownership failures independently."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "FSDP2 precision and DTensor optimizer",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#enabling-mixed-precision",
+          "locator": "Enabling Mixed Precision; Gradient Clipping and Optimizer with DTensor; revisit Model Initialization's DTensor inspection (page read 2026-10-14)"
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "MixedPrecisionPolicy in PyTorch 2.14",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.MixedPrecisionPolicy",
+          "locator": "`MixedPrecisionPolicy`: `param_dtype`, `reduce_dtype`, `output_dtype` and `cast_forward_inputs`; `fully_shard` user contract"
         }
       ],
       "focus": [
-        "TODO"
+        "Start with FP32 and a 1D CPU mesh on Gloo. Shard blocks before the root, use `model(x)` so hooks run, then construct AdamW from the sharded parameters. Inspect global shapes and `to_local()` separately.",
+        "For original FP32 parameters, `MixedPrecisionPolicy(param_dtype=torch.bfloat16, reduce_dtype=torch.float32)` gathers BF16 weights, computes in BF16 and reduces gradients in FP32. The optimizer updates original FP32 shards; it does not need another FP32 master copy.",
+        "If `reduce_dtype=None` and `param_dtype` is set, the reduction payload uses the compute dtype, and the stored gradient shard is cast back to the original parameter dtype. `output_dtype` changes floating-point outputs at the module boundary, not the optimizer's state dtype.",
+        "Use `torch.nn.utils.clip_grad_norm_` on the DTensor parameters, not on each rank's local shards separately. A global norm must combine the disjoint gradient contributions without counting replicated copies twice."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Adapt the tutorial to two CPU Gloo processes with `init_device_mesh('cpu', (2,))` and a tiny two-linear-layer model. First match several FP32 AdamW updates and a clipped gradient norm to the single-process global-batch oracle. Then use BF16 parameter compute and FP32 reduction; inspect the full compute weight during a forward pre-hook, the FP32 shard and gradient after backward, and FP32 Adam moments after the update. Compare mixed precision to an oracle with matching casts, not to a bitwise FP32 target.",
       "traps": [
-        "TODO"
+        "Inspecting the weight in a post-forward hook registered after FSDP's hook and expecting the compute dtype. It may already have been resharded to the original dtype; inspect inside forward or after FSDP's pre-hook.",
+        "Calling `model.forward(x)` directly. It bypasses the pre-forward gather and reads whatever is registered: after resharding it fails with a mixed Tensor and DTensor error, and while full weights are still retained it can silently run, so a passing call proves nothing.",
+        "Clipping each local shard to the same maximum norm. That implements different scaling from clipping the reconstructed global gradient."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which dtype determines parameter all-gather bytes?",
+          "a": "The unsharded parameter dtype, selected by `param_dtype` when set. The stored optimizer shard can remain FP32."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does FP32 reduction recover precision lost during BF16 compute?",
+          "a": "No. It limits additional rounding during reduction, but cannot recover information already lost in low-precision computations."
+        },
+        {
+          "q": "Why initialize the optimizer after `fully_shard`?",
+          "a": "It must reference the DTensor parameters that the sharded optimizer step will update, with the correct ownership and shape semantics."
+        },
+        {
+          "q": "What should happen when a correct mixed-precision run is compared with FP32?",
+          "a": "Small numerical differences can occur. Validate against a same-policy oracle with explicit tolerances, and report any FP32 comparison as a precision comparison rather than bitwise equivalence."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab FSDP2 CPU configuration, dtype inspections and same-policy update and global-clipping oracles.",
+      "stopWhen": "Your dtype and placement logs agree with the selected policy, and FP32 updates and global clipping match the oracle before you introduce low-precision compute.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The maintained tutorial and 2.14 policy contract cover DTensor configuration and dtype boundaries; trainlab supplies implementation and oracle practice."
       }
     },
     {
@@ -348,47 +488,75 @@
         "selective-offload-and-activation-aware-wrapping-study"
       ],
       "outcomes": [
-        "TODO"
+        "Measure recomputation and collective events when activation checkpointing is composed with FSDP groups.",
+        "Account for host memory, transfer traffic and CPU optimizer work under model-state offload.",
+        "Compare selective checkpointing, wrap boundaries and selective offload under a stated memory budget."
       ],
-      "why": "TODO",
+      "why": "Build on Activation checkpointing and recomputation. At distributed depth, recompute can cross gather boundaries, while offload moves pressure onto another memory tier rather than removing it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/fsdp-peak-memory-comm-volume",
+          "note": "Include recompute and offload windows in the peak and traffic ledger."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "torchfeather-fsdp-dt4",
+          "title": "Activation-checkpoint placement and selective policies",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/activation_checkpoint.py",
+          "locator": "`_apply_full_ac`, `_apply_layer_sac`, `_apply_op_sac` and `apply_ac`; then `parallelize_deepseekv3` in `torchfeather/model/parallelize.py` at the same commit",
+          "depth": "Read the policy functions and checkpoint-before-FSDP call order only. Do not adopt the private compiler controls or the full framework. Open the second file at https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/model/parallelize.py."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "CPU offload in PyTorch 2.14",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#torch.distributed.fsdp.CPUOffloadPolicy",
+          "locator": "`CPUOffloadPolicy`, including `pin_memory`; `fully_shard` parameter `offload_policy`"
+        },
+        {
+          "resource": "deepspeed-zero-dt4",
+          "title": "CPU versus storage offload vocabulary",
+          "url": "https://www.deepspeed.ai/tutorials/zero/#offloading-to-cpu-and-nvme-with-zero-infinity",
+          "locator": "Offloading to CPU and NVMe with ZeRO-Infinity (page read 2026-10-14)",
+          "depth": "Read the tier and state-category distinction. Do not run the large-model scripts or port DeepSpeed's configuration keys into FSDP2."
         }
       ],
       "focus": [
-        "TODO"
+        "Checkpoint placement relative to the FSDP group decides whether recomputation re-enters gather hooks. Count actual all-gathers rather than assuming every checkpoint adds one or that recomputation is communication-free.",
+        "TorchFeather's checkpoint policies use `preserve_rng_state=False`. For a stochastic block, use preserved RNG state in your baseline and test the recomputed gradient; the source's choice is not safe for arbitrary dropout.",
+        "FSDP2 CPU offload keeps parameter and gradient shards and optimizer state on CPU. Copy shards to the training device before gathering, copy reduced gradients back, and run the optimizer on CPU. The gathered weights of the active group and its activations must still fit on the training device.",
+        "NVMe adds a storage-to-host tier and staging buffers; `CPUOffloadPolicy` does not implement it. Use a deterministic tiered-transfer model on CPU first. With two or more GPUs, measure checkpoint and per-group CPU-offload variants with host traffic, memory peaks and fixed-workload step times."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU Gloo, compare a tiny block-sharded model with and without non-reentrant activation checkpointing. Keep inputs, weights and precision fixed; check gradients against the no-checkpoint oracle and count block re-execution and gather events. In a separate deterministic transfer simulation, move only selected groups' stored shards to a host or storage tier; record resident bytes and bytes crossing each link, including staging. Predict which tier becomes the bottleneck without claiming CPU timings measure GPU transfers.",
       "traps": [
-        "TODO"
+        "Assuming offload removes the full-layer working set. It can lower total device peak while leaving that gathered-layer requirement unchanged.",
+        "Treating pinned host memory as free. It is a constrained resource shared with input loading and checkpoint staging.",
+        "Selecting every group for offload without comparing recomputation or narrower wrap boundaries. Added transfers and CPU optimizer work can dominate."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does activation checkpointing reduce persistent Adam moments?",
+          "a": "No. It changes saved activations and recomputation. Sharding or offload changes optimizer-state ownership or placement."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Can CPU offload lower peak GPU memory even though the largest full layer is unchanged?",
+          "a": "Yes. Removing resident model-state shards leaves more room for that layer and activations. It does not make an individually oversized compute group fit by itself."
+        },
+        {
+          "q": "Why can a checkpointed stochastic block give the wrong gradient?",
+          "a": "If recomputation uses different random draws, it differentiates a different realization. Preserve the needed RNG state or implement a tested equivalent RNG contract."
+        },
+        {
+          "q": "What extra costs appear with storage offload compared with CPU offload?",
+          "a": "Storage reads and writes, storage latency, host staging capacity and another transfer dependency. Their cost depends on the actual access and reuse schedule."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab recompute-equivalence and event-count checks plus a selective-offload tier ledger, with conditional device measurements.",
+      "stopWhen": "Your comparison preserves gradient correctness, explains the observed recompute and gather counts, and includes both memory saved and traffic added for each offloaded tier.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "TorchFeather locates selective recompute, the current API locates CPU offload, and DeepSpeed supplies storage-tier vocabulary; trainlab checks their composition."
       }
     },
     {
@@ -402,47 +570,71 @@
         "meta-device-and-deferred-parameter-initialization"
       ],
       "outcomes": [
-        "TODO"
+        "Construct a meta model, shard it before materializing storage and initialize or load every parameter and buffer.",
+        "Distinguish metadata-only construction from deferred replay of initialization operations.",
+        "Verify shard initialization against an explicitly defined full-model oracle rather than relying on seeds alone."
       ],
-      "why": "TODO",
+      "why": "A model may fail before its first step if initialization materializes the whole model on each device. Shard-first initialization avoids that peak but makes initialization and buffer completeness part of the correctness contract.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/sharded-state-dicts",
+          "note": "Load initialized destination shards from a checkpoint."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Shard first, materialize second",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#fsdp1-to-fsdp2-migration-guide",
+          "locator": "FSDP1-to-FSDP2 migration guide, New `fully_shard()` usage and Migration Steps (page read 2026-10-14)"
+        },
+        {
+          "resource": "lambda-fsdp-dt4",
+          "title": "Meta initialization and buffers",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/04-fully-sharded-data-parallel/README.md",
+          "locator": "Delayed initialization - the meta device; Sharding the meta model; Initializing the model, including the rotary-buffer example",
+          "depth": "Read these initialization subsections only, not the Run Command. Meta avoids tensor data storage, not all Python memory. The overview's claim that each layer gathers optimizer state is incorrect; only weights are needed for layer compute."
+        },
+        {
+          "resource": "fsdp-paper-dt4",
+          "title": "Deferred initialization is a different mechanism",
+          "url": "https://arxiv.org/abs/2304.11277v2",
+          "locator": "arXiv:2304.11277v2, Section 3.1, Model Initialization",
+          "depth": "Use this to distinguish recorded initialization replay from the current meta flow, not as an FSDP2 API recipe."
         }
       ],
       "focus": [
-        "TODO"
+        "A meta tensor has shape and dtype but no data to copy. `to_empty` allocates uninitialized destination storage; it does not restore values or replay random initialization.",
+        "Create the module under `torch.device('meta')`, apply bottom-up FSDP2 sharding with the intended mesh, then materialize only the stored shards. Initialize them or load a compatible checkpoint before any compute or optimizer step.",
+        "Initialize buffers too. A module-specific `reset_parameters()` may not rebuild position or rotary buffers. Enumerate parameters and buffers and give each an initialization or load path.",
+        "An identical seed alone is not an initialization specification across shard layouts. Check reconstructed values against a full tensor, or define a global-index-based initializer that is independent of rank count."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In two CPU Gloo processes, construct `torch.nn.Linear(8, 4)` under `torch.device('meta')`, shard it on `init_device_mesh('cpu', (2,))`, and check that its parameters remain meta. Call `to_empty(device='cpu')`; under `torch.no_grad()`, fill the stored weight with 0.25 and bias with zero. For `torch.ones(2, 8)`, obtain a two-by-four output filled with 2 on each rank, matching an ordinary CPU linear layer initialized identically. Add a buffer and show that it also requires explicit initialization.",
       "traps": [
-        "TODO"
+        "Calling `.to('cpu')` on a meta tensor and expecting its values. There are no values to copy.",
+        "Materializing the full model before applying sharding, defeating the initialization memory saving.",
+        "Assuming the base `nn.Module` implements recursive `reset_parameters()`. Initialization is model-specific."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does meta construction preserve the random parameter values that construction would have generated?",
+          "a": "No. It produces metadata without tensor data. Deferred initialization that records and replays operations is a separate mechanism."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What must be true before the first forward after `to_empty`?",
+          "a": "Every parameter and buffer the forward reads must have valid initialized or loaded values on the intended device and with a consistent distributed layout."
+        },
+        {
+          "q": "Why is constant initialization useful in the tiny check?",
+          "a": "Its full-tensor meaning is independent of RNG and partitioning, so it isolates meta materialization and shard reconstruction from random-initializer behavior. It is not a recommended training initializer."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the trainlab meta-to-shard initialization test, including a buffer inventory and reconstruction oracle.",
+      "stopWhen": "The tiny meta-initialized model matches the ordinary model, no meta or uninitialized tensor reaches compute, and each buffer has a checked initialization path.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The current migration guide and Distributed Training Guide initialization subsections cover the implementation; the paper distinguishes deferred replay and trainlab checks values and buffers."
       }
     },
     {
@@ -458,47 +650,77 @@
         "communication-volume-and-exposed-collectives"
       ],
       "outcomes": [
-        "TODO"
+        "Derive peak live memory from stored shards, gathered groups, activations, gradients and staging lifetimes.",
+        "Derive per-rank collective send volume with separate parameter and reduction dtypes.",
+        "Validate a byte or lifetime prediction and distinguish total communication from exposed communication."
       ],
-      "why": "TODO",
+      "why": "Persistent ZeRO-3 state can fit while a gather window does not. Build on Memory, arithmetic intensity and reconciling estimates; here the estimate must include the distributed lifecycle and critical path.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-state-memory",
+          "note": "Carry the verified state and gather model into composed planning."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-sharding-dt4",
+          "title": "FSDP memory and communication accounting",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 7, `fsdp_accounting`, p. 39; Section 8.3, `fsdp_calcs`, pp. 42 to 44; use the notation and bandwidth assumptions at the start of Section 8",
+          "depth": "Keep the handout's buffer-excluded estimate separate from your real peak, which includes gather staging. Solve the analytical questions on CPU; with two or more GPUs, profile a fitting model instead of the prescribed xl model."
+        },
+        {
+          "resource": "zero-paper-dt4",
+          "title": "Stage-3 communication volume",
+          "url": "https://arxiv.org/abs/1910.02054v3",
+          "locator": "arXiv:1910.02054v3, Section 7, Communication Analysis of ZeRO-DP"
+        },
+        {
+          "resource": "jax-training-dt4",
+          "title": "A communication roofline, not an overlap guarantee",
+          "url": "https://jax-ml.github.io/scaling-book/training/#fully-sharded-data-parallelism-fsdp",
+          "locator": "Fully-Sharded Data Parallelism (FSDP), its communication/compute equations; Takeaways from LLM Training on TPUs, forward/backward communication table",
+          "depth": "Use the equations and table, not the claim that all ZeRO stages have the same communication cost. For release-after-forward FSDP with weights needed in backward, there are two gathers plus a reduce-scatter; its own table shows more total traffic than DDP. TPU bandwidth and batch thresholds are not GPU measurements."
         }
       ],
       "focus": [
-        "TODO"
+        "Compute peak as a maximum over time: \\(M_{\\text{peak}}=\\max_t[S(t)+U(t)+A(t)+G(t)+T(t)]\\). The categories are disjoint: stored model state excluding gradients, full gathered weights, saved activations, live gradients and other temporaries. Add allocator reserve separately.",
+        "Let \\(N\\) be managed parameter elements, \\(R\\) the shard degree, and \\(b_p\\), \\(b_g\\) parameter-gather and gradient-reduction bytes per element. With even shards, a ring, two gathers, one reduce-scatter and no accumulation or extra recompute gathers, each rank sends \\(\\frac{R-1}{R}N(2b_p+b_g)\\) bytes per step; it receives the same volume.",
+        "At equal payload dtypes, that is 1.5 times DDP's ring all-reduce send volume. If BF16 weights are gathered and FP32 gradients reduced, recompute the ratio; do not apply the equal-payload slogan.",
+        "Full local gradients and collective staging can coexist with gathered weights. Prefetch changes simultaneous live groups; it need not change total bytes. Exposed communication is determined by dependency slack, launch timing and contention, not by total volume alone."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a simulated single FSDP group with \\(N=1{,}024\\), \\(R=4\\), BF16 gathers and FP32 gradient reduction, derive 6,144 sent bytes per rank for two gathers plus one reduce-scatter. Compare with 6,144 sent bytes for DDP reducing the same FP32 gradients: the byte ratio is one, not 1.5. Exclude padding, metadata and accumulation. Then sum disjoint live categories at each event in your trainlab trace and predict its peak before inspecting the measured or simulated ledger.",
       "traps": [
-        "TODO"
+        "Adding maxima from different phases as if they occurred together, or counting an alias as another allocation.",
+        "Reading the Scaling Book's 'same communication cost' sentence as equal total step traffic. Similar ideal communication-to-compute bounds do not mean equal byte counts.",
+        "Calling the sum of sent and received bytes the send volume, or treating a raw payload/time ratio as NCCL bus bandwidth without the collective correction."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When does the familiar 1.5 traffic ratio apply?",
+          "a": "For equal parameter and gradient payload dtypes, even shards and bandwidth-optimal ring accounting: two gathers plus one reduce-scatter versus DDP's two-pass all-reduce. Retention, padding or extra gathers change the comparison."
+        },
+        {
+          "q": "What is the model-state memory benefit of narrower wrap groups?",
+          "a": "They reduce the size of individual materialized groups, potentially reducing the peak. Prefetch, activations and staging still determine which groups coexist."
+        },
+        {
+          "q": "Can equal total bytes give different step times?",
+          "a": "Yes. Launch count, payload size, link contention and where the collectives lie on the critical path can differ. Only measured traces establish overlap on a device topology."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `fsdp_calcs` and `fsdp_accounting`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "`fsdp_calcs` (a) to (c), Section 8.3; `fsdp_accounting` (a) and the conditional profiling in (b), Section 7",
+          "note": "These written questions have no public accounting tests. Separate the handout's ideal estimate from a trainlab live-state ledger, and label CPU simulation versus conditional multi-GPU profiling evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You solve the named accounting questions, reproduce the dtype-aware byte count and explain the difference between persistent state, simulated live peak and any measured allocator peak.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies bounded accounting practice, the ZeRO paper supplies traffic analysis, and the Scaling Book supplies a scoped roofline with an explicit correction."
       }
     },
     {
@@ -513,47 +735,72 @@
         "optimizer-state-save-and-load-under-sharding"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish full logical state, layout-bound local state and metadata-bearing sharded state dictionaries.",
+        "Save and load model and optimizer state with named-parameter contracts instead of assuming rank-local optimizer IDs are portable.",
+        "Prove same-world-size checkpoint restore by comparing the next optimizer update, not just loaded weights."
       ],
-      "why": "TODO",
+      "why": "A shard's tensor values are not a checkpoint contract without its global identity and placement. The optimizer's moments and parameter mapping must survive the same transition as the weights.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/zero-fully-sharded-training/checkpoint-consolidation-resharding",
+          "note": "Change checkpoint representation and destination rank count."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "FSDP2 state dictionaries",
+          "url": "https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#state-dicts-with-dtensor-apis",
+          "locator": "State Dicts with DTensor APIs and State Dict with DCP APIs (page read 2026-10-14)",
+          "depth": "Use the sharded or DCP path for routine restore. For manual consolidation, every rank gathers, but only the designated writer should call `torch.save`; the example's final save line is outside its rank-zero branch."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Current model and optimizer state contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.checkpoint.html#torch.distributed.checkpoint.state_dict.get_state_dict",
+          "locator": "`get_state_dict`, `set_state_dict` and `StateDictOptions`; `state_dict_saver.save` and `state_dict_loader.load`",
+          "depth": "Use these current APIs, not the earlier FSDP1 `load_sharded_optimizer_state_dict` example on the same page."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Legacy format vocabulary",
+          "url": "https://docs.pytorch.org/docs/2.14/fsdp.html#torch.distributed.fsdp.FullStateDictConfig",
+          "locator": "FSDP1 `StateDictType`, `FullStateDictConfig`, `LocalStateDictConfig`, `ShardedStateDictConfig` and `FullyShardedDataParallel.optim_state_dict`",
+          "depth": "Read for full/local/sharded terminology only. FSDP1 is deprecated; do not implement its state-dict context manager in a new FSDP2 trainer."
         }
       ],
       "focus": [
-        "TODO"
+        "A full dictionary contains full logical tensors under model names. Legacy local dictionaries preserve rank-local flat layout and are tied to that partition. A sharded dictionary carries global tensor identities and layouts so a loader can locate each slice.",
+        "FSDP2's `model.state_dict()` retains parameter names and DTensor layouts without gathering all parameters. `to_local()` alone discards the information needed to identify a shard globally.",
+        "Use `get_state_dict` and `set_state_dict` for the model/optimizer pair. Their optimizer mapping uses canonical fully qualified parameter names rather than assuming numeric optimizer IDs mean the same thing after rebuilding.",
+        "Checkpoint after an optimizer step with initialized moments and cleared gradients. DCP requires allocated destination state and consistent keys across participating ranks. Weights alone are insufficient for training resume; the complete RNG, sampler and scheduler contract belongs to DT-9."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On two CPU Gloo ranks, train a tiny FSDP2 model with AdamW long enough to create moments. Use `get_state_dict` to save model and optimizer with DCP, rebuild the same sharded model and optimizer, load into the destination dictionaries, then apply `set_state_dict`. Compare reconstructed weights, moment tensors, step counters and the next fixed-batch update with an uninterrupted branch. Inspect local tensor sizes and placements so successful restore cannot hide full-state replication.",
       "traps": [
-        "TODO"
+        "Saving only rank zero's local shard and calling it a full model.",
+        "Treating `state_dict()` as an immutable snapshot while continuing to mutate the underlying tensors. Save synchronously here, or explicitly clone the reference branch.",
+        "Checking loaded weights but ignoring optimizer moments and counters. The first resumed update can diverge even if the forward initially matches."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What is missing from a saved `to_local()` tensor?",
+          "a": "Its global shape, shard placement, mesh and global parameter identity unless stored separately. Raw values alone do not identify where the shard belongs."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does an FSDP2 sharded `model.state_dict()` require full-parameter all-gathers?",
+          "a": "No. It exposes DTensor state in its sharded representation. Requesting full tensors or a full-state option does require consolidation work."
+        },
+        {
+          "q": "Why compare the next update after restore?",
+          "a": "It exercises parameter mapping, optimizer moments, counters and hyperparameters together. A weight-only comparison cannot detect missing or misassigned optimizer history."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab same-world-size model and optimizer checkpoint round-trip, next-update equivalence and rank-local ownership inspection.",
+      "stopWhen": "The restored next update matches the uninterrupted branch within stated tolerances, optimizer state is mapped correctly, and each rank still owns only its intended shards.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The FSDP2 tutorial and linked 2.14 state-dict APIs cover implementation; the legacy API labels the three formats and trainlab checks the round-trip."
       }
     },
     {
@@ -567,47 +814,64 @@
         "checkpoint-consolidation-and-world-size-resharding"
       ],
       "outcomes": [
-        "TODO"
+        "Consolidate a small sharded checkpoint into full logical tensors while accounting for the host-memory requirement.",
+        "Restore parameter and optimizer shards onto a different world size and prove the next global-batch update.",
+        "Explain which metadata makes repartitioning possible and which semantic changes resharding cannot repair."
       ],
-      "why": "TODO",
+      "why": "A checkpoint should describe the logical model, not depend on yesterday's rank numbers. World-size changes test whether that contract covers both weights and optimizer history.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/checkpointing-fault-tolerance/restore-mesh-resharding",
+          "note": "Extend the tiny reshard test to recovery and mesh changes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-fsdp-dt4",
+          "title": "DCP load-time resharding and format conversion",
+          "url": "https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html#loading",
+          "locator": "How DCP works; Loading, including different world size; Formats (page read 2026-10-14)",
+          "depth": "Use the matching `AppState` structure for save and load. The later unwrapped example uses a top-level `model` key while the preceding save used `app.model`; preserve the saved nesting instead of copying that example unchanged."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Destination layouts and state-dict options",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.checkpoint.html#torch.distributed.checkpoint.state_dict_loader.load",
+          "locator": "`state_dict_loader.load`; `state_dict.StateDictOptions`, especially `full_state_dict`, `cpu_offload` and `broadcast_from_rank0`"
         }
       ],
       "focus": [
-        "TODO"
+        "Load into an allocated destination model whose DTensor mesh and placements describe the new partition. The loader reads old chunks intersecting each new local slice; old rank IDs are not new owners.",
+        "Consolidation is representation conversion, not training resume. Full tensors can require enough host memory for the whole model and optimizer state plus temporary copies. Avoid it for routine resharding when DCP can load directly.",
+        "World-size changes must preserve names, global shapes, precision policy, optimizer mapping and the fixed global batch used by your oracle. Resharding does not fix a changed vocabulary or an incompatible optimizer.",
+        "A changed rank count can alter reduction rounding, data partitioning and RNG streams. Check numerical update equivalence with explicit tolerances; bitwise-identical continuation requires a stronger execution contract."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Save a tiny FSDP2 AdamW checkpoint using four CPU Gloo ranks, then rebuild and restore on two ranks. Choose parameter row counts and a global batch divisible by both degrees. Preserve saved dictionary nesting, reconstruct weights and moments, and compare the next update to the same global-batch oracle. Separately use `dcp_to_torch_save` on the tiny checkpoint and confirm that the consolidated model and optimizer entries represent the same logical state; do not use consolidation as the reshard mechanism.",
       "traps": [
-        "TODO"
+        "Renaming shard files by new rank and ignoring tensor offsets. New shards can span several old shards.",
+        "Loading weights successfully but dropping or reassigning optimizer moments after repartitioning.",
+        "Keeping the local batch fixed when world size changes, then attributing the resulting different global update to checkpoint corruption."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What lets a loader restore four saved shards into two destination shards?",
+          "a": "Global tensor names and shapes, old chunk offsets and sizes, and the destination layout. It computes the required intersections rather than assuming rank-to-rank file identity."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Must all old shards be loaded in full on every new rank?",
+          "a": "No. A layout-aware loader can read the parts needed for each destination shard. Full consolidation is a separate, memory-heavier operation."
+        },
+        {
+          "q": "Does loading onto fewer ranks guarantee bitwise-identical future training?",
+          "a": "No. Collective reduction order and data/RNG assignment may change. First prove the same logical state and a fixed-batch update within stated tolerances."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab four-to-two-rank model and optimizer restore, full-format comparison and fixed-global-batch next-update oracle.",
+      "stopWhen": "Both the direct changed-world-size restore and tiny consolidated export reconstruct the same logical state, and the restored optimizer's next update matches the oracle.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The DCP recipe linked from the pooled FSDP2 tutorial locates resharding and conversion; the 2.14 loader contract and trainlab provide checked implementation depth."
       }
     },
     {
@@ -622,47 +886,72 @@
         "auto-wrap-mistakes-ooms-and-unexpected-replication"
       ],
       "outcomes": [
-        "TODO"
+        "Build independent loss, gradient, clipping, update and shard-ownership checks for a tiny sharded run.",
+        "Diagnose a correctness failure from rank-local tensor metadata and collective order.",
+        "Distinguish gather-window OOMs, retained full weights, unexpected replication and allocator reserve."
       ],
-      "why": "TODO",
+      "why": "A decreasing loss can hide wrong averaging, incomplete synchronization or replicated state. The section checkpoint needs evidence that the update is right and the intended state is actually sharded.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/tensor-sequence-context-parallelism/column-row-parallel-linear",
+          "note": "Reuse the oracle discipline when the computation itself is partitioned."
+        },
+        {
+          "unit": "distributed-training/checkpointing-fault-tolerance/sharded-checkpoint-formats-dcp",
+          "note": "Extend model-state correctness to recoverable distributed saves."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-sharding-dt4",
+          "title": "What the FSDP public checks actually prove",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/tests/test_fsdp.py",
+          "locator": "`test_fsdp_correctness`, `_test_fsdp_correctness`, `test_fsdp_gradient_sync` and `_test_fsdp_gradient_sync`",
+          "depth": "Read the oracle construction, loss normalization and assertions. Do not reread the whole assignment or copy the test implementation into your trainer."
+        },
+        {
+          "resource": "pytorch-fsdp-dt4",
+          "title": "Debug the current ownership contract",
+          "url": "https://docs.pytorch.org/docs/2.14/distributed.fsdp.fully_shard.html#communication-grouping-and-scheduling",
+          "locator": "User contract, Communication Grouping and Scheduling; `fully_shard` parameters `ignored_params` and `reshard_after_forward`"
         }
       ],
       "focus": [
-        "TODO"
+        "Use the DT-3 update oracle with fixed initial state, data, precision, normalization and optimizer settings. Compare reconstructed gradients and updates, global clipping and reduced metrics separately, within justified tolerances.",
+        "Inspect unique parameter identities, names, global shapes, local shard sizes, dtypes and optimizer references. Check moments after their first allocation. Loss agreement alone cannot prove memory ownership.",
+        "The assignment's tests check SGD updates and replicated gradient agreement, not gathered-weight lifetime, Adam resume or sharding memory. Keep those trainlab checks independent of public-test success.",
+        "For legacy FSDP1, inspect the auto-wrap result; for FSDP2, inspect explicit bottom-up groups and root coverage. Diagnose a budget failure from the live-state ledger first. With two or more GPUs, compare allocator peaks and gather timelines before assigning an OOM to fragmentation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use a tiny CPU Gloo sharded model and the full-batch oracle. Introduce one fault at a time: omit the data-degree division in educational gradient reduction, leave one intended parameter replicated, or clip only local shards. Each fault must fail the appropriate numerical or ownership assertion. In the live-state simulator, change from block groups to a root-only group or retain all full weights; choose a budget that the original schedule fits and show which event exceeds it, without provoking a real machine OOM.",
       "traps": [
-        "TODO"
+        "Comparing to a reference with a different batch, precision policy or optimizer initialization and treating any discrepancy as a sharding defect.",
+        "Summing DTensor global element counts on every rank as if they were local allocations. Inspect local storage and include replicated categories explicitly.",
+        "Ignoring unmanaged parameters. In FSDP2, `ignored_params` are neither sharded nor gradient-reduced by FSDP; a replicated trainable parameter still needs a synchronization contract."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is matching the loss curve not enough?",
+          "a": "Small update errors can still decrease loss, and fully replicated training can be numerically correct while failing the sharding objective. Check gradients, updates and rank-local ownership separately."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Which evidence distinguishes retained full weights from optimizer-state growth?",
+          "a": "Inspect full-parameter lifetimes across forward and backward, and optimizer tensor allocations after the first step. Their categories and allocation times differ even if both raise peak memory."
+        },
+        {
+          "q": "Can a root-only group be numerically correct but a bad memory configuration?",
+          "a": "Yes. It can gather the entire managed model at once. Correct updates do not imply that its peak working set fits the chosen budget."
+        },
+        {
+          "q": "What makes a tied-parameter ownership check meaningful?",
+          "a": "It checks the shared tensor's identity and all use sites, ensures one compatible sharding lifecycle and optimizer update, and verifies that aliases reconstruct the same logical values."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: trainlab negative tests for gradient scaling, clipping and replication, plus a gather-peak budget failure with rank-local evidence.",
+      "stopWhen": "The correct run passes the numerical and ownership oracles, each injected fault fails a targeted check, and you diagnose one correctness and one memory failure from saved evidence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The opened public tests define bounded equivalence evidence, the 2.14 API defines grouping and unmanaged state, and trainlab supplies failure-injection practice."
       }
     }
   ]
