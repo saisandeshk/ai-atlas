@@ -48,7 +48,7 @@
       "name": "Nano-vLLM tiny serving engine",
       "provider": "GeeeekExplorer",
       "access": "Free",
-      "use": "Read `nanovllm/engine/sequence.py` for request state, `scheduler.py` for waiting and running sets, `block_manager.py` for allocate, append, deallocate and prefix-hash reuse, `model_runner.py` for prefill and decode steps, and `llm_engine.py` for the generate and abort path. Trace one request through these files only; do not adopt the engine for load measurement.",
+      "use": "Read `nanovllm/engine/sequence.py` for request state, `scheduler.py` for waiting and running sets, `block_manager.py` for allocate, append, deallocate and prefix-hash reuse, `model_runner.py` for prefill and decode steps, and `llm_engine.py` for the generate path. Trace one request through these files only; do not adopt the engine for load measurement.",
       "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py"
     },
     {
@@ -678,47 +678,83 @@
         "p50-p95-and-p99-latency-interpretation"
       ],
       "outcomes": [
-        "TODO"
+        "Explain the streaming, sampling, stop and timeout fields that define when a request is done.",
+        "Define TTFT, TPOT, ITL and end-to-end latency with request- versus token-weighted averages.",
+        "Interpret p50, p95 and p99 from raw samples with n, keeping end-to-end apart from inference-only time."
       ],
-      "why": "TODO",
+      "why": "Users feel first token, gaps and total; averages hide stalls. The contract decides what counts as done.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/goodput-quality-acceptance",
+          "note": "Qualify these latencies with SLOs into goodput."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/engine-request-lifecycle",
+          "note": "Trace where each timestamp comes from."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "modular-metrics-inf1",
+          "title": "TTFT, TPOT, ITL and request versus token weighting",
+          "url": "https://handbook.modular.com/llm-inference-basics/llm-inference-metrics/",
+          "locator": "TTFT with chatbot under 500 ms and code under 100 ms; Token Generation Time as `E2EL - TTFT` with 2200 minus 80 is 2120 ms; TPOT as `(E2EL - TTFT)/(N - 1)` with 2120/219 is 9.68 ms; Average TPOT request-weighted versus Average ITL token-weighted; Mean, Median and P99"
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Sampling, percentiles and benchmark caveats",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Decoding methods with Temperature (`scaled_logits=logits/temperature`, `t==0` uses explicit greedy mode, rank-invariant, Top-K and Top-p effects); Key metrics with TPOT table and Simplified prefill and decode throughput; Percentiles with p50 to p99 and the k6 example; Benchmarks with TTFT as first non-empty chunk and `decode_thr=(output_toks-1)/(last-first)` plus TTFT-is-not-prefill caveats"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Streaming contract with abort",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, LLM Streaming Serving Basics (pp 60-61): `llm.generate` blocks, `AsyncLLMEngine` with `SamplingParams(temperature=0.0, max_tokens=128, stop=\"\\n\")`, `engine.generate` with `request_id`, `async for request_output` with `chunk.text`, and `engine.abort(request_id)`"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Percentiles and end-to-end time",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 1.4 to 1.4.2 for TTFT with Perceived versus Total TPS and ITL at 10 ms as 100 TPS; P50, P90, P95 and P99 table with right-skewed Figure 1.5; End-to-End Metrics for inference-only versus end-to-end with network and queue time"
         }
       ],
       "focus": [
-        "TODO"
+        "Streaming returns tokens as generated. Blocking `llm.generate` waits for all; `engine.generate` yields `RequestOutput` chunks; `engine.abort` stops by `request_id`.",
+        "Sampling sets `temperature`, `top_p`, `top_k`, `seed`, `stop` strings and ids, `max_tokens` and `min_tokens`. Zero temperature means greedy via an explicit mode, not division.",
+        "TTFT covers scheduling plus prefill plus transport and queue, not prefill alone. TPOT divides decode time by output count; mean ITL equals TPOT for one request but request-weighted and token-weighted averages differ across requests.",
+        "Percentiles need raw samples with \\(n\\). End-to-end includes network and queue; inference-only does not. A fast GPU with slow end-to-end points at infrastructure."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, score the playground request with E2EL 2200 ms, TTFT 80 ms and 220 output tokens: Token Generation Time \\(2200 - 80 = 2120\\) ms and TPOT \\(2120/219 = 9.68\\) ms per token. Then state the request-weighted versus token-weighted formulas for two requests with different lengths.",
       "traps": [
-        "TODO"
+        "Treating TTFT as prefill time. It includes transport, queue, scheduling and generation start; a batched chunk is not one token.",
+        "Averaging TPOT across requests as system ITL. Request-weighted treats requests equally; token-weighted lets long responses dominate. Use the first for per-request latency and the second for system streaming speed.",
+        "Setting one static TTFT SLO across lengths. Prefill grows about quadratically; fit per-length targets or split scheduling from processing."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "E2EL is 2200 ms, TTFT is 80 ms, output is 220 tokens. What are Token Generation Time and TPOT?",
+          "a": "2120 ms and \\(2120/219 = 9.68\\) ms per token. The divisor is output minus one because the first token arrived with TTFT."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "When do Average TPOT and Average ITL disagree?",
+          "a": "When output lengths differ. Average TPOT weights requests equally; Average ITL weights by tokens, so long responses dominate the latter."
+        },
+        {
+          "q": "Why is prompt tokens divided by TTFT not prefill throughput?",
+          "a": "TTFT includes queue, scheduling, transport and generation start. Server instrumentation is needed to isolate prefill; the quotient mixes all of them."
+        },
+        {
+          "q": "What goes wrong with `temperature=0` as division?",
+          "a": "Division by zero is undefined. Engines use an explicit greedy mode; the rank order is invariant but Top-K probs and Top-p membership still change with temperature above zero."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-request queue, first-token, token, completion, cancellation and error records with TTFT, TPOT and ITL derived from retained timestamps.",
+      "stopWhen": "You derive 2120 ms and 9.68 ms without notes and can read request- versus token-weighted off two requests with different lengths.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Modular, Stas, Hands streaming and Inference Engineering percentiles cover sampling, stop, TTFT, TPOT, ITL and tails at explain and derive depth; timing practice lives in the mini-project."
       }
     },
     {
@@ -734,47 +770,83 @@
         "energy-per-accepted-token-as-an-additional-outcome"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish throughput, goodput, rejection and quality acceptance with SLOs stated.",
+        "Derive goodput from a request table with TTFT, TPOT and quality gates.",
+        "Derive energy per accepted token from power, time and accepted outputs."
       ],
-      "why": "TODO",
+      "why": "Throughput without an SLO and a quality gate ranks averages and hides stalls and bad outputs. Goodput prices both.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/engine-request-lifecycle",
+          "note": "Trace where rejected and retried work comes from."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/token-rate-capacity-estimates",
+          "note": "Turn goodput into capacity."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-goodput",
+          "title": "Per-GPU goodput under TTFT and TPOT SLOs",
+          "url": "https://arxiv.org/html/2401.09670v3",
+          "locator": "Section 1 with Figure 1: per-GPU goodput as the max request rate within TTFT and TPOT constraints at 90% attainment; 13B model on one A100 at about 1.6 requests per second"
+        },
+        {
+          "resource": "modular-metrics-inf1",
+          "title": "Goodput SLO example",
+          "url": "https://handbook.modular.com/llm-inference-basics/llm-inference-metrics/",
+          "locator": "Goodput with SLO `TTFT <= 200 ms` and `E2EL <= 3000 ms`: 4 of 6 sample requests meet all SLOs for 67% goodput with per-request TPOT table"
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "Goodput versus throughput",
+          "url": "https://inference.tusharamrit.in/modules/roofline.html",
+          "locator": "The four metrics with goodput: batch 256 at 20k tokens per second but TPOT 80 ms against a 50 ms SLO gives zero goodput"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Cost, power and throughput metrics",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 5, Why Optimizing LLM Serving is Important with Cost Efficiency and Table 5-4 hourly cost per chip; GPU power consumption with TDP watts and perf per watt; Chapter 4, Measuring Performance in LLM Serving with Throughput Metrics and Best Practices for Performance Measurement (pp 149-153)"
         }
       ],
       "focus": [
-        "TODO"
+        "Throughput counts all tokens; goodput counts only requests meeting TTFT, TPOT and quality gates. Rejected, retried and low-quality outputs add load without goodput.",
+        "Per-GPU goodput is the max rate at the SLO attainment target. The 13B example is the source hardware result on one A100, not your target.",
+        "Quality acceptance needs a stated check on retained outputs. Evals double as varied inputs and as spot checks that speed work did not change outputs.",
+        "Energy per accepted token divides power times time by accepted outputs. Use TDP and measured time with the SLO and quality gate stated; never present vendor speedups as your result."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, score the 6-request Modular table at `TTFT <= 200` ms and `E2EL <= 3000` ms: 4 of 6 pass for 67% goodput. Then derive energy per accepted token for a 400 W chip serving 4 accepted requests of 200 tokens in 10 s as \\(400 \\times 10/(4 \\times 200) = 5\\) J per accepted token.",
       "traps": [
-        "TODO"
+        "Quoting raw throughput as serving capacity. A 20k tokens per second batch at 80 ms TPOT against a 50 ms SLO has zero goodput.",
+        "Counting retried and rejected work as useful. Retries add offered load; only accepted outputs enter goodput and energy denominators.",
+        "Presenting paper or vendor speedups as your numbers. Quote them only as the source result on the source hardware with the SLO stated."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What is per-GPU goodput in DistServe Section 1?",
+          "a": "The highest request rate served while the target share meets TTFT and TPOT SLOs. The 13B example reaches about 1.6 requests per second at 90% attainment on one A100."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "6 requests, 4 meet TTFT, TPOT and E2E SLOs. What is goodput?",
+          "a": "67% (4 of 6). Throughput counts all tokens; goodput counts only SLO-passing requests, with quality accepted."
+        },
+        {
+          "q": "100 new requests per second with 10% failing once and retried successfully. What are throughput and goodput?",
+          "a": "Throughput is 110 attempts per second; goodput is 100 successful requests per second. Retries add 10% load without goodput."
+        },
+        {
+          "q": "A 400 W chip serves 800 accepted tokens in 10 s. What is energy per accepted token?",
+          "a": "\\(400 \\times 10/800 = 5\\) J per accepted token, at the stated SLO and quality gate. Rejected and unaccepted tokens stay out of the denominator."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: throughput versus goodput with rejection and quality gates, plus energy per accepted token from measured power and time.",
+      "stopWhen": "You score 4 of 6 as 67% goodput without notes and can separate throughput, goodput and energy denominators on a new table.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for SLO-qualified goodput and quality plus energy denominators; DistServe supplies goodput with Etalon and Tushar examples beside the book cost and power material."
       }
     },
     {
@@ -789,47 +861,89 @@
         "block-manager-model-runner-sampler-and-detokenizer-lifecycle"
       ],
       "outcomes": [
-        "TODO"
+        "Trace one request from API through tokenizer, queue, admission and scheduler with owners named.",
+        "Trace it through block manager, model runner, sampler and detokenizer to streaming output.",
+        "Name the measurement points that falsify a bottleneck hypothesis."
       ],
-      "why": "TODO",
+      "why": "An optimization without a lifecycle map optimizes the wrong stage. Every later queue, cache and kernel claim hangs off this path.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/cancellation-cleanup-ownership",
+          "note": "Add cancellation and cleanup to this path."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/latency-decomposition-timing",
+          "note": "Decompose TTFT and decode steps along it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Engine orchestration and JetStream",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Designing an Effective Inference Engine: Continuous batching with queue, prefill, generate, cache and stream orchestration; Prefix caching; Let's look at an implementation: JetStream with prefill and generate engines, controller and transfer thread"
+        },
+        {
+          "resource": "hands-serving-inf1",
+          "title": "Serve, stream and batch with vLLM",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, Serve the LLM (Qwen) with vLLM (pp 57-59) with `LLM`, `SamplingParams` and `llm.generate`; LLM Streaming Serving Basics (pp 60-61) with `engine.generate` and `engine.abort`; LLM Batch Serving Basics (pp 61-63) with batched `llm.generate` at 2.2x for 4 prompts"
+        },
+        {
+          "resource": "nano-vllm-engine",
+          "title": "Tiny engine request path",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`sequence.py` with `SequenceStatus` WAITING, RUNNING and FINISHED plus `block_table`; `scheduler.py` with `waiting` and `running` sets, `schedule`, `preempt` and `postprocess`; `model_runner.py` with `prepare_prefill`, `prepare_decode` and `run`; `llm_engine.py` with `generate`, `add_request` and `tokenizer.decode`"
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Batching and online versus offline",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Batching with Static versus Continuous batching; Online vs Offline inference for interactive latency versus batch throughput"
         }
       ],
       "focus": [
-        "TODO"
+        "The GPU unit One request through prefill and decode gives tensor shapes; here follow ownership: API to tokenizer to queue to admission to scheduler to block manager to runner to sampler to detokenizer to stream.",
+        "Waiting holds admitted but unscheduled requests; running holds scheduled with blocks. `schedule` moves waiting to running on `can_allocate`; `preempt` returns running to waiting.",
+        "Prefill writes cache for the whole prompt and returns first logits; decode reads full cache, samples one token and appends one pair. `prepare_prefill` and `prepare_decode` build different `block_tables` and slot maps.",
+        "Each handoff is a measurement point: arrival, tokenized, queued, scheduled, prefill done, first token, each decode gap, sampled, streamed and freed. A bottleneck claim must name which gap moved."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, walk one prompt through the tiny engine: `add_request` creates a WAITING `Sequence`, `schedule` moves it to running after `can_allocate` and `allocate`, `prepare_prefill` then `prepare_decode` run the model, `postprocess` appends tokens until FINISHED, and `tokenizer.decode` renders output. Name the owner that frees blocks.",
       "traps": [
-        "TODO"
+        "Treating `llm.generate` as streaming. It blocks until all outputs finish; only `engine.generate` yields `RequestOutput` chunks during the run.",
+        "Calling the scheduler queue the only queue. Tokenizer, admission, block allocation and detokenizer queues add waits with different owners.",
+        "Skipping the transfer thread in disaggregated paths. Prefill and decode engines plus controller plus transfer each hold state that must be traced."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What moves a request from waiting to running in the tiny engine?",
+          "a": "`schedule` after `can_allocate` succeeds, followed by `allocate` filling `block_table`. Without free blocks it stays waiting or a running request is preempted."
+        },
+        {
+          "q": "What differs between `prepare_prefill` and `prepare_decode`?",
+          "a": "Prefill builds tables and slot maps for the whole prompt and writes cache; decode maps one new token per sequence against the full cache and appends one pair."
+        },
+        {
+          "q": "Where do TTFT and per-token latency attach on this path?",
+          "a": "TTFT spans arrival through scheduled prefill to first streamed token. Per-token latency spans one decode step with cache read, sample and stream."
+        },
+        {
+          "q": "Which lifecycle evidence falsifies a queueing versus execution claim?",
+          "a": "Arrival-to-start versus start-to-done splits with queue depth. Queue growth with flat execution implicates scheduling and load, not the model."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On LLM Serving companion: LLM execution walkthrough",
+          "url": "https://github.com/orca3/llm-model-inference",
+          "locator": "`ch02/ch2_Workthrough_LLM_execution.ipynb`: Examples 2-1 and 2-2 token-by-token without and with `past_key_values` and `use_cache`",
+          "note": "Run on a small model. Record arrival, prefill, first-token, decode gaps and detokenized output; the cached run stays stable after the first token."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You walk one request end to end without notes, and your walkthrough run shows cached decode stable after the first token.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for block-manager, runner and sampler ownership; Nano-vLLM sequence, scheduler and runner files fill that gap beside JAX and Hands."
       }
     },
     {
