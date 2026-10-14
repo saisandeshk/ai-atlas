@@ -327,47 +327,84 @@
         "chunked-prefill-vocabulary-and-phase-interference"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how batch size and sequence shape move work between bandwidth-bound and compute-bound execution.",
+        "Explain chunked prefill and how unchunked prefills stall ongoing decodes.",
+        "Predict the interference a long-prompt request inflicts on concurrent decode streams."
       ],
-      "why": "TODO",
+      "why": "Batching is the main lever on serving cost, and naive batching taxes decode latency. Chunked prefill exists because one long prompt once stalled every other request on the server.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/latency-decomposition-timing",
+          "note": "Attribute interference delays to queue, prefill or decode spans."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/prefill-decode-mixing-chunking",
+          "note": "Design the mixing and chunking policy in the scheduler."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "sarathi-serve-inf2",
+          "title": "Chunked prefill and stall-free batching",
+          "url": "https://arxiv.org/abs/2403.02310",
+          "locator": "Sarathi-Serve: Design and Implementation: Chunked-prefills and Stall-free batching with Determining Token Budget; the prefill-prioritizing schedule that stalls ongoing decodes as the negative example",
+          "depth": "Skip the pipeline-parallel sections and the Evaluation capacity numbers. Treat the reported capacity gains as the paper's result on its hardware, not as your target."
+        },
+        {
+          "resource": "scaling-transformer-inference-inf2",
+          "title": "Batch size moves the bottleneck",
+          "url": "https://proceedings.mlsys.org/paper_files/paper/2023/file/c4be71ab8d24cdfb45e3d06dbfca2780-Paper-mlsys2023.pdf",
+          "locator": "Section 4.1 with Figures 6 and 7 (p. 8): decode stays on the stationary layout while prefill switches layout by tokens per batch"
+        },
+        {
+          "resource": "ttft-project-inf2",
+          "title": "Chunked prefill as the preemption fix",
+          "url": "https://github.com/patchy631/time-to-first-token",
+          "locator": "Week 5 decision point: when TTFT spikes and waiting requests climb before the target concurrency, stop and tune maximum sequences, GPU memory utilization and chunked prefill first"
         }
       ],
       "focus": [
-        "TODO"
+        "A batch mixes prefill tokens and decode tokens in one iteration. Prefill tokens bring large parallel work; decode tokens bring one step each with their full cache reads.",
+        "An unchunked long prefill occupies iterations that ongoing decodes also need, so their inter-token gaps spike. Chunked prefill splits the prompt into near-equal chunks that fit beside decodes.",
+        "The token budget caps prefill tokens per iteration. A smaller budget protects decodes but stretches the new request's TTFT: that trade-off is the whole design.",
+        "Splitting is not free. Chunked attention recomputes partial results across chunks, so read Overhead of chunked-prefills for what the split costs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, sketch one iteration with a 4000-token prefill joining ten ongoing decodes, then the same arrival under a 512-token chunk budget, and state which requests slow down in each case and why.",
       "traps": [
-        "TODO"
+        "Assuming bigger batches always help both phases. Bigger batches raise throughput but an admitted long prefill still stalls the decodes it shares iterations with.",
+        "Treating the chunk budget as a latency knob for the new request only. The budget sets every concurrent decode's worst gap too.",
+        "Reading the paper's capacity multiples as expected gains. They hold for the paper's models, hardware and tail-latency constraints; your matrix decides yours."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does one long prompt hurt ongoing decodes under prefill-prioritizing scheduling?",
+          "a": "Its full prefill occupies whole iterations, so decode steps wait. The waits appear as inter-token gaps on unrelated requests."
+        },
+        {
+          "q": "What does chunked prefill change about that iteration?",
+          "a": "Only one chunk of the prompt joins each iteration, bounded by the token budget, so decodes keep making progress every iteration."
+        },
+        {
+          "q": "What does a smaller token budget cost?",
+          "a": "The new request's prefill spreads over more iterations, so its TTFT grows. Decode protection is paid in prefill latency."
+        },
+        {
+          "q": "Decode batch grows from 1 to 32 at fixed lengths. What happens to per-step time and to tokens per second?",
+          "a": "Per-step time rises sublinearly while weight reuse climbs, so tokens per second rise until the work turns compute-bound or hits capacity."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On LLM Serving companion: batching with vLLM",
+          "url": "https://github.com/orca3/llm-model-inference/blob/main/ch02/ch2_Batching.ipynb",
+          "locator": "Run the vLLM batch-generation cell and the transformers pipeline cell on the four listed prompts; record per-request latency for batched versus single serving",
+          "note": "The notebook compares frameworks, not chunked prefill. Use it for batch-size effects and read chunking in Sarathi-Serve."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can predict, before running, whether a new arrival stalls concurrent decodes at a given chunk budget, and your batching measurements agree.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for chunked-prefill vocabulary; Sarathi-Serve supplies the verified chunking and stall-free sections beside the pool's batching material."
       }
     },
     {
@@ -383,47 +420,78 @@
         "model-sample-detokenize-and-stream-timing"
       ],
       "outcomes": [
-        "TODO"
+        "Decompose TTFT and per-token latency into queue, tokenize, schedule, host, model, sample, detokenize and stream parts.",
+        "Implement per-request instrumentation that attributes each part without changing outputs.",
+        "Read a slow request's spans and name the part to fix first."
       ],
-      "why": "TODO",
+      "why": "A single TTFT number cannot tell queueing from execution. Decomposition is what turns a slow request into a named part you can fix.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/device-timing-warm-state",
+          "note": "Time each span with correct synchronization and warm state."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/baseline-sweeps-matrix",
+          "note": "Collect the spans across sweeps and shapes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "vllm-metrics-inf2",
+          "title": "The five intervals behind every request",
+          "url": "https://docs.vllm.ai/en/v0.31.0/design/metrics/",
+          "locator": "Engine Core Events with Interval Calculations: QUEUED, SCHEDULED, PREEMPTED and NEW_TOKENS events with the queue, prefill, decode, inference and inter-token intervals; Frontend Stats Collection for arrival_time and end-to-end latency"
+        },
+        {
+          "resource": "hands-serving-ch5-inf2",
+          "title": "TTFT, ITL and end-to-end definitions",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Latency Metrics (pp. 150 to 151): Figure 4-9 with TTFT as prefill work, ITL as decode work, and the end-to-end formula over N generated tokens",
+          "depth": "Use the definitions and the final simplified forms. The printed ITL middle expression with a subtracted detokenization term is garbled; read it as one decode step plus its detokenization."
+        },
+        {
+          "resource": "vllm-bench-inf2",
+          "title": "Bench-side TTFT, ITL and TPOT",
+          "url": "https://docs.vllm.ai/en/v0.31.0/benchmarking/cli/#understanding-the-latency-metrics",
+          "locator": "Understanding the Latency Metrics: bench-side TTFT, per-gap ITL and per-request TPOT with the speculative-decoding bundled-tokens example"
         }
       ],
       "focus": [
-        "TODO"
+        "Engine-side intervals and bench-side metrics differ by construction. The engine measures queue, prefill and decode between core events; the bench measures TTFT, gaps and TPOT at the client, including network and streaming.",
+        "ITL records each gap between streamed outputs, while TPOT amortizes one request's decode time over its tokens. They agree for one-token outputs and diverge when one output bundles several tokens.",
+        "Sampling, detokenization and streaming sit after the last model kernel of each step. A ragged gap series with fast kernels points at these parts, not at attention.",
+        "Preemption re-enters the intervals: a preempted request restarts prefill, so its TTFT and decode spans include the repeated work."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the engine events and the five intervals for a request that queue-waits, prefills, decodes three tokens and finishes, then state the bench-side TTFT, the two ITL samples and the TPOT for N = 4 output tokens.",
       "traps": [
-        "TODO"
+        "Averaging ITL samples across requests with different output lengths and calling it TPOT. Mean of gaps weights long requests more; per-request TPOT weights requests equally.",
+        "Comparing engine prefill time with bench TTFT directly. TTFT adds queueing, tokenization, network and streaming around the engine spans.",
+        "Trusting TPOT for single-token requests. vLLM records zero TPOT when there is at most one output token, and bench statistics exclude those requests."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A request generates 5 tokens with TTFT 100 ms and end-to-end 180 ms. What is its TPOT, and how many ITL samples does the bench record?",
+          "a": "TPOT is (180 - 100) / (5 - 1) = 20 ms per token. The bench records 4 ITL gap samples."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With speculative decoding, one streamed output carries three tokens after a 40 ms gap. How do ITL and TPOT treat those tokens?",
+          "a": "ITL records one 40 ms gap and adds no zero gaps for the bundled tokens. TPOT divides the request's decode time over all three tokens."
+        },
+        {
+          "q": "Queue time dominates a slow TTFT while prefill time is flat. What do you fix first?",
+          "a": "Admission, scheduling or load, not kernels. The model execution is fine; the request waited."
+        },
+        {
+          "q": "Why can two runs of the same prompt show different TTFT with identical prefill time?",
+          "a": "TTFT includes queueing, tokenization, scheduling and host overhead, which vary with server state even when the kernels do not."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-request queue, prefill, first-token, decode-step, sampling, streaming and completion spans with one worked slow-request trace.",
+      "stopWhen": "Given any slow request, you split its latency into spans from events you instrumented and name the dominant part with evidence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The vLLM metrics design, the book's latency definitions and the bench latency-metric section cover both topics at implement and measure depth, with practice in the mini-project harness."
       }
     },
     {
