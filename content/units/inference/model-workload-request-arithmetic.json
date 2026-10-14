@@ -225,7 +225,7 @@
           "resource": "stas-inference-inf1",
           "title": "Weight bytes and model loading",
           "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
-          "locator": "Anatomy of Model's Memory Usage, Model Weights: `bytes = bytes_per_param * num_params` with fp32 4 down to 1-bit 0.125 and MXFP8 1.03125, Llama-3.1-8B bf16 16 GB; Speeding up model loading time with `--load-format npcache` and pre-sharded weights"
+          "locator": "Anatomy of Model's Memory Usage, Model Weights: `bytes = bytes_per_param * num_params` with fp32 4 down to 1-bit 0.125 and MXFP8 1.03125, Llama-3.1-8B bf16 16 GB; Speeding up model loading time with pre-sharded weights and prebuilt engines"
         },
         {
           "resource": "hands-serving-inf1",
@@ -369,7 +369,7 @@
           "name": "TensorTonic: Plan KV-Cache Capacity",
           "url": "https://www.tensortonic.com/problems/cs336-l10-kv-cache-capacity-planner",
           "locator": "Function `kv_cache_capacity_planner` returning `model_bytes`, `kv_bytes_per_request`, `max_batch_size`, `seconds_per_token`, `tokens_per_second`; public cases check 27-fit, zero-fit when the model exceeds memory, and single-KV-head 18-fit",
-          "note": "Derive by hand first with `M_model = P*b_p`, `M_request = 2*L*S*H_kv*D*b_e`, `B = floor((M-R-M_model)/M_request)` and `T = (M_model+B*M_request)/W`. Then check the answer against your own worksheet for the same config."
+          "note": "Derive by hand first with \\(M_{\\text{model}} = P \\times b_p\\), \\(M_{\\text{request}} = 2 \\times L \\times S \\times H_{\\text{kv}} \\times D \\times b_e\\), \\(B\\) as the floor of \\((M - R - M_{\\text{model}})/M_{\\text{request}}\\) and \\(T = (M_{\\text{model}} + B \\times M_{\\text{request}})/W\\). Then check the answer against your own worksheet for the same config."
         }
       ],
       "stopWhen": "Your hand-derived 524,288, 131,072 and 262,144 match, and the planner passes the three public cases.",
@@ -423,7 +423,7 @@
           "resource": "tushar-inference-inf1",
           "title": "Prefill versus decode work with numbers",
           "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
-          "locator": "Prefill: compute-bound with `prefill_FLOPs ~= 2*N_params*S` plus `4*S^2*d_model` per layer; Decode: memory-bound with per-token matmul `2*N_params` (16.1 GFLOP for Llama-3-8B); Math by hand at S=2048 with 32.9 TFLOP plus 2.2 TFLOP attention"
+          "locator": "Prefill compute-bound and decode memory-bound with per-token matmul and attention terms (16.1 GFLOP per token for Llama-3-8B); Math by hand at \\(S = 2048\\) with 32.9 TFLOP dense plus 2.2 TFLOP attention"
         },
         {
           "resource": "hundred-days-inf1",
@@ -434,7 +434,7 @@
         }
       ],
       "focus": [
-        "One matmul through all params costs \\(2P\\) by the \\(2mnp\\) rule. The qkv, output and MLP walk sums to the same within 2%.",
+        "One matmul through all params costs \\(2P\\) by the \\(2 \\times m \\times n \\times p\\) rule. The qkv, output and MLP walk sums to the same within 2%.",
         "Decode attention per token scales with cached length; prefill attention scales with prompt length squared. At 8192 cached tokens the invented model adds \\(1.72 \\times 10^{10}\\) to \\(3.68 \\times 10^{10}\\) dense.",
         "Softmax, norms, sampling and unembedding are \\(O(d_{\\text{model}})\\) per layer against \\(O(d_{\\text{model}}^2)\\) dense. They matter only when dense shrinks or a profile says so.",
         "Use KV heads times head dim where they differ from query heads. The count uses \\(K\\) and \\(H\\), not model width."
@@ -455,7 +455,7 @@
           "a": "\\(4 \\times 8192 \\times 32 \\times 256 \\times 64 = 1.72 \\times 10^{10}\\), nearly half the dense count, so it cannot be dropped there."
         },
         {
-          "q": "Why is \\(2P\\) per token not the whole cost of a prefill at S=2048?",
+          "q": "Why is \\(2P\\) per token not the whole cost of a prefill at \\(S = 2048\\)?",
           "a": "\\(2P\\) counts dense once per token (32.9 TFLOP for 8B at 2048). Prefill adds about 2.2 TFLOP of attention there, and at longer prompts attention dominates."
         },
         {
@@ -467,11 +467,11 @@
         {
           "name": "100 Days of LLM Inference Day 06: ops-byte experiments",
           "url": "https://github.com/elizabetht/100-days-of-inference",
-          "locator": "`day06/ops-byte-ratio.ipynb`, Try These Experiments: redo intensity with `d=64`, find the crossover batch with `cuda.get_device_properties`, and the 7B fp16 14GB with 14 GFLOP per token calc",
+          "locator": "`day06/ops-byte-ratio.ipynb`, Try These Experiments: redo intensity with \\(d = 64\\), find the crossover batch with `cuda.get_device_properties`, and the 7B fp16 14GB with 14 GFLOP per token calc",
           "note": "Show every substitution with prefill and decode kept apart. Verify the 208 versus ridge relation independently because this journal is practice, not authority."
         }
       ],
-      "stopWhen": "You derive the 5.4e10 decode count at 8192 without notes and complete the d=64 redo with the crossover stated.",
+      "stopWhen": "You derive the 5.4e10 decode count at 8192 without notes and complete the \\(d = 64\\) redo with the crossover stated.",
       "fit": {
         "verdict": "kept",
         "note": "The arithmetic article plus the inference chapter linear and attention sections with Tushar and Day 06 cover dense and attention counts at derive depth."
@@ -959,47 +959,83 @@
         "request-and-resource-ownership-invariants"
       ],
       "outcomes": [
-        "TODO"
+        "State ownership invariants and cleanup obligations at every request transition, including cancellation and failure.",
+        "Instrument state transitions and resource ownership in a minimal serving path.",
+        "Diagnose lost, duplicated, leaked or double-freed requests from state and resource traces."
       ],
-      "why": "TODO",
+      "why": "A cancelled request still owns blocks, streams and sampler state until someone frees them. Leaks and double frees hide there.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Drive cancellation under open and closed load."
+        },
+        {
+          "unit": "inference/batching-scheduling-admission/memory-admission-preemption",
+          "note": "Use these invariants for preemption and eviction."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-inf1",
+          "title": "Streaming and abort",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 2, LLM Streaming Serving Basics (pp 60-61): `engine.generate` with `request_id`, `async for request_output` with `chunk.text`, and `engine.abort(request_id)` for cancellation"
+        },
+        {
+          "resource": "nano-vllm-engine",
+          "title": "Scheduler and block ownership",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3e06983d71485a8e1f23715ebd87d98ef8/nanovllm/engine/block_manager.py",
+          "locator": "`scheduler.py` with `waiting`, `running`, `preempt` and `postprocess`; `block_manager.py` with `ref_count`, `free_block_ids`, `used_block_ids`, `allocate`, `deallocate` and `can_append`; `sequence.py` with `SequenceStatus` WAITING, RUNNING and FINISHED"
+        },
+        {
+          "resource": "inference-lab-inf1",
+          "title": "Failure, correctness and trace requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Milestone B for correlated events, observer overhead and trace queries over TTFT and every decode gap; Milestone D with Failure-injection requirements for cancellation and disconnect at every phase and every terminal phase; Correctness requirements for KV ownership, refcounts, cleanup and scheduler invariants"
         }
       ],
       "focus": [
-        "TODO"
+        "Cancellation can arrive in queue, prefill, decode or streaming. Abort must stop scheduling, free blocks, close the stream and mark exactly one terminal state.",
+        "One owner per block with `ref_count`; one terminal mark per `request_id`. Freeing asserts zero refs; draining leaves no used blocks and no waiting or running entries.",
+        "Failure, cancellation and timeout differ in trigger but share cleanup. Retries need idempotent handling by `request_id` or they duplicate work.",
+        "Instrument each transition with `request_id`, state, owner and timestamps. Trace queries must explain TTFT and every decode gap without per-token sync overhead."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a minimal state machine over WAITING, RUNNING, FINISHED, CANCELLED and FAILED with block acquire and release plus abort at each phase. Drive one success, one cancel during decode and one cancel in queue, and assert no leaked blocks and single terminal marks.",
       "traps": [
-        "TODO"
+        "Freeing blocks without removing the request from scheduler sets. The freed blocks get reallocated while the stale entry still schedules.",
+        "Marking terminal twice. Stream close plus scheduler free can emit two completions unless one path owns the mark.",
+        "Retrying a cancelled `request_id` without idempotence. The retry duplicates sampler and stream side effects or loses the cancellation."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Where can cancellation arrive, and what must abort do?",
+          "a": "Queue, prefill, decode or streaming. Stop scheduling, free blocks, close the stream and mark one terminal state."
+        },
+        {
+          "q": "What holds at a clean drain?",
+          "a": "No used blocks, empty waiting and running sets, and each `request_id` with exactly one terminal mark."
+        },
+        {
+          "q": "How do traces distinguish lost, leaked and double-freed requests?",
+          "a": "Lost has no terminal mark; leaked has a terminal mark but held blocks; double-freed shows two frees or a refcount assert."
+        },
+        {
+          "q": "Why must retries be idempotent by `request_id`?",
+          "a": "A retry after cancel or failure must not duplicate sampler, cache or stream effects. The id owns dedup and cleanup."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hands-On LLM Serving companion: streaming with abort",
+          "url": "https://github.com/orca3/llm-model-inference",
+          "locator": "`ch02/ch2_Streaming.ipynb` with `ch02/streaming.py`: stream with `engine.generate` and cancel one mid-stream request with `engine.abort(request_id)`",
+          "note": "Record request state and block use before and after abort. Assert single terminal output and no held blocks."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your state machine passes one success plus two cancels with no leaks and single marks, and your streaming abort run shows freed blocks.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for ownership invariants and cleanup obligations; Nano-vLLM plus capstone failure and correctness requirements fill that gap beside Hands abort."
       }
     },
     {
@@ -1014,47 +1050,91 @@
         "first-order-concurrency-service-time-and-capacity-estimates"
       ],
       "outcomes": [
-        "TODO"
+        "Derive offered versus completed token rates with units, keeping requests apart from tokens.",
+        "Derive concurrency, service time and first-order capacity from arrival, lengths and step time.",
+        "State what the first-order estimate omits before comparing with measured goodput."
       ],
-      "why": "TODO",
+      "why": "First-order rates turn shapes into a capacity number to falsify. Omissions explain the gap to measured goodput.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/workload-manifest-replay",
+          "note": "File the rates with the manifest they assume."
+        },
+        {
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Validate the rates against a deterministic server."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "jax-scaling-inference-inf1",
+          "title": "Step time and token rates",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Theoretical estimates for LLM latency and throughput with Min Step Time, Max Tokens per second and General Step Time plus the small-batch quiz (30B int8 at batch 4 is 2.5 ms and at batch 256 is 21 ms); Modeling throughput and latency for LLaMA 2-13B with both batch tables",
+          "depth": "Recompute the tables in bytes. The small-batch quiz assumes perfect overlap; the honest bounds are max for lower and sum for upper."
+        },
+        {
+          "resource": "transformer-arithmetic-inf1",
+          "title": "Small- and large-batch latency",
+          "url": "https://kipp.ly/transformer-inference-arithmetic/",
+          "locator": "latency calculations with small-batch 260B on 16 GPUs at 22 ms per token and large-batch 512 at 53 ms with 3 ms comms latency; batch sizes with the 208 crossover",
+          "depth": "The 62 ms in the same large-batch sentence is a slip; 53 ms is the formula value. The crossover writes `A_bw/A_f` but computes peak operations over bytes per second."
+        },
+        {
+          "resource": "tushar-inference-inf1",
+          "title": "First-order prefill, decode and batch math",
+          "url": "https://inference.tusharamrit.in/modules/autoregressive-loop.html",
+          "locator": "Math by hand for Llama-3-8B at \\(S = 2048\\) with 512 gen (prefill 33.3 ms versus 4.48 ms bytes, decode 4.48 ms, total 2.33 s, batch 64 at about 14,300 tokens per second needing 295 for the ridge)"
+        },
+        {
+          "resource": "stas-inference-inf1",
+          "title": "Offered versus completed load",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Online vs Offline inference for latency versus throughput goals; Key metrics Simplified with prefill throughput as prompt tokens over TTFT and `latency=prompt/prefill_thr+gen/decode_thr`"
         }
       ],
       "focus": [
-        "TODO"
+        "Offered token rate is arrival rate times tokens per request; completed rate is served tokens per second; goodput keeps only SLO and quality passing. Keep requests per second apart from tokens per second.",
+        "Step time floor is \\((M_{\\text{model}} + B \\times M_{\\text{request}})/W\\). Throughput is \\(B/T\\), or zero when no request fits.",
+        "Concurrency is \\(L = \\lambda W\\) with matching units. Capacity is the smallest resource-over-work ratio with the bottleneck named.",
+        "First-order omits tokenization, queueing, length variance, reserve and failed or retried work. Name each before comparing with measured goodput."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the planner example: \\(M_{\\text{model}} = 2000\\) bytes, \\(M_{\\text{request}} = 256\\) bytes, \\(B = 27\\), \\(T = 0.08912\\) s per batched step and 302.96 tokens per second.",
       "traps": [
-        "TODO"
+        "Mixing requests per second with tokens per second. Multiply by prompt plus output lengths with the distribution stated.",
+        "Reading Max Tokens per second as goodput. It assumes every token passes SLOs and quality; goodput applies both gates.",
+        "Comparing first-order with measured without omissions. Tokenization, queueing, variance, reserve and retries explain why measured sits below the floor."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are offered, completed and goodput rates?",
+          "a": "Offered is arrival times tokens per request; completed is served tokens per second; goodput keeps only SLO and quality passing requests."
+        },
+        {
+          "q": "In Reproduce, why is throughput 302.96 and not 100000/256?",
+          "a": "Each step also reads the 2000-byte model once. \\(T=(2000+27 \\times 256)/100000=0.08912\\) s, so \\(27/0.08912=302.96\\). Ignoring the model overstates the rate."
+        },
+        {
+          "q": "30B int8 at batch 4 versus 256: which bound binds each?",
+          "a": "Batch 4 at 2.5 ms is bandwidth-bound; batch 256 at 21 ms adds compute-bound MLP work. Small batch reads weights; large batch computes them."
+        },
+        {
+          "q": "Measured goodput sits below your first-order capacity. What do you list first?",
+          "a": "Tokenization, queueing, output-length variance, memory reserve and failed or retried work with sizes, before claiming a new bottleneck."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "How to Scale Your Model inference Questions 2 and 3",
+          "url": "https://jax-ml.github.io/scaling-book/inference/",
+          "locator": "Worked Problems, Question 2 (33.5 GB per entry at 128k context, batch 7, about 56 with one KV head) and Question 3 (1.4 ms parameter-load lower bound for 18.4e9 int8 params on 16 chips)",
+          "note": "Reproduce both closed-book before opening answers. Question 2 tests allocated capacity; Question 3 tests the bandwidth floor that bounds every step time."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive 27 with 0.08912 s and 302.96 tokens per second plus Questions 2 and 3 without notes, and can name the bottleneck with omissions listed.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The inference chapter estimates, the arithmetic latency section and Tushar math-by-hand with Stas load definitions cover offered, completed and capacity at derive depth."
       }
     },
     {
@@ -1069,47 +1149,77 @@
         "deterministic-request-corpus-and-replay"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a workload manifest fixing model, prompts, lengths, arrival, reuse, sampling, streaming, timeouts and SLO.",
+        "Implement an environment manifest with engine, config, versions, hardware and checksums.",
+        "Implement deterministic corpus and replay with seeds, IDs and tuning versus final split."
       ],
-      "why": "TODO",
+      "why": "Comparisons without a manifest compare different workloads. Immutability plus replay makes later ablations honest.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/model-workload-request-arithmetic/validated-load-generator",
+          "note": "Drive this manifest with a validated generator."
+        },
+        {
+          "unit": "inference/prefill-decode-baseline-measurement/baseline-sweeps-matrix",
+          "note": "Run baselines under this manifest."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "inference-lab-inf1",
+          "title": "Manifest, corpus and tuning versus final",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Core requirements for recorded corpus with prompt, output, arrival, tenant, priority, cancellation and cache-locality distributions; Architecture constraints for version binding, distinct tuning and final traces and bounded overload; Deliverables for workload and immutable experiment manifests; Milestone E for tuning and final workload sets"
+        },
+        {
+          "resource": "etalon-evaluation",
+          "title": "Replay recipes",
+          "url": "https://arxiv.org/html/2407.07000v2",
+          "locator": "Section 4.2 Evaluation workflow and implementation with black-box recipe over diverse prompt lengths and Capacity Evaluation over request loads; Implementation as a fork of LLMPerf over OpenAI-compatible APIs"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Shadowing, simulation and eval inputs",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for shadowing production traffic, simulating sequence lengths, traffic volume and pattern, request contents and input params, and eval datasets such as MMLU, gsm8k and HumanEval as varied inputs with output spot checks"
         }
       ],
       "focus": [
-        "TODO"
+        "The GPU unit Manifests, claim schemas, predictions declared first and artifact lineage gives file layout; here fill it with serving fields: model, tokenizer, template, precision, prompts, lengths, arrival, reuse, sampling, streaming, timeouts and SLO.",
+        "Environment pins engine, config, versions, hardware and topology with `hashlib.sha256` checksums. Publish atomically and reject replay under a changed config.",
+        "Corpus rows carry stable request IDs with seeds. Tuning traces tune; final traces evaluate blinded with no shared IDs.",
+        "Replay preserves offered load from intended send times and output semantics from tokenizer through stop and stream. Count alone does not prove replay."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write a manifest for a tiny 5-prompt corpus with fixed lengths, Poisson arrivals at seed 7, reuse line, sampling seed, timeouts and SLO plus `hashlib.sha256` checksums. Replay it twice and show identical IDs, outputs and checksums with tuning versus final split and no shared IDs.",
       "traps": [
-        "TODO"
+        "Editing the manifest in place. Publish a new version and keep the old; a moving workload voids past comparisons.",
+        "Tuning on final traces. Even reading them to choose a policy leaks; keep tuning and final distinct with the split enforced.",
+        "Replaying counts without intended times. A closed-loop replay hides overload; preserve the open schedule and output semantics."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What must the workload manifest fix?",
+          "a": "Model, tokenizer, template, precision, prompts, length distributions, arrival and concurrency, reuse, sampling, streaming, timeouts and SLO with versions and checksums."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why checksums plus atomic publish?",
+          "a": "They detect corpus or config drift and stop partial reads. Consumers read only complete artifacts declared in the manifest."
+        },
+        {
+          "q": "Why keep tuning and final traces distinct?",
+          "a": "Tuning on final data leaks evaluation into design. Final stays blinded until the comparison runs."
+        },
+        {
+          "q": "What does deterministic replay preserve?",
+          "a": "Offered load from intended send times and output semantics from tokenizer through stop and stream, verified by identical IDs and checksums."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: immutable workload and environment manifests with checksums, deterministic corpus and replay, and tuning versus final split with lineage.",
+      "stopWhen": "Two replays of your tiny corpus give identical IDs, outputs and checksums, and changed-config replay is rejected.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The capstone manifest and corpus requirements plus Etalon recipes and Inference Engineering shadowing cover manifests and replay at implement depth; practice lives in the mini-project."
       }
     },
     {
@@ -1125,47 +1235,84 @@
         "per-request-raw-event-and-output-retention"
       ],
       "outcomes": [
-        "TODO"
+        "Build open- and closed-loop generators with deterministic requests, streaming and cancellation.",
+        "Validate the generator against a deterministic fake server with known service and overload behavior.",
+        "Retain per-request raw events and outputs with timestamps."
       ],
-      "why": "TODO",
+      "why": "An unvalidated generator hides overload through coordinated waiting or changed outputs. Validation proves it preserves load and semantics.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/prefill-decode-baseline-measurement/raw-records-resource-context",
+          "note": "Carry these raw records into phase-separated baselines."
+        },
+        {
+          "unit": "inference/capacity-economics-engine-extension/fair-trials-raw-traces",
+          "note": "Reuse the fair-trial and tail methods there."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "stas-inference-inf1",
+          "title": "Benchmark snippets and tools",
+          "url": "https://github.com/stas00/ml-engineering/tree/master/inference",
+          "locator": "Benchmarks with openai `completions.create` and `stream=True` snippet (`ttft=first-start`, `decode_thr=(output_toks-1)/(last-first)`), TTFT-is-not-prefill caveats, `benchmark_throughput.py`, k6, aiohttp `backend_request_func.py` with vllm#7935 client fix, and the missing max-concurrency note"
+        },
+        {
+          "resource": "gil-tene-latency",
+          "title": "Intended send time correction",
+          "url": "https://www.youtube.com/watch?v=lJ8ydIuPFeU",
+          "locator": "Full talk: intended versus actual send time, missing samples under queueing, and why server-side timing alone drops user-visible wait",
+          "depth": "Use the correction concept in your generator. Do not adopt `wrk`, `hey` or `ab`."
+        },
+        {
+          "resource": "inference-lab-inf1",
+          "title": "Validation and raw retention",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/capstones/llm-inference-systems-laboratory.md",
+          "locator": "Milestone B for raw arrival and completion records, observer overhead and trace queries over TTFT and every decode gap; Milestone E for micro through endpoint open-loop benchmarks on tuning and final sets; Measurement requirements for arrival, queue, service and stream timing with throughput, goodput and quality behavior"
+        },
+        {
+          "resource": "inference-engineering-book",
+          "title": "Load tooling and output checks",
+          "url": "https://www.baseten.co/inference-engineering/",
+          "locator": "Sections 4.5 with 4.5.1 for SGLang Genai-bench, NVIDIA GenAI-Perf and Locust plus eval datasets such as MMLU, gsm8k and HumanEval as varied inputs with spot checks that speed work did not change outputs"
         }
       ],
       "focus": [
-        "TODO"
+        "Open-loop schedules Poisson arrivals via `random.expovariate` from intended send times; closed-loop issues next on completion with fixed clients. Count latency from intended time in both.",
+        "The Systems saturation unit gives the fake server to copy: 10 ms service with a 500 ms stall on every 200th request at seed 21 for 30 s. Validation must separate the modes there before touching a real engine.",
+        "Retain per request: intended and actual arrival, queue start, prefill done, first token, decode gaps, completion with cancellation or error, outputs with usage, sampling params and manifest version. Aggregates alone cannot yield tails.",
+        "Outputs must match a direct run token for token. Eval spot checks catch a fast path that truncates or retunes generation under load."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a small open-loop generator with `random.seed(21)`, Poisson schedule via `random.expovariate`, latency from intended send time and one FIFO server with 10 ms service plus a 500 ms stall on every 200th request for 30 s. Confirm the 80 rps row (mean 341.1 ms, p50 341.1 ms, p95 649.5 ms, p99 759.1 ms nearest-rank) and the closed-loop twin with 5 clients (mean 62.1 ms, p99 540.0 ms, 80.5 completed rps), and state which run to trust for tails.",
       "traps": [
-        "TODO"
+        "Validating only on a fast server. Without queueing both modes agree; the slow server with overload is what separates them.",
+        "Keeping aggregates without raw records. Percentiles need retained samples with `n`; the generator log is evidence, not scratch.",
+        "Changing outputs to meet load. Truncating `max_tokens` or retuning sampling under pressure breaks semantics; identical outputs plus spot checks prove preservation."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why validate against a fake server with known service and overload?",
+          "a": "It isolates generator bugs from engine variance. Known service gives expected means and tails; overload separates open from closed behavior."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Same slow server gives open mean 341.1 ms and closed mean 62.1 ms. Which is honest for tails?",
+          "a": "Open-loop. Closed-loop never sent the queued work, so its 540.0 ms p99 omits the wait that open-loop reports as 759.1 ms."
+        },
+        {
+          "q": "What raw events does each request retain?",
+          "a": "Intended and actual arrival, queue start, prefill done, first token, decode gaps, completion with cancellation or error, outputs with usage, sampling params and manifest version."
+        },
+        {
+          "q": "How do you prove the generator did not change outputs?",
+          "a": "Identical token IDs and checksums versus a direct run at the same manifest plus eval spot checks. Any fast path that alters outputs fails validation."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a validated open- and closed-loop generator with fake-server checks plus per-request raw events and outputs retained with timestamps.",
+      "stopWhen": "Your generator reproduces the 80 rps row and the closed twin, fake-server validation passes with outputs identical, and raw records yield p50, p95 and p99 with n.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for validated open and closed generation with raw retention; Gil Tene correction plus capstone validation and Inference Engineering tooling fill that gap beside Stas snippets."
       }
     }
   ]
