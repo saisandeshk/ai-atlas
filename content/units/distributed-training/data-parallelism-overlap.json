@@ -62,7 +62,7 @@
         }
       ],
       "focus": [
-        "`DistributedDataParallel` broadcasts the `state_dict` from rank 0 at construction. It never shards data; the sampler or manual offsets own disjointness.",
+        "`DistributedDataParallel` broadcasts the `state_dict` from rank 0 at construction. It never shards data; the sampler or manual offsets own disjointness. This extends the single-process loader contract from Datasets, data loaders and samplers.",
         "`DistributedSampler` deals strided shards. With `shuffle=False` over 10 items and 2 ranks, rank 0 owns `[0, 2, 4, 6, 8]` and rank 1 owns `[1, 3, 5, 7, 9]`.",
         "`set_epoch` re-seeds the shuffle each epoch. Without it every epoch repeats the same order on every rank.",
         "With `drop_last=False`, short datasets pad by repeating head indices. Over 10 items and 3 ranks each rank holds 4 indices and ranks 1 and 2 repeat 0 and 1, so token counts must account for the repeats."
@@ -150,7 +150,7 @@
       "focus": [
         "With per-rank mean loss, averaging local grads equals the full-batch mean grad. A 2-rank CPU run on an 8-row oracle matches params with `torch.allclose` at `atol=1e-6`.",
         "With per-rank sum loss, averaging gives the full-batch sum divided by the rank count. Sum the grads, or scale the learning rate, to match a summed oracle.",
-        "The oracle fixes init, data pool and global batch, then compares loss, grads, params and optimizer state. Exact `torch.eq` can fail near `1.8e-7` across different GEMM blockings; use `assert_close` with a stated tolerance.",
+        "The oracle fixes init, data pool and global batch, then compares loss, grads, params and optimizer state. Exact `torch.eq` can fail across different GEMM blockings (a CPU port of Picotron's tensor-parallel test missed by `1.8e-7` on PyTorch 2.14.1); use `assert_close` with a stated tolerance.",
         "One shared shuffle seed keeps shards disjoint. Rank-dependent seeds can deal overlapping rows to both ranks."
       ],
       "reproduce": "Run two CPU ranks on a fixed 8-row linear-regression oracle with `MSELoss` mean reduction: rank shards of 4 rows, local backward, `all_reduce` SUM then divide by 2, one SGD step. Assert both ranks match the oracle params with `torch.allclose`. Then repeat with sum reduction and show averaging misses by the rank count unless grads are summed.",
@@ -173,8 +173,8 @@
           "a": "All ranks draw the identical permutation, so the two 10-row shards stay disjoint. Different seeds per rank could overlap rows."
         },
         {
-          "q": "Gathered outputs differ at `1.8e-7` on CPU. Is the all-reduce broken?",
-          "a": "No. Full versus sharded GEMM blocking rounds differently; the Picotron CPU port records exactly this gap and passes with `assert_close`."
+          "q": "A CPU port of Picotron's tensor-parallel linear test (2 `gloo` ranks, PyTorch 2.14.1) fails `torch.eq` by `1.8e-7` on the gathered outputs. Does that point to a broken collective?",
+          "a": "No. Splitting a GEMM changes its blocking and rounding, and the same port passes `assert_close`. A DP oracle meets the same effect: per-rank half-batch GEMMs round differently from the full batch."
         }
       ],
       "practice": [
@@ -242,14 +242,14 @@
       "focus": [
         "Global batch is \\(\\text{gbs} = \\text{mbs} \\times \\text{grad\\_acc} \\times \\text{dp}\\) in samples, times sequence length in tokens. Example: \\(\\text{mbs} = 2\\), \\(\\text{grad\\_acc} = 4\\), \\(\\text{dp} = 128\\) gives 1024 samples, or 4,194,304 tokens at length 4096.",
         "`no_sync` scopes forward plus backward on non-final micro-steps; grads accumulate locally and the first step outside the context syncs.",
-        "Under mean reduction each micro loss is scaled by one over the accumulation count before backward, so the accumulated grad equals the global mean grad. A 2-rank CPU run with two halved micro-steps matches the oracle.",
-        "The Ch2 README line that `optimizer.step()` synchronizes grads is wrong for DDP: the reducer all-reduces during backward and the step is local. During accumulation only the final backward syncs."
+        "Under mean reduction each micro loss is scaled by one over the accumulation count before backward, so the accumulated grad equals the global mean grad. A 2-rank CPU run with two halved micro-steps matches the oracle. The single-process baseline is the one from Schedules, gradient accumulation and clipping.",
+        "The training guide's chapter 2 README (`02-distributed-data-parallel/README.md`) says `optimizer.step()` synchronizes gradients. For DDP that is wrong: the reducer all-reduces during backward and the step is local. During accumulation only the final backward syncs."
       ],
-      "reproduce": "Extend the unit-2 script: split each rank shard into two micro-batches, run forward and backward inside `no_sync` with each micro loss halved, then one averaging all-reduce and one SGD step. Assert oracle match. Then move the forward outside the context and show the saving disappears while results stay correct.",
+      "reproduce": "Extend the unit-2 script: wrap the model in `DistributedDataParallel` on `gloo` (`no_sync` exists only on the wrapper), split each rank shard into two micro-batches with each micro loss halved, run the first forward and backward inside `no_sync` and the second outside it, then take one SGD step. Assert oracle match. Then move the first forward outside the context, count the all-reduces with a communication hook, and show the extra sync while results stay correct.",
       "traps": [
         "Wrapping only backward in `no_sync`. The DDP docs require the forward inside too, or grads still sync.",
         "Skipping the one-over-K loss scaling under mean reduction. Accumulated grads come out K times too large, which looks like a learning-rate bug.",
-        "Reading the Ch2 `optimizer.step()` sync sentence as DDP behavior. With DDP the sync point is backward; the sentence describes no real DDP run."
+        "Reading the guide's chapter 2 sentence that `optimizer.step()` synchronizes as DDP behavior. With DDP the sync point is backward."
       ],
       "selfTest": [
         {
@@ -331,7 +331,7 @@
       ],
       "reproduce": "Implement `get_ddp` and `ddp_on_after_backward` in your own repo and run `pytest tests/test_ddp.py` on CPU (world size 2, gloo) until both model variants pass all 5 steps.",
       "traps": [
-        "Copying the Picotron naive hook. `register_post_accumulate_grad_hook` receives the parameter tensor, not the grad: the shipped code all-reduces weights while grads diverge (measured `-0.0538` versus `-0.0662` on two CPU ranks).",
+        "Copying the Picotron naive hook. `register_post_accumulate_grad_hook` receives the parameter tensor, not the grad: the shipped code all-reduces weights while grads diverge (for example `grad[0,0]` of `-0.0538` on rank 0 versus `-0.0662` on rank 1 after one backward on different inputs, 2 CPU ranks on `gloo`, PyTorch 2.14.1).",
         "Dividing by world size twice, or never. All-reduce SUM followed by exactly one division matches the mean oracle.",
         "Requiring grads for frozen params. The test asserts they stay equal without sync; only `requires_grad` params enter the collective."
       ],
@@ -417,16 +417,16 @@
           "resource": "ddp-paper-dt3",
           "title": "PyTorch DDP paper: bucketing and overlap",
           "url": "https://arxiv.org/abs/2006.15704",
-          "locator": "arXiv:2006.15704v1, Sections 3 and 5.2: reducer design, overlap through autograd hooks and buckets, default 25MB buckets with 10 to 25MB best on ResNet50 and BERT"
+          "locator": "arXiv:2006.15704v1, Sections 3 and 5.2: reducer design, overlap through autograd hooks and buckets, default 25MB buckets, with 10 to 25MB best on ResNet50 with NCCL, 50MB best on BERT with NCCL and 5MB best with Gloo, on 16 GPUs"
         }
       ],
       "focus": [
-        "Buckets are allocated at construction in roughly reverse `Model.parameters()` order because backward readies last-layer grads first.",
+        "The design note maps buckets in roughly reverse `Model.parameters()` order because backward readies last-layer grads first. In PyTorch 2.14.1 with default flags, construction puts every parameter in one bucket; after the first backward DDP rebuilds the buckets in the order the grads actually became ready. With `find_unused_parameters=True` the construction-time buckets stay.",
         "The reducer fires one async all-reduce per full bucket and always launches buckets in index order on every rank; mismatched order hangs or corrupts.",
         "After backward returns, `param.grad` already holds the averaged grad on every rank; the optimizer step is local.",
         "The CS336 overlap build is per-parameter, not bucketed: one async all-reduce per ready grad plus an explicit finish wait. This handout has no bucketed problem; buckets come from Picotron in the next unit."
       ],
-      "reproduce": "Closed-book, draw a 4-parameter model with a cap covering 2 params: place grads into buckets per the reverse-order rule, mark which bucket all-reduces first, and state when each launches relative to backward.",
+      "reproduce": "Closed-book, draw a 4-parameter model with a cap covering 2 params: place grads into buckets per the reverse-order rule for a steady-state step, mark which bucket all-reduces first, and state when each launches relative to backward.",
       "traps": [
         "Assuming buckets follow forward order. They follow reverse registration; forward order delays every launch.",
         "Assuming launches follow ready order across ranks. Index order is the safety rule; ready order can differ per rank.",
@@ -439,7 +439,7 @@
         },
         {
           "q": "The reverse-order assumption is wrong for a model. Consequence?",
-          "a": "Later launches and less overlap. Correctness holds; speed does not."
+          "a": "Later launches and less overlap, until DDP rebuilds the buckets in observed ready order after the first iteration (not with `find_unused_parameters=True`). Correctness holds either way."
         },
         {
           "q": "Why bucket index order instead of ready order?",
@@ -509,7 +509,7 @@
           "resource": "ddp-paper-dt3",
           "title": "Bucket-size sweep",
           "url": "https://arxiv.org/abs/2006.15704",
-          "locator": "arXiv:2006.15704v1, Section 5.2: bucket-size sweep with 10 to 25MB best on ResNet50 and BERT; extremes lose to launch overhead or late starts"
+          "locator": "arXiv:2006.15704v1, Section 5.2: bucket-size sweep with 10 to 25MB best on ResNet50 with NCCL, 50MB best on BERT with NCCL and 5MB best with Gloo, on 16 GPUs; extremes lose to launch overhead or late starts"
         },
         {
           "resource": "aisys-overlap-dt3",
@@ -519,9 +519,9 @@
         }
       ],
       "focus": [
-        "Bucket count follows the cap: a 50 MiB fp32 grad set at a 25 MiB cap gives 2 buckets and 2 all-reduces per step. Total bytes stay identical; only launch count and timing change.",
+        "Bucket count follows the cap and parameter boundaries. On PyTorch 2.14.1 with 2 `gloo` ranks and eight 6.25 MiB fp32 weights (50 MiB), `bucket_cap_mb=25` gave 2 all-reduces per step and the default cap gave 3, because the default keeps the first rebuilt bucket small. The first iteration used one 50 MiB bucket in both. Total bytes stay identical; only launch count and timing change.",
         "Picotron accumulates each ready grad into its `main_grad` bucket view, fires async all-reduce per full bucket during backward, and copies back to `param.grad` after the wait.",
-        "The paper sweep peaks in the middle (10 to 25MB): tiny buckets drown in launch overhead, giant buckets start late and barely overlap.",
+        "The paper sweep peaks in the middle: 10 to 25MB best on ResNet50 with NCCL, 50MB best on BERT with NCCL and 5MB best with Gloo, on 16 GPUs. Tiny buckets drown in launch overhead; giant buckets start late and barely overlap.",
         "One giant bucket means one end-of-backward all-reduce with almost no overlap. Treat any larger-is-sooner claim as workload-specific until your timeline says otherwise."
       ],
       "reproduce": "On a 4-param toy with a cap covering exactly one param versus all params, count the launches per step (4 versus 1) and show identical averaged grads; state the launch-count rule.",
@@ -532,8 +532,8 @@
       ],
       "selfTest": [
         {
-          "q": "50 MiB of fp32 grads, 25 MiB cap. Buckets and launches per step?",
-          "a": "2 buckets, 2 all-reduces. Same bytes as one 50 MiB all-reduce, different timing."
+          "q": "50 MiB of fp32 grads in eight equal weights with `bucket_cap_mb=25`. Buckets and launches per step?",
+          "a": "2 buckets and 2 all-reduces from the second iteration on; the first used one bucket. The bytes match one 50 MiB all-reduce; the timing differs. The default cap gives 3, since its first rebuilt bucket is small."
         },
         {
           "q": "Why can smaller buckets hurt?",
@@ -617,14 +617,14 @@
           "resource": "pytorch-ddp-dt3",
           "title": "Static graphs and related constructor flags",
           "url": "https://docs.pytorch.org/docs/2.14/generated/torch.nn.parallel.DistributedDataParallel.html",
-          "locator": "`find_unused_parameters` default `False`, `static_graph` semantics and logging check, `skip_all_reduce_unused_params`, `no_sync` forward-inside warning, no `torch.autograd.grad` support"
+          "locator": "`find_unused_parameters` default `False`, `static_graph` semantics (its logging-key check is stale in 2.14.1), `skip_all_reduce_unused_params`, `no_sync` forward-inside warning, no `torch.autograd.grad` support"
         }
       ],
       "focus": [
         "`find_unused_parameters=True` walks the autograd graph from the output on every forward to mark unused params ready. It still reduces all buckets; it only stops the wait. Pay it only when some forwards genuinely skip params.",
-        "`static_graph=True` promises the used set and the control flow never change. It then allows reentrant backward, repeated checkpointing with unused params, and params outside forward; check `can_set_static_graph` in the logging data first.",
+        "`static_graph=True` promises the used set and the control flow never change. It then supports reentrant backward, activation checkpointing applied several times or over unused parameters, and parameters outside forward. Decide from graph stability: the `can_set_static_graph` logging key the docstring names is absent from `_get_ddp_logging_data()` in PyTorch 2.14.1.",
         "Constructor, forward and backward are sync points every rank must reach in the same order at about the same time. A rank-dependent branch gives a collective mismatch: hang, timeout, or wrong grads.",
-        "With `skip_all_reduce_unused_params=True` DDP skips reducing unused params, which requires them identical on all ranks or training desyncs."
+        "With `skip_all_reduce_unused_params=True` DDP skips reducing unused params. The same params must stay unused on every rank for the whole run; otherwise ranks desynchronize and can hang."
       ],
       "reproduce": "On 2 CPU ranks, train a model with a frozen bias and a tied linear pair through the CS336 suite and show both pass unchanged. Then sketch the divergent case on paper: rank 0 runs an extra DDP forward that rank 1 skips, and name the first mismatched collective.",
       "traps": [
@@ -642,11 +642,11 @@
           "a": "Collective mismatch: hang, timeout, or wrong grads. Constructor, forward and backward must match in count and order on all ranks."
         },
         {
-          "q": "What three things does `static_graph=True` newly allow?",
-          "a": "Reentrant backward, repeated checkpointing with unused params, and params outside the forward function, plus faster unused handling."
+          "q": "What does `static_graph=True` newly support?",
+          "a": "Reentrant backward, activation checkpointing applied several times or over unused parameters, and parameters outside the forward function. It also skips the per-step search for unused parameters."
         },
         {
-          "q": "How does equivalence treat the ToyModel `fc.bias` with `requires_grad=False`?",
+          "q": "How does equivalence treat the ToyModel's `fc2.fc.bias` with `requires_grad=False`?",
           "a": "It stays equal with no grad and no sync. Init broadcast covers it; the collective touches only `requires_grad` params."
         }
       ],
@@ -714,7 +714,7 @@
       "focus": [
         "Global mean needs the global denominator: average rank-local means only with equal local counts. With 4 versus 2 samples, sum-then-divide gives 2.667 while averaging the means gives 3.0.",
         "Reduce metrics as SUM and COUNT, then divide once. Never average per-rank accuracies over different denominators.",
-        "Convert with `convert_sync_batchnorm` before wrapping with DDP. Stats sync within the group during training only; eval uses running estimates; only single GPU per process is supported.",
+        "Convert with `convert_sync_batchnorm` before wrapping with DDP. Stats sync within the group during training only; eval uses running estimates; only single GPU per process is supported. Its training forward rejects CPU tensors (`SyncBatchNorm expected input tensor to be on GPU`), so a CPU check reduces sums and counts by hand. The BatchNorm axes are the ones from Batch, layer, group and RMS normalization.",
         "DDP broadcasts buffers from rank 0 every forward but never rebroadcasts params; grads are the all-reduced quantity in backward."
       ],
       "reproduce": "On 2 CPU ranks with uneven shards (4 versus 2 samples), compute the global mean both ways: plain average of local means and sum-over-count. Show they differ, then implement the correct reduction and match a single-process mean over all 6 samples.",
@@ -746,7 +746,7 @@
           "name": "Deep Learning at Scale: Scene Parsing with DDP",
           "url": "https://www.oreilly.com/library/view/deep-learning-at/9781098145279/",
           "locator": "Hands-On Exercise #4 Scene Parsing with DDP (pp. 247 to 251): Lightning `strategy=ddp` training with `sync_dist=True` validation reduction; compare the 1-GPU baseline against rank-consistent 2-GPU numbers",
-          "note": "Extra practice per the pool. Focus on the metric-reduction path, not the segmentation scores."
+          "note": "With two or more GPUs, run it and compare the rank-consistent numbers against the 1-GPU baseline. On one GPU or CPU, read the `sync_dist=True` path and treat the book's 1-GPU versus 2-GPU V100 numbers as the author's example. Focus on the metric-reduction path, not the segmentation scores."
         }
       ],
       "stopWhen": "Your reduction matches sum-over-count on uneven shards, and you can state the BatchNorm conversion order plus its limits without notes.",
@@ -805,11 +805,11 @@
       ],
       "focus": [
         "Each hook takes one flattened bucket buffer and returns a Future of a single tensor with the same shape. Custom ops divide by world size themselves: buckets are not predivided.",
-        "The `fp16_compress_hook` casts, all-reduces in fp16, casts back. Bound it near `1e-3` relative on CPU; bandwidth claims need NCCL hardware.",
+        "The `fp16_compress_hook` casts, all-reduces in fp16, casts back. Bound it near `1e-3` relative (a 2-rank `gloo` ToyModel run on PyTorch 2.14.1 stayed within it); bandwidth claims need NCCL hardware.",
         "PowerSGD keeps low-rank factors with error feedback and warm start at about grad-sized extra memory, defers compression to `start_powerSGD_iter`, tunes rank 1, 2, 4 upward, and skips vectors and incompressible tensors.",
         "The `noop_hook` measures all-reduce headroom only. Never train with it."
       ],
-      "reproduce": "On 2 CPU ranks, register `fp16_compress_hook` on one ToyModel DDP job and `allreduce_hook` on an identical one; assert grads agree within `1e-3` relative for 5 steps. Then switch to `powerSGD_hook` at rank 1 with `start_powerSGD_iter=10` and show the first 10 steps match vanilla exactly.",
+      "reproduce": "On 2 CPU ranks, register `fp16_compress_hook` on one ToyModel DDP job and `allreduce_hook` on an identical one; assert grads agree within `1e-3` relative for 5 steps. Then switch to `powerSGD_hook` with `matrix_approximation_rank=1` and `start_powerSGD_iter=10` and show the first 10 steps match vanilla exactly.",
       "traps": [
         "Forgetting the division in a custom hook. Buckets arrive undivided, so grads come out R times too large.",
         "Registering the hook after backward started. It applies late or errors; register before the loop.",
@@ -905,7 +905,7 @@
       "focus": [
         "Strong scaling fixes the global batch and divides it; weak scaling fixes the per-rank shard and grows the global batch. Strong efficiency is \\(T_1/(p T_p)\\); weak compares the 1-rank step against the p-rank step at fixed per-rank work.",
         "Attribute first: per-rank data, forward, backward and update timers separate input starvation from launch, kernel, collective and imbalance causes. Timeouts name the reporter; the slowest rank's last phase names the culprit.",
-        "Hierarchical DP reduces within fast intra-node groups before slow inter-node links. Past hundreds of GPUs ring latency bounds flat DP; the Playbook runs are their H100 and EFA cluster's results, not targets.",
+        "Hierarchical DP uses the two-level all-reduce from Hierarchical collectives and compressed communication with accuracy controls: reduce-scatter inside each node, all-reduce each shard across nodes, all-gather inside the node. Past hundreds of GPUs ring latency bounds flat DP; the Playbook runs are their H100 and EFA cluster's results, not targets.",
         "CPU gloo timings prove logic and efficiency arithmetic only. No interconnect claim leaves this unit without NCCL hardware."
       ],
       "reproduce": "Run the fixed 8-row oracle job on 1 rank and on 2 CPU ranks with `torchrun`; compute strong efficiency from the two step times, labeled with hardware, PyTorch 2.14.1, gloo and world size; then inject a 200 ms sleep into rank 1's data phase and show which timer moves.",
@@ -929,7 +929,7 @@
         },
         {
           "q": "Hierarchical DP in one sentence?",
-          "a": "Reduce within fast intra-node groups first, then across slow inter-node links."
+          "a": "Reduce-scatter within each node, all-reduce each GPU's shard across nodes, then all-gather within the node, so only a 1/g share of the node's reduced gradient crosses the slow links per GPU, where g is GPUs per node."
         }
       ],
       "practice": [
@@ -990,12 +990,12 @@
         }
       ],
       "focus": [
-        "Warm up (5 iters per CS336), synchronize both sides of every region, fix the global batch, aggregate across ranks, report mean plus spread.",
+        "Warm up (5 iters per CS336), synchronize both sides of every region, fix the global batch, aggregate across ranks, report mean plus spread. These are the rules from Streams, asynchronous copies and honest timing and Profiling training phases and verifying optimizations.",
         "Stamp grad-ready plus all-reduce start and end per bucket per rank. Interleaved all-reduces during backward are hidden; the tail wait after backward is exposed.",
         "One bucket gives one end-of-backward all-reduce: fully exposed. The CS336 screenshots show the same contrast under Nsight.",
         "CPU timelines prove ordering and the hidden-versus-exposed reading. GPU overlap claims need two or more GPUs."
       ],
-      "reproduce": "On 2 CPU ranks, log per-bucket ready plus all-reduce start and end stamps around a 2-bucket backward; print the interleave and compute the exposed tail as the final wait duration.",
+      "reproduce": "On 2 CPU ranks, log per-bucket ready plus all-reduce start and end stamps around a 2-bucket backward on a step after the first, once DDP has rebuilt its buckets; print the interleave and compute the exposed tail as the time from the last grad-ready stamp to the end of the last all-reduce.",
       "traps": [
         "Timing CUDA without synchronize. Async launches return at once; you time submission.",
         "Timing the first step as steady state. Allocator prep plus DDP bucket rebuild make it slower; warmup excludes it.",
@@ -1012,7 +1012,7 @@
         },
         {
           "q": "First step 3 times slower, rest flat. Bug?",
-          "a": "Usually not: allocator prep plus first-iteration bucket rebuild. Warmup exists for this."
+          "a": "Usually not: allocator prep, DDP's single all-parameter bucket on the first iteration and the bucket rebuild after it. Warmup exists for this."
         },
         {
           "q": "CPU timeline interleaves perfectly. Claim GPU overlap?",
@@ -1064,7 +1064,7 @@
           "resource": "lambda-ddp-dt3",
           "title": "Rank-attributed failure walk",
           "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
-          "locator": "Per-rank step logs with the rank tag, `dist.barrier` per step, rank-0 state persist; the small-probability random raise is the crash path. Run bounded: it loops until the crash, so stop after observing steps."
+          "locator": "Per-rank step logs with the rank tag, `dist.barrier` per step, rank-0 state persist; each rank raises when its draw falls under 0.001, so the job crashes on its own within a few hundred steps (a 2-rank CPU run on PyTorch 2.14.1 stopped at step 402 in about 2 s). Delete `toy-state.json` before a fresh run: a rerun resumes from its step count."
         },
         {
           "resource": "pytorch-ddp-dt3",
@@ -1076,7 +1076,7 @@
       "focus": [
         "Tag every line with rank (plus local rank at launch): the `[rank=...]` format makes interleaved streams attributable.",
         "Rank 0 owns side effects: downloads, directories, checkpoints, progress. Barriers bracket shared artifacts so no rank reads unfinished state.",
-        "Teardown runs in `finally` with a bounded timeout plus `destroy_process_group`. A barrier without timeout waits forever on a dead peer.",
+        "Teardown runs in `finally` with a bounded timeout plus `destroy_process_group`. A barrier with no explicit timeout waits for the process-group default (30 minutes, or 10 for NCCL, in 2.14.1) while a peer is stuck, so pass a short one.",
         "Read first cause, not the reporter: the earliest stuck rank with its last timer phase (data, backward, collective) attributes the fault."
       ],
       "reproduce": "Launch a 2-rank CPU job with rank-tagged logs and `try` with `finally` teardown; raise on rank 1 at step 3. Show the survivor exits boundedly and the logs name rank 1 with its last phase.",
@@ -1091,8 +1091,8 @@
           "a": "Rank 0 acts first while others wait; the trailing barrier stops early readers of unfinished state."
         },
         {
-          "q": "The survivor hangs forever after a peer kill. Missing what?",
-          "a": "A bounded collective timeout and teardown in `finally`. A bare barrier waits forever."
+          "q": "A survivor sits in a barrier for many minutes while its peer is stuck. Missing what?",
+          "a": "A short explicit timeout and teardown in `finally`. Without one the barrier waits for the process-group default timeout."
         },
         {
           "q": "Rank 1 times out in backward all-reduce. Culprit?",
@@ -1107,7 +1107,7 @@
         {
           "name": "Training-guide lab: elastic-training `toy.py`",
           "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/related-topics/elastic-training/toy.py",
-          "locator": "Run on 2 CPU ranks with the GPU hidden (gloo): read the rank-tagged step logs, watch barrier-coupled progress, observe the random crash path and the rank-0 state file; stop the loop boundedly after evidence and state the first-cause rank",
+          "locator": "Run on 2 CPU ranks with the GPU hidden (`CUDA_VISIBLE_DEVICES=` selects `gloo`) under `timeout`: read the rank-tagged step logs, watch barrier-coupled progress, find the raising rank in the traceback and the rank-0 state file, and state the first-cause rank",
           "note": "Read here for log attribution and teardown only; restart membership belongs to the checkpointing section."
         }
       ],
