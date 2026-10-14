@@ -46,8 +46,8 @@
           "resource": "hands-serving-ch67-inf6",
           "title": "Quantization: formats and where they help",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 6, Model Compression: Quantization (printed pp. 206 to 211): Storing numbers with Table 6-1, How does quantization help in model serving with Table 6-2, and Weight-only versus weight-and-activation quantization strategies with the Marlin and Machete kernels",
-          "depth": "Skip the hands-on quantization commands and the Qwen walkthrough here; they belong to the measurement unit."
+          "locator": "Chapter 6, Model Compression: Quantization (printed pp. 206 to 213): Storing numbers with Table 6-1, How does quantization help in model serving with Table 6-2, and Weight-only versus weight-and-activation quantization strategies with the Marlin and Machete kernels",
+          "depth": "Skip the hands-on quantization commands and the Qwen walkthrough here; they belong to the measurement unit. Table 6-2 lists the H100 SXM Tensor Core peaks with sparsity (dense rates are half), and its line that 4-bit weights double FLOPS again does not hold for weight-only formats, which compute in 16-bit."
         },
         {
           "resource": "inference-engineering-quant",
@@ -63,15 +63,15 @@
         }
       ],
       "focus": [
-        "INT formats spread levels evenly while FP formats spend bits on exponent range. Activations with outliers therefore prefer FP8 E4M3 over INT8 at the same width.",
+        "INT formats spread levels evenly while FP formats spend bits on exponent range. Activations with outliers therefore usually lose less in FP8 E4M3 than in INT8 under one per-tensor scale.",
         "W4A16 means 4-bit weights with 16-bit activations. Weight-only quantization shrinks storage and weight traffic but still computes in high precision after dequantization.",
         "Weight-activation quantization can raise compute throughput, but only where a kernel for the exact pair exists on your GPU. A format without kernel support is storage only.",
         "KV quantization targets capacity and decode traffic, not prefill FLOPs. Without a quantized attention kernel the values are dequantized back before the dot product."
       ],
       "reproduce": "Closed-book, derive that a 7B-parameter model needs 14 GB in FP16, 7 GB in INT8 and 3.5 GB in INT4 for weights alone, then name the two costs the nominal count omits: per-group scales with zero points, and the KV cache.",
       "traps": [
-        "Reading H100 FP8 throughput as a portable speedup. FP8 Tensor Core rates need Hopper or newer hardware; on older hardware that path does not exist.",
-        "Counting 4 bits per weight. Group scales, zero points and alignment push the served rate above nominal; NVFP4 lands near 4.5 effective bits per weight.",
+        "Reading H100 FP8 throughput as a portable speedup. FP8 Tensor Cores need compute capability 8.9 or higher (Ada, Hopper and later); on Ampere, vLLM runs FP8 checkpoints as weight-only Marlin, so the W8A8 speedup does not exist there.",
+        "Counting 4 bits per weight. Group scales, zero points and alignment push the served rate above nominal; NVFP4 lands near 4.5 effective bits per weight (an 8-bit scale per 16 values) before its per-tensor global scale.",
         "Expecting KV quantization to cut prefill time. It cuts capacity and decode traffic; a latency win needs a quantized attention kernel alongside it."
       ],
       "selfTest": [
@@ -146,7 +146,7 @@
           "resource": "smoothquant-inf6",
           "title": "Quantization preliminaries: symmetry, static versus dynamic, granularity",
           "url": "https://arxiv.org/abs/2211.10438",
-          "locator": "SmoothQuant arXiv:2211.10438v1, Section 2 Preliminaries: symmetric versus asymmetric cases with zero point, static versus dynamic quantization, and per-tensor, per-token, per-channel and group-wise granularity"
+          "locator": "SmoothQuant arXiv:2211.10438v7, Section 2 Preliminaries: symmetric versus asymmetric cases with zero point, static versus dynamic quantization, and per-tensor, per-token, per-channel and group-wise granularity"
         },
         {
           "resource": "inference-engineering-quant",
@@ -161,7 +161,7 @@
         "Finer granularity lowers error but adds scale storage. Group-128 INT4 with FP16 scale and zero point adds \\((16 + 16) / 128 = 0.25\\) bits per weight.",
         "Weights normally take per-channel or grouped scales while activations take per-tensor static or per-token dynamic scales, because activation ranges move with the input."
       ],
-      "reproduce": "From a blank file, implement symmetric and asymmetric INT8 quantize and dequantize. On \\([-3.0, 0.1, 100.0]\\), show one group gives \\(s \\approx 0.79\\) and maps 0.1 to 0, then split into two groups and show 0.1 survives.",
+      "reproduce": "From a blank file, implement symmetric and asymmetric INT8 quantize and dequantize. On \\([-3.0, 0.1, 100.0]\\), show one group gives \\(s \\approx 0.79\\) and maps 0.1 to 0, then split into groups \\([-3.0, 0.1]\\) and \\([100.0]\\) and show 0.1 survives as code 4 with \\(s = 3/127\\).",
       "traps": [
         "Leaving the zero point unrounded or unclamped. It must be an integer code in range, not a float; otherwise dequantization shifts every value.",
         "Quoting nominal width as served width. Scales, zero points and alignment padding are real bytes; state effective bits per value.",
@@ -174,7 +174,7 @@
         },
         {
           "q": "For range \\([-3, 100]\\) in asymmetric INT8, what are the scale and zero point?",
-          "a": "Scale \\(s = 103 / 255 \\approx 0.40\\) and zero point \\(z = \\mathrm{round}(3 / s) = 7\\). Zero is representable exactly, unlike in the symmetric map."
+          "a": "Scale \\(s = 103 / 255 \\approx 0.40\\) and zero point \\(z = \\mathrm{round}(3 / s) = 7\\). Real zero maps exactly to code 7. The symmetric map also represents zero exactly, at code 0; the asymmetric gain is using the full code range on a skewed interval."
         },
         {
           "q": "Why does one outlier destroy small values under a per-tensor scale?",
@@ -232,14 +232,14 @@
           "resource": "smoothquant-inf6",
           "title": "Outliers, smoothing and the O1 to O3 ladder",
           "url": "https://arxiv.org/abs/2211.10438",
-          "locator": "SmoothQuant arXiv:2211.10438v1, Section 3 Review of Quantization Difficulty (outliers near 100x, fixed channels), Section 4 SmoothQuant with the migration equation and the \\(\\alpha = 0.5\\) and \\(0.75\\) settings, and Section 5.1 setups (512 Pile sentences, \\(\\alpha\\) grid search, O1 per-token dynamic versus O2/O3 per-tensor)",
+          "locator": "SmoothQuant arXiv:2211.10438v7, Section 3 Review of Quantization Difficulty (outliers near 100x, fixed channels), Section 4 SmoothQuant with the migration equation and the \\(\\alpha = 0.5\\) and \\(0.75\\) settings, and Section 5.1 setups (512 Pile sentences, \\(\\alpha\\) grid search, O1 per-token dynamic versus O2/O3 per-tensor)",
           "depth": "Read the O1, O2 and O3 rows as a cost ladder, not as three methods to deploy. Stop before the distributed results."
         },
         {
           "resource": "awq-inf6",
           "title": "Salient weights and activation-aware scaling",
           "url": "https://arxiv.org/abs/2306.00978",
-          "locator": "AWQ arXiv:2306.00978v1, Section 3.1 (protecting 1 percent of salient weights, perplexity 43.2 to 13.0) and Section 3.2 (activation-aware scaling search), plus Figure 8 on smaller calibration sets and calibration distribution robustness"
+          "locator": "AWQ arXiv:2306.00978v6, Section 3.1 (protecting 1 percent of salient weights, perplexity 43.2 to 13.0) and Section 3.2 (activation-aware scaling search), plus Figure 8 on smaller calibration sets and calibration distribution robustness"
         },
         {
           "resource": "hundred-days-quant-spec-inf6",
@@ -249,15 +249,15 @@
         },
         {
           "resource": "mit65940-inf6",
-          "title": "MIT 6.5940 Lectures 5 and 6: quantization",
+          "title": "MIT 6.5940 Lecture 13: SmoothQuant and AWQ in lecture form",
           "url": "https://hanlab.mit.edu/courses/2024-fall-65940",
-          "locator": "Lecture 5 Quantization Part I and Lecture 6 Quantization Part II slide decks and videos, for the observer and granularity framing around the two papers"
+          "locator": "Lecture 13 Efficient LLM Deployment slides and video, Quantization part: Weight-Activation Quantization: SmoothQuant, then Weight-Only Quantization: AWQ and TinyChat. Lectures 5 and 6, Quantization Part I and II, cover the fundamentals if you need them"
         }
       ],
       "focus": [
         "Static calibration fixes ranges from sample data and goes stale when the workload shifts; dynamic calibration reads ranges at runtime and costs compute per step. Name which one each scale uses.",
         "SmoothQuant moves difficulty from activations to weights with a per-channel factor \\(s_j = \\max|X_j|^\\alpha / \\max|W_j|^{1-\\alpha}\\), fused offline into neighboring layers so inference sees ordinary INT8.",
-        "AWQ instead scales up the 1 percent of salient weight channels before rounding and folds the inverse into the activations. Same theme, opposite direction.",
+        "AWQ scales every weight input channel by \\(s = s_X^{\\alpha}\\), with \\(s_X\\) the mean activation magnitude and \\(\\alpha\\) grid-searched, so salient channels get the largest factors; the inverse folds into the previous operator. Same form as SmoothQuant, aimed at weight error at W4A16.",
         "Calibration distribution matters: matched calibration and evaluation data wins, and AWQ reaches good perplexity with a much smaller set than GPTQ-style Hessian methods."
       ],
       "reproduce": "On one small linear layer with a planted outlier channel, compute per-channel maxima, apply the SmoothQuant factor with \\(\\alpha = 0.5\\), and show the activation range collapses while the product \\(XW\\) is unchanged up to floating-point tolerance.",
@@ -281,14 +281,14 @@
         },
         {
           "q": "How do AWQ and SmoothQuant differ in what they protect?",
-          "a": "AWQ scales up salient weight channels identified through activation magnitudes, protecting weights. SmoothQuant scales down outlier activation channels, protecting activations at some cost to weight error."
+          "a": "AWQ scales all weight input channels by factors derived from activation magnitudes, largest on the salient ones, protecting weight rounding. SmoothQuant scales down outlier activation channels, protecting activations at some cost to weight error."
         }
       ],
       "practice": [
         {
           "name": "100 Days of LLM Inference Day 14: SmoothQuant and AWQ cells",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day14/quantization-gptq-awq-smoothquant.ipynb",
-          "locator": "Experiments Try These in `day14/quantization-gptq-awq-smoothquant.ipynb`: run `smoothquant_calibrate` and `awq_get_scales` on a layer with a planted outlier channel and compare output error against naive round-to-nearest",
+          "locator": "Experiments: Try These in `day14/quantization-gptq-awq-smoothquant.ipynb`: run `smoothquant_calibrate` and `awq_get_scales` on a layer with a planted outlier channel and compare output error against naive round-to-nearest",
           "note": "Report error per method on held-out inputs, and state which scales are static and which would need runtime statistics."
         }
       ],
@@ -332,13 +332,14 @@
           "resource": "awq-inf6",
           "title": "Packing, fusion and on-the-fly dequantization",
           "url": "https://arxiv.org/abs/2306.00978",
-          "locator": "AWQ arXiv:2306.00978v1, Section 4.2 Deploy AWQ with TinyChat: on-the-fly weight dequantization, SIMD-aware weight packing with the reordered layout figure, and kernel fusion of QKV and position embeddings"
+          "locator": "AWQ arXiv:2306.00978v6, Section 4.2 Deploy AWQ with TinyChat: on-the-fly weight dequantization, SIMD-aware weight packing with the reordered layout figure, and kernel fusion of QKV and position embeddings"
         },
         {
           "resource": "hands-serving-ch67-inf6",
           "title": "Mixed-precision kernels and quantization hardware notes",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 6 (printed pp. 211 to 213): the Marlin kernel for Ampere and Machete kernel for Hopper paragraph, the W4A16 with GPTQ or AWQ versus W8A8 table entries, and FP8 Is Not Always Applicable with the E4M3 and E5M2 table"
+          "locator": "Chapter 6 (printed pp. 211 to 213): the Marlin kernel for Ampere and Machete kernel for Hopper paragraph, the W4A16 with GPTQ or AWQ versus W8A8 table entries, and FP8 Is Not Always Applicable with the E4M3 and E5M2 table",
+          "depth": "The FP8 Is Not Always Applicable box names only Hopper and Blackwell; Ada GPUs (compute capability 8.9) also have FP8 Tensor Cores, and the vLLM v0.31.0 table lists FP8 W8A8 for Ada and Hopper."
         },
         {
           "resource": "aisys-quant-spec-inf6",
@@ -350,16 +351,16 @@
           "resource": "hundred-days-quant-spec-inf6",
           "title": "Day 13 Part 4: microscaled block overhead",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day13/quantization-number-formats.ipynb",
-          "locator": "Notebook `day13/quantization-number-formats.ipynb`, Part 4 NVFP4: `quantize_nvfp` with block size 16 and the effective-bits accounting"
+          "locator": "Notebook `day13/quantization-number-formats.ipynb`, Part 4 NVFP4: `quantize_nvfp4_block` with block size 16 and the effective-bits accounting"
         }
       ],
       "focus": [
         "Packing reorders sub-byte codes so vector loads stay aligned; the layout in the AWQ figure exists so one instruction feeds many lanes. Count the scale bytes beside the code bytes.",
         "An INT8 product reaches \\(127 \\times 127 = 16{,}129\\), and a dot product over thousands of terms overflows INT16 quickly. Accumulate in INT32, then scale once at the end.",
         "Fused kernels multiply INT4 or FP8 weights against FP16 activations in one pass. Dequantize-then-compute paths pay full high-precision arithmetic plus conversion overhead.",
-        "Hardware support is a table lookup, not a trend. FP8 needs Hopper or newer, Marlin targets Ampere-generation GPUs, and GGUF targets CPU and Apple Silicon instead."
+        "Hardware support is a table lookup, not a trend. In the vLLM v0.31.0 table FP8 W8A8 needs Ada or Hopper (compute capability 8.9 and up), Marlin covers Turing through Hopper, and GGUF, built for CPU and Apple Silicon runtimes, is listed on GPUs."
       ],
-      "reproduce": "Closed-book, compute the served rate for group-64 INT4 with one FP16 scale and one INT8 zero point per group, and state the smallest dot-product length at which INT16 accumulation of INT8 products can overflow.",
+      "reproduce": "Closed-book, compute the served rate for group-64 INT4 with one FP16 scale and one INT8 zero point per group, and state the smallest dot-product length at which INT16 accumulation of INT8 products can overflow, with codes in \\([-127, 127]\\).",
       "traps": [
         "Benchmarking unpacked reference code and calling it the quantized result. Without the packed layout and fused kernel the numbers describe dequantization overhead, not the method.",
         "Accumulating in the quantized width. Saturation looks like a quality regression but is an arithmetic bug; widen the accumulator first.",
@@ -387,7 +388,7 @@
         {
           "name": "100 Days of LLM Inference Day 13: block-scale accounting",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day13/quantization-number-formats.ipynb",
-          "locator": "Part 4 NVFP4 cells: vary the block size in `quantize_nvfp`, measure error and effective bits per weight, and state which block size your error budget allows",
+          "locator": "Part 4 NVFP4 cells: vary the block size in `quantize_nvfp4_block`, measure error and effective bits per weight, and state which block size your error budget allows",
           "note": "Keep the error tensor and the bit accounting in the same table; one without the other proves nothing."
         }
       ],
@@ -444,7 +445,7 @@
           "resource": "hundred-days-quant-spec-inf6",
           "title": "Day 14: comparing GPTQ, AWQ and SmoothQuant",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day14/quantization-gptq-awq-smoothquant.ipynb",
-          "locator": "Notebook `day14/quantization-gptq-awq-smoothquant.ipynb`: Comparing Quantization Methods and Experiments Try These, comparing output error of `gptq_quantize_layer`, `awq_quantize` and `smoothquant_calibrate` against naive round-to-nearest"
+          "locator": "Notebook `day14/quantization-gptq-awq-smoothquant.ipynb`: Comparing Quantization Methods and Experiments: Try These, comparing output error of `gptq_quantize_layer`, `awq_quantize` and `smoothquant_calibrate` against naive round-to-nearest"
         }
       ],
       "focus": [
@@ -481,7 +482,7 @@
         {
           "name": "100 Days of LLM Inference Day 14: method comparison",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day14/quantization-gptq-awq-smoothquant.ipynb",
-          "locator": "Comparing Quantization Methods and Experiments Try These: benchmark naive round-to-nearest against `gptq_quantize_layer`, `awq_quantize` and `smoothquant_calibrate` on one layer, reporting error per method",
+          "locator": "Comparing Quantization Methods and Experiments: Try These: benchmark naive round-to-nearest against `gptq_quantize_layer`, `awq_quantize` and `smoothquant_calibrate` on one layer, reporting error per method",
           "note": "Use a fixed held-out input batch for all four; the calibration inputs must not be the scoring inputs."
         }
       ],
@@ -523,14 +524,14 @@
           "resource": "vllm-spec-quant-inf6",
           "title": "vLLM quantization support and quantized KV cache",
           "url": "https://docs.vllm.ai/en/v0.31.0/features/quantization/",
-          "locator": "Supported Hardware table (AWQ, GPTQ, Marlin, FP8 rows against Volta through Hopper) on the quantization page, then the Quantized KV Cache page: FP8 overview, per-tensor versus per-attention-head scales, the three scale-calibration approaches, and `--kv-cache-dtype-skip-layers`",
+          "locator": "Supported Hardware table (AWQ, GPTQ, Marlin, FP8 rows against Volta through Hopper) on the quantization page, then the Quantized KV Cache page: FP8 overview, per-tensor versus per-attention-head scales, the two scale-calibration approaches (default scales and dataset calibration with llm-compressor), and `--kv-cache-dtype-skip-layers`",
           "depth": "Read the pages against installed v0.31.0 only. Both flags named below are v0.31.0 flags; older releases differ. Bundled lab expectations for other GPUs are not your targets."
         },
         {
           "resource": "hands-serving-ch67-inf6",
           "title": "Quantized serving behavior under concurrency",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 6: the concurrency charts comparing the original model with GPTQ W4A16 and FP8 W8A8 for TTFT and throughput, KV cache quantization and attention quantization with the quantized-attention condition, and Step 6 Benchmark the Quantized Qwen3 Model with vLLM",
+          "locator": "Chapter 6: the concurrency charts comparing the original model with GPTQ W4A16 and FP8 W8A8 for TTFT and throughput, and KV cache quantization and attention quantization with the quantized-attention condition; then Chapter 9, Step 6 Benchmark the Quantized Qwen3 Model with vLLM (printed p. 304)",
           "depth": "Read the charts as the authors result on their hardware and model. Your unit reproduces the comparison shape, not their numbers."
         },
         {
@@ -544,7 +545,7 @@
         "KV bytes per token are \\(2 L H_{kv} d_h b\\): two for keys and values, times layers, KV heads, head dimension and bytes per element. FP8 halves \\(b\\) against FP16; per-head scales add a small metadata term.",
         "Weight-only methods improve with concurrency differently from W8A8: GPTQ W4A16 still computes in 16-bit, so its TTFT can lag the baseline while FP8 pulls ahead on throughput.",
         "Check your GPU row in the vLLM hardware table before planning a run. An unsupported path is not a slow path; it is absent.",
-        "KV quantization compounds across positions because every later token reads earlier values. Calibrate on long sequences and keep sensitive layers skippable."
+        "KV quantization error persists across positions because every later token reads the stored values. Calibrate on long sequences and keep sensitive layers skippable."
       ],
       "reproduce": "Closed-book, derive KV bytes per token for \\(L = 32\\), \\(H_{kv} = 8\\), \\(d_h = 128\\) in FP16, then state the FP8 saving and the maximum context that fits a stated KV budget in each precision.",
       "traps": [
@@ -618,14 +619,15 @@
           "resource": "speculative-sampling-inf6",
           "title": "Acceptance, correction and the exactness proof",
           "url": "https://proceedings.mlr.press/v202/leviathan23a.html",
-          "locator": "Sections 2.1 to 2.3 (overview, standardized and speculative sampling), Algorithm 1 SpeculativeDecodingStep, and Section 3.1 with Theorem 3.5 and Corollary 3.6 (acceptance rate as expected overlap)",
+          "locator": "Sections 2.1 to 2.3 (overview, standardized and speculative sampling), Algorithm 1 SpeculativeDecodingStep, and Sections 3.1 and 3.2 with Theorem 3.5 and Corollary 3.6 (acceptance rate as expected overlap)",
           "depth": "Work the proof yourself before reading the appendix. Skip the distributed and cluster sections."
         },
         {
           "resource": "tushar-spec-inf6",
           "title": "Module 08: the acceptance rule and its proof",
           "url": "https://inference.tusharamrit.in/modules/speculative-decoding.html",
-          "locator": "Concept 02 The acceptance rule, and the proof that nothing changes: the min(1, p/q) rule, the residual formula and the two-case P(emit z) = p(z) derivation, with the naive-rule bias note"
+          "locator": "Concept 02 The acceptance rule, and the proof that nothing changes: the min(1, p/q) rule, the residual formula and the two-case P(emit z) = p(z) derivation, with the naive-rule bias note",
+          "depth": "The Concept 02 caveat and the matching Pitfalls answer say that sampling parameters applied to the target only lose exactness. They do not: the proof holds for any \\(q\\) the draft actually sampled from, so the output follows the processed target and only acceptance drops. Test it in your simulator."
         },
         {
           "resource": "hundred-days-quant-spec-inf6",
@@ -643,7 +645,7 @@
       "reproduce": "Closed-book, prove \\(P(\\text{emit } z) = p(z)\\) in both cases, then work the four-token pair \\(q = [0.5, 0.3, 0.15, 0.05]\\), \\(p = [0.3, 0.4, 0.2, 0.1]\\): accepted masses, rejection probability, residual, and \\(\\alpha\\).",
       "traps": [
         "Sampling the replacement from \\(p\\) instead of the residual. That double-counts agreed mass and biases output; the residual is the mass \\(p\\) wanted that \\(q\\) undersupplied.",
-        "Applying temperature or top-p to only one side. The proof needs the \\(p\\) and \\(q\\) actually sampled from; mismatched processing voids the guarantee silently.",
+        "Building the ratio from a \\(q\\) the draft did not sample from, such as raw logits when the draft used temperature. Exactness needs the actual draft distribution; processing only the target stays exact but cuts acceptance.",
         "Reading acceptance as a property of the draft model. It is a property of the pair on a workload: same draft, new domain or higher temperature, new \\(\\alpha\\)."
       ],
       "selfTest": [
@@ -660,8 +662,8 @@
           "a": "It estimates \\(\\alpha\\), hence expected yield per verification. It does not predict wall-clock speedup, which also needs draft cost, batch effects and rollback overhead."
         },
         {
-          "q": "The draft and target use different top-p values. Why is exactness lost?",
-          "a": "The rule is exact for the sampled distributions only. Different processing means the verified \\(p\\) is not the emitted \\(p\\), so the proof no longer describes the output."
+          "q": "The target applies top-p 0.9 and the draft samples its full distribution. Is the output still exact?",
+          "a": "Yes, if the ratio uses the distribution the draft actually sampled from: the proof holds for any \\(q\\). Acceptance drops, since drafts outside the top-p set are always rejected."
         }
       ],
       "practice": [
@@ -669,7 +671,7 @@
           "name": "100 Days of LLM Inference Day 15: acceptance simulation",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day15/speculative-decoding.ipynb",
           "locator": "Cells `speculative_decode_step` and `simulate_acceptance_rate`: reproduce the Perfect, Good, Medium, Poor and Random rows and confirm simulated yield matches the formula within sampling noise",
-          "note": "Keep this simulation separate from engine evidence; it checks the rule, not the serving path."
+          "note": "The rows are labeled by mixing weight, not \\(\\alpha\\), and the step returns no bonus token: compare with \\((1 - \\alpha^{\\gamma})/(1 - \\alpha)\\) using each row's measured mean \\(\\sum \\min(p, q)\\). Keep this simulation separate from engine evidence."
         }
       ],
       "stopWhen": "You prove exactness without notes, work the four-token arithmetic by hand, and your simulator matches the target distribution to sampling noise on arbitrary pairs.",
@@ -725,32 +727,33 @@
           "resource": "vllm-spec-quant-inf6",
           "title": "vLLM speculation methods and vocabulary handling",
           "url": "https://docs.vllm.ai/en/v0.31.0/features/speculative_decoding/",
-          "locator": "Method Selection table and the N-gram keys (`prompt_lookup_min`, `prompt_lookup_max`), then Cross-Vocabulary Draft Models (TLI): shared-token constraint with greedy draft sampling only",
-          "depth": "The Day 15 note that vLLM V1 supports only n-gram and EAGLE is outdated; the v0.31.0 method list including draft model, MTP, Medusa and MLP supersedes it."
+          "locator": "Method Selection at a Glance table and the N-gram keys (`prompt_lookup_min`, `prompt_lookup_max`), then Cross-Vocabulary Draft Models (TLI): shared-token constraint with greedy draft sampling only",
+          "depth": "The Day 15 note that vLLM V1 supports only n-gram and EAGLE is outdated; the v0.31.0 method list (EAGLE, MTP, draft model, PARD, MLP speculator, n-gram and suffix decoding) supersedes it."
         },
         {
           "resource": "hundred-days-quant-spec-inf6",
           "title": "Day 15: end-to-end loop with bonus and stop",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day15/speculative-decoding.ipynb",
-          "locator": "Notebook `day15/speculative-decoding.ipynb`: End-to-End Three-Step Loop with Real Models (`speculative_decode_real` with the bonus token and the stop-token break)"
+          "locator": "Notebook `day15/speculative-decoding.ipynb`: End-to-End Three-Step Loop with Real Models (`speculative_decode_real` with the bonus token and the stop-token break)",
+          "depth": "The loop reruns both models over the full sequence with no KV cache, and it appends the whole accepted run before its stop check, so tokens after an accepted stop token leak into the output."
         }
       ],
       "focus": [
-        "Every proposed token appends KV entries. Rollback truncates the cache to the confirmed length: accepted prefix plus correction or bonus token. Nothing past the first rejection survives.",
+        "Verification writes KV entries for every proposed token. On rejection, truncate the cache to the accepted prefix; the correction or bonus token is emitted now, and its KV is written by the next forward pass. Nothing past the first rejection survives.",
         "Each round emits at least one token and at most \\(\\gamma + 1\\). The bonus token comes from \\(p\\) at the final position, already computed by verification.",
         "A stop token inside the accepted prefix ends the sequence there. Later drafts are discarded even if verification accepted them; acceptance never overrides stopping.",
         "Draft and target share one tokenizer by default. The v0.31.0 cross-vocabulary path constrains drafts to shared tokens and supports greedy draft sampling only."
       ],
-      "reproduce": "From a blank file, implement a cache as a token list with append and truncate: propose 4 tokens, reject at position 2, and show the cache holds exactly the accepted token plus the correction with no residue.",
+      "reproduce": "From a blank file, implement a cache as a token list with append and truncate: propose 4 tokens, reject at position 2, and show the cache holds only the accepted token's entry, the output holds that token plus the correction, and nothing else remains.",
       "traps": [
         "Keeping rejected KV entries for speed. Stale entries corrupt every later attention computation silently; truncate to the confirmed prefix first.",
         "Emitting drafts past a stop token. Verification acceptance is about distribution match, not sequence end; check stopping on the accepted prefix before extending.",
-        "Mixing tokenizers between draft and target. Different segmentations shift every position the verification pass scores; identical output then proves nothing."
+        "Pairing a draft and target with different tokenizers. vLLM requires a shared vocabulary unless the TLI mapping is on; in your own loop, mismatched ids keep the output exact but collapse acceptance, so a correct output can hide a slowdown."
       ],
       "selfTest": [
         {
           "q": "Four tokens are proposed and the second is rejected. Which KV entries survive?",
-          "a": "The first accepted token plus the correction sampled at position two. The third and fourth proposals and their entries are discarded."
+          "a": "Only the entry for the first, accepted token. Entries for proposals two to four are discarded; the correction sampled at position two is emitted, and its entry is written by the next round's forward pass."
         },
         {
           "q": "All four drafts are accepted. How many tokens does the round emit, and why?",
@@ -762,18 +765,18 @@
         },
         {
           "q": "When may draft and target use different vocabularies in vLLM v0.31.0?",
-          "a": "Only through the token-level-intersection path, which constrains drafts to shared tokens and supports greedy draft sampling only."
+          "a": "Only with `use_heterogeneous_vocab` on the `draft_model` method (token-level intersection), which constrains drafts to shared tokens and supports greedy draft sampling only."
         }
       ],
       "practice": [
         {
           "name": "100 Days of LLM Inference Day 15: end-to-end loop",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day15/speculative-decoding.ipynb",
-          "locator": "End-to-End Three-Step Loop cells: run `speculative_decode_real` with the draft-target pair and with `ngram_propose`, and assert cache length equals confirmed length after every rejection",
-          "note": "Add a planted stop token case; the notebook loop is the starting point, your rollback assertion is the deliverable."
+          "locator": "End-to-End Three-Step Loop cells: add a KV cache to `speculative_decode_real` (a `DynamicCache` trimmed with `crop`, or a token-list stand-in), assert its length equals the accepted length after every round, then repeat with `ngram_propose` drafts scored as one-hot proposals",
+          "note": "Add a planted stop-token case and fix the notebook stop check, which appends the whole accepted run first; your rollback assertion is the deliverable."
         }
       ],
-      "stopWhen": "Your cache holds exactly the confirmed prefix after rejections, stop tokens and all-accepted rounds, under an assertion that fails on any residue.",
+      "stopWhen": "Your cache holds entries only for accepted tokens after rejections, stop tokens and all-accepted rounds, under an assertion that fails on any residue, and no token after a stop token reaches the output.",
       "fit": {
         "verdict": "kept",
         "note": "The book discard contract, the vLLM vocabulary handling and the Day 15 loop cover rollback, stopping and compatibility at implement depth."
@@ -824,7 +827,7 @@
           "resource": "hands-serving-ch67-inf6",
           "title": "Tuning, limits and the concurrency crossover",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 7: Tuning and Usage (draft-token count between 4 and 8, the falling-acceptance example) and Limitations (decode-only help, large-batch and long-prefill losses)"
+          "locator": "Chapter 7: Tuning and Usage (printed pp. 235 to 239: draft-token count between 4 and 8, the falling-acceptance example) and Limitations (printed p. 239: decode-only help, large-batch and long-prefill losses)"
         }
       ],
       "focus": [
@@ -835,7 +838,7 @@
       ],
       "reproduce": "Closed-book, compute \\(E\\) for \\(\\alpha = 0.8\\), \\(\\gamma = 4\\) (about 3.36) and the speedup at \\(c = 0.05\\) (about 2.80x), then find a pair with \\(\\alpha\\) below 0.5 where speculation loses.",
       "traps": [
-        "Maximizing acceptance alone. A 7B draft for a 13B target can show high \\(\\alpha\\) with \\(c = 0.54\\) and land near 1.17x; the ratio is the metric.",
+        "Maximizing acceptance alone. A 7B draft for a 13B target at \\(\\alpha = 0.8\\), \\(c = 0.54\\) and \\(\\gamma = 2\\) lands near 1.17x; the ratio is the metric.",
         "Importing a published \\(\\alpha\\). Acceptance moves with domain, temperature and position; measure it on your workload before sizing \\(\\gamma\\).",
         "Enabling speculation at high batch. The free-arithmetic argument assumes memory-bound decode; compute-bound batches turn drafts into a tax."
       ],
@@ -910,14 +913,14 @@
           "resource": "hands-serving-ch67-inf6",
           "title": "Choosing and tuning drafters",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 7, Tuning and Usage: Choose an existing small model, Use self-drafting with Medusa heads and EAGLE variants, the N-gram subsection with the n equals 3 example, and Tune the number of draft tokens",
+          "locator": "Chapter 7, Tuning and Usage (printed pp. 235 to 239): Choose an existing small model, Use self-drafting with Medusa heads and EAGLE variants, the N-gram subsection with the n equals 3 example, and Tune the number of draft tokens",
           "depth": "Read the n-gram-first recommendation as a cost argument, not a quality ranking."
         },
         {
           "resource": "aisys-quant-spec-inf6",
           "title": "Draft-based, self-speculative and multi-token decoding",
           "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
-          "locator": "Chapter 15: Two-Model Draft-Based Speculative Decoding and EAGLE, Single-Model Self-Speculative Decoding, and Multitoken Decoding with Medusa Multiple Heads"
+          "locator": "Chapter 15: Two-Model, Draft-Based Speculative Decoding and EAGLE; Single-Model Self-Speculative Decoding; Multitoken Decoding with Medusa's Multiple Heads; and Constrained Decoding Performance Implications (printed p. 943 on) for the grammar-masking cost that speculation must also pay"
         },
         {
           "resource": "vllm-spec-quant-inf6",
@@ -930,13 +933,13 @@
         "N-gram lookup costs nothing and wins on repetitive text such as code edits, quoted retrieval and fixed schemas. On novel prose it rarely proposes anything usable.",
         "Medusa attaches independent heads that predict several positions ahead without a second model, verified as a tree. Independence caps accuracy at distance.",
         "EAGLE autoregresses over the target hidden features with a one-step token shift, so drafts condition on richer state than tokens alone. Later versions add dynamic trees.",
-        "Structured decoding constrains the output space, so both draft and target must sample under the same constraint. A draft outside the grammar is rejected work, not a shortcut."
+        "Structured decoding masks the target at every verified position, so output stays exact whatever the draft proposes. Drafts outside the grammar are never accepted (vLLM v0.31.0 trims them to the longest grammar-valid prefix), so mask the draft too or acceptance falls."
       ],
       "reproduce": "Without notes, draw the four-row table (draft model, Medusa, EAGLE, n-gram) with extra parameters, training and strength, and explain why tree verification raises the chance that some path accepts.",
       "traps": [
         "Deploying a same-size draft. The draft must be an order of magnitude cheaper or its cost ratio erases the yield; a near-target draft is a second target.",
         "Expecting Medusa heads to condition on each other. They predict independently from one hidden state, which is exactly the gap EAGLE feature autoregression fills.",
-        "Constraining only the target under structured decoding. Mismatched constraint spaces break the exactness argument and collapse acceptance; match both sides."
+        "Constraining only the target under structured decoding. Output stays exact, but drafts outside the grammar are always rejected, so acceptance collapses; mask the draft with the same grammar."
       ],
       "selfTest": [
         {
@@ -953,14 +956,14 @@
         },
         {
           "q": "A grammar constrains the target but the draft proposes freely. What breaks?",
-          "a": "Drafts outside the grammar waste verification, and the sampled distributions no longer match, so exactness and acceptance both go. Constrain both sides identically."
+          "a": "Exactness survives, because verification samples from the masked target. Acceptance suffers: drafts outside the grammar are always rejected, so speculation wastes work. Mask the draft with the same grammar."
         }
       ],
       "practice": [
         {
           "name": "100 Days of LLM Inference Day 15: n-gram proposer",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day15/speculative-decoding.ipynb",
-          "locator": "N-gram Speculation cells: implement `ngram_propose`, run `simulate_ngram_speedup` on a repetitive prompt and a novel prompt, and report where the free drafter beats a model drafter",
+          "locator": "N-gram Speculation cells: rewrite `ngram_propose` from its docstring, run `simulate_ngram_speedup` on a repetitive prompt and a novel prompt, and report where the free drafter beats a model drafter",
           "note": "Your two prompts are the workload model; state which traffic each represents before comparing."
         }
       ],
@@ -1008,13 +1011,14 @@
           "resource": "hundred-days-quant-spec-inf6",
           "title": "Day 15: acceptance simulation rows",
           "url": "https://github.com/elizabetht/100-days-of-inference/blob/main/day15/speculative-decoding.ipynb",
-          "locator": "Cells `simulate_acceptance_rate` with the Perfect, Good, Medium, Poor and Random rows: expected yield per row as the independent oracle for your simulator"
+          "locator": "The `speculative_decode_step` cell with its Perfect, Good, Medium, Poor and Random rows at 4 drafts, and `simulate_acceptance_rate`: per-row yield as a comparison for your simulator",
+          "depth": "The rows are labeled by mixing weight, not \\(\\alpha\\), and count no bonus token, so they follow \\((1 - \\alpha^{\\gamma})/(1 - \\alpha)\\) with each row's mean \\(\\sum \\min(p, q)\\); match them with your bonus token switched off."
         },
         {
           "resource": "speculative-sampling-inf6",
           "title": "Acceptance identity as test oracle",
           "url": "https://proceedings.mlr.press/v202/leviathan23a.html",
-          "locator": "Corollary 3.6 (acceptance rate equals expected overlap): assert measured acceptance against summed minima on your test distributions"
+          "locator": "Section 3.2, Corollary 3.6 (acceptance rate equals expected overlap): assert measured acceptance against summed minima on your test distributions"
         }
       ],
       "focus": [
@@ -1023,11 +1027,11 @@
         "Assert the identities, not just the samples: measured acceptance against \\(\\sum \\min(p,q)\\), and residual selection against the normalized positive part of \\(p - q\\).",
         "Keep the naive rule in the suite as a negative control. It must fail visibly; a suite that passes a biased rule proves nothing."
       ],
-      "reproduce": "From a blank file, implement one-token speculative sampling and show on the Reproduce pair that 400,000 samples match the target within about 0.002 with acceptance near 0.80, while the naive rule deviates clearly.",
+      "reproduce": "From a blank file, implement one-token speculative sampling and show on \\(p = [0.3, 0.4, 0.2, 0.1]\\), \\(q = [0.5, 0.3, 0.15, 0.05]\\) that 400,000 samples match the target within about 0.002 with acceptance near 0.80, while the naive rule deviates clearly.",
       "traps": [
         "Testing only on aligned distributions. Near-identical draft and target accept almost everything and hide residual bugs; include hostile pairs with small overlap.",
         "Confusing sampling noise with bias. Size the trial count first: deviations near \\(1/\\sqrt{N}\\) are noise, systematic gaps an order above it are bugs.",
-        "Forgetting the zero-draft-probability edge. When \\(q(x) = 0\\) with \\(p(x) > 0\\), accept with probability one path still emits correctly only if the residual branch handles the mass."
+        "Dividing by a zero draft probability. Exact sampling never drafts a token with \\(q(x) = 0\\), but a test can supply one; the TensorTonic contract accepts it when \\(p(x) > 0\\) and rejects it otherwise, so branch before computing \\(p/q\\)."
       ],
       "selfTest": [
         {
@@ -1051,7 +1055,7 @@
         {
           "name": "TensorTonic: Perform Exact Speculative Sampling",
           "url": "https://www.tensortonic.com/problems/cs336-l10-speculative-sampling",
-          "locator": "Function `speculative_sampling` with draft tokens, draft and target probabilities and acceptance and residual random values; the three public rejection cases check replacement after rejection at each position",
+          "locator": "Function `speculative_sampling` with draft tokens, draft and target probabilities and acceptance and residual random values; the three public cases reject at the first position twice and at the second once, checking the replacement each time",
           "note": "This problem verifies proposals without the bonus token and returns accepted count with rejection index; state that contract difference in your solution before generalizing to the full loop."
         }
       ],
@@ -1095,7 +1099,7 @@
           "resource": "hands-serving-ch67-inf6",
           "title": "Hands-on speculative decoding and the concurrency crossover",
           "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
-          "locator": "Chapter 7, Hands-on Speculative Decoding: the four vLLM server setups (vanilla, n-gram, improved n-gram, EAGLE-3) compared at concurrency 1 and 16, with the TTFT versus ITL trade-off discussion",
+          "locator": "Chapter 7, Hands-on Speculative Decoding (printed pp. 240 to 242): the four vLLM server setups (vanilla, n-gram, improved n-gram, EAGLE-3) compared at concurrency 1 and 16, with the TTFT versus ITL trade-off discussion",
           "depth": "Reproduce the comparison shape on your model and GPU: n-gram and EAGLE gains at low concurrency fading or reversing at high concurrency. The book numbers are its hardware, not your target."
         },
         {
@@ -1110,7 +1114,7 @@
           "title": "Chapter 18 speculation sweep tooling",
           "url": "https://github.com/cfregly/ai-performance-engineering/tree/main/code",
           "locator": "`code/ch18/speculative_decode/spec_config_sweep.py` with `code/ch18/spec_configs`: sweeping speculator configs and emitting acceptance rate, chunk size, throughput, TTFT and TPOT per config",
-          "depth": "Use the sweep shape and metric set on your engine; regenerate every number on your hardware."
+          "depth": "Use the sweep shape and metric set on your engine; regenerate every number on your hardware. Its config keys (`chunk_size`, `max_spec_tokens`, `fallback_chunk_size`) drive the chapter's own benchmark, not the vLLM speculative config."
         }
       ],
       "focus": [
@@ -1132,7 +1136,7 @@
         },
         {
           "q": "N-gram speculation wins at concurrency 1 and loses at 16. What mechanism explains the crossover?",
-          "a": "At low concurrency verification rides idle arithmetic; at high concurrency the batch already consumes it, so proposing and verifying adds cost while acceptance stays flat."
+          "a": "At low concurrency verification rides idle arithmetic; at high concurrency the batch already consumes it, so proposing and verifying add cost while acceptance stays the same. The book also names the extra CPU work of proposing."
         },
         {
           "q": "A quantized path is faster but fails the code slice. Is that a benefit region?",
