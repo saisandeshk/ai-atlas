@@ -650,47 +650,77 @@
         "communication-volume-and-exposed-collectives"
       ],
       "outcomes": [
-        "TODO"
+        "Derive peak live memory from stored shards, gathered groups, activations, gradients and staging lifetimes.",
+        "Derive per-rank collective send volume with separate parameter and reduction dtypes.",
+        "Validate a byte or lifetime prediction and distinguish total communication from exposed communication."
       ],
-      "why": "TODO",
+      "why": "Persistent ZeRO-3 state can fit while a gather window does not. Build on Memory, arithmetic intensity and reconciling estimates; here the estimate must include the distributed lifecycle and critical path.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/multidimensional-parallel-planning/per-rank-state-memory",
+          "note": "Carry the verified state and gather model into composed planning."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-sharding-dt4",
+          "title": "FSDP memory and communication accounting",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 7, `fsdp_accounting`, p. 39; Section 8.3, `fsdp_calcs`, pp. 42 to 44; use the notation and bandwidth assumptions at the start of Section 8",
+          "depth": "Keep the handout's buffer-excluded estimate separate from your real peak, which includes gather staging. Solve the analytical questions on CPU; with two or more GPUs, profile a fitting model instead of the prescribed xl model."
+        },
+        {
+          "resource": "zero-paper-dt4",
+          "title": "Stage-3 communication volume",
+          "url": "https://arxiv.org/abs/1910.02054v3",
+          "locator": "arXiv:1910.02054v3, Section 7, Communication Analysis of ZeRO-DP"
+        },
+        {
+          "resource": "jax-training-dt4",
+          "title": "A communication roofline, not an overlap guarantee",
+          "url": "https://jax-ml.github.io/scaling-book/training/#fully-sharded-data-parallelism-fsdp",
+          "locator": "Fully-Sharded Data Parallelism (FSDP), its communication/compute equations; Takeaways from LLM Training on TPUs, forward/backward communication table",
+          "depth": "Use the equations and table, not the claim that all ZeRO stages have the same communication cost. For release-after-forward FSDP with weights needed in backward, there are two gathers plus a reduce-scatter; its own table shows more total traffic than DDP. TPU bandwidth and batch thresholds are not GPU measurements."
         }
       ],
       "focus": [
-        "TODO"
+        "Compute peak as a maximum over time: \\(M_{\\text{peak}}=\\max_t[S(t)+U(t)+A(t)+G(t)+T(t)]\\). The categories are disjoint: stored model state excluding gradients, full gathered weights, saved activations, live gradients and other temporaries. Add allocator reserve separately.",
+        "Let \\(N\\) be managed parameter elements, \\(R\\) the shard degree, and \\(b_p\\), \\(b_g\\) parameter-gather and gradient-reduction bytes per element. With even shards, a ring, two gathers, one reduce-scatter and no accumulation or extra recompute gathers, each rank sends \\(\\frac{R-1}{R}N(2b_p+b_g)\\) bytes per step; it receives the same volume.",
+        "At equal payload dtypes, that is 1.5 times DDP's ring all-reduce send volume. If BF16 weights are gathered and FP32 gradients reduced, recompute the ratio; do not apply the equal-payload slogan.",
+        "Full local gradients and collective staging can coexist with gathered weights. Prefetch changes simultaneous live groups; it need not change total bytes. Exposed communication is determined by dependency slack, launch timing and contention, not by total volume alone."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a simulated single FSDP group with \\(N=1{,}024\\), \\(R=4\\), BF16 gathers and FP32 gradient reduction, derive 6,144 sent bytes per rank for two gathers plus one reduce-scatter. Compare with 6,144 sent bytes for DDP reducing the same FP32 gradients: the byte ratio is one, not 1.5. Exclude padding, metadata and accumulation. Then sum disjoint live categories at each event in your trainlab trace and predict its peak before inspecting the measured or simulated ledger.",
       "traps": [
-        "TODO"
+        "Adding maxima from different phases as if they occurred together, or counting an alias as another allocation.",
+        "Reading the Scaling Book's 'same communication cost' sentence as equal total step traffic. Similar ideal communication-to-compute bounds do not mean equal byte counts.",
+        "Calling the sum of sent and received bytes the send volume, or treating a raw payload/time ratio as NCCL bus bandwidth without the collective correction."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When does the familiar 1.5 traffic ratio apply?",
+          "a": "For equal parameter and gradient payload dtypes, even shards and bandwidth-optimal ring accounting: two gathers plus one reduce-scatter versus DDP's two-pass all-reduce. Retention, padding or extra gathers change the comparison."
+        },
+        {
+          "q": "What is the model-state memory benefit of narrower wrap groups?",
+          "a": "They reduce the size of individual materialized groups, potentially reducing the peak. Prefetch, activations and staging still determine which groups coexist."
+        },
+        {
+          "q": "Can equal total bytes give different step times?",
+          "a": "Yes. Launch count, payload size, link contention and where the collectives lie on the critical path can differ. Only measured traces establish overlap on a device topology."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `fsdp_calcs` and `fsdp_accounting`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "`fsdp_calcs` (a) to (c), Section 8.3; `fsdp_accounting` (a) and the conditional profiling in (b), Section 7",
+          "note": "These written questions have no public accounting tests. Separate the handout's ideal estimate from a trainlab live-state ledger, and label CPU simulation versus conditional multi-GPU profiling evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You solve the named accounting questions, reproduce the dtype-aware byte count and explain the difference between persistent state, simulated live peak and any measured allocator peak.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 supplies bounded accounting practice, the ZeRO paper supplies traffic analysis, and the Scaling Book supplies a scoped roofline with an explicit correction."
       }
     },
     {
