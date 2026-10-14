@@ -257,13 +257,13 @@
       "focus": [
         "Each transfer is identified by direction plus microbatch: TorchFeather adds the microbatch index to a per-direction tag base so in-flight microbatches cannot match the wrong receive.",
         "Picotron leans the other way: single ops on the default tag pair up in strict program order, so any rank-specific branch in the op sequence deadlocks the pair.",
-        "Shapes and dtypes are agreed out of band: the receiver allocates the buffer from `tensor_shapes` before the transfer, and a mismatch stalls rather than raising.",
+        "Shapes and dtypes are agreed out of band: the receiver allocates the buffer from `tensor_shapes` before the transfer. On gloo a size mismatch aborts the receiving process; on other backends it can hang or corrupt, so assert shapes before the transfer instead of waiting for an error.",
         "First and last stages skip one direction each: the first stage never receives forward, the last stage never receives backward, and the skip must be in the protocol, not just the compute."
       ],
       "reproduce": "Closed-book, write a two-process gloo script where rank 0 sends an activation tensor forward with tag 100 plus microbatch index and rank 1 returns its gradient with tag 200 plus microbatch index, asserting shape and dtype on receipt.",
       "traps": [
         "Reusing one tag for every microbatch and trusting call order. Tag per microbatch as TorchFeather does, or prove every rank runs an identical op sequence as Picotron requires.",
-        "Calling `torch.cuda.synchronize` after a gloo transfer on a CPU-only run. It raises when no GPU is present, so gate device sync on the backend instead of copying GPU code.",
+        "Calling `torch.cuda.synchronize` after a gloo transfer on a CPU-only run. It raises when no GPU is visible (a CPU-only machine or `CUDA_VISIBLE_DEVICES=`), so gate device sync on the backend instead of copying GPU code.",
         "Posting a blocking send before the peer posts its receive on both ranks at once. Pair each send with a receive through one bidirectional call, or keep the recv-first order on both sides."
       ],
       "selfTest": [
@@ -288,11 +288,11 @@
         {
           "name": "TorchFeather `pp_gpipe.py` stock run on CPU",
           "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/minimal_examples/pp_gpipe.py",
-          "locator": "`torchrun --standalone --nproc-per-node=8 ./minimal_examples/pp_gpipe.py` on CPU with gloo; every rank must reach the GPipe PASS line",
+          "locator": "`torchrun --standalone --nproc-per-node=8 ./minimal_examples/pp_gpipe.py` on CPU with gloo; rank 0 prints the GPipe PASS line and every rank prints its schedule and trace path",
           "note": "Run from the pinned commit with 8 processes. The script pins the gloo backend on CPU, so one GPU or none both work; then break one tag on purpose and read which rank stalls."
         }
       ],
-      "stopWhen": "The stock run prints PASS on all 8 ranks, your two-process tag script round-trips, and you can name the stalled side of a broken-tag run from its event log.",
+      "stopWhen": "Rank 0 prints PASS, every rank prints its schedule and trace path, your two-process tag script round-trips, and you can name the stalled side of a broken-tag run from its event log.",
       "fit": {
         "verdict": "kept",
         "note": "TorchFeather tagged schedules plus Picotron raw communicate calls and the PyTorch pipeline-group contract cover transfer, protocols and stall diagnosis; the video segment motivates the handoffs."
@@ -538,7 +538,7 @@
           "resource": "zero-bubble-paper-dt6",
           "title": "Split backprop and handcrafted schedules",
           "url": "https://arxiv.org/abs/2401.10241",
-          "locator": "Abstract and Sections 1 to 3 (arXiv:2401.10241v1): the input-gradient versus parameter-gradient split, ZB1P handcrafted schedules, and the optimizer-step sync bypass needed for true zero bubble; read for vocabulary, not for a build"
+          "locator": "Abstract and Sections 1 to 4 (arXiv:2401.10241v1): the input-gradient versus parameter-gradient split, the handcrafted ZB-H1 and ZB-H2 schedules, the automatically searched ZB-1P schedule behind `ScheduleInterleavedZeroBubble`, and the Section 4 optimizer-step sync bypass needed for true zero bubble; read for vocabulary, not for a build"
         },
         {
           "resource": "pytorch-pp-dt6",
@@ -647,7 +647,7 @@
           "resource": "dt-project-pp-dt6",
           "title": "Scheduler contract from the subsystem project",
           "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/distributed-training-subsystem.md",
-          "locator": "Milestone B: scheduler, per-rank event trace, activation-lifetime accounting and failure injection; keep the simulator runnable without GPUs"
+          "locator": "Milestones B, D and E: per-rank event trace (B), failure-injection cases (D), and bubble and activation-peak prediction versus measurement (E); keep the simulator runnable without GPUs"
         }
       ],
       "focus": [
@@ -770,8 +770,8 @@
         {
           "name": "PyTorch pipelining tutorial: single-process output equivalence",
           "url": "https://docs.pytorch.org/tutorials/intermediate/pipelining_tutorial.html",
-          "locator": "Compare the rank-1 merged output and `losses` against the same 8-layer model run on one process; gate on exact forward match and equal per-microbatch losses",
-          "note": "Run on CPU. An equivalent 2-process CPU probe matches forwards exactly within 1e-5; your transformer numbers will differ, the match is the gate, not the values."
+          "locator": "Compare the rank-1 merged output and `losses` against the same 8-layer model run on one process with dropout off (call `eval()` on both copies: the tutorial's decoder layers keep the default dropout of 0.1); gate on forward match within 1e-5 and equal per-microbatch losses",
+          "note": "Run on CPU. In a measured example with 2 CPU processes on gloo and PyTorch 2.14.1, an equivalent probe matched forwards within 1e-5; your transformer numbers will differ, and the match is the gate, not the values."
         }
       ],
       "stopWhen": "Pipeline outputs match the single-process run within 1e-5 with the scaling correction stated, and you can place parameters, loss and tied weights on a stage diagram from memory.",
@@ -837,7 +837,7 @@
           "resource": "jax-pp-dt6",
           "title": "Pipeline plus sharding pairing costs",
           "url": "https://jax-ml.github.io/scaling-book/gpus",
-          "locator": "Pipeline Parallelism difficulty 2: per-microbatch weight all-gathers and delayed gradient reduction as the composition costs, with ZeRO-1 style replication as the workable pairing"
+          "locator": "Pipeline Parallelism item (2), Pipelining makes data parallelism and FSDP hard: per-microbatch weight all-gathers and delayed gradient reduction as the composition costs, with ZeRO-1 style replication as the workable pairing"
         }
       ],
       "focus": [
@@ -921,7 +921,7 @@
           "resource": "pipedream-flush-paper-dt6",
           "title": "What the 20x claim compares",
           "url": "https://arxiv.org/abs/2006.09503",
-          "locator": "Abstract and Section 5 (arXiv:2006.09503v3): the up-to-20x figure is against a non-pipelined single-device baseline for models that fit on no single device, not a schedule-versus-schedule speedup"
+          "locator": "Abstract and Section 5 (arXiv:2006.09503v3): the up-to-20x figure is against non-pipelined model-parallel baselines (tensor model parallelism and inter-layer model parallelism) on up to 64 16-GB V100s, not a schedule-versus-schedule speedup; against GPipe the gain is up to 3.2x"
         },
         {
           "resource": "dt-project-pp-dt6",
