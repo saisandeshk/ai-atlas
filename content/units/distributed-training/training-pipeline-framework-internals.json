@@ -307,47 +307,83 @@
         "scheduler-scaler-rng-and-dataloader-state"
       ],
       "outcomes": [
-        "TODO"
+        "Explain which object owns parameters, buffers, gradients, optimizer state, scheduler, scaler, RNG and loader state during one step.",
+        "Build a state-ownership table for your trainer and show the update each entry receives per step.",
+        "Predict which missing entry diverges a resume and which leaves memory allocated but unused."
       ],
-      "why": "TODO",
+      "why": "Every later sharding and checkpoint decision is a question of who owns which tensor and when. An ownership table turns silent state bugs into checkable rows.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/precision-state-loss-scaling",
+          "note": "Split the parameter and gradient rows by dtype."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/exact-resume-tiny-fixtures",
+          "note": "Turn the table into a resume checklist."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlsys-vol1-dt1",
+          "title": "Anatomy of a training step",
+          "url": "https://mlsysbook.ai/vol1/frameworks/frameworks.html",
+          "locator": "ML Frameworks, Anatomy of a Training Step: the seven-statement two-layer MLP traced through forward dispatch, `loss.backward` traversal with `.grad` accumulation and freed saved tensors, and the optimizer update"
+        },
+        {
+          "resource": "lambda-single-dt1",
+          "title": "Every state object in one file",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "`train_llm.py` model init with `torch.compile`, `DataLoader` with `num_workers=1` and `prefetch_factor=2`, `AdamW(fused=True)`, `CosineAnnealingLR`, the `zero_grad(set_to_none=True)` update block, and the checkpoint block saving model, optimizer and scheduler state dicts"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "RNG ownership and deterministic flags",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/reproducibility/README.md",
+          "locator": "`enforce_reproducibility`: torch, CUDA, NumPy and Python RNG streams, `torch.get_rng_state` and `torch.set_rng_state` round trip, and the deterministic-algorithm flags that also belong to the captured state"
         }
       ],
       "focus": [
-        "TODO"
+        "Parameters and buffers live in the module; gradients accumulate into `.grad` on leaves; optimizer state (momentum, variance, FP32 master copy) lives in the optimizer; scheduler step count lives in the scheduler. Each has exactly one writer per step.",
+        "The scaler owns the scale factor and the skip-or-step decision; the RNG streams owned by torch, CUDA, NumPy and Python decide dropout, init and shuffle draws; the loader owns worker processes, prefetch queues and the sampler cursor.",
+        "Buffers such as BatchNorm running statistics update by moving average, not by gradient. Forgetting them in a checkpoint corrupts evaluation while training loss looks fine.",
+        "`zero_grad(set_to_none=True)` frees gradient storage instead of filling zeros. Reading `.grad` after it without a fresh backward is a use-after-free, not a zero gradient."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw the ownership table for a tiny model with AdamW, cosine schedule, scaler and a two-worker loader: one row per state with owner, dtype, writer and lifetime. Then save and reload every row and show the next-step update matches an uninterrupted run.",
       "traps": [
-        "TODO"
+        "Constructing the optimizer before the parameters it should track, or adding new parameters later without extending the optimizer. Those parameters train with no update while the loss still falls.",
+        "Saving the model but not the scaler after overflow skips. The resumed run applies a stale scale and overflows again or underflows silently.",
+        "Moving the model to a device after building the optimizer. Step kernels then read stale device pointers or silently kept CPU copies."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which objects must be saved so an AdamW plus cosine-schedule run resumes its exact trajectory?",
+          "a": "Model, optimizer, scheduler and scaler state dicts plus RNG states and the data position record. Weights alone restart the schedule and the scale history at the wrong point."
+        },
+        {
+          "q": "Why do BatchNorm running statistics need checkpointing if they receive no gradients?",
+          "a": "They are updated by forward moving averages and used at evaluation. Restoring weights without them shifts every normalized activation at test time."
+        },
+        {
+          "q": "What does `zero_grad(set_to_none=True)` change about `.grad` ownership?",
+          "a": "It releases the gradient tensors so `.grad` becomes None instead of zeros. The next backward reallocates; code that accumulates into `.grad` without checking reads a freed reference."
+        },
+        {
+          "q": "A resumed run diverges although model and optimizer were restored. Name two other owners to check first.",
+          "a": "Scheduler position and RNG plus loader position. A shifted schedule or a different example and dropout sequence changes every later update."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Lambda guide 01-single-gpu: state-ownership table",
+          "url": "https://github.com/LambdaLabsML/distributed-training-guide/blob/aed748914472cca80d8cfe139ab43ec63103913a/01-single-gpu/train_llm.py",
+          "locator": "Walk `train_llm.py` top to bottom and list every stateful object with its owner, dtype and per-step writer; then delete one saved entry at a time from a resumed run and record which deletion diverges the trajectory",
+          "note": "Keep the table; later sharding units add an owner column per rank."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your table names every stateful object in your loop with its writer, and you can predict the symptom of deleting any single row.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The MLSys training-step anatomy plus the Lambda single-file trainer and the Stas RNG checklist cover every ownership topic at explain and implement depth."
       }
     },
     {
@@ -364,47 +400,71 @@
         "custom-autograd-function-with-explicit-forward-and-backward"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how the backward graph is rebuilt each iteration, which tensors are saved for backward, and when each gradient becomes ready.",
+        "Implement a custom autograd `Function` with explicit forward and backward and verify it against a numeric gradient.",
+        "Predict hook firing order and which hook side effects break accumulation or overlap."
       ],
-      "why": "TODO",
+      "why": "Distributed overlap hooks into gradient readiness: a hook that fires late or mutates state delays or corrupts every collective built on top of it. The single-process ordering must be exact first.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/data-parallelism-overlap/bucket-size-overlap",
+          "note": "Attach collectives to the readiness order built here."
+        },
+        {
+          "unit": "distributed-training/training-pipeline-framework-internals/activation-recompute-tradeoffs",
+          "note": "Trade saved tensors for recompute with open eyes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pytorch-autograd-docs",
+          "title": "Graph encoding, saved tensors and hook order",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/autograd.html",
+          "locator": "How autograd encodes the history with Saved tensors (`save_for_backward`, `_saved` attributes, pack and unpack hooks); Backward Hooks execution (whether each of `register_hook`, `register_post_accumulate_grad_hook`, node pre and post hooks fires, and their firing order)"
+        },
+        {
+          "resource": "mlsys-vol1-dt1",
+          "title": "Differentiation problem and backward cost",
+          "url": "https://mlsysbook.ai/vol1/frameworks/frameworks.html",
+          "locator": "ML Frameworks, Differentiation Problem: why reverse mode wins for a scalar loss over millions of parameters, the stored-intermediate memory price, and backward at roughly twice forward FLOPs"
         }
       ],
       "focus": [
-        "TODO"
+        "The graph is rebuilt from scratch every iteration: what you run is what you differentiate. Control flow may change the graph shape each step, so a hook registered on one iteration's node may not exist on the next.",
+        "Only operations with at least one input requiring grad are recorded, and only leaves with `requires_grad=True` accumulate `.grad`. A `register_hook` fires while its gradient is computed; a `register_post_accumulate_grad_hook` fires once after accumulation into `.grad`, and only on leaves.",
+        "Saved tensors are the forward intermediates backward needs: `x.pow(2)` saves its input for the gradient. Pack hooks run once at save time while unpack hooks may run many times; mutating their inputs in place is forbidden.",
+        "In-place operations bump a version counter checked against the saved value at unpack time. A silent wrong gradient cannot pass: misuse raises when `saved_tensors` are accessed."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a custom autograd `Function` for \\(y = x^2\\) with `save_for_backward` in forward and the chain-rule product in backward, verify it against a finite-difference gradient, and log the firing order of a tensor hook versus a post-accumulate hook over two steps with accumulation.",
       "traps": [
-        "TODO"
+        "Registering a post-accumulate hook on a non-leaf tensor. It errors even with `retain_graph=True`; only leaves accumulate `.grad`.",
+        "Mutating a gradient inside a `register_hook` and expecting later hooks to see the original. Hooks compose in order, so each sees the previous hook's output.",
+        "Doing collective or CUDA-sync side effects inside a hook during overlap experiments. The hook runs inside backward scheduling, so a blocking call serializes the very overlap being measured."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does `y = x.pow(2)` keep `x` alive after forward?",
+          "a": "Backward needs the input to compute \\(2x\\). The gradient function saves it at forward time and releases it once backward completes, unless the graph is retained."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A tensor hook and a post-accumulate hook are registered on the same leaf. Which fires first?",
+          "a": "The tensor hook, while the gradient for that tensor is computed. The post-accumulate hook fires after accumulation into `.grad` finishes at the end of backward."
+        },
+        {
+          "q": "Backward is called twice without `retain_graph=True`. What fails and why?",
+          "a": "The second call finds freed saved tensors. The first backward releases intermediates as it traverses unless retention was requested."
+        },
+        {
+          "q": "When does a node hook not fire although its tensor received a gradient?",
+          "a": "When the node itself did not execute, for example a tensor passed as `inputs` to `torch.autograd.grad` whose `grad_fn` was skipped. Tensor hooks still fire; node hooks do not."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a custom autograd function or gradient hook with ordering, numerical-result and accumulation-interaction tests against a single-process oracle.",
+      "stopWhen": "Your custom Function matches finite differences, and you can predict for any hook whether it fires, when, and what it observes.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Depth failed for hook firing order and saved-tensor packing in the pool books; the official autograd mechanics note fills that gap beside the MLSys differentiation chapter, with implementation practice in the section mini-project."
       }
     },
     {
@@ -421,47 +481,83 @@
         "mixed-precision-autocast-and-loss-scaling-failure-modes"
       ],
       "outcomes": [
-        "TODO"
+        "Explain which training state lives in which precision and where accumulation must stay in FP32.",
+        "Derive the per-dtype byte counts for parameters, gradients and optimizer state of a small model.",
+        "Diagnose lost updates, underflowed gradients and overflowed products from a failing mixed-precision run."
       ],
-      "why": "TODO",
+      "why": "Precision is a memory and stability contract: the wrong accumulation dtype silently deletes small updates, while the wrong loss scale deletes the gradients. Both look like a healthy run with worse results.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/training-pipeline-framework-internals/training-memory-accounting",
+          "note": "Turn the byte counts into a full memory ledger."
+        },
+        {
+          "unit": "deep-learning/pytorch-reliability-profiling/numerical-failure-instrumentation",
+          "note": "Trace an overflow back to its first invalid value."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mixed-precision-paper-dt1",
+          "title": "Mixed Precision Training",
+          "url": "https://arxiv.org/abs/1710.03740",
+          "locator": "Sections 1 to 3: FP32 master weights, loss scaling against the FP16 minimum positive normal \\(2^{-14}\\), and FP32 accumulation; Section 5 for the accuracy-matching evidence across architectures (arXiv:1710.03740v3)"
+        },
+        {
+          "resource": "stas-training-dt1",
+          "title": "Dtype states and TF32",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/dtype.md",
+          "locator": "Tensor Precision with the ML dtype progression; TF32 (`allow_tf32` matmul and cudnn flags); When to use fp32 accumulators (LayerNorm, reductions, gradient accumulation and master weights)"
+        },
+        {
+          "resource": "cs336-a2-profile-dt1",
+          "title": "CS336 Assignment 2: mixed-precision accumulation",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.5 `mixed_precision_accumulation`: the four-loop `0.01 * 1000` accumulation in fp32 versus fp16; Section 2.1.5 `benchmarking_mixed_precision`: `ToyModel` dtype table under `torch.autocast` and why LayerNorm is sensitive"
         }
       ],
       "focus": [
-        "TODO"
+        "Three techniques together make FP16 training match FP32: an FP32 master copy updated by the optimizer, a loss scale keeping gradients above the FP16 minimum normal, and FP32 accumulation of products. Each fixes a different failure.",
+        "Autocast keeps parameters in FP32 while running matmuls in low precision: a CPU check shows a Linear output in `torch.bfloat16` with `weight.dtype` still FP32. Reductions and norms stay wide because they sum many small terms.",
+        "TF32 is a process-global matmul mode, default `allow_tf32` False in the installed build. It changes every matmul silently, so it belongs in the run manifest, not in model code.",
+        "The 2018 paper predates BF16 and TF32. Its loss-scaling derivation still holds, but every BF16 range claim must come from the Stas notes or current docs, never from this paper."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, run the four-loop accumulation (`0.01 * 1000` in fp32-on-fp32, fp16-on-fp16, fp32-on-fp16 and cast-back) and explain which loop drifts and why. Then show one overflow fixed by scaling the loss and one small-update loss fixed by FP32 accumulation.",
       "traps": [
-        "TODO"
+        "Reading default `GradScaler()` construction as working loss scaling on CPU. It reports enabled but CPU execution keeps it unscaled; real scale dynamics need a CUDA run.",
+        "Casting the master weights to FP16 to save memory. Small updates then round to zero and the model freezes while the loss looks algorithmically stuck.",
+        "Citing the 2018 paper for BF16 behavior. BF16 has the range of FP32 with short mantissa, the opposite tradeoff to FP16, and the paper predates it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "FP16 gradients underflow while FP32 loss looks fine. Which of the three techniques is missing or misset?",
+          "a": "Loss scaling. Gradients below the FP16 minimum positive normal flush to zero; scaling the loss up before backward and down after keeps them representable."
+        },
+        {
+          "q": "A BF16 run keeps parameters in FP32 under autocast. Why not store them in BF16 directly?",
+          "a": "The optimizer needs the FP32 master copy so small updates accumulate instead of rounding away. Autocast casts to BF16 only for compute."
+        },
+        {
+          "q": "Why does LayerNorm stay in FP32 under autocast while linears run narrow?",
+          "a": "It reduces over many elements, so narrow accumulation compounds rounding and its statistics need range. Linears are products plus a single accumulation that the backend keeps wide."
+        },
+        {
+          "q": "TF32 was enabled halfway through a study. Which comparisons break?",
+          "a": "All matmul numerics across the flag change. TF32 rounds differently from FP32, so loss, gradient and timing comparisons across the change confound precision with the studied effect."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 2: `mixed_precision_accumulation` and `benchmarking_mixed_precision`",
+          "url": "https://github.com/stanford-cs336/assignment2-systems/blob/ca8bc81a59b70516f7ebb2da4808daade877c736/cs336_assignment2_systems.pdf",
+          "locator": "Section 2.1.5 both problems on model sizes your hardware fits: the accumulation error table with a 2 to 3 sentence accuracy comment, and the autocast dtype table with the LayerNorm sensitivity explanation",
+          "note": "These are writeup problems with no public tests; checking is your own error table plus the dtype table. Run the accumulation loops on CPU, the autocast table needs one GPU."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your accumulation table predicts which loop drifts, and you can attribute a new mixed-precision failure to scale, accumulation width or master-copy dtype.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The mixed-precision paper gives the three-technique derivation, the Stas dtype notes add TF32 and BF16 state the paper predates, and the CS336 accumulation problems give named practice."
       }
     },
     {
