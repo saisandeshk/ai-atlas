@@ -1,6 +1,17 @@
 {
   "section": "distributed-disaggregated-inference",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "python-hashlib-inf7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Python 3.14 hashlib - byte digests for KV integrity checks",
+      "provider": "Python Software Foundation",
+      "access": "Free",
+      "use": "Usage and Hash Objects only: compute and compare a SHA-256 digest over a declared canonical KV payload. Add request/version checks separately; a byte digest is not cache compatibility or authentication.",
+      "url": "https://docs.python.org/3.14/library/hashlib.html#usage"
+    }
+  ],
   "units": [
     {
       "id": "replica-tensor-parallel-serving",
@@ -15,47 +26,69 @@
         "tensor-parallel-inference-shapes-and-collectives"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish independent serving replicas from ranks cooperating on one forward pass, including their request-level fault domains.",
+        "Derive local MLP and attention projection shapes for a tensor-parallel serving plan.",
+        "Place forward collectives and explain why added memory capacity need not reduce small-batch latency."
       ],
-      "why": "TODO",
+      "why": "A router distributes requests across replicas; tensor parallelism distributes one request's model work across ranks. Confusing the two gives the wrong capacity estimate and the wrong recovery boundary.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/weight-kv-sharding-memory",
+          "note": "Turn the shard shapes into per-rank ownership and memory budgets."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-dist-inf7",
+          "title": "Replicas versus model shards",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Data Parallelism, printed pp. 243 to 245; Tensor Parallelism and Pipeline Parallelism, printed pp. 245 to 250",
+          "depth": "Read the replica and TP paths now. Leave the pipeline decision path for the next unit; do not run the multi-GPU launch snippet."
+        },
+        {
+          "resource": "tushar-dist-inf7",
+          "title": "The paired column and row shards",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#concept-0",
+          "locator": "Module 09, Tensor parallelism: split inside the layer - The MLP block and The attention block",
+          "depth": "Stop before Communication volume. Two reductions per layer describes this replicated-activation dense forward schedule, not every TP implementation."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Collective contracts and the latency-bandwidth cost model. Serving replicas do not synchronize gradients; a replica can itself contain a TP group.",
+        "For input \\(X\\) of shape \\(T \\times h\\), column-shard the first MLP weight of shape \\(h \\times f\\), then row-shard the second of shape \\(f \\times h\\). Each local intermediate has shape \\(T \\times f/n\\) for divisible width and \\(n\\) ranks.",
+        "An elementwise activation stays local between these shards. The second projection produces same-shaped partial outputs that sum, not concatenate. Add a replicated output bias once after summation.",
+        "Attention head shards can compute independently before the output projection reduction. KV-head replication and vocabulary-parallel output paths need separate ownership accounting."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive a bias-free two-rank ReLU MLP with input shape \\(2 \\times 4\\), first weight shape \\(4 \\times 6\\) and second weight shape \\(6 \\times 4\\). Give each rank three intermediate features, sum its partial output, and check against the unsharded MLP on CPU using small deterministic `float64` tensors. State a numerical tolerance rather than demanding bitwise equality.",
       "traps": [
-        "TODO"
+        "Counting replicas as additional memory for a single request. Each independent replica needs the full model and its own admitted KV state.",
+        "Calling every column-sharded output an all-reduce. Disjoint output features concatenate; row-sharded dot-product contributions sum.",
+        "Promising a latency speedup from rank count. Smaller kernels, startup costs and dependencies can consume the extra compute or memory bandwidth."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does inference replica serving require the training gradient all-reduce?",
+          "a": "No. Independent requests run forward passes against fixed weights. Shared routing or cache metadata is a separate control-plane concern."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can the first projection's activation remain local?",
+          "a": "Each rank owns complete values for its output features, and ReLU acts independently on each feature. No partial sum is needed before that activation."
+        },
+        {
+          "q": "What shape does each second-projection partial have in the reproduce example?",
+          "a": "\\(2 \\times 4\\). Each rank multiplies a \\(2 \\times 3\\) intermediate by its \\(3 \\times 4\\) weight rows; the two partials sum to the full output."
+        },
+        {
+          "q": "Can replicas lower endpoint latency without making the forward pass faster?",
+          "a": "Yes. Distributing arrivals can reduce queueing. It does not shorten the isolated forward service time on an unchanged replica."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's replica and TP plans, local-shape ledger and differential checks against an unsharded forward pass.",
+      "stopWhen": "Your paired-shard MLP matches the unsharded reference within the stated tolerance, and your diagram separates replica routing from TP collectives and their fault domains.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book's replica and sharding sections and Module 09's paired MLP cover the serving distinction and forward shapes; servelab supplies CPU differential practice."
       }
     },
     {
@@ -73,47 +106,82 @@
         "topology-aware-moe-expert-placement"
       ],
       "outcomes": [
-        "TODO"
+        "Derive a forward-only pipeline timeline and identify the concurrency and stage balance needed to fill it.",
+        "Map MoE dispatch and combine to serving ranks, preserving the selected experts and routing weights.",
+        "Distinguish layer, expert, head and context-position partitioning, including the communication exact attention still needs."
       ],
-      "why": "TODO",
+      "why": "PP, EP and context parallelism partition different axes. Their serving value depends on available concurrency, expert skew and context length, not just whether the model fits.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/inference-comm-topology-latency",
+          "note": "Price each dependency on the topology that carries it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-ch15-17-inf7",
+          "title": "Pipeline and expert serving paths",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Pipeline Parallelism; Expert Parallelism; Dynamic Routing Strategies for MoE Inference - Expert Communication Optimization and Load Balancing, Capacity Factor, and Expert Replication",
+          "depth": "Focus on serving dependencies and placement. Do not change the model's chosen experts to fix load: rerouting or dropping expert work changes outputs."
+        },
+        {
+          "resource": "tushar-dist-inf7",
+          "title": "Partitioning cached positions",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#concept-3",
+          "locator": "Module 09, Decode context parallelism: shard the cache by position, not by head - The mechanism, one decode step and Why decode specifically",
+          "depth": "Stop before the version-specific vLLM constraints and reported benchmark. Use the online-softmax merge from Stable and online softmax, normalization and fused residual paths, not a plain sum of locally normalized attention."
+        },
+        {
+          "resource": "hundred-days-dist-inf7",
+          "title": "A forward pipeline bubble exercise",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/b8343f8873b7bdd8bd8739a42aa7557d5644cf48/day17/model-parallelism.ipynb",
+          "locator": "Day 17, Pipeline Parallelism: layer blocks + the bubble; Try These Experiments, item 4, PP bubble break-even",
+          "depth": "Only this timeline and exercise. Assume equal forward stage times and independent microbatches; do not import a training backward schedule."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse All-to-all and MoE dispatch, combine and load balance. In serving, small decode batches can expose startup and hot-expert delay even when the aggregate dispatch byte count is small.",
+        "With \\(p\\) equal stages, \\(m\\) ready independent microbatches and stage time \\(t\\), a transfer-free forward pipeline finishes in \\((m+p-1)t\\). Idle fraction is \\((p-1)/(m+p-1)\\); autoregressive feedback and uneven stage times invalidate that simple schedule.",
+        "Expert placement changes which assignments cross a slow link. Replicating the same expert preserves its function; changing top-k choices or overflow semantics does not automatically preserve model quality.",
+        "Context parallelism partitions positions; TP commonly partitions heads. Exact global attention still incorporates every permitted position using communicated KV blocks or partial softmax statistics. Sequence parallelism can instead mean partitioning intermediate activations around TP - state the axis, not just the acronym."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw the transfer-free forward timeline for four equal 2 ms stages and eight ready independent microbatches. Recover a 22 ms makespan and idle fraction \\(3/11\\). Then add the dependency from the final sampled token to the same request's next decode pass and explain why eight successive tokens of one request cannot fill the pipeline like eight independent microbatches.",
       "traps": [
-        "TODO"
+        "Using a full-training pipeline bubble formula for forward-only inference, or treating future tokens of one request as already available microbatches.",
+        "Placing paired hot experts together without checking compute imbalance. Fewer remote bytes can still leave one rank on the critical path.",
+        "Summing locally normalized attention outputs. Each slice has a different softmax normalizer; exact merging must reweight them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does PP make four equal stages execute one isolated request simultaneously?",
+          "a": "No. Its activations traverse all four stages in order. Other independent requests can occupy the remaining stages; the isolated request retains the full dependency chain."
+        },
+        {
+          "q": "Why is an expert replica different from rerouting to another expert?",
+          "a": "A replica computes the same expert function with the same weights. A different expert generally computes a different function, changing the model output."
+        },
+        {
+          "q": "Do position shards let exact causal attention ignore distant earlier positions?",
+          "a": "No. Those positions remain legal keys. Their contributions must reach the query through KV exchange or a correctly normalized partial-result merge."
+        },
+        {
+          "q": "What does a slow PP stage do to steady-state capacity?",
+          "a": "It limits the rate at which microbatches can leave the pipeline. More stages or a low average stage time cannot remove that bottleneck."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "100 Days of Inference, Day 17: PP bubble break-even",
+          "url": "https://github.com/elizabetht/100-days-of-inference/blob/b8343f8873b7bdd8bd8739a42aa7557d5644cf48/day17/model-parallelism.ipynb",
+          "locator": "Try These Experiments, item 4: find the minimum microbatch count for idle fraction strictly below 10 percent with 4, 8 and 16 stages",
+          "note": "Check your integer boundary by enumerating the forward timeline on CPU. The notebook has no public grader; add your own tests. The section mini-project covers expert skew and context-partition accounting."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your timeline agrees with the hand makespan and each integer bubble boundary, and you can name the partition axis, communication dependency and serving bottleneck for PP, EP and context parallelism.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book covers PP, EP and topology-aware expert placement, Module 09 supplies exact position-shard merging, and the named Day 17 exercise gives CPU timeline practice."
       }
     },
     {
@@ -128,47 +196,69 @@
         "per-rank-memory-and-local-tensor-ownership"
       ],
       "outcomes": [
-        "TODO"
+        "Derive each rank's weight and KV bytes from the actual layer, head and position ownership rather than dividing everything by device count.",
+        "Explain KV-head replication when TP exceeds the number of KV heads in a head-sharded GQA layout.",
+        "Reject a plan whose busiest rank exceeds memory after runtime buffers, page waste and reserve are included."
       ],
-      "why": "TODO",
+      "why": "Aggregate memory is not admission capacity. One rank can run out of KV space while other ranks have free memory, and replicated state can erase an expected sharding gain.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/kv-transfer-connectors-overlap",
+          "note": "Use the ownership ledger to count source and destination transfer fragments."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tushar-dist-inf7",
+          "title": "Head sharding and the GQA ceiling",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#concept-2",
+          "locator": "Module 09, What TP degree actually does to your numbers - Weights per GPU and KV cache per GPU stops shrinking at TP-8",
+          "depth": "Use the head-ownership argument only. Skip the hardware speed table and Code lab planner: evenly divided weights are an approximation, and its PP latency estimate does not sum the dependent stage service times."
+        },
+        {
+          "resource": "aisys-ch15-17-inf7",
+          "title": "Layer and expert ownership",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Tensor Parallelism, Pipeline Parallelism, Expert Parallelism and Data Parallelism",
+          "depth": "Revisit only which weights each rank holds. Carry forward the runtime-memory categories from Weight memory by dtype and the runtime memory categories."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Per-layer KV layouts and the cache consequences of attention variants. For ordinary full-attention K and V, a rank owning \\(L_r\\) layers, \\(H_r\\) KV heads and \\(S_r\\) cached positions holds \\(2L_rH_rd_h\\,b\\,S_r\\) logical bytes, where \\(d_h\\) is head dimension and \\(b\\) is bytes per element.",
+        "PP assigns KV to the ranks that own its layers. Head-sharded TP assigns local KV heads; if there are more TP ranks than KV heads, a supported layout may replicate heads instead of shrinking each cache further.",
+        "EP partitions expert weights, not automatically attention weights or KV. Sum shared, expert, embedding and output weights according to the chosen layout; include replicated tensors explicitly.",
+        "Admission uses the maximum per-rank allocation, including page rounding, workspace, graphs, communication buffers and reserve. Distinguish logical unique KV from physical copies across ranks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Make a per-rank ledger for a synthetic full-attention model with eight layers, two KV heads, head dimension 16, two-byte KV elements and one 128-token sequence. Its unique KV is 131,072 bytes. Under two-way head-sharded TP each rank holds 65,536 bytes; under four-way TP with each KV head replicated twice, each rank still holds 65,536 bytes. Add two-way PP with four layers per stage and recompute local and aggregate physical bytes. Ignore page waste only for this logical-byte exercise.",
       "traps": [
-        "TODO"
+        "Dividing all memory by the product of TP, PP and EP sizes. Only the tensors actually partitioned along those axes get that divisor.",
+        "Treating a head-count ceiling as a universal limit on usable devices. Position sharding can reduce cache further, but requires its own layout and communication contract.",
+        "Checking total free memory instead of each rank's budget. The first exhausted rank can stop the whole serving group."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "In the four-way TP example, how many physical KV bytes exist across ranks?",
+          "a": "262,144 bytes, twice the unique KV. Each of the two KV heads has two physical copies."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does expert parallelism alone divide dense attention KV by expert count?",
+          "a": "No. Experts belong to the MoE feed-forward path. Attention KV follows attention layer, head and position ownership."
+        },
+        {
+          "q": "How does two-way PP change each TP rank's KV in this equal-layer example?",
+          "a": "It halves local KV to 32,768 bytes because each stage owns four of the eight layers. Aggregate physical KV stays unchanged for the same TP replication pattern."
+        },
+        {
+          "q": "Why is weight bytes divided by rank count insufficient to prove a plan fits?",
+          "a": "Some weights are replicated or unevenly placed, and KV, temporary tensors, communication buffers and runtime reserve also consume local memory."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's rank ownership ledger, replicated-head cases and memory-feasibility tests before admitting requests.",
+      "stopWhen": "Your ledger reconciles unique and physical KV bytes for TP, PP and their combination, and rejects a plan that fails any local memory budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's head-sharding explanation and book ownership sections support the local-byte derivation; servelab checks replicated and uneven layouts without extra devices."
       }
     },
     {
@@ -184,47 +274,69 @@
         "small-batch-latency-versus-distributed-capacity"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-decode-step and per-prefill-pass collective and stage-boundary traffic with an explicit per-rank or aggregate convention.",
+        "Map that traffic onto PCIe, NVLink, NVSwitch and network paths, including shared bottleneck links.",
+        "Explain when more ranks provide memory capacity but increase small-batch latency after communication startup and dependencies are included."
       ],
-      "why": "TODO",
+      "why": "Serving decode repeatedly pays small collective startup costs. A topology that fits the model can still miss the token-latency target even when its bandwidth-only estimate looks cheap.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/pool-placement-break-even",
+          "note": "Use the exposed communication model to constrain phase placement."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tushar-dist-inf7",
+          "title": "Serving activation traffic",
+          "url": "https://inference.tusharamrit.in/modules/distributed-inference.html#math-lab",
+          "locator": "Module 09, Tensor parallelism: split inside the layer - Communication volume; Pipeline parallelism: split across layers - Communication is tiny; Math by hand, Parts 3 and 4",
+          "depth": "Do the byte arithmetic, not the supplied hardware time estimates. The page mixes directional and bidirectional link peaks and calls a whole decode batch step's traffic per-token traffic. Use per-step bytes, a declared directional effective bandwidth and the startup term from your GPU communication model."
+        },
+        {
+          "resource": "hands-serving-dist-inf7",
+          "title": "Placement across links and nodes",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Tensor Parallelism and Pipeline Parallelism, printed pp. 247 to 250, Figures 7-10 and 7-11",
+          "depth": "Treat the flowchart as candidate generation, not proof that TP needs NVLink or that a single-device plan always wins. Check the declared SLO and actual topology."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Ring and tree all-reduce, all-gather and reduce-scatter volume, Interconnects and topology: PCIe, NVLink, NVSwitch and RDMA, and NCCL algorithms, protocols, channels and rank placement. New work here is multiplying those costs by serving-layer frequency.",
+        "For a replicated-activation dense schedule, message size is \\(M = B\\,S\\,h\\,b\\), with batch size \\(B\\), processed positions per sequence \\(S\\), hidden width \\(h\\) and bytes per element \\(b\\). Decode has \\(S = 1\\); prefill uses its scheduled prompt or chunk length.",
+        "With \\(n\\) ranks, ring all-reduce sends \\(2(n-1)M/n\\) bytes per rank. Two reductions per layer over \\(L\\) layers cost \\(2L\\) matched collectives per pass. This is an implementation assumption, not a universal transformer law.",
+        "Use \\(2(n-1)\\alpha + 2(n-1)M/(nW)\\) for a simple ring model with per-step startup \\(\\alpha\\) and directional effective bandwidth \\(W\\). PP sends one activation per stage boundary and retains the serial stage path. Shared links, uneven ranks and overlap change exposed time."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a synthetic eight-layer dense forward pass with batch size 2, hidden width 64, two-byte activations and four TP ranks, derive the decode message size of 256 bytes and ring egress of 384 bytes per rank per reduction. Two reductions per layer give 6,144 bytes per rank per batch step. Recompute for a 128-position prefill, then compare both startup and bandwidth terms using declared synthetic link parameters. Count PP traffic separately per boundary, not as a ring reduction.",
       "traps": [
-        "TODO"
+        "Calling batch-step wire bytes bytes per output token without dividing by the number of active sequences. A step can generate many tokens, while each request still waits for the complete step.",
+        "Using bidirectional aggregate peak as one rank's send bandwidth, or adding send and receive bytes and comparing them to a one-direction rate.",
+        "Assuming a node count identifies the fabric. TP groups inside one node may cross slow PCIe or socket paths, while some NVLink domains span multiple nodes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What changes when the example processes 128 positions instead of one?",
+          "a": "The activation message and bandwidth term grow 128-fold. The assumed collective count and each collective's startup term do not. Kernel efficiency and attention cost can also change."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why can a tiny decode message still make TP slow?",
+          "a": "Many dependent collectives repeatedly pay startup and wait for the slowest participating rank. Dividing only bytes by bandwidth omits those costs."
+        },
+        {
+          "q": "Does PP's smaller traffic prove it has lower isolated-request latency?",
+          "a": "No. The request still traverses every stage sequentially and pays stage-boundary transfers. Its benefit may instead be model capacity or throughput with enough independent work."
+        },
+        {
+          "q": "What must change in the model when two transfers share one NIC?",
+          "a": "Their combined offered bytes compete for that NIC's directional capacity. They cannot both receive its full effective bandwidth at the same time."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's per-layer communication ledger, shared-link model and small-batch latency versus memory-capacity sweep.",
+      "stopWhen": "Your byte ledger reconciles per-rank and aggregate traffic, and your synthetic sweep identifies a capacity-feasible TP plan that loses latency after startup is restored.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's explicit serving traffic arithmetic and placement flowchart cover the derivation when units and directionality are corrected; servelab supplies topology sweeps."
       }
     },
     {
@@ -240,47 +352,80 @@
         "cache-aware-routing-and-locality-skew"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a deterministic cache-aware router that checks capacity before applying locality and load tie-breaks.",
+        "Compare load-only and cache-aware decisions under hot-prefix skew, changing reuse and stale worker information.",
+        "Diagnose a higher cache-hit rate that worsens queueing, fairness or SLO-qualified completions."
       ],
-      "why": "TODO",
+      "why": "A warm prefix saves prefill work but can attract enough requests to overload its owner. Routing must value the saved work against waiting and capacity, not maximize hits alone.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/pd-disaggregation-phase-capacity",
+          "note": "Split routing and admission across prefill and decode pools."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hands-serving-dist-inf7",
+          "title": "Routing independent serving replicas",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Data Parallelism, printed pp. 244 to 245 - round robin, least connections, latency-based and cache-aware routing"
+        },
+        {
+          "resource": "mooncake-inf7",
+          "title": "Balance predicted waiting against cache reuse",
+          "url": "https://www.usenix.org/system/files/fast25-qin.pdf",
+          "locator": "FAST 25 paper, Section 4.1 Prefill Global Scheduling and Section 4.2 Cache Load Balancing, printed pp. 161 to 162",
+          "depth": "Study the decision rule and hot-cache replication. Leave the cluster experiments and their numerical results out of your local routing claims."
+        },
+        {
+          "resource": "dynamo-disagg-inf7",
+          "title": "Worker selection at phase boundaries",
+          "url": "https://docs.nvidia.com/dynamo/v1.5.1/knowledge-base/concepts/system-architecture/disaggregated-serving",
+          "locator": "Dynamo v1.5.1, Efficient KV Transfer - Router Orchestration, steps 1 to 4"
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Exact prefix identity, version scope and tenant privacy scope. A cache overlap score is useful only for compatible, authorized KV; it is not permission to reuse another tenant's state.",
+        "Track full assigned token capacity separately from uncached prefill work. Reuse saves computation but does not make the destination request's complete context disappear.",
+        "The TensorTonic problem prioritizes the longest cached prefix before projected uncached load. Mooncake instead minimizes predicted TTFT including waiting; these are different policies, not equivalent implementations.",
+        "Worker discovery, cache events and load estimates can lag. Revalidate capacity and identity at admission, and keep a fallback for evicted prefixes or unavailable workers."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement the named TensorTonic rule from a blank file. Check feasibility using full assigned request lengths, then rank by longest prefix, lowest projected uncached load, most remaining capacity and smallest worker ID. Reproduce the public example with request lengths `[10, 8]`, prefix lengths `[[8, 0], [0, 6]]`, worker IDs `[2, 1]` and capacities `[20, 20]`: assignments `[2, 1]` and uncached loads `[2, 2]`. Then construct a queued hot-prefix case where a predicted-TTFT policy deliberately chooses less reuse.",
       "traps": [
-        "TODO"
+        "Using uncached tokens as the memory-admission cost. The public rule admits against the full assigned request length even when most tokens have a prefix hit.",
+        "Interpreting a router's hit estimate as guaranteed resident KV. Eviction or worker restart between selection and admission can invalidate it.",
+        "Improving aggregate TTFT while starving tenants with cold prefixes. Compare waiting and completions by tenant or request class."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A six-token request has a four-token cache hit on a worker with capacity five. Is it feasible under the problem's rule?",
+          "a": "No. Full assigned length, six tokens, exceeds capacity five. The two uncached tokens determine compute load, not feasibility."
+        },
+        {
+          "q": "Why can longest-prefix routing lose to load-only routing?",
+          "a": "A hot cache owner can have enough waiting work to outweigh the saved prefill. Low reuse or stale cache information can also remove the expected saving."
+        },
+        {
+          "q": "Two workers tie on prefix, projected work and remaining capacity. What breaks the public problem's tie?",
+          "a": "The smaller worker ID, not the first worker in the input array. Returned loads remain in input-worker order."
+        },
+        {
+          "q": "Does replicating a hot prefix always improve goodput?",
+          "a": "No. It costs memory and transfer work, can evict useful other prefixes and may not relieve the current compute or queue bottleneck. Test it on the same arrival trace."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Route Cache-Aware Prefill Requests",
+          "url": "https://www.tensortonic.com/problems/cs336-l18-cache-aware-prefill-routing",
+          "locator": "Implement `cache_aware_prefill_routing(request_token_counts, cached_prefix_lengths, worker_ids, worker_capacities)`",
+          "note": "The free public cases check cache-local choices, worker-ID tie-breaking and rejection when no worker fits. Add tests for projected-load and remaining-capacity ties yourself. The section mini-project compares this locality-first rule with load-only and predicted-TTFT routing."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your router passes the three public cases and your additional tie-break tests, and your hot-prefix counterexample explains why saved prefill does not guarantee lower waiting or better goodput.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The book and Mooncake cover locality versus load, Dynamo supplies current phase routing, and the verified free TensorTonic problem anchors deterministic implementation practice."
       }
     },
     {
@@ -296,47 +441,75 @@
         "independent-phase-parallelism-and-capacity"
       ],
       "outcomes": [
-        "TODO"
+        "Trace a request through prefill, KV handoff and decode, locating each queue and duplicated model copy.",
+        "Derive independent phase demand and a bottleneck capacity bound for a declared workload.",
+        "Explain how phase-specific batching and parallelism can improve isolation while stranding capacity in the other pool."
       ],
-      "why": "TODO",
+      "why": "Disaggregation removes one source of phase interference and introduces a new queue and transfer boundary. Pool sizes must follow service demand and SLOs, not just the input-to-output token ratio.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/kv-transfer-connectors-overlap",
+          "note": "Restore the transfer and ownership costs to the phase-capacity model."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-inf7",
+          "title": "The independent phase trade-off",
+          "url": "https://arxiv.org/html/2401.09670v3#S3",
+          "locator": "arXiv:2401.09670v3, Section 2.3 Problems and Opportunities, then Sections 3.1 Analysis for Prefill Instance and 3.2 Analysis for Decoding Instance",
+          "depth": "Use the phase and queue models, not the paper's speedups as targets. Its constant-service, Poisson-arrival queue approximation is not a tail-SLO model for arbitrary prompt mixtures."
+        },
+        {
+          "resource": "aisys-ch15-17-inf7",
+          "title": "What each phase pool owns",
+          "url": "https://www.oreilly.com/library/view/ai-systems-performance/9798341627772/",
+          "locator": "Chapter 15, Disaggregated Prefill and Decode Architecture; Chapter 17, Disaggregated Prefill and Decode Cluster Pools",
+          "depth": "Read the architecture, memory-management and phase-worker design. Skip deployment snippets and fixed hardware recommendations; use Dynamo v1.5.1 for the current orchestration path."
+        },
+        {
+          "resource": "dynamo-disagg-inf7",
+          "title": "Where phase separation helps and loses",
+          "url": "https://docs.nvidia.com/dynamo/v1.5.1/knowledge-base/concepts/system-architecture/disaggregated-serving",
+          "locator": "Dynamo v1.5.1, Performance Characteristics - Prefill saturation, Decode memory tradeoff and Capacity effects of disaggregation"
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Mixing prefill and decode, and chunked prefill to protect decode. Separate pools remove same-device mixed-phase execution, but not queueing, host contention, shared-link contention or decode KV pressure.",
+        "DistServe prefill produces prompt KV and the first sampled token. Follow the first token explicitly: receiving it is not the same event as having KV ready for the next decode step.",
+        "For arrival rate \\(\\lambda\\), mean prompt length \\(\\mathbb{E}[I]\\) and mean output length \\(\\mathbb{E}[O]\\), prompt demand is \\(\\lambda\\mathbb{E}[I]\\). If prefill emits the first token, subsequent decode demand is \\(\\lambda\\mathbb{E}[\\max(O-1,0)]\\). Declare that convention before using token/s capacities.",
+        "An idealized fixed-throughput bound is the minimum of each pool's token capacity divided by its per-request token demand. Actual capacity must also satisfy KV admission, transfers, arrivals and latency tails; token rates vary with batch, lengths and cache reuse."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive a transfer-free synthetic bound for two prefill workers, each assumed to sustain 1,000 prompt tokens/s, and one decode worker assumed to sustain 400 subsequent output tokens/s. Every request has 100 prompt tokens and 21 output tokens, with the first output produced in prefill. Both phase bounds are 20 requests/s. Explain why 20 requests/s is a capacity ceiling, not a safe offered-load target or an SLO guarantee, and identify what happens if only prefill capacity doubles.",
       "traps": [
-        "TODO"
+        "Sizing pool counts from token ratio alone. One prompt token and one decode token need not consume equal service time or memory.",
+        "Treating phase isolation as independent end-to-end latency. The request still depends on both pools and its handoff.",
+        "Removing GPUs from decode to add prefill without accounting for stranded weights and lost decode KV capacity."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "In the synthetic example, what is the rate bound after prefill capacity doubles?",
+          "a": "Still 20 requests/s. Decode must produce 20 subsequent tokens per request from its unchanged 400-token/s capacity."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why must both phase pools hold model weights?",
+          "a": "Both execute the model's layers, although their parallel layouts may differ. Separating phases does not let the decode pool operate from KV alone without model weights."
+        },
+        {
+          "q": "Why is operation exactly at the ideal rate bound unsafe?",
+          "a": "Variability, bursts and finite buffers create waiting, and any capacity loss can make the backlog grow. A latency contract needs headroom and a workload-specific queue test."
+        },
+        {
+          "q": "Can higher decode batch size change the phase ratio you should provision?",
+          "a": "Yes. It changes effective decode throughput, token latency and workspace or KV availability. Recompute the ratio under the chosen operating point."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's separate phase queues, fixed-budget pool-size sweep and first-token versus KV-ready event trace.",
+      "stopWhen": "Your request trace names every phase queue and first-token event, and your capacity derivation identifies the limiting phase without treating its ceiling as an SLO-qualified rate.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DistServe supplies independent phase reasoning, the book supplies ownership and worker design, and Dynamo v1.5.1 covers current capacity trade-offs; servelab practices pool sizing."
       }
     },
     {
@@ -354,47 +527,81 @@
         "kv-offload-across-hbm-dram-and-storage-tiers"
       ],
       "outcomes": [
-        "TODO"
+        "Derive handoff payload and transfer time from KV ownership, transport startup, effective bandwidth and layout work.",
+        "Trace connector control metadata, memory registration, data movement, completion and source-buffer retirement.",
+        "Explain valid overlap and bound in-flight KV with backpressure across HBM, DRAM and storage tiers."
       ],
-      "why": "TODO",
+      "why": "A fast data plane is not a complete handoff. The receiver must have space, layout and identity ready, and the sender must retain buffers until transfer completion makes reuse safe.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/cross-phase-identity-integrity",
+          "note": "Specify exactly which bytes and metadata the receiver is allowed to consume."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-inf7",
+          "title": "Pull handoff and burst buffering",
+          "url": "https://arxiv.org/html/2401.09670v3#S4.SS3",
+          "locator": "arXiv:2401.09670v3, Section 3.3 Practical Problems - Communication overhead; Section 4.3 Online scheduling - Combat burstiness",
+          "depth": "Recompute payload from your KV ledger instead of copying the paper's GB-labeled OPT-66B estimate. Pull buffering still needs a bound on retained prefill KV."
+        },
+        {
+          "resource": "trtllm-disagg-inf7",
+          "title": "Exchange, mapping and completion",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/kv-transfer.html",
+          "locator": "Introduction to KV Cache Transmission, TensorRT-LLM commit cc63e66: Workflow; Key Components - Peer Registrar and Mappers, Page Table and Transfer Agent; Current Limitations (page read 2026-10-14)"
+        },
+        {
+          "resource": "trtllm-disagg-inf7",
+          "title": "Overlap across independent requests",
+          "url": "https://nvidia.github.io/TensorRT-LLM/features/disagg-serving.html#overlap-optimization",
+          "locator": "Disaggregated Serving, TensorRT-LLM commit cc63e66: KV Cache Exchange - Overlap Optimization and Cache Layout Transformation, Figures 4 and 5 (page read 2026-10-14)"
+        },
+        {
+          "resource": "mooncake-inf7",
+          "title": "Remote and lower-tier KV",
+          "url": "https://www.usenix.org/system/files/fast25-qin.pdf",
+          "locator": "FAST 25 paper, Sections 3.1 Overview and 3.2.1 to 3.2.3 Mooncake Store, printed pp. 158 to 160, Figure 3 and Listing 1",
+          "depth": "Read storage ownership, registration and topology-aware transfer. Cluster reproduction is outside this unit; use deterministic tier and link costs in servelab."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse Prefill-decode disaggregation and KV transfer from the GPU route. Start with unique logical KV bytes, then add physical replication, destination fragments, page padding, transport metadata and any layout-conversion work actually transferred.",
+        "A serialized transfer model is \\(t_x = \\alpha + K/W + t_{\\text{layout}}\\), with payload bytes \\(K\\), effective directional bytes/s \\(W\\), startup \\(\\alpha\\) and exposed packing or conversion time. A shared bottleneck link also needs offered byte rate below its capacity for a stable queue.",
+        "The TensorRT-LLM Python workflow separates ZeroMQ control messages from one-sided NIXL writes. Completion requires every expected writer; submission alone does not make destination KV readable or source memory reusable.",
+        "Overlap with other requests differs from layer-wise transfer within one request. The cited Python transceiver currently moves a whole prompt slice after prefill. Offload adds restore latency and pinned or staged memory; HBM, DRAM and SSD capacities are not interchangeable decode-ready capacity."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Use the memory unit's 131,072-byte synthetic KV payload with no padding, metadata or layout work. At a synthetic effective bandwidth of 1,000,000 bytes/s and 1 ms startup, derive a 132.072 ms serialized handoff. Draw producer-ready, destination-reserved, submitted and all-writers-complete events. Overlap unrelated request work, but forbid the dependent decode from consuming incomplete KV. Add a finite transfer-buffer limit and show that a stalled receiver eventually backpressures prefill instead of growing retained KV without bound.",
       "traps": [
-        "TODO"
+        "Treating nonblocking submission as transfer completion. Releasing or overwriting a source page can corrupt an in-flight write.",
+        "Subtracting an arbitrary overlap percentage without a dependency timeline or accounting for shared compute, HBM and link contention.",
+        "Assuming a pull protocol eliminates overload. It moves the waiting KV to the sender, whose memory is also finite."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Which event allows a receiver with several source ranks to use the full KV?",
+          "a": "Successful completion and validation of all expected fragments or writers for that request attempt, followed by the required local visibility and rank agreement. The first completion is insufficient."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does overlap reduce the total KV bytes crossing a link?",
+          "a": "No. It may reduce exposed latency by scheduling independent work concurrently, but the link still carries the payload and can saturate."
+        },
+        {
+          "q": "Why can an SSD-resident prefix lose to recomputing it?",
+          "a": "Reading, staging and restoring its bytes can cost more than the saved prefill work for that prefix and workload. Compare complete paths, not cache-hit count."
+        },
+        {
+          "q": "Does a saturated receiver justify freeing sender KV immediately?",
+          "a": "No. The sender needs explicit bounded retention and rejection or cancellation policy. Its buffers remain owned until writes have completed or can no longer touch them."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's serialized and overlapped transfer timelines, finite handoff credits, slow-receiver backpressure and tier-restore cost comparison.",
+      "stopWhen": "Your handoff byte and time ledger agrees with the event trace, no dependent decode reads incomplete KV, and a stalled receiver cannot cause unbounded retained buffers.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DistServe covers burst backpressure, current TensorRT-LLM docs cover connector ownership and overlap limits, and Mooncake covers tiered KV; servelab supplies bounded handoff practice."
       }
     },
     {
@@ -411,53 +618,81 @@
         "warm-pools-and-elastic-phase-resizing"
       ],
       "outcomes": [
-        "TODO"
+        "Derive a workload-specific disaggregation break-even that includes both phase queues, exposed transfer and layout work.",
+        "Choose prefill and decode placements from local memory, shared-link capacity, heterogeneous phase service rates and cost.",
+        "Account for ready reserve, startup lag and draining requests when resizing a phase pool."
       ],
-      "why": "TODO",
+      "why": "Separating phases is justified only against a comparable colocated plan. A faster phase on a different GPU type can still lose once transfer, queueing, duplicated weights and reserve cost are counted.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/topology-simulator-evidence",
+          "note": "Evaluate the predicted crossover under replayed arrivals and an equal resource budget."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "distserve-inf7",
+          "title": "Placement with and without fast cross-node links",
+          "url": "https://arxiv.org/html/2401.09670v3#S4",
+          "locator": "arXiv:2401.09670v3, Sections 4.1 and 4.2, Algorithms 1 and 2; Section 4.3 - Replanning",
+          "depth": "Retain the enumeration method and corresponding-layer placement constraint. Do not assume KV overhead is negligible just because a link is called InfiniBand."
+        },
+        {
+          "resource": "hands-serving-dist-inf7",
+          "title": "Different devices for different phases",
+          "url": "https://www.oreilly.com/library/view/hands-on-llm-serving/9798341621480/",
+          "locator": "Chapter 7, Prefill-Decode Disaggregation - Opening up more hardware options and Enabling independent and asymmetric scaling, printed pp. 252 to 253; When to Use, printed pp. 256 to 257",
+          "depth": "Use the hardware comparison to pose a phase-cost hypothesis, not to promise its example assignment meets your workload's SLO."
+        },
+        {
+          "resource": "dynamo-disagg-inf7",
+          "title": "Resize discoverable phase pools",
+          "url": "https://docs.nvidia.com/dynamo/v1.5.1/knowledge-base/concepts/system-architecture/disaggregated-serving",
+          "locator": "Dynamo v1.5.1, Runtime-Reconfigurable xPyD; Performance Characteristics - Capacity effects of disaggregation"
         }
       ],
       "focus": [
-        "TODO"
+        "Define a latency comparison before a throughput comparison. With the same work and no overlap, disaggregation reduces a chosen latency only if \\(\\Delta s + \\Delta q + t_x + t_{\\text{extra}} < I\\): service change \\(\\Delta s\\), queue change \\(\\Delta q\\), transfer \\(t_x\\) and extra routing work must be smaller than the colocated interference \\(I\\) removed.",
+        "First-token placement changes the critical path. If prefill streams the first token before KV transfer, transfer may appear in the first decode gap rather than TTFT. Compare the declared TTFT and ITL or TPOT contracts separately.",
+        "DistServe's low-node-affinity plan keeps corresponding prefill and decode layer segments together so KV uses fast local links. Different TP layouts can still need shard redistribution and conversion within that placement.",
+        "Heterogeneous assignment uses measured or explicitly synthetic phase service curves, memory and price, not peak FLOP/s alone. Ready warm reserve costs money; a registered worker is not usable until weights, buffers and warmup are ready. Drain active handoffs before removing capacity."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a synthetic handoff-gated latency, assume disaggregation removes 20 ms of colocated interference, leaves intrinsic phase service unchanged, adds 10 ms exposed transfer and 3 ms routing/layout work, and increases total phase waiting by 2 ms. Derive a 5 ms improvement. Change only the additional waiting to 12 ms and derive a 5 ms regression. Then state the extra constraints needed before either result implies higher SLO-qualified goodput at equal device cost.",
       "traps": [
-        "TODO"
+        "Comparing one transfer delay with the sum of stalls over many decoding users. These are different objectives; choose per-request latency, aggregate lost work or goodput and use consistent units.",
+        "Assigning decode to a cheaper GPU without checking KV capacity, supported dtypes, layout compatibility and achievable batch service time.",
+        "Counting a newly launched worker as immediate capacity, or reclaiming a drained worker while an in-flight write can still reach it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can low offered load favor colocation even on a fast link?",
+          "a": "There may be little interference to remove. Handoff, extra routing and fragmented phase capacity still cost latency and resources."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What does the synthetic regression isolate?",
+          "a": "Queueing alone reverses the latency decision. Transfer and service are unchanged, so faster transport would not explain that reversal."
+        },
+        {
+          "q": "What capacity counts during a phase-pool resize?",
+          "a": "Only ready workers able to admit compatible new requests. Starting workers provide no immediate capacity; draining workers retain resources for active requests until safe retirement."
+        },
+        {
+          "q": "Does lower average handoff-gated latency prove better goodput?",
+          "a": "No. Goodput also depends on tail targets, the completion and quality contract, admission, offered load and equal resource cost. Replay the same workload through both plans."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's fixed-budget colocated versus phase-pool comparison, heterogeneous service assumptions, warm reserve and startup/drain-aware resize scenario.",
+      "stopWhen": "Your placement decision includes a winning and losing regime, identifies the first-token critical path, and charges transfer, queueing, reserve and startup under the same workload and cost budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DistServe supplies topology-constrained placement and replanning, the book supplies heterogeneous phase assignment, and Dynamo covers runtime pool changes; servelab tests the break-even."
       }
     },
     {
       "id": "cross-phase-identity-integrity",
       "title": "Request identity, KV versions, checksums and layout compatibility",
-      "hours": 3,
+      "hours": 4,
       "target": [
         "explain",
         "implement"
@@ -467,47 +702,76 @@
         "checksums-and-layout-compatibility"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a handoff envelope that binds request attempt, model and KV version, tensor geometry, positions and tenant scope.",
+        "Check serialized payload integrity independently from semantic and layout compatibility.",
+        "Repartition synthetic KV between different phase layouts without losing, duplicating or reordering layer/head/position data."
       ],
-      "why": "TODO",
+      "why": "A successful transfer can deliver perfectly intact KV for the wrong request or model. Decode needs both byte integrity and a compatible, live request identity before it can publish or consume that state.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/distributed-failure-propagation",
+          "note": "Fence stale attempts and preserve ownership through delayed completion."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "trtllm-disagg-inf7",
+          "title": "Cross-phase request and layout identity",
+          "url": "https://nvidia.github.io/TensorRT-LLM/features/disagg-serving.html#unique-global-request-id",
+          "locator": "Disaggregated Serving, TensorRT-LLM commit cc63e66: KV Cache Exchange - Cache Layout Transformation and Unique Global Request ID, Figure 5 (page read 2026-10-14)",
+          "depth": "Read the need for a shared unique ID, not the snowflake generator as a universal uniqueness guarantee. Node/process identity assignment and restart behavior still need a deployment contract."
+        },
+        {
+          "resource": "trtllm-disagg-inf7",
+          "title": "Peer mapping and the missing version negotiation",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/kv-transfer.html#current-limitations",
+          "locator": "Introduction to KV Cache Transmission, TensorRT-LLM commit cc63e66: Peer Registrar and Mappers; Page Table; Supporting a New Cache Layout; Current Limitations (page read 2026-10-14)",
+          "depth": "The page says peer metadata carries no version tag and both sides need the same build and runtime. Your versioned servelab envelope is a protective design exercise, not a claim that this engine negotiates versions."
+        },
+        {
+          "resource": "python-hashlib-inf7",
+          "title": "Digest the declared byte representation",
+          "url": "https://docs.python.org/3.14/library/hashlib.html#usage",
+          "locator": "Usage and Hash Objects: SHA-256 construction, incremental update, digest and hexdigest",
+          "depth": "Stop before SHAKE, file hashing, key derivation and BLAKE2. This unit checks accidental corruption, not a security protocol."
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Exact prefix identity, version scope and tenant privacy scope. Bind prompt token IDs, tokenizer/model/adapter revision, positions, cache dtype and format, tenant scope and request attempt to the handoff; a request ID alone cannot prove compatible KV.",
+        "Describe layer, head and token-position ranges plus valid length, page ordering and destination mapping. A producer using head shards and a consumer using layer shards need a redistribution, not merely a byte copy.",
+        "Define a canonical byte order and dtype for the checksum, or explicitly check raw source fragments before conversion. Lossless layout conversion preserves values but may change raw byte ordering; lossy dtype conversion requires its own numerical contract.",
+        "Publish destination KV only after metadata checks, complete payload validation and ownership transition. A matching digest does not establish freshness, authorization or absence of an adversarial substitution."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU, build synthetic KV with two layers, three positions, two heads and head dimension four, using successive `float32` values in layer-position-head-feature order. Split by head into two producer fragments, then reconstruct two consumer fragments split by layer and stored in layer-head-position-feature order. Round-trip to the canonical order and require exact value recovery. Digest the canonical bytes with `hashlib.sha256`, flip one payload bit, and reject it before publication. Reject an intact payload with a mismatched model revision or attempt too.",
       "traps": [
-        "TODO"
+        "Using a payload checksum as the cache-identity key. The same bytes can be intact yet belong to a stale attempt or an unauthorized tenant.",
+        "Treating matching tensor shapes as matching layouts. Head-major and token-major buffers can have equal element counts and different meanings.",
+        "Installing a received block table before validating every fragment. A partial transfer then becomes visible to attention."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "An old-model KV payload has the expected checksum. Should decode accept it?",
+          "a": "No. The digest checks the declared bytes, not the model revision or semantic compatibility. Reject incompatible metadata before using the cache."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Should raw digests match after a head-position transpose?",
+          "a": "Not generally. The byte order changed. Compare in an agreed canonical order, or validate raw fragments separately and check the mapping by value."
+        },
+        {
+          "q": "Why does a retry need an attempt identity as well as a logical request ID?",
+          "a": "A late callback or payload from the previous attempt must not install state into the new attempt. The attempt identity lets the receiver fence that stale work."
+        },
+        {
+          "q": "Does SHA-256 alone authenticate who produced KV?",
+          "a": "No. Anyone able to replace both data and digest can supply a new matching pair. Authentication and tenant authorization are separate requirements."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's versioned KV envelope, TP-to-PP mapping oracle, checksum corruption tests and wrong-request/model/tenant/position rejection cases.",
+      "stopWhen": "Your lossless mapping round-trip preserves every KV value, and corrupt, incomplete, stale or incompatible envelopes are rejected before destination KV becomes visible.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for a concrete byte-checksum API. Python's verified hashlib reference fills that gap beside TensorRT-LLM identity/layout docs and servelab's versioned-envelope tests."
       }
     },
     {
@@ -524,53 +788,86 @@
         "duplicate-request-and-stale-kv-diagnosis"
       ],
       "outcomes": [
-        "TODO"
+        "Implement cancellation and deadline propagation through router, prefill, transfer and decode ownership states.",
+        "Fence retries and late callbacks so one logical request cannot install stale KV or emit duplicate tokens.",
+        "Diagnose rank death, missing transfer fragments and stale worker discovery from a correlated request and ownership trace."
       ],
-      "why": "TODO",
+      "why": "A client timeout does not stop every rank or an already submitted remote write. Recovery must terminate the logical request while retaining physical buffers until late work can no longer corrupt reused memory.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/distributed-disaggregated-inference/topology-simulator-evidence",
+          "note": "Include failed, retried and cancelled work in the topology comparison."
+        },
+        {
+          "unit": "inference/production-serving-reliability/serving-failure-injection",
+          "note": "Carry the phase-boundary fault cases into operational recovery tests."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "trtllm-disagg-inf7",
+          "title": "Failure boundaries of an in-flight transfer",
+          "url": "https://nvidia.github.io/TensorRT-LLM/developer-guide/kv-transfer.html#current-limitations",
+          "locator": "Introduction to KV Cache Transmission, TensorRT-LLM commit cc63e66: Workflow, steps 4 to 6; Current Limitations - submitted operations cannot be aborted (page read 2026-10-14)",
+          "depth": "The page explicitly leaves ambiguous-failure and cancellation retirement incomplete. Design and test the stronger servelab contract rather than assuming this engine already guarantees it."
+        },
+        {
+          "resource": "sglang-pd-inf7",
+          "title": "Heartbeat, waiting and cleanup budgets",
+          "url": "https://docs.sglang.io/docs/advanced_features/pd_disaggregation",
+          "locator": "PD Disaggregation: Mooncake - Advanced Configuration - Prefill Server Configuration and Decode Server Configuration (page read 2026-10-14)",
+          "depth": "Read bootstrap and waiting timeouts, heartbeat health detection and the warning that longer bootstrap timeouts delay cleanup after lost decode connectivity. Skip launch and tuning snippets; model these events on CPU without importing the page's defaults as your SLO."
+        },
+        {
+          "resource": "distserve-inf7",
+          "title": "Disaggregation can propagate failure",
+          "url": "https://arxiv.org/html/2401.09670v3#S4.SS3",
+          "locator": "arXiv:2401.09670v3, Section 4.3 Online scheduling - Preemption and fault tolerance",
+          "depth": "This paragraph discusses future work, not an implemented fault-tolerance protocol. Use it to identify dependencies your handoff tests must cover."
         }
       ],
       "focus": [
-        "TODO"
+        "Build on Streaming, cancellation, failure and cleanup states and ownership invariants, and Rank-aligned timelines, stragglers, congestion and partial failure. Add the phase boundary and attempt identity to those existing invariants.",
+        "A logical terminal state is absorbing: no late callback may revive it or emit output. Physical retirement is separate; an in-flight one-sided write may still target quarantined destination memory until completion or safe transport teardown.",
+        "Propagate the remaining end-to-end deadline, not a fresh full timeout at each hop. A heartbeat can mark a worker unavailable; it cannot prove whether the request committed, whether bytes arrived or whether a retry is safe.",
+        "A TP/PP rank failure can invalidate its serving group. Cancel or fail the dependent request, rebuild suspect communication state, and choose recomputation or replay only under a declared streaming contract. Correlate logical request, attempt, worker generation, collective sequence and KV ownership."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write a deterministic CPU handoff state machine. Replay cancellation before prefill, during a submitted write and after KV-ready but before decode publication. In the submitted-write case, mark the request terminal, quarantine both transfer buffers, and retire them only when the simulated write completes. Start a new attempt, deliver an old completion twice, and verify that neither stale KV nor duplicate output appears. Add one missing-rank completion and require bounded failure instead of waiting forever.",
       "traps": [
-        "TODO"
+        "Equating client cancellation with transport abort. Freeing destination pages while a remote write can still arrive turns a cancelled request into another request's corruption.",
+        "Retrying with the same attempt and worker generation after restart. Delayed control messages can then bind old KV to the new allocation.",
+        "Claiming exactly-once generation from deduplicating requests. A client may already have received tokens before failure; replay needs an explicit offset or a visible failed-stream contract."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A transfer completes after its request was cancelled. What should happen?",
+          "a": "The completion may retire quarantined physical resources, but must not publish KV, resume decode or emit output for the terminal request."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a failed heartbeat prove a request did no work?",
+          "a": "No. It indicates failed health communication. Work may have completed and its acknowledgement may be lost, so retries need attempt fencing and an explicit outcome contract."
+        },
+        {
+          "q": "Why can one dead TP rank fail otherwise healthy ranks' requests?",
+          "a": "Their forward passes depend on matched collectives with that rank. Remaining ranks cannot independently finish the distributed model output."
+        },
+        {
+          "q": "How do you distinguish a stale payload from duplicated delivery of a valid completion?",
+          "a": "Check attempt, worker generation and KV identity first, then the current transition state. An old attempt is rejected; a repeated completion for an already completed live transition is idempotent and must not double-free or republish."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's cancellation and deadline matrix, rank/transfer failures, duplicate delivery, stale-attempt fencing and bounded physical retirement after in-flight writes.",
+      "stopWhen": "Each injected fault reaches one logical terminal outcome, late events cannot revive it, and every allocation is either safely retired or explicitly quarantined with a bounded recovery path.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Current TensorRT-LLM limitations and SGLang timeout/heartbeat docs expose real failure boundaries; DistServe identifies propagation risk, and servelab tests the stronger lifecycle contract."
       }
     },
     {
       "id": "topology-simulator-evidence",
       "title": "A topology and capacity simulator, evidence labels and cost comparison",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "implement",
         "measure"
@@ -581,47 +878,69 @@
         "goodput-utilization-kv-traffic-and-cost-comparison"
       ],
       "outcomes": [
-        "TODO"
+        "Implement deterministic replay with rank memory, phase queues, shared links and bounded KV handoff ownership.",
+        "Label analytical, simulated and measured evidence separately, and validate simulator predictions against independent oracles.",
+        "Compare colocated and disaggregated plans by SLO-qualified goodput, utilization, KV traffic and cost under the same arrivals and resource budget."
       ],
-      "why": "TODO",
+      "why": "A simulator can rank plans only within its assumptions. Plausible latency samples are not measured cluster evidence, and omitted queues or ownership constraints can make an infeasible placement look best.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/capacity-economics-engine-extension/fair-trials-raw-traces",
+          "note": "Carry the replay manifest, evidence labels and equal-cost comparison into repeated capacity trials."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "aisys-code15-17-inf7",
+          "title": "Audit a lightweight placement model",
+          "url": "https://github.com/cfregly/ai-performance-engineering/blob/b57e4c6a9e261c09ac09208705d040c81b03d35e/code/ch15/placement_sim.py",
+          "locator": "PlacementConfig, PlacementMetrics and PlacementSimulator: simulate, _prefill_latency_ms, _decode_latency_ms, _kv_transfer_ms and _allreduce_ms",
+          "depth": "Read and exercise the CPU path only. Its returned TTFT excludes its computed prefill collective cost. Its KV formula omits layer/head geometry, and it has no arrival queues or local memory admission. Restore these terms in your model before comparing capacity; its bandwidth names and comments also need an explicit bits/s versus bytes/s and direction convention."
+        },
+        {
+          "resource": "distserve-inf7",
+          "title": "Calibrated service models and placement evidence",
+          "url": "https://arxiv.org/html/2401.09670v3#A1",
+          "locator": "arXiv:2401.09670v3, Appendix A.1 to A.3 Latency Model for LLM Inference; Section 4.1, Simulator building paragraph; Section 6.4 Ablation Studies, Simulator accuracy paragraph and Table 2",
+          "depth": "Read how profiling fits phase coefficients and how prediction error is evaluated. Do not reuse its OPT/A100 coefficients or universalize its kernel-bound classifications. A fitted service model still needs queue, topology and memory validation for your workload."
         }
       ],
       "focus": [
-        "TODO"
+        "Build on A continuous-batching simulator with deterministic replay and event traces, and Communication measurement contracts and analytical or CPU simulation. Add rank ownership, topology links, phase transfer credits and attempt-fenced terminal events rather than reimplementing those foundations.",
+        "Replay an immutable arrival trace through equal-budget plans. Log offered, admitted, rejected, failed, retried and completed requests, phase waiting, TTFT, decode gaps and peak per-rank KV. Count one logical completion even when attempts repeat.",
+        "Use a declared observation window and completion policy. Goodput counts only accepted completions meeting the quality and latency contract per elapsed second. Utilization is resource busy time over available time, not a sum of request latencies; cost per good completion includes idle reserve, failed work and retries.",
+        "Label formula results analytical, event-model outputs simulated and actual device observations measured. A CPU simulator's wall-clock runtime is not GPU service latency. If you calibrate on your GPU, record the model, dtype, engine/version and shapes, validate on held-out shapes, and keep multi-device extrapolations simulated."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU, replay three requests arriving at 0, 1 and 2 ms through one FIFO synthetic server with fixed 2 ms service, no batching and unlimited memory. Recover completion times 2, 4 and 6 ms and response times 2, 3 and 4 ms. With a response-time SLO of at most 3 ms, a window from 0 to 6 ms including its endpoint, and all outputs accepted, goodput is two completions per 0.006 s and utilization is 100 percent. Repeat with an admission limit of one resident request, counting active plus waiting requests: reject the 1 ms arrival, process completion before arrival at 2 ms, and complete the others at 2 and 4 ms. Keep the same 6 ms window; goodput stays the same while utilization becomes two thirds. Charge both runs the same synthetic server price per elapsed second, including idle time. Then audit the companion model's missing prefill collective and KV geometry against the earlier hand ledgers.",
       "traps": [
-        "TODO"
+        "Calling synthetic percentile outputs measured tail latency. Independent length samples without arrival queues cannot reveal queueing tails or saturation.",
+        "Using the sum of request service times as elapsed benchmark time when requests overlap. Goodput and cost need a common observation window.",
+        "Removing rejected or failed work from the offered-load denominator, counting retries as new successes, or comparing plans with different warm reserve and device cost."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why does the admission-limited replay have the same goodput but lower utilization?",
+          "a": "Both runs have two SLO-qualified completions in the same 6 ms window. The unlimited run spends 6 ms serving three requests, including one late completion; the limited run serves two requests for 4 ms and rejects the other."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does matching one isolated-request latency validate capacity predictions?",
+          "a": "No. Capacity also depends on batching, arrivals, shared resources, memory admission and ownership. Validate those constraints and held-out workload mixtures separately."
+        },
+        {
+          "q": "Can a fitted single-GPU service curve make a cross-node comparison measured evidence?",
+          "a": "No. Only the calibration observations are measured. Unobserved collective, transfer and contention behavior remains analytical or simulated, with its assumptions stated."
+        },
+        {
+          "q": "What should happen when a placement violates one rank's KV budget?",
+          "a": "Reject the placement or simulate its declared admission, eviction or preemption policy. Do not report its unconstrained latency as feasible capacity."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: servelab's topology and phase-capacity replay, hand-ledger oracles, equal-budget baseline and ablations, saturation and failure traces, and evidence-labeled goodput/utilization/KV-traffic/cost report.",
+      "stopWhen": "Your replay matches the hand timelines and resource ledgers, infeasible plans cannot win, and your equal-budget comparison separates simulated predictions from measurements and includes a negative regime.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The companion code supplies a concrete CPU audit target, and DistServe supplies calibrated phase modeling and prediction-error evaluation. Servelab restores omitted constraints and compares equal-budget plans with explicit evidence labels."
       }
     }
   ]
