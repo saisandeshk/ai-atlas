@@ -302,48 +302,85 @@
         "expert-and-dense-parameter-state-ownership"
       ],
       "outcomes": [
-        "TODO"
+        "Explain expert-parallel groups, expert ownership and why EP composes with data parallelism.",
+        "Distinguish expert parallelism (shard across experts) from expert tensor parallelism (shard within each expert).",
+        "State which parameters live on which mesh for dense versus expert-sharded state."
       ],
-      "why": "TODO",
+      "why": "Groups decide which ranks exchange tokens and which own each expert. Every later claim about sharding, placement or accounting rests on this mapping.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-fsdp-ep-composition",
+          "note": "Shard dense and expert state on their separate meshes."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-comm-memory-placement",
+          "note": "Cost the token exchange the groups carry."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ultrascale-ep-dt7",
+          "title": "Expert parallelism and its 5D interaction",
+          "url": "https://nanotron-ultrascale-playbook.static.hf.space/index.html#expert_parallelism",
+          "locator": "Chapter 7, Expert Parallelism: independent experts on different workers without splitting matrix multiplies; Chapter 8, 5D Parallelism in a Nutshell: EP along experts composed with DP along batch, and the note that some implementations treat EP as DP with routing"
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "EP and expert tensor parallelism walkthrough",
+          "url": "https://www.youtube.com/watch?v=XoGvCBRnwLs",
+          "locator": "16:49:58 (MoE) through 18:36:24 (expert parallelism), and 19:27:38 (expert tensor parallelism)"
+        },
+        {
+          "resource": "torchfeather-ep-dt7",
+          "title": "EP, ETP and combined application code",
+          "url": "https://github.com/hkproj/torchfeather/blob/c416ab1ad0fd3567a0a6c8ad0da570c8fd6e55aa/torchfeather/distributed/expert_parallel.py",
+          "locator": "`ExpertParallel._partition_fn` (shard on the expert dim), `ExpertTensorParallel` (two-dim sharding over the EP and ETP mesh), `ReordererSequenceParallel` (token split with rank offsets) and `apply_moe_ep_tp` branch logic"
+        },
+        {
+          "resource": "pytorch-moe-dt7",
+          "title": "Production mesh composition",
+          "url": "https://github.com/pytorch/torchtitan/blob/0b75362025f037a2d1a23240ba21786928a9052e/torchtitan/distributed/parallelism_context.py",
+          "locator": "`MeshAxisName` EP and EDP_SHARD entries, `build_mesh` dense and sparse views, and the rule that `ep` divides the sparse region with `edp_shard = dp_shard * cp * tp / ep`; `config/validation.py` requires `ep >= tp` and `num_experts % ep == 0`",
+          "depth": "Read after the tiny oracle passes; record the mapping, do not run the trainer."
         }
       ],
       "focus": [
-        "TODO"
+        "EP shards the expert dimension: each rank owns whole experts. Non-MoE layers are unaffected, so EP alone leaves dense compute replicated; compose it with DP over the batch.",
+        "Expert tensor parallelism additionally shards within each expert (`Shard(1)` on `w1` and `w3`, `Shard(2)` on `w2` in TorchFeather). EP chooses the expert; ETP chooses the shard.",
+        "TorchTitan borrows dense ranks for the sparse region instead of multiplying the world size by EP. Dense state uses the DP mesh; expert weights shard on EP with FSDP over EDP_SHARD.",
+        "Validation is mechanical: \\(ep\\) divides the sparse region, \\(ep \\geq tp\\), and \\(E \\bmod \\text{ep} = 0\\)."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, map world size 8 with `dp_shard = 4` and `tp = 2` plus `ep = 4` over 12 experts: derive the sparse region (8 ranks), `edp_shard = 2`, the two EP groups, 3 experts per rank, and which mesh each of `w1`, the router gate and the attention weights lives on.",
       "traps": [
-        "TODO"
+        "EP borrows ranks, so the world-size product counts dense axes only. Multiplying by EP again double-counts ranks and invents groups that do not exist.",
+        "ETP is not a bigger EP. EP without ETP keeps each owned expert whole; ETP splits every expert and needs its own mesh dimension and collectives.",
+        "Expert weights and dense weights need different FSDP meshes. Wrapping a whole MoE layer in one FSDP unit mixes them and breaks the sparse sharding."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "World size 8, `dp_shard = 4`, `tp = 2`, `ep = 4`. What is `edp_shard` and how many experts per rank with \\(E = 12\\)?",
+          "a": "`edp_shard = 4 * 2 / 4 = 2`; each EP rank owns \\(12 / 4 = 3\\) experts."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why must EP be composed with DP instead of used alone?",
+          "a": "EP only affects MoE layers. Without DP over the batch, all ranks would redundantly compute every non-MoE block."
+        },
+        {
+          "q": "What breaks if \\(E = 10\\) with \\(ep = 4\\)?",
+          "a": "10 is not divisible by 4, so experts cannot split evenly; validation rejects it. Each rank must own the same count of whole experts."
+        },
+        {
+          "q": "Where do the router gate weights live relative to the experts?",
+          "a": "On the dense side: the gate sees every local token before dispatch, so it is not expert-sharded. Only the expert MLPs shard on EP."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "You can draw the dense and sparse meshes for the 8-rank example from memory, with every parameter family on its mesh and every rejected configuration named.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
-      }
+        "note": "The playbook chapters, the TorchFeather video and code, and the TorchTitan mesh files cover groups, ETP vocabulary and state ownership at explain depth, with the mini-project as practice."
+      },
+      "practiceNote": "The section mini-project covers this: rank-coordinate mapper for EP and ETP groups with round-trip and invalid-configuration tests."
     },
     {
       "id": "expert-capacity-dropping",
@@ -358,48 +395,84 @@
         "dropless-dropped-and-padded-routing-semantics"
       ],
       "outcomes": [
-        "TODO"
+        "Derive per-expert capacity from tokens, experts and the capacity factor for one batch.",
+        "Contrast dropless, dropped and padded routing and state what happens to overflow tokens.",
+        "Compare the Switch capacity rule with the GShard group capacity rule."
       ],
-      "why": "TODO",
+      "why": "Static shapes force a fixed per-expert buffer before routing is known. The capacity factor sets that buffer, and the overflow policy decides whether extra tokens skip compute, waste it or stall.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-balance-z-loss",
+          "note": "Use the balancing loss to keep overflow rare."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-imbalance-skew-metrics",
+          "note": "Measure how often the buffer actually overflows."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "moe-paper-dt7",
+          "title": "Expert capacity and its costs",
+          "url": "https://jmlr.org/papers/v23/21-0998.html",
+          "locator": "Section 2.2 with Equation 3 and Figure 3: capacity as tokens per batch over experts times the capacity factor, overflow handling, and the finding that Switch performs best at capacity factors 1.0 to 1.25"
+        },
+        {
+          "resource": "hf-moe-dt7",
+          "title": "Capacity, dropping and communication",
+          "url": "https://huggingface.co/blog/moe#capacity-factor-and-communication-costs",
+          "locator": "Switch Transformers capacity equation, the Capacity Factor and communication costs subsection, and the GShard expert-capacity paragraph with overflow via residual connections"
+        },
+        {
+          "resource": "gshard-paper-dt7",
+          "title": "Group capacity and overflow policy",
+          "url": "https://arxiv.org/abs/2006.16668",
+          "locator": "Section 2.2 and Algorithm 1 (arXiv:2006.16668v1): per-group fractional capacity, overflow tokens passed on via residual connections, and random second-expert routing"
+        },
+        {
+          "resource": "st-moe-paper-dt7",
+          "title": "Capacity factor trade-offs",
+          "url": "https://arxiv.org/abs/2202.08906",
+          "locator": "Table 1 capacity factor definition and Section 5.2 (arXiv:2202.08906v2): raising train and eval capacity improves quality but linearly raises einsum, memory, all-to-all and allreduce costs"
         }
       ],
       "focus": [
-        "TODO"
+        "Switch capacity is \\((\\text{tokens per batch} / N) \\times c\\), with \\(c\\) the capacity factor and \\(N\\) the expert count. For top-\\(k\\) routing the numerator counts assignments (\\(T \\times k\\)), not tokens.",
+        "Dropped tokens skip expert compute and flow through the residual; padded slots consume expert FLOPs on zeros. Dropless with imbalance still pays padding or irregular shapes.",
+        "GShard splits the batch into groups with fractional capacity per group; Switch sets one buffer per expert for the whole batch. Both enforce the same idea: at most \\(c\\) times the even share fits.",
+        "Switch keeps quality at \\(c = 1.0\\) to \\(1.25\\); larger \\(c\\) buys less dropping at linearly higher communication and activation cost."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute Switch capacity for 16 tokens and 4 experts at \\(c = 1.0\\) (4 slots) and \\(c = 1.25\\) (5 slots). Route 8 tokens to one expert under each and state dropped counts (4 and 3), then state the padded-row cost if dropping is forbidden.",
       "traps": [
-        "TODO"
+        "Forgetting the \\(k\\) multiplier: with top-\\(k\\) routing each token occupies \\(k\\) slots, so capacity from tokens alone under-provisions by a factor of \\(k\\).",
+        "Treating dropped tokens as lost. They skip the expert but keep their residual stream and reach the next layer; the damage is missing expert compute, not a missing position.",
+        "Reading GShard and Switch capacities as one rule. GShard rations per group with random second-expert admission; Switch rations per expert over the batch. Compare them, do not merge them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "32 tokens, 8 experts, \\(c = 1.0\\), top-1 routing. What is the capacity?",
+          "a": "\\((32 / 8) \\times 1.0 = 4\\) slots per expert."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Same batch with top-2 routing and \\(c = 1.0\\). What buffer holds the even share?",
+          "a": "\\((32 \\times 2 / 8) \\times 1.0 = 8\\) slots, because 64 assignments spread over 8 experts."
+        },
+        {
+          "q": "An expert receives 9 tokens at capacity 5 under dropping. What happens to the 4 extras?",
+          "a": "They skip expert compute and pass through the residual connection to the next layer."
+        },
+        {
+          "q": "Why can raising the capacity factor hurt step time even as drops fall?",
+          "a": "Every extra slot adds activation memory and all-to-all payload whether or not a real token fills it. Communication and einsum costs grow linearly with the factor."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "You reproduce the 16-token capacity arithmetic from memory and predict drops and padding for a skewed assignment without notes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
-      }
+        "note": "Switch Section 2.2, the blog capacity sections, GShard Section 2.2 and ST-MoE Section 5.2 cover capacity and overflow semantics at derive and implement depth, with the mini-project as practice."
+      },
+      "practiceNote": "The section mini-project covers this: capacity derivation for one batch, drop and pad accounting, and overflow behavior under skewed routing."
     },
     {
       "id": "moe-balance-z-loss",
@@ -414,47 +487,89 @@
         "router-z-loss-and-numerical-stability"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the Switch auxiliary load-balancing loss and its gradients at the level needed to spot sign, normalization and detach errors.",
+        "Explain the router z-loss, what it penalizes and why it stabilizes routing precision.",
+        "Contrast auxiliary-loss balancing with auxiliary-loss-free bias routing."
       ],
-      "why": "TODO",
+      "why": "Without a balancing force the router collapses onto a few experts, overflows their buffers and starves the rest. The auxiliary loss and the z-loss are the two standard counterweights, with different failure modes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-training/expert-parallelism-moe/moe-imbalance-skew-metrics",
+          "note": "Check whether the losses actually balance the experts."
+        },
+        {
+          "unit": "distributed-training/expert-parallelism-moe/moe-layer-router-scores",
+          "note": "Revisit how the bias term enters selection without entering gates."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "moe-paper-dt7",
+          "title": "Auxiliary load-balancing loss",
+          "url": "https://jmlr.org/papers/v23/21-0998.html",
+          "locator": "Section 2.2, Equations 4 to 6: \\(\\text{loss} = \\alpha N \\sum f_{i} P_{i}\\) with token fraction \\(f\\) and router probability fraction \\(P\\), the non-differentiability of \\(f\\), and \\(\\alpha = 10^{-2}\\)"
+        },
+        {
+          "resource": "gshard-paper-dt7",
+          "title": "Earlier auxiliary loss form",
+          "url": "https://arxiv.org/abs/2006.16668",
+          "locator": "Algorithm 1, line 17 (arXiv:2006.16668v1): \\(\\ell_{\\text{aux}} = (1/E) \\sum (c_{e}/S) m_{e}\\) with counts \\(c_{e}\\) and mean gates \\(m_{e}\\) as the differentiable approximation"
+        },
+        {
+          "resource": "st-moe-paper-dt7",
+          "title": "Router z-loss",
+          "url": "https://arxiv.org/abs/2202.08906",
+          "locator": "Section 3.3, Equations 5 and 6, and Table 4 (arXiv:2202.08906v2): z-loss as mean squared log-sum-exp of router logits, total loss weights with \\(c_{z} = 0.001\\), and stabilization without quality loss versus update clipping"
+        },
+        {
+          "resource": "deepseek-v3-dt7",
+          "title": "Auxiliary-loss-free balancing",
+          "url": "https://arxiv.org/abs/2412.19437",
+          "locator": "Section 2.1.2, Auxiliary-Loss-Free Load Balancing with Equation 16, and Complementary Sequence-Wise Auxiliary Loss, Equations 17 to 20 (arXiv:2412.19437v2): bias-only routing plus a tiny sequence-wise loss; throughput figures are the authors cluster results"
         }
       ],
       "focus": [
-        "TODO"
+        "The Switch loss multiplies by \\(N\\) so uniform routing gives the same value at any expert count. \\(f\\) is a non-differentiable count fraction; gradients flow only through \\(P\\).",
+        "The z-loss penalizes large router logits through the squared log-sum-exp. Small logits shrink bfloat16 roundoff inside the router exponentials, which selective float32 precision alone did not fix at scale.",
+        "Auxiliary-loss-free routing adds a per-expert bias for selection only and adapts it from observed load. Gate values still come from unaugmented affinities; the bias is updated outside backward.",
+        "Loss scales do not transfer: Switch uses \\(\\alpha = 10^{-2}\\); DeepSeek-V3 keeps only an extremely small sequence-wise coefficient. Copying one into the other over- or under-balances."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute the Switch loss with \\(\\alpha = 0.01\\) and \\(N = 2\\) for a balanced batch (\\(f = P = [0.5, 0.5]\\), loss 0.01) and a collapsed batch (\\(f = P = [1, 0]\\), loss 0.02). Then compute the z-loss for logits \\([2, 1, 0.5]\\) (log-sum-exp 2.4644, loss 6.0731) and state the sign of each logit gradient.",
       "traps": [
-        "TODO"
+        "Letting gradients flow into the count fraction \\(f\\). Detach it: only \\(P\\) (or \\(m_{e}\\)) is differentiable. Differentiating counts is the standard implementation bug.",
+        "Treating the z-loss as a load balancer. It balances logit magnitudes for numerical stability, not token counts across experts; it complements the auxiliary loss rather than replacing it.",
+        "Tuning the bias as a gradient parameter. The aux-loss-free bias is a control variable updated from load statistics in a pre-hook, not through the loss."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does the Switch loss multiply by \\(N\\)?",
+          "a": "Under uniform routing each \\(f_{i} P_{i} = 1/N^{2}\\), so the sum is \\(1/N\\). Multiplying by \\(N\\) keeps the loss constant as experts are added."
+        },
+        {
+          "q": "Which vector carries gradients in the auxiliary loss, and why?",
+          "a": "Only \\(P\\): \\(f\\) comes from argmax counts and has no derivative. The loss optimizes the differentiable probability fraction toward the observed counts."
+        },
+        {
+          "q": "Logits \\([2, 1, 0.5]\\) give z-loss 6.0731. What are the gradient signs?",
+          "a": "All positive, proportional to softmax: about \\([3.10, 1.14, 0.69]\\). The loss pushes every logit down, largest first."
+        },
+        {
+          "q": "When would you prefer bias routing over a large auxiliary loss?",
+          "a": "When balancing pressure degrades quality: the bias keeps load even without taxing the main objective, at the cost of external load tracking."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deep-ML 389: Mixture of Experts Load Balancing Loss",
+          "url": "https://www.deep-ml.com/problems/389",
+          "locator": "Implement `moe_load_balancing_loss(gate_logits, num_experts, alpha)`; the tests check 0.01 for a balanced two-expert batch and 0.02 for a fully collapsed batch at `alpha = 0.01`",
+          "note": "Derive the two expected values from the Switch formula before running. The tests check loss values only, not z-loss or bias routing."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive both auxiliary losses and the z-loss from memory, predict the 0.01 versus 0.02 cases, and pass Deep-ML 389.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Switch Section 2.2, GShard Algorithm 1, ST-MoE Section 3.3 and DeepSeek-V3 Section 2.1.2 cover both losses and bias routing at derive depth, with Deep-ML 389 as checked practice."
       }
     },
     {
