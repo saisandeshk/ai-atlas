@@ -15,47 +15,70 @@
         "normalization-and-fused-residual-paths"
       ],
       "outcomes": [
-        "TODO"
+        "Integrate residual-add plus RMSNorm with explicit mutation, accumulation and epsilon contracts.",
+        "Use online-softmax state to combine disjoint decode partitions without averaging their outputs.",
+        "Test both returned activations and retained residuals against an independent reference."
       ],
-      "why": "TODO",
+      "why": "Build on Online softmax state, query and key-value tiling and Stable RMSNorm and LayerNorm, and RoPE fusion. The serving task is preserving residual state and reduction semantics across repeated decode steps, not writing another generic reduction kernel.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "inference/inference-kernels-graph-execution/serving-attention-shapes-io",
+          "note": "Apply the reduction contract to serving attention shapes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flashinfer-paper-inf5",
+          "title": "Attention composition, arXiv:2501.01005v1",
+          "url": "https://arxiv.org/html/2501.01005v1#S2.SS2",
+          "locator": "Section 2.2, Attention Composition, attention-state definition and binary merge",
+          "depth": "Use disjoint key subsets and maximum subtraction when merging. Associativity holds in real arithmetic, not bitwise floating-point arithmetic."
+        },
+        {
+          "resource": "flashinfer-docs-inf5",
+          "title": "Fused residual mutation contract",
+          "url": "https://docs.flashinfer.ai/generated/flashinfer.norm.fused_add_rmsnorm.html",
+          "locator": "FlashInfer 0.7.1 documentation: Step 1, Step 2 and Parameters of `fused_add_rmsnorm`"
+        },
+        {
+          "resource": "mini-sglang-kernels-inf5",
+          "title": "Residual ownership in the model path",
+          "url": "https://github.com/sgl-project/mini-sglang/blob/9a91cfafe754aa85daee49998176275667eb58f2/python/minisgl/layers/norm.py",
+          "locator": "`RMSNormFused.forward`, including the absent-residual branch"
         }
       ],
       "focus": [
-        "TODO"
+        "For residual sum \(z=x+r\), RMSNorm returns \(w\odot z/\sqrt{\operatorname{mean}(z^2)+\epsilon}\). LayerNorm instead centers the row and uses population variance. Preserve the model's choice.",
+        "The fused API overwrites the residual with the sum and the input with normalized activations. Returning only normalized values loses state needed by the next block.",
+        "For partial attention states, merge unnormalized weights or log-normalizers. Keep the logarithm base consistent and rescale by the larger maximum before exponentiating.",
+        "Specify whether the residual sum is rounded to storage dtype before normalization. Promotion before the sum and promotion only for the reduction are different numerical contracts."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, implement a CPU double-precision residual/RMSNorm reference with `eps=1e-6`. For input `[1., 2., 3., 4.]`, residual `[4., 3., 2., 1.]` and unit weights, the retained residual is `[5., 5., 5., 5.]`; RMSNorm is approximately one while centered LayerNorm is zero. Check both buffers through two successive calls. Then merge disjoint online-softmax states from your earlier GPU-track implementation and compare with one dense reduction under its declared tolerance.",
       "traps": [
-        "TODO"
+        "Validating activations but forgetting that the residual was overwritten incorrectly.",
+        "Reading aliased input and residual buffers as though they were independent. Reject unsupported overlap before dispatch.",
+        "Initializing an all-masked partition with ordinary subtraction of two negative infinities. Give empty states an explicit identity path."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is averaging two partition outputs wrong?",
+          "a": "Their softmax denominators generally differ. Weight each output by its partition's normalizer before dividing by the combined normalizer."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does finite-logit maximum subtraction make every softmax input safe?",
+          "a": "No. NaNs, positive infinities and all-masked rows still need a declared policy. A finite nonempty row avoids exponential overflow after subtraction."
+        },
+        {
+          "q": "What must a residual-fusion oracle return?",
+          "a": "The updated residual and normalized activation, with the intended cast points, epsilon, weight and mutation semantics."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: `servelab` residual-state and split-softmax reference checks, including repeated calls and empty partitions.",
+      "stopWhen": "Both residual and activation pass independent repeated-call checks, and split-softmax merges match the dense oracle under a stated finite and all-masked policy.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: attention composition, the fused API and the runner's residual branches cover the serving contract; the mini-project supplies repeated-state practice."
       }
     },
     {
