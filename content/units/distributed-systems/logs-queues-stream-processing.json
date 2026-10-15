@@ -1,6 +1,37 @@
 {
   "section": "logs-queues-stream-processing",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "iceberg-spec-ds7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Apache Iceberg - Table Specification",
+      "provider": "Apache Iceberg",
+      "access": "Free",
+      "use": "Read the snapshot, manifest list and manifest sections for the read path, and the table metadata section for the atomic metadata-file swap that commits a snapshot.",
+      "url": "https://iceberg.apache.org/spec/"
+    },
+    {
+      "id": "delta-protocol-ds7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Delta Lake Protocol (pinned commit)",
+      "provider": "Delta Lake",
+      "access": "Free",
+      "use": "Read the transaction log replay and checkpoint sections for how readers reconstruct table state, and the concurrency section for the optimistic commit rule.",
+      "url": "https://github.com/delta-io/delta/blob/6a62fd86d58eea07a57720a80320b29f1130924e/PROTOCOL.md"
+    },
+    {
+      "id": "avro-spec-ds7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Apache Avro 1.12.0 Specification - Schema Resolution",
+      "provider": "Apache Avro",
+      "access": "Free",
+      "use": "Read Schema Resolution only: records match by field name, writer-only fields are ignored, reader-only fields are filled from defaults, plus the promotion rules.",
+      "url": "https://avro.apache.org/docs/1.12.0/specification/"
+    }
+  ],
   "units": [
     {
       "id": "segmented-log-offsets-retention",
@@ -16,47 +47,94 @@
         "retention-versus-compaction"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why a log assigns monotonically increasing offsets per partition and what a consumer offset marks.",
+        "Explain segments, sparse indexes, time and size retention, and log compaction as latest-value-per-key retention.",
+        "Implement an append-only segmented log with a sparse index, retention and recovery that replays from the last valid record."
       ],
-      "why": "TODO",
+      "why": "Every later contract in this section, from consumer positions to checkpoints, is an offset into a durable log. If the log cannot bound its storage or rebuild its index after a crash, nothing above it holds.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/partition-ordering-high-watermark",
+          "note": "Shard the log once the single-log layout is sound."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/delivery-semantics-offset-commits",
+          "note": "Commit offsets against application state on top of this layout."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Build the mini log on this segment, index and retention layout."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "the-log-ds7",
+          "title": "The log as the unifying abstraction",
+          "url": "https://www.linkedin.com/blog/engineering/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying",
+          "locator": "Part One: the log as an append-only totally ordered sequence; the state-machine replication principle; tables and changelogs as dual views of the log"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Log-based message brokers, offsets and retention",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log-Based Message Brokers: per-partition offsets (pp. 495 to 496); consumer offsets (p. 498); segments, retention and the circular-buffer bound with the 22-hour calculation (pp. 498 to 499)"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Log compaction",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log compaction (pp. 505 to 506): keep the latest value per key, tombstones for deletes, rebuild derived state with a scan from offset 0"
+        },
+        {
+          "resource": "kafka-2011-ds7",
+          "title": "Kafka design ancestor: segments, offsets, pull consumers",
+          "url": "https://notes.stephenholiday.com/Kafka.pdf",
+          "locator": "The log-structured design (segments, offsets, stateless broker, pull consumers) and the final section (replication as future work)",
+          "depth": "Take durability and replication from the current Kafka 4.3 docs, not this paper. Its producer is fire-and-forget with no delivery guarantee."
         }
       ],
       "focus": [
-        "TODO"
+        "An offset identifies a position in one partition only. It never restarts and is never reused within that partition.",
+        "A segment bounds the unit of deletion, and a sparse index maps sampled offsets to file positions, so lookup stays fast while index memory stays bounded.",
+        "Time and size retention deletes whole segments, so a consumer that falls behind the oldest retained segment misses messages. Compaction instead keeps the latest value per key plus tombstones, so a scan from offset 0 rebuilds current state.",
+        "The book gives a concrete bound: one 20 TB disk written at 250 MB/s fills in about 22 hours, so even at full write bandwidth a single disk holds about a day of messages. Real deployments write well below full bandwidth, so retention reaches days or weeks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the 20 TB at 250 MB/s bound (about 22 hours) and sketch the segment layout, sparse index entries, and the scan-from-0 rebuild of a compacted topic with one tombstoned key.",
       "traps": [
-        "TODO"
+        "Treating offsets as global across partitions. Ordering and positions hold within one partition only.",
+        "Expecting compaction to shrink append-only event streams. Without repeated keys nothing is deduplicated.",
+        "Assuming a slow consumer can always catch up. Retention deletes segments, so a lagging offset can point at deleted data."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A topic has 3 partitions and a consumer reads offsets 0 to 99 on each. How many totally ordered sequences is it reading?",
+          "a": "Three, one per partition. There is no ordering guarantee across partitions."
+        },
+        {
+          "q": "A drive holds 20 TB and ingest runs at 250 MB/s. How long before the oldest segment must be deleted?",
+          "a": "About 22 hours: \\(20 \\times 10^{12} / (250 \\times 10^{6}) = 80{,}000\\) seconds, which is about 22 hours. Deployments that write below full bandwidth retain days or weeks."
+        },
+        {
+          "q": "A compacted topic holds keys mew, purr and scratch, then a tombstone for purr. What does a scan from offset 0 return?",
+          "a": "The latest value for mew and scratch, and nothing for purr. The tombstone removes purr during compaction."
+        },
+        {
+          "q": "Why does the Kafka 2011 paper not settle your durability design?",
+          "a": "Replication is future work in that paper and its producer is fire-and-forget, so broker loss behavior must come from the current 4.3 docs and your own acknowledgement contract."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Gossip Glomers 5a: single-node Kafka-style log",
+          "url": "https://fly.io/dist-sys/5a",
+          "locator": "Implement `send`, `poll`, `commit_offsets` and `list_committed_offsets`; run the Evaluation section's kafka workload on one node with the flags given on the page",
+          "note": "The checker catches lost writes and nonmonotonic or skipped offsets. It has no recency requirement, so an acknowledged send need not appear in a poll right away; your own log should still serve it on the next poll."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can derive the retention bound, explain what compaction keeps, and your 5a node passes the single-node run with its history retained.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers segments, offsets, retention and compaction at explain depth; the 2011 paper gives the mini-log ancestor and Glomers 5a gives checked practice."
       }
     },
     {
@@ -71,47 +149,75 @@
         "replication-and-high-watermark-visibility"
       ],
       "outcomes": [
-        "TODO"
+        "Explain per-partition ordering and how a partition key routes all events of one entity to the same partition.",
+        "Explain leader, followers and in-sync replicas, and why only committed offsets below the high watermark are visible to consumers.",
+        "State which writes survive a leader loss under `acks=all` with `min.insync.replicas` set, and which are refused instead."
       ],
-      "why": "TODO",
+      "why": "Partitioning buys throughput by giving up global order, and replication buys survival by hiding uncommitted records. Every routing key and every read after a failover depends on this boundary.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/producer-acks-idempotence-transactions",
+          "note": "Choose acknowledgement settings against this commit rule."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/consumer-groups-rebalance",
+          "note": "Assign these partitions to consumers next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Reproduce the commit and visibility rule in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Partitions and per-partition ordering",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log-Based Message Brokers (pp. 496 to 497): Figure 12-3, offsets within a partition, no ordering across partitions, routing by partition key such as user ID"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "Replication, ISR and durability guarantees",
+          "url": "https://kafka.apache.org/43/design/design/",
+          "locator": "Replication; Replicated Logs: Quorums, ISRs, and State Machines; Availability and Durability Guarantees (`acks` with `min.insync.replicas`; committed writes safe while one in-sync replica lives); Unclean leader election"
         }
       ],
       "focus": [
-        "TODO"
+        "A partition is the unit of ordering and of parallelism: more partitions raise throughput but also the number of independent sequences.",
+        "All events that need a fixed relative order must share a partition key. Key by entity ID, not by timestamp.",
+        "Followers pull like consumers, and the leader commits a write only after all in-sync replicas receive it.",
+        "The high watermark marks the end of the committed prefix: consumers read only offsets below it, never up to the log end offset, so uncommitted tail records stay invisible."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw one partition with a leader and two followers, mark the log end offset and the high watermark after a write reaches the leader and one follower, and state which `acks` values would have returned success.",
       "traps": [
-        "TODO"
+        "Reading uncommitted tail records. A record the leader holds but has not committed can vanish in a failover.",
+        "Enabling unclean leader election for availability and still claiming no loss. An out-of-sync replica elected leader drops records the old leader had committed.",
+        "Assuming partition count can be lowered later. Kafka supports only increasing partitions per topic, which changes the key-to-partition mapping."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Two requests from one user are handled by different web servers. How do their events keep a fixed relative order?",
+          "a": "Route both by the user ID as partition key so they land in the same partition, which is totally ordered."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A write reaches the leader only. Which `acks` settings report success, and can a consumer read the record?",
+          "a": "`acks=1` and `acks=0` report success; `acks=all` does not. No consumer can read it yet because it is still above the high watermark."
+        },
+        {
+          "q": "With `min.insync.replicas=2`, one follower lags out of the ISR and then the leader dies. What happens to committed writes and to new `acks=all` writes?",
+          "a": "Committed writes are safe while one in-sync replica lives. New `acks=all` writes are refused with an error until the ISR recovers; nothing is silently lost."
+        },
+        {
+          "q": "Unclean leader election is enabled, all in-sync replicas die, and an out-of-sync replica is elected. What breaks?",
+          "a": "Records committed on the dead replicas but missing on the new leader are lost, and consumers can see gaps. Availability is preserved at the cost of the durability contract."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: replicated commit with an explicit high watermark and leader-failover tests.",
+      "stopWhen": "You can trace a write from leader append through ISR acknowledgement to consumer visibility, and predict the outcome of each failover case above.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers partition ordering and the ISR commit rule at explain depth; replicated-commit practice lives in the section mini-project."
       }
     },
     {
@@ -128,47 +234,78 @@
         "transactional-producer-scope"
       ],
       "outcomes": [
-        "TODO"
+        "Explain `acks` 0, 1 and all as durability versus latency choices gated by `min.insync.replicas`.",
+        "Explain the idempotent producer's per-partition sequence state and what breaks duplicate suppression.",
+        "Derive the atomic scope of a Kafka transaction: which partition writes and offsets commit together, and what stays outside it."
       ],
-      "why": "TODO",
+      "why": "Retried requests are certain and ambiguous outcomes are permanent: a timeout never says whether the write landed. Acknowledgements, sequence state and transactions are the three tools that make retries safe.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/delivery-semantics-offset-commits",
+          "note": "Apply the same retry logic on the consumer side."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Implement producer identity in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "kafka-design-ds7",
+          "title": "Delivery semantics and transactions",
+          "url": "https://kafka.apache.org/43/design/design/",
+          "locator": "Message Delivery Semantics (at-most, at-least and exactly-once; idempotent producer with producer ID and sequence numbers); Using Transactions (offsets atomic with output; `isolation.level=read_committed` with `enable.auto.commit=false` and `transactional.id`)"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "Server-side transaction defense",
+          "url": "https://kafka.apache.org/43/operations/transaction-protocol/",
+          "locator": "Overview: KIP-890 Transactions Server Side Defense, generally available since 4.0, with a producer epoch bump per transaction",
+          "depth": "Read the Overview only. Skip Upgrade and Downgrade and Performance unless you run a multi-version setup."
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Atomic commit scope in stream processors",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Atomic commit revisited (pp. 527 to 528): internal transactions in Dataflow, VoltDB and Kafka; overhead amortized over several input messages per transaction"
         }
       ],
       "focus": [
-        "TODO"
+        "`acks=0` never waits, `acks=1` waits for the leader only, and `acks=all` waits for all current in-sync replicas, further gated by `min.insync.replicas`. Without that gate the ISR can shrink to the leader and `all` means the leader only.",
+        "Idempotence keys each retried batch by producer ID plus per-partition sequence numbers, so a batch the broker already wrote is acknowledged without a second append. It is per partition and holds only while the broker retains that producer's sequence state.",
+        "A transaction commits a set of partition writes plus consumer offsets atomically, readable under `read_committed`. Anything outside Kafka, such as a database write or an email, is not in that atomic scope.",
+        "Timeout ambiguity remains: a producer that times out cannot tell a lost request from a lost reply, so it must retry and let deduplication or the transaction decide."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the `acks` and `min.insync.replicas` settings that lose an acknowledged write when the leader dies, and the settings that refuse the write instead, and state the read rule that hides aborted transactions.",
       "traps": [
-        "TODO"
+        "Calling `acks=all` alone durable. Without `min.insync.replicas` the ISR can shrink to the leader, so `all` means the leader only.",
+        "Expecting transactions to cover external effects. The atomic scope ends at Kafka partition writes plus offsets.",
+        "Using `kafka-console-producer.sh` to test transactions. It cannot run transactions; use client code."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "With `acks=1`, the leader acknowledges a write and dies before replicating it. Is the write lost?",
+          "a": "Yes. Only the leader held it, so the acknowledgement promised nothing about replication."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With `min.insync.replicas=2` and an ISR of just the leader, what does an `acks=all` write return?",
+          "a": "An error refusing the write until the ISR recovers. The broker rejects instead of silently weakening durability."
+        },
+        {
+          "q": "A batch times out and the producer retries with the same sequence number. The broker already appended it. What happens?",
+          "a": "The broker detects the duplicate sequence and acknowledges without appending again, so the retry is safe."
+        },
+        {
+          "q": "A transaction writes partitions A and B plus offsets, then aborts. What does a `read_committed` consumer see?",
+          "a": "Nothing from that transaction: `read_committed` skips its aborted records. The consumer offsets written in the transaction never take effect either, so the input records are read and processed again."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: producer identity with retry and duplicate tests, including timeout-after-commit cases.",
+      "stopWhen": "You can predict the fate of a write for each `acks` value under leader death, and draw the exact boundary of a transaction's atomic scope.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The 4.3 design and transaction-protocol pages cover acks, idempotence and transactional scope at explain and derive depth; producer practice lives in the section mini-project."
       }
     },
     {
@@ -184,47 +321,82 @@
         "assignment-and-rebalance-protocols"
       ],
       "outcomes": [
-        "TODO"
+        "Explain pull with fetch positions and why the broker keeps no per-message acknowledgement state.",
+        "Explain consumer groups, partition ownership and static membership with `group.instance.id`.",
+        "Explain rebalance generations and what pauses or duplicates a rebalance can cause."
       ],
-      "why": "TODO",
+      "why": "The consumer group is where ordering meets parallelism: each partition gets exactly one reader, and every membership change moves that reader. Rebalance behavior decides what pauses and what repeats.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/delivery-semantics-offset-commits",
+          "note": "Decide what redelivery after a rebalance means for effects."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/poison-records-backpressure",
+          "note": "Handle the slow member that drags a partition next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Implement ownership and replay in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Consumer groups and coarse-grained load balancing",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Multiple consumers with Figure 12-1 (pp. 492 to 493): load balancing versus fan-out, consumer groups; Log-Based Message Brokers (p. 497): shard assignment to group members, single-threaded shard consumption, head-of-line blocking"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "The consumer: pull, position and static membership",
+          "url": "https://kafka.apache.org/43/design/design/",
+          "locator": "The Consumer (pull and long-poll rationale); Consumer Position (position as one integer offset with rewind support); Static Membership (`group.instance.id` with fenced restarts)"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "Consumer rebalance protocol",
+          "url": "https://kafka.apache.org/43/operations/consumer-rebalance-protocol/",
+          "locator": "Overview (KIP-848, generally available since 4.0: Consumer versus Classic groups, server-side assignors); Consumer (opt-in with `group.protocol=consumer`); Upgrade and Downgrade",
+          "depth": "Read the Overview and Consumer sections only. In 4.3 the Consumer protocol is opt-in; the 5.0 default change is out of scope."
         }
       ],
       "focus": [
-        "TODO"
+        "Consumers pull and track one integer position per partition. The broker never tracks which message each consumer saw, which is why offsets are cheap.",
+        "A group assigns each partition to exactly one member; two groups over one topic give fan-out across groups. Members beyond the partition count sit idle.",
+        "Rebalance moves ownership on join, leave or crash, fenced by generations, with static members keeping partitions across rolling restarts. During the pause nobody reads the moved partitions.",
+        "A member that processed records but did not commit before losing its partitions causes those records to be redelivered to the new owner."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, trace a 6-partition topic across a 3-member group when one member dies: which partitions move, what the new owners fetch first, and which records repeat.",
       "traps": [
-        "TODO"
+        "Adding more consumers than partitions to raise throughput. Extra members sit idle; raise partitions instead.",
+        "Expecting KIP-848 behavior from default clients. In 4.3 the Consumer protocol needs `group.protocol=consumer`.",
+        "Treating a rebalance as lossless by itself. Ownership moves; which records repeat depends on committed offsets, not on the protocol."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Six partitions, four live members, then a fifth member joins. How many members read, and with what split?",
+          "a": "All five read, split 2, 1, 1, 1 and 1, since each partition has exactly one owner. A member sits idle only when members outnumber partitions."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A member has committed position 10 (offsets up to 9 done), processes offsets 10 to 12, then crashes before its next commit, and its partitions move. Where does the new owner start, and what repeats?",
+          "a": "It resumes at 10, the committed position. Offsets 10 to 12 are delivered and processed a second time."
+        },
+        {
+          "q": "What does `group.instance.id` change on a rolling restart?",
+          "a": "The restarted process rejoins as the same static member, so if it returns within the session timeout it keeps its partitions and no rebalance moves ownership. Records it processed but had not committed before the restart are still read again."
+        },
+        {
+          "q": "Why do log-based brokers pull instead of pushing?",
+          "a": "Pull lets each consumer control its rate, batching and replay position, and keeps the broker free of per-consumer acknowledgement state."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: consumer-group ownership with kill-and-reassign replay tests.",
+      "stopWhen": "You can assign partitions to any group size, predict the redelivery after a member death, and state when no rebalance happens at all.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus the 4.3 design and rebalance-protocol pages cover pull, groups and rebalance at explain depth; ownership practice lives in the section mini-project."
       }
     },
     {
@@ -241,47 +413,94 @@
         "effectively-once-effect-contract"
       ],
       "outcomes": [
-        "TODO"
+        "Derive at-most-once, at-least-once and effectively-once from the order of processing, effect publication and offset commit.",
+        "Enumerate the crash windows between read, state update, output and offset commit, and state the valid recovery for each.",
+        "State an effectively-once effect contract with its atomic boundary and retention bound."
       ],
-      "why": "TODO",
+      "why": "Delivery labels describe where the offset moves relative to the work, not magic in the transport. The same broker gives all three semantics depending on when the consumer commits.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/poison-records-backpressure",
+          "note": "Bound the retries that at-least-once delivery needs."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/replay-schema-registry-cdc",
+          "note": "Replay projections with the same idempotent boundary."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Enforce the commit boundary in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Fault tolerance: scope, atomic commit and idempotence",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Fault Tolerance (pp. 526 to 528): microbatching and checkpointing cover state inside the framework only; Atomic commit revisited (effects plus offsets atomically); Idempotence (offset-keyed writes, determinism and fencing assumptions)"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "Message delivery semantics",
+          "url": "https://kafka.apache.org/43/design/design/",
+          "locator": "Message Delivery Semantics: at-most, at-least and exactly-once definitions with the producer-timeout ambiguity"
+        },
+        {
+          "resource": "hld-streams-ds7",
+          "title": "Exactly-once as at-least-once plus idempotence",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/07-idempotency-exactly-once.md",
+          "locator": "The Two Generals framing through the Kafka idempotent and transactional producer sections",
+          "depth": "Review after the DDIA items. Treat its deployment numbers as reported figures from their era, not targets."
         }
       ],
       "focus": [
-        "TODO"
+        "Commit-before-process loses on crash, which is at most once. Process-before-commit duplicates on crash, which is at least once. The order of two operations decides the label.",
+        "Effectively-once needs the effect and the offset, or a dedup key, in one atomic boundary: a transaction or an idempotent write keyed by offset.",
+        "Idempotent replay needs deterministic processing, same-order replay, no concurrent writer, and dedup state retained past the retry horizon.",
+        "Storing the triggering offset with the value, as in Storm Trident, turns already-applied detection into a local read."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, list the four crash windows for read, state update, external write and offset commit, and give the recovery behavior that each commit ordering forces.",
       "traps": [
-        "TODO"
+        "Claiming exactly-once from checkpointing alone. Output that left the processor before the crash cannot be recalled.",
+        "Committing offsets on a timer and calling redelivery impossible. Async commit widens the at-least-once window instead of closing it.",
+        "Keeping dedup keys forever or dropping them early. Unbounded state grows; short retention re-accepts old duplicates past the horizon."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A consumer commits position 11, past record 10, then crashes before processing record 10. What happens to record 10?",
+          "a": "It is lost to the group: the next owner resumes at 11. The commit claimed progress the consumer never made, which is at-most-once behavior."
+        },
+        {
+          "q": "A consumer writes a database row, crashes before committing the offset, and restarts. What does it see, and what prevents a duplicate row?",
+          "a": "It redelivers the record. Only an idempotent write, such as the offset stored with the row in one atomic boundary, prevents the duplicate."
+        },
+        {
+          "q": "At-least-once delivery plus an idempotent consumer equals what, and with which boundary?",
+          "a": "Effectively-once effects within the dedup retention bound and inside systems the consumer controls. An external RPC or second database write outside the boundary breaks it."
+        },
+        {
+          "q": "Two processors concurrently write offset-stamped values for the same key. Is the result idempotent?",
+          "a": "No. Concurrent writers interleave, so the last write need not carry the highest offset. Idempotent replay needs a single writer or fencing."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Build an Idempotent Consumer",
+          "url": "https://algomaster.io/practice/system-design/build-an-idempotent-consumer",
+          "locator": "`process` returns true once per message ID and false on every redelivery; per-object dedup state",
+          "note": "The judge tests one object with no crashes. Add a TTL on the ID set and a crash-restart test in the mini-project to make the retention bound real."
+        },
+        {
+          "name": "AlgoMaster: Deduplicate Idempotent Requests",
+          "url": "https://algomaster.io/practice/system-design/deduplicate-idempotent-requests",
+          "locator": "`execute` stores the first result per key and replays it on retries; keys are case-sensitive",
+          "note": "The judge keeps entries for the object lifetime. Decide the production retention bound separately, since retries past it execute twice."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can label any commit ordering with its delivery semantics, draw its crash windows, and state the atomic boundary behind each effectively-once claim.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus the 4.3 delivery-semantics section reach derive depth on commit orderings, and the two free AlgoMaster drills give checked dedup practice."
       }
     },
     {
@@ -297,47 +516,83 @@
         "backpressure-and-bounded-backlog"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why a poison record stalls a strictly ordered partition and how bounded retries plus a dead-letter queue restore progress.",
+        "Explain the log as a bounded buffer with lag monitoring, and derive how long a backlog takes to drain at spare capacity.",
+        "Implement a retry-with-dead-letter rule and a lag alert against a retention bound."
       ],
-      "why": "TODO",
+      "why": "At-least-once delivery retries everything, including the record that will never succeed. Without a dead letter and a bounded backlog, one bad record or one slow consumer stops the whole partition.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the lag, drain and recovery you bound here."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Enforce the retry and backlog bounds in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Redelivery, dead letters and slow consumers",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Acknowledgments and redelivery through dead letter queues (pp. 493 to 495): crash loops under strong ordering, DLQs with operator decision; When consumers cannot keep up with producers (p. 499): bounded buffer, lag monitoring, one slow consumer affects only itself"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Drop, buffer or backpressure",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Messaging Systems (p. 489): the three overload choices, with Unix pipes and TCP as backpressure examples"
+        },
+        {
+          "resource": "builders-library-backlogs-ds7",
+          "title": "Backlogs, sidelining and upstream backpressure",
+          "url": "https://aws.amazon.com/builders-library/avoiding-insurmountable-queue-backlogs/",
+          "locator": "Backlogs (drain at spare capacity, with the multitenant spike example); Amazon's approach (sidelining excess traffic, constant work, pushing backpressure upstream); Measuring availability and latency (message age)"
         }
       ],
       "focus": [
-        "TODO"
+        "A poison record under at-least-once redelivery plus strict per-partition order stops the partition. Bound the retries, then move the record to a dead-letter queue, alert, and let an operator decide to drop, fix or replay it.",
+        "A log is a large bounded buffer, not an infinite one. Monitor consumer lag in records and in time, and fix slow consumers before their offsets age past retention.",
+        "Under sustained overload, shed or sideline low-priority work and push backpressure upstream. A backlog drains at spare capacity only, so a short spike can take many hours to clear.",
+        "Alert on arrival and drain rates with queue depth, never on depth alone. Depth without rates cannot say whether the backlog ever drains."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the retry-with-dead-letter decision rule (deliver while failures stay within budget, dead-letter past it) and the lag alert rule (committed offset versus log end offset, checked against retention).",
       "traps": [
-        "TODO"
+        "Retrying a poison record forever. Deterministic failures never succeed, and each retry burns the partition's progress.",
+        "Treating buffering as backpressure. An unbounded queue delays the failure and hides it until the disk fills or retention drops data.",
+        "Replaying a dead letter without a fix. The same record crashes the same code path again unless the code or the record changed."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A message missing a required JSON key crashes each consumer that reads it. What happens under strong per-partition ordering, and what is the remedy?",
+          "a": "The partition stalls because the record redelivers forever. Move it to a dead-letter queue after the retry budget, alert, and fix the consumer code or the record before replaying it."
+        },
+        {
+          "q": "Failures are `[0, 2, 3, 1, 4]` with `maxRetries` 2. Which messages are delivered and which go to the dead letter?",
+          "a": "Delivered, delivered, dead letter, delivered, dead letter. A message is delivered while its failure count stays within budget."
+        },
+        {
+          "q": "A consumer lags past the oldest retained segment. What does it miss, and who else is affected?",
+          "a": "It misses the deleted messages and must skip ahead. Only that consumer is affected; other consumers keep their own offsets."
+        },
+        {
+          "q": "Arrivals run at twice the drain rate for one hour, then spare capacity is 10 percent of drain. How long to clear the backlog?",
+          "a": "About 10 hours. The backlog holds one drain-hour of work, and with arrivals continuing it shrinks only by the spare 10 percent, so \\(1 / 0.1 = 10\\) hours."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Classify Retry Outcomes",
+          "url": "https://algomaster.io/practice/system-design/classify-retry-outcomes",
+          "locator": "`classify` returns delivered while the failure count stays within budget else dlq, order-preserving, including the zero-budget edge case",
+          "note": "The judge tests the routing rule only. Wire it to a dead-letter topic plus a lag alert against retention in the mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can state the retry budget, the dead-letter decision and the drain time for a stated arrival and drain rate, and your consumer alerts before retention drops data.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers redelivery, dead letters and bounded buffers and the Builders Library covers backlog drain; the free retry-routing drill gives checked practice."
       }
     },
     {
@@ -354,47 +609,95 @@
         "change-data-capture-and-source-offsets"
       ],
       "outcomes": [
-        "TODO"
+        "Explain what makes a replay deterministic and how reprocessing supports schema migration with old and new views side by side.",
+        "Explain backward, forward and full compatibility, and implement per-key version checks with tombstone handling in a CDC projection.",
+        "Implement offset-deduped application of a CDC stream with source offsets tracked for resume."
       ],
-      "why": "TODO",
+      "why": "Derived state is only as trustworthy as its replay: the same log must rebuild the same projection after a bug fix, a new index, or a schema change. Compatibility rules decide which readers survive that replay.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-windows",
+          "note": "Replay needs event-time windows to answer the same question twice."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/batch-stream-table-formats",
+          "note": "Feed replayed streams into table snapshots next."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Change data capture and log compaction",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Change Data Capture (pp. 503 to 504): Debezium source connectors, Kafka Connect, async lag; Initial snapshot (p. 504): snapshot plus log position with DBLog watermarking; Log compaction (pp. 505 to 506): rebuild from offset 0"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Reprocessing for application evolution",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 13, Reprocessing data for application evolution through Unifying batch and stream processing (pp. 545 to 546): old and new views side by side; replay needs event-time windowing and exactly-once output"
+        },
+        {
+          "resource": "schema-registry-compat-ds7",
+          "title": "Compatibility types",
+          "url": "https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html",
+          "locator": "Compatibility types: Backward, Forward and Full compatibility with their Transitive variants; the default BACKWARD check. New code reads old data under Backward; old code reads new data under Forward."
+        },
+        {
+          "resource": "avro-spec-ds7",
+          "title": "Avro schema resolution",
+          "url": "https://avro.apache.org/docs/1.12.0/specification/",
+          "locator": "Schema Resolution: records match by field name, writer-only fields are ignored, reader-only fields are filled from defaults, plus the promotion rules"
         }
       ],
       "focus": [
-        "TODO"
+        "Replay is deterministic only with event-time timestamps and versioned logic. Reprocessing with processing-time windows rewrites history instead of repeating it.",
+        "A CDC consumer keeps source offsets with its projection so a restart resumes without reapplying or skipping. A snapshot plus a log position restarts a new projection the same way.",
+        "Backward compatibility lets new code read old data, Forward lets old code read new data, and Full allows both. Check transitively when many schema versions coexist in the log.",
+        "Avro resolution matches fields by name: unknown writer fields are ignored and missing reader fields come from defaults. Defaults are part of the contract: a field added without a default breaks backward compatibility, since new readers cannot fill it in old data, while old readers simply ignore it."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, replay a three-event CDC sequence (upsert version 1, delete version 2, late upsert version 1) against a projection and show the late event rejected; then add an optional field under Backward compatibility and state which readers break.",
       "traps": [
-        "TODO"
+        "Replaying without idempotent application. A retried offset applies twice unless the projection dedups by offset or by per-key version.",
+        "Letting a late event resurrect a deleted row. Compare per-key versions and keep tombstones until the retention horizon.",
+        "Adding a required field and calling it backward compatible. Old records carry no value for it; only optional-with-default keeps both directions working."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Apply offset 1 upsert, then offset 1 again, then offset 2 delete. What does each call return, and what does the view hold?",
+          "a": "True, false, true. The retry changes nothing and the delete removes the key, so the view is empty with size 0."
+        },
+        {
+          "q": "A version 3 delete is followed by a late version 2 upsert for the same key. Accepted or rejected, and why?",
+          "a": "Rejected. Versions are per key and only strictly newer versions apply, so the tombstone stands and the row is not resurrected."
+        },
+        {
+          "q": "A writer sends fields `a` and `b` while the reader expects only `a`. Then a writer sends only `a` while the reader expects `a` and `b` with a default. What does the reader see?",
+          "a": "First `a` only, with `b` ignored. Then `a` plus `b` filled from its default."
+        },
+        {
+          "q": "Old and new readers and writers coexist on one topic. Which compatibility level do you require?",
+          "a": "Full, in its transitive form if versions can skip. Only it lets old code read new data and new code read old data."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Apply Ordered CDC Changes",
+          "url": "https://algomaster.io/practice/system-design/apply-ordered-cdc-changes",
+          "locator": "`apply` accepts a change only when its version is strictly newer per key; deletes leave tombstones; equal versions are rejected as duplicates",
+          "note": "The judge tests one projection with no partitions. Cross-partition ordering and schema checks live in the mini-project."
+        },
+        {
+          "name": "AlgoMaster: Replay CDC into a Materialized View",
+          "url": "https://algomaster.io/practice/system-design/replay-cdc-into-a-materialized-view",
+          "locator": "`apply` dedups by log offset so retries return false without changing state; `get` returns -1 for absent keys",
+          "note": "The judge supplies offsets in log order with repeats. Out-of-order arrivals and snapshot-plus-position restarts are mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can replay a CDC history with retries, deletes and late events to the same projection state, and defend a schema change under the right compatibility level.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the schema-resolution mechanism: the pool names Avro resolution rules but supplies no locator, so the Avro 1.12.0 Schema Resolution section fills that gap beside the Confluent compatibility types."
       }
     },
     {
@@ -410,47 +713,93 @@
         "tumbling-sliding-and-session-windows"
       ],
       "outcomes": [
-        "TODO"
+        "Explain event time versus processing time and the artifacts that processing-time windowing invents during backlogs.",
+        "Derive window membership for tumbling, hopping, sliding and session windows on a fixed event sequence.",
+        "State the per-window output rule, including empty windows and the session-gap boundary."
       ],
-      "why": "TODO",
+      "why": "Windows turn an unbounded stream into finite pieces, and the clock behind them decides what each piece means. A redeploy that replays a backlog must not rewrite the measured history.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/watermarks-late-data",
+          "note": "Decide when each window is complete next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/keyed-state-checkpoints",
+          "note": "Hold the window state you define here."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Implement these windows with checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "dataflow-model-ds7",
+          "title": "What, where, when and how",
+          "url": "https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43864.pdf",
+          "locator": "Section 2: the what, where, when and how questions; event time versus processing time; windows, triggers and accumulation with discard, accumulate and retract modes"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Reasoning about time and window types",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Reasoning About Time through Types of windows (pp. 518 to 522): event versus processing time, the backlog rate-spike artifact, tumbling, hopping, sliding and session windows with their state costs"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Timely stream processing: notions of time and windowing",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/concepts/time/",
+          "locator": "Notions of Time: Event Time and Processing Time; Event Time and Watermarks; Lateness; Windowing (tumbling, sliding, session and time versus data driven windows)"
         }
       ],
       "focus": [
-        "TODO"
+        "Event time comes from the event and never changes; processing time comes from the machine clock. Measuring a replayed backlog by processing time invents a spike the real request rate never had.",
+        "Tumbling assigns each event to exactly one fixed window. Hopping overlaps fixed windows. Sliding holds events that occur within an interval of each other, even across fixed boundaries. Session groups one user's events until an inactivity gap ends the session.",
+        "Two events five minutes apart can share a five-minute sliding window while falling in different tumbling windows. Fixed boundaries and pairwise intervals answer different questions.",
+        "Window state cost follows the buffering need: counters stay constant size, while sliding windows and joins buffer events until the window closes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, assign events at 10:03:39 and 10:08:12 to five-minute tumbling windows, five-minute hopping windows with a one-minute hop, five-minute sliding windows and session windows with a 30-minute gap, and state which windows they share.",
       "traps": [
-        "TODO"
+        "Windowing by arrival time and calling it event time. Reprocessing history then answers a different question than live processing did.",
+        "Assuming hopping equals sliding. Hopping has fixed boundaries; sliding is defined by pairwise intervals.",
+        "Leaving the session-gap boundary unstated. Record whether a gap equal to the threshold starts a new session, since systems differ."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A redeployed processor burns through a one-minute backlog and the per-second request chart spikes. What caused it, and what is the fix?",
+          "a": "The chart is windowed by processing time, so the backlog compressed into seconds of processing. Window by event time to recover the steady real rate."
+        },
+        {
+          "q": "Two events occur at 10:03:39 and 10:08:12. Which windows do they share: five-minute tumbling, five-minute hopping with a one-minute hop, five-minute sliding, or sessions with a 30-minute gap?",
+          "a": "The sliding window and the session. They are 4 minutes 33 seconds apart, so some five-minute interval holds both, and the gap is far below 30 minutes. Tumbling windows put them in 10:00 to 10:05 and 10:05 to 10:10. The last one-minute hop holding 10:03:39 is 10:03 to 10:08, which ends before 10:08:12; a 30-second hop would give 10:03:30 to 10:08:30, which holds both."
+        },
+        {
+          "q": "Events for users `[a, a, b, a, b]` arrive at `[0, 4, 5, 10, 11]` with inactivity gap 6, starting a new session when the gap reaches the threshold. What are the session numbers?",
+          "a": "`[1, 1, 1, 2, 2]`. User a continues at gap 4 and restarts at gap 6; user b starts at 5 and restarts at gap 6. Each user is tracked independently."
+        },
+        {
+          "q": "Events at timestamps 2 and 12 carry values 10 and 5 with window size 5, windows starting at 0. What does the tumbling aggregation return?",
+          "a": "`[10, 0, 5]`. Window index is integer division \\(t / w\\), so the events land in windows 0 and 2, and the empty window 1 reports 0."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Aggregate Tumbling Windows",
+          "url": "https://algomaster.io/practice/system-design/aggregate-tumbling-windows",
+          "locator": "Sum values per window index from 0 through the highest touched window, with 0 for empty windows; timestamps need not be sorted",
+          "note": "The judge tests the assignment function only, on a subscription the learner owns. Watermarking, lateness and state recovery are mini-project work."
+        },
+        {
+          "name": "AlgoMaster: Assign Events to Session Windows",
+          "url": "https://algomaster.io/practice/system-design/assign-events-to-session-windows",
+          "locator": "Per-user sessions with the gap-reaches-threshold rule; interleaved users stay independent",
+          "note": "Same scope as above: assignment logic here, event-time execution and recovery in the mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can bucket any timestamp by hand under each window type and predict what a backlog replay does to processing-time charts.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Dataflow model plus DDIA and the Flink time concepts reach derive depth on clocks and windows, with two owned AlgoMaster drills as checked assignment practice."
       }
     },
     {
@@ -467,47 +816,89 @@
         "late-data-and-update-policy"
       ],
       "outcomes": [
-        "TODO"
+        "Derive an operator's event time as the minimum over its inputs and show how one idle source stalls it.",
+        "Explain watermarks as progress estimates and configure idleness detection plus allowed lateness with a side output.",
+        "Implement a late-data policy (drop with a counter versus update with a correction) inside a retention horizon."
       ],
-      "why": "TODO",
+      "why": "Windows never close by themselves: something must declare the past complete while stragglers still arrive. The watermark is that declaration, and the late-data policy is what keeps it honest.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/keyed-state-checkpoints",
+          "note": "Hold the buffered events and corrections in checkpointed state."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Implement the watermark and late-data rule with checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "millwheel-ds7",
+          "title": "Low watermarks and bounded deduplication",
+          "url": "https://www.vldb.org/pvldb/vol6/p1033-akidau.pdf",
+          "locator": "Low watermarks with the recursive definition over inputs; at-least-once delivery with deduplication and strong productions; the retention bound on what dedup can catch"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Generating watermarks and handling idle sources",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/event-time/generating_watermarks/",
+          "locator": "Dealing With Idle Sources (the minimum-over-inputs stall with `.withIdleness`); periodic versus punctuated watermark generators; how operators process watermarks"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Allowed lateness and late-data side outputs",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/operators/windows/",
+          "locator": "Allowed Lateness (default 0 drops events behind the watermark, in-lateness refires via the event-time trigger); getting late data as a side output"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Stragglers and timestamp estimation",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Handling straggler events and Whose clock are you using (pp. 520 to 521): ignore versus publish a correction; the three timestamps that estimate true event time from an untrusted device clock"
         }
       ],
       "focus": [
-        "TODO"
+        "A watermark of \\(t\\) asserts that no more events with timestamp at most \\(t\\) should follow. It is a progress estimate, not a promise the transport enforces.",
+        "An operator's event time is the minimum watermark over its inputs, so one idle partition stalls the whole operator unless idleness is declared with `.withIdleness`.",
+        "The late-data policy is explicit: drop with a counter, or update with a correction through accumulate or retract modes. Flink drops events behind the watermark by default, since allowed lateness is 0.",
+        "Deduplication and corrections hold only within retention. A duplicate older than the horizon looks new again, and expired window state cannot be corrected."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, advance two input watermarks to 5 and a stalled 2, compute the operator watermark, apply idleness detection, then route an event at time 3 under the drop versus update policy.",
       "traps": [
-        "TODO"
+        "Treating watermarks as guarantees. Late events still arrive; the policy decides their fate, not the watermark.",
+        "Taking the maximum over inputs. Progress follows the slowest input, which is the minimum.",
+        "Raising allowed lateness without budgeting state. Buffered events and corrections accumulate until the horizon passes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two inputs hold watermarks 5 and 2. What is the operator's event time, and what happens to a window ending at 5?",
+          "a": "Event time 2, the minimum. The window cannot fire yet; the stalled input holds it back until its watermark advances or idleness is declared."
+        },
+        {
+          "q": "Allowed lateness is 0 and an event arrives behind the watermark. What happens to it by default, and where can it go instead?",
+          "a": "It is dropped. With a side output configured, it is routed there for counting or separate handling instead of vanishing silently."
+        },
+        {
+          "q": "MillWheel redelivers an event first seen a month ago. Does deduplication catch it?",
+          "a": "Only if the dedup horizon still covers it. Past the retention bound the redelivery looks new and is processed again."
+        },
+        {
+          "q": "A phone buffers events offline for a day, then uploads them. Which timestamp describes the user action, and why is it suspect?",
+          "a": "The device-clock occurrence time describes the action, but device clocks may be wrong. The server-receive time is accurate yet describes arrival, so the three-timestamp method estimates the offset between them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Deduplicate Stream Events with TTL",
+          "url": "https://algomaster.io/practice/system-design/deduplicate-stream-events-with-ttl",
+          "locator": "Accept within the TTL is rejected; the expiry boundary accepts and replaces the stored time; rejections do not refresh the TTL",
+          "note": "A single-process drill that makes the retention horizon concrete, on a subscription the learner owns. Watermark propagation and the drop-versus-update policy are mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can compute operator watermarks by hand, configure idleness and lateness for a stated policy, and say exactly which late events each choice drops or corrects.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MillWheel plus the Flink watermark and windowing guides reach derive depth on watermarks, stalls and lateness; the owned TTL-dedup drill exercises the retention horizon."
       }
     },
     {
@@ -524,47 +915,90 @@
         "source-state-sink-recovery-boundary"
       ],
       "outcomes": [
-        "TODO"
+        "Explain keyed state partitioning and how rescaling reassigns key groups with their state.",
+        "Derive the barrier snapshotting rule for acyclic graphs and the marker rules it inherits from Chandy and Lamport.",
+        "Derive the source-state-sink recovery boundary: what restores, what rewinds, and which sinks keep exactly-once."
       ],
-      "why": "TODO",
+      "why": "State makes streams useful and recovery hard: a restart must bring back the same derived state and the same input position together, or outputs silently double or vanish.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Implement the checkpoint and recovery boundary."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the recovery you derive here."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "abs-snapshots-ds7",
+          "title": "Asynchronous barrier snapshots for acyclic graphs",
+          "url": "https://arxiv.org/abs/1506.08603",
+          "locator": "The barrier broadcast and snapshot-on-receipt algorithm with its alignment discussion; the acyclic-graph scope. Barriers assume FIFO channels.",
+          "depth": "Study the acyclic case only. Skip the cyclic extension."
+        },
+        {
+          "resource": "chandy-lamport-ds7",
+          "title": "Marker rules and consistent cuts",
+          "url": "https://lamport.azurewebsites.net/pubs/chandy.pdf",
+          "locator": "The marker-sending and marker-receiving rules with the channel-state procedure, and why the recorded state is a consistent cut. Assumes FIFO channels with a spontaneously initiating process."
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Keyed state, barriers and recovery",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/concepts/stateful-stream-processing/",
+          "locator": "Keyed State; Checkpointing with Barriers (inline barriers, alignment, async write); Recovery (restore state and rewind sources such as Kafka offsets); Exactly Once versus At Least Once (when alignment skips trade down to duplicates)"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Rebuilding state after a failure",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Fault Tolerance (pp. 526 to 528): Flink state snapshots, Kafka Streams changelog topics with log compaction, and rebuilding short-window state by input replay"
         }
       ],
       "focus": [
-        "TODO"
+        "Barriers flow with the data and separate pre-snapshot from post-snapshot records, so each operator snapshots a consistent cut without stopping the stream.",
+        "Recovery restores operator state from the snapshot and rewinds replayable sources to the checkpointed offsets, then replays the suffix.",
+        "Checkpoint exactly-once covers state and participating sinks only. Skipping alignment replays in-flight records, which non-idempotent sinks see twice.",
+        "Keyed state partitions by key with the operator, so rescaling reassigns key groups together with their state instead of reshuffling records."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, run barrier snapshotting on a two-operator pipeline with one in-flight record: state which records each snapshot includes, and where the sources rewind on recovery.",
       "traps": [
-        "TODO"
+        "Snapshotting without channel state or FIFO order. An in-flight record belongs to neither snapshot unless barriers order it.",
+        "Restoring state but resuming sources from latest. Post-checkpoint inputs must replay or their effects are lost.",
+        "Claiming exactly-once for a nonparticipating sink. A sink outside the checkpoint boundary repeats on recovery."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "An operator has one input channel. A record is sent on it right after a checkpoint barrier. Which side of the snapshot does the record fall on?",
+          "a": "The post-snapshot side. The snapshot holds state from pre-barrier records only; after a failure the source rewinds to the barrier position and the record is replayed."
+        },
+        {
+          "q": "A checkpoint restores operator state. What else must restore, and what happens if it does not?",
+          "a": "The source offsets must rewind to the checkpointed positions. Resuming from latest silently drops every post-checkpoint input."
+        },
+        {
+          "q": "What does skipping barrier alignment trade away, and when is it used?",
+          "a": "Flink's at-least-once mode skips alignment: it avoids stalling on slow channels under backpressure, but records from fast channels already reach the state before the snapshot and replay on recovery, so it trades exactly-once for progress. Unaligned checkpoints are the other route: the barrier overtakes in-flight records, which are stored in the checkpoint, so exactly-once holds at the cost of larger checkpoints."
+        },
+        {
+          "q": "A Kafka Streams task keeps a local aggregate. How does a replacement task rebuild it without a snapshot copy?",
+          "a": "It reads the dedicated changelog topic with log compaction, which holds the latest value per key, the same rebuild pattern as CDC from offset 0."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Checkpoint Sidecar Log Delivery",
+          "url": "https://algomaster.io/practice/system-design/checkpoint-sidecar-log-delivery",
+          "locator": "The checkpoint advances only on acknowledged batches; a failed flush retries the exact batch; duplicate appends are rejected as reserved",
+          "note": "A drill for the checkpoint-after-acknowledgement boundary, on a subscription the learner owns. Barrier alignment and state restore are mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can run a barrier snapshot by hand on a small graph, state the full restore-plus-rewind procedure, and name which sinks keep exactly-once.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The barrier and marker papers plus the Flink state pages and DDIA reach derive depth on snapshots and the recovery boundary; the owned sidecar drill exercises checkpoint-after-ack."
       }
     },
     {
@@ -579,47 +1013,85 @@
         "shuffle-partitioning-and-operator-parallelism"
       ],
       "outcomes": [
-        "TODO"
+        "Explain a distributed dataflow graph: operators, shuffle edges, key partitioning and operator parallelism.",
+        "Explain why batch tasks retry transparently while stream graphs need checkpoints for the same guarantee.",
+        "Predict the effect of key skew on a shuffle and choose between more partitions, key splitting and pre-aggregation."
       ],
-      "why": "TODO",
+      "why": "Both batch jobs and stream processors are graphs of operators joined by shuffles. The shuffle decides the runtime, and the hot key decides the shuffle.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/batch-stream-table-formats",
+          "note": "Unify the batch and stream graphs you map here."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Run one of these graphs with checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "MapReduce, dataflow engines and shuffling",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 11, Batch Processing Models (pp. 466 to 470): MapReduce, Dataflow Engines, Shuffling Data with hash partitioning of keys; Distributed Job Orchestration (pp. 461 to 466): task retries with atomic output publication"
+        },
+        {
+          "resource": "mit-mapreduce-ds7",
+          "title": "Lab 1 MapReduce: coordinator, workers and retries",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-mr.html",
+          "locator": "The coordinator and worker task split with task retry and intermediate output files",
+          "depth": "Read the handout for the batch-dataflow contract only. Do not confuse its shared-filesystem setup on one machine with the durable-log contract; completing the lab is optional here."
+        },
+        {
+          "resource": "hld-streams-ds7",
+          "title": "Stream versus batch review",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/03-stream-vs-batch.md",
+          "locator": "Event versus processing versus ingestion time, engines comparison, lambda versus kappa",
+          "depth": "Review after the DDIA items. Treat its deployment figures as reported examples, not targets."
         }
       ],
       "focus": [
-        "TODO"
+        "A dataflow graph wires operators with shuffle edges: records are repartitioned by key so all records of one key reach the same downstream task.",
+        "The shuffle is the all-to-all bulk transfer, so partition counts and key skew decide the runtime more than per-record speed does.",
+        "Batch tasks retry transparently because inputs are immutable and outputs publish atomically. The visible result matches a failure-free run even though tasks recomputed.",
+        "Dataflow graphs are usually acyclic, so each task's input is fixed by the operators upstream of it and a failed task can recompute from that input. Cycles and arbitrary request patterns between tasks break that reasoning."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, trace a word count over two mappers and two reducers: hash-partition the keys, name what crosses the shuffle, and state which reducer a hot key overloads.",
       "traps": [
-        "TODO"
+        "Adding reducers to fix a hot key. Every record of one key goes to one reducer, so split the key or pre-aggregate instead.",
+        "Confusing duplicate computation with duplicate publication. Retried tasks recompute, but atomic publication keeps one visible output.",
+        "Reading the shared-filesystem lab as a durability proof. Lab workers share files on one machine; a real log needs the acknowledgement contract from this section."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "One key carries half of all records across 100 reducers. How many reducers does it load?",
+          "a": "One. Hash partitioning sends every record of one key to the same reducer, so the hot key overloads it regardless of reducer count."
+        },
+        {
+          "q": "A map task fails after writing half its intermediate output. What survives, and what reruns?",
+          "a": "Nothing of its output survives; partial output is discarded. The retried task recomputes from the immutable input and publishes atomically on success."
+        },
+        {
+          "q": "What crosses the network in a shuffle, and what does not?",
+          "a": "Intermediate records, repartitioned by key, cross to their assigned reducers. Map tasks read their input splits, ideally from local disk, and the final output is written to the distributed filesystem; neither is the shuffle."
+        },
+        {
+          "q": "One word carries 40 percent of all records in a word count. Why do more reducers not help, and what two fixes do?",
+          "a": "Every record of one key hashes to one reducer, so that reducer still gets 40 percent of the input. A combiner pre-aggregates on the map side, so the hot reducer gets one partial count per mapper; this works because addition is associative and commutative. Key splitting appends a small salt to the hot key, spreads it over several reducers, and merges the partial counts in a second step."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Analyze MapReduce Reducer Skew",
+          "url": "https://algomaster.io/practice/system-design/analyze-mapreduce-reducer-skew",
+          "locator": "Per-reducer load totals and the hottest reducer index from keys and weights",
+          "note": "A single-function skew drill on a subscription the learner owns. Full shuffle behavior is lab and mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can trace keys across a shuffle by hand, name what a hot key does to it, and state why a retried batch task leaves one visible output.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA reaches explain depth on dataflow graphs and shuffle; the MIT handout supplies the retry contract and the owned skew drill gives checked practice."
       }
     },
     {
@@ -635,47 +1107,89 @@
         "incremental-materialized-views-and-differential-dataflow"
       ],
       "outcomes": [
-        "TODO"
+        "Explain batch and stream unification: replay, exactly-once output and event-time tools as the three requirements.",
+        "Explain open table snapshots: immutable files plus an atomic metadata-pointer swap as the commit.",
+        "Explain optimistic lakehouse commits and incremental views applied after a durable checkpoint."
       ],
-      "why": "TODO",
+      "why": "Streams feed tables and tables seed streams: some brokers' tiered storage already writes Iceberg tables. The metadata swap is the commit point both sides share.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/replay-schema-registry-cdc",
+          "note": "CDC streams are what these tables are built from."
+        },
+        {
+          "unit": "distributed-systems/security-operations-evolution-data-governance/ml-artifact-version-identity",
+          "note": "Versioned table snapshots prefigure versioned ML artifacts."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Unifying batch and stream processing",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 13, Batch and Stream Processing through Unifying batch and stream processing (pp. 544 to 546): lambda limits with the kappa approach; replay, exactly-once semantics and event-time windowing as the three requirements"
+        },
+        {
+          "resource": "iceberg-spec-ds7",
+          "title": "Snapshots, manifests and the metadata swap",
+          "url": "https://iceberg.apache.org/spec/",
+          "locator": "Table specification: snapshots with manifest lists and manifests as the read path; table metadata with the atomic metadata-file swap as the commit (page read 2026-10-15)"
+        },
+        {
+          "resource": "delta-protocol-ds7",
+          "title": "Transaction log replay and optimistic commits",
+          "url": "https://github.com/delta-io/delta/blob/6a62fd86d58eea07a57720a80320b29f1130924e/PROTOCOL.md",
+          "locator": "Transaction log with checkpoints as the reader's replay path; optimistic concurrency with conflict detection on overlapping writes"
         }
       ],
       "focus": [
-        "TODO"
+        "Batch and stream share principles; the difference is bounded versus unbounded input. Unification needs replay through one engine, exactly-once output, and event-time windows.",
+        "An open table is a metadata pointer plus immutable files: readers resolve the pointer to a snapshot, writers stage files then swap the pointer atomically.",
+        "Optimistic commits let writers on disjoint partitions succeed and reject overlapping ones without locks. The check is on read-write overlap, not on wall-clock order.",
+        "An incremental view applies ordered changes after a durable checkpoint and ignores replays at or below it, the same boundary as CDC offset dedup."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, commit two lakehouse writers from one base version over disjoint and then overlapping partitions and state which commit wins; then replay an ordered change stream across a checkpoint and drop the duplicates.",
       "traps": [
-        "TODO"
+        "Reading table files without the metadata pointer. Listings show staged and superseded files; only the snapshot lists the live set.",
+        "Assuming replay alone gives exactly-once. The atomic metadata swap plus idempotent application decides, not the replay.",
+        "Treating the commit drill as the full protocol. It models partition-overlap conflicts only; real tables check finer read-write predicates."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What distinguishes the lambda approach from the kappa approach?",
+          "a": "Lambda keeps separate batch and speed paths with merged serving. Kappa replays history through the stream engine, which needs replay, exactly-once output and event-time windows."
+        },
+        {
+          "q": "Two writers commit from base version 0, one over partition 1 and one over partition 2. Then a third commits from base 0 over partition 1. Which commits succeed?",
+          "a": "The first two succeed because their partitions are disjoint. The third is rejected because partition 1 changed since its base version."
+        },
+        {
+          "q": "A view holds checkpoint 2 and receives events with sequences 1, 2 and 3. Which apply?",
+          "a": "Only sequence 3. Events at or below the checkpoint are duplicates or late deliveries and must be ignored."
+        },
+        {
+          "q": "Why are table data files immutable while the metadata pointer moves?",
+          "a": "Immutable files give every reader a stable snapshot. Writers never block readers; the atomic pointer swap publishes a new snapshot at once."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Coordinate Optimistic Lakehouse Commits",
+          "url": "https://algomaster.io/practice/system-design/coordinate-optimistic-lakehouse-commits",
+          "locator": "`commit` succeeds unless a write since the base version overlaps its partitions; `currentVersion` counts committed versions",
+          "note": "The judge models partition-overlap conflicts only, on a subscription the learner owns. Predicate-level conflicts are spec reading, not drill work."
+        },
+        {
+          "name": "AlgoMaster: Maintain an Incremental Materialized View",
+          "url": "https://algomaster.io/practice/system-design/maintain-an-incremental-materialized-view",
+          "locator": "`apply` accepts only sequences above the checkpoint, adds the increment and advances it; the rest are ignored without effect",
+          "note": "Same scope as above: checkpoint-gated application here, real snapshot restores in the mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can commit overlapping writers by hand, replay a change stream across a checkpoint without double-applying, and name the metadata swap as the commit point.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the optional table-format topics: no pool source exists, so the Iceberg spec and the pinned Delta protocol fill that gap beside DDIA, with two owned drills as checked practice."
       }
     },
     {
@@ -690,47 +1204,86 @@
         "consumer-group-and-replay-implementation"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a checksummed segmented partition log with offsets, an index, retention and recovery that truncates torn tails.",
+        "Implement consumer-group ownership with epochs, committed offsets, kill-and-reassign replay and a retry and dead-letter boundary."
       ],
-      "why": "TODO",
+      "why": "This is the section's build: a log you can kill mid-append and a consumer group you can kill mid-commit, both recovering to matching offsets and outputs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Process the log's events with checkpoints next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the log you build here."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/property-based-schedule-exploration",
+          "note": "Explore its schedules with property tests later."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "kafka-2011-ds7",
+          "title": "The build ancestor to mirror and diverge from",
+          "url": "https://notes.stephenholiday.com/Kafka.pdf",
+          "locator": "The log design to mirror (segments, offsets, pull consumers) and the final section to see what to add (replication and durability beyond fire-and-forget)"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "The segment contract to compare against",
+          "url": "https://kafka.apache.org/43/implementation/log/",
+          "locator": "Writes (serial append with segment roll), Reads (offset lookup with range checks), Deletes (time and size retention over whole segments)"
+        },
+        {
+          "resource": "replicated-log-capstone-ds7",
+          "title": "Milestones A to C requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "Milestone A (local checksummed log with recovery), Milestone B (instrumented histories), Milestone C (producer dedup, partition routing, consumer group with replay)"
         }
       ],
       "focus": [
-        "TODO"
+        "Appended, flushed, committed, applied and exposed are distinct states. Tests assert each transition separately.",
+        "No wall-clock timestamp decides order; offsets do. Ownership moves with epochs so a stale consumer cannot commit past the new owner.",
+        "Acknowledge only after the record is stable per the declared contract: flushed or replicated, never merely buffered.",
+        "Compare each contract (retention, visibility, commit rule) with the Kafka 4.3 behavior and write down every deliberate difference."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, rebuild the single-partition log with its index and recovery, then replay a recorded history through a kill-and-reassign test and show matching offsets and outputs.",
       "traps": [
-        "TODO"
+        "Acknowledging before the record is stable. An ack must follow flush or replication per the declared contract, never buffer acceptance.",
+        "Letting two owners commit for one partition. Fence every commit with the ownership epoch.",
+        "Testing only clean shutdown. Kill mid-append, mid-commit and mid-compaction; recovery must truncate the torn tail, never invent records."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A crash leaves a half-written record at the segment tail with a failing checksum. What does recovery do?",
+          "a": "It truncates at the last valid record and exposes nothing partial. The torn tail is discarded, never repaired by guessing."
+        },
+        {
+          "q": "Acks for offsets 0, 2 and 3 arrive but 1 is missing. What is the committed offset?",
+          "a": "Offset 0 is the end of the fully acknowledged prefix, so in Kafka's convention you store position 1, the next offset to read. The gap at 1 blocks 2 and 3 until it arrives."
+        },
+        {
+          "q": "A fenced-out consumer commits offset 8 after the group moved its partition to a new owner at epoch 7. Accepted?",
+          "a": "No. The commit carries the old epoch and is rejected. The new owner resumes from the last committed offset."
+        },
+        {
+          "q": "What evidence shows the build preserves its contract rather than passing clean-path tests?",
+          "a": "Deterministic kill schedules with retained raw histories: kill points at every append, commit and compaction boundary plus a minimized failing history for each bug found."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Commit Contiguous Consumer Offsets",
+          "url": "https://algomaster.io/practice/system-design/commit-contiguous-consumer-offsets",
+          "locator": "The committed offset is the greatest fully acknowledged prefix; out-of-order and repeated acks are safe; partitions stay independent",
+          "note": "Drill the contiguous-commit rule here, on a subscription the learner owns. The section mini-project covers the full log with consumer groups, epochs and replay."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The log survives kills at every boundary with matching offsets, the group reassigns without loss or silent duplication, and every Kafka deviation is written down.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The 2011 paper gives the build ancestor and the 4.3 log page gives the comparison contract; the contiguous-commit drill plus the section mini-project give checked practice."
       }
     },
     {
@@ -744,47 +1297,82 @@
         "event-time-processor-and-checkpoint-implementation"
       ],
       "outcomes": [
-        "TODO"
+        "Implement tumbling or session windows over event time with an explicit watermark, trigger and accumulation mode.",
+        "Implement checkpoint of offsets plus state with restore that reproduces matching outputs on replay, including one late event."
       ],
-      "why": "TODO",
+      "why": "This is where the section's ideas meet: event-time windows, watermarks with a late-data policy, and checkpoint barriers, in one bounded processor that survives a kill.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the processor you build here."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/property-based-schedule-exploration",
+          "note": "Explore its kill schedules with property tests later."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flink-time-state-ds7",
+          "title": "Checkpoint configuration for the build",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/fault-tolerance/checkpointing/",
+          "locator": "Enabling and Configuring Checkpointing: interval, exactly-once versus at-least-once mode, checkpoint storage"
+        },
+        {
+          "resource": "dataflow-model-ds7",
+          "title": "One trigger and one accumulation mode",
+          "url": "https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43864.pdf",
+          "locator": "Section 2: windows, triggers and accumulation. Implement one trigger and one accumulation mode, not the catalog."
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Idle sources in the build",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/event-time/generating_watermarks/",
+          "locator": "Dealing With Idle Sources with `.withIdleness`: declare idle inputs so one quiet partition cannot stall the processor"
         }
       ],
       "focus": [
-        "TODO"
+        "Checkpoint operator state and source offsets together. Restoring one without the other loses or duplicates.",
+        "One trigger decides when a window fires; one accumulation mode decides what a correction does. Implement both explicitly instead of inheriting framework defaults.",
+        "Bound the state: expire windows and dedup keys by watermark plus allowed lateness, and count what the horizon drops.",
+        "Keep sinks inside the checkpoint boundary or behind an idempotent key. A sink outside it repeats on recovery."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build the bounded processor, kill it mid-window, restore from the last checkpoint and show identical window outputs for a fixed event history with one late event.",
       "traps": [
-        "TODO"
+        "Checkpointing state but not offsets. Restore then replays from the wrong position.",
+        "Firing windows on processing time in tests. Deterministic tests advance event time and watermarks by hand.",
+        "Growing window state without expiry. Every window needs a close rule tied to watermark plus lateness."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "State is checkpointed but source offsets are not. What happens after restore?",
+          "a": "Sources replay from the wrong position: already-applied inputs apply again or unapplied inputs are skipped, depending on where reading resumes."
+        },
+        {
+          "q": "What does the trigger decide and what does the accumulation mode decide?",
+          "a": "The trigger decides when a window fires. The accumulation mode decides what a correction does to prior output: ignore, accumulate or retract."
+        },
+        {
+          "q": "A late event arrives past the horizon under the update policy with expired state. What is the correct output?",
+          "a": "No correction. Expired state is gone, so the event is counted as dropped-late; updating would need state that no longer exists."
+        },
+        {
+          "q": "How is the kill test deterministic?",
+          "a": "A fixed event history with scripted watermarks and a scripted kill point, asserting identical outputs before and after restore."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Assign Events to Session Windows",
+          "url": "https://algomaster.io/practice/system-design/assign-events-to-session-windows",
+          "locator": "Per-user sessions with the gap-reaches-threshold rule; interleaved users stay independent",
+          "note": "Drill the session assignment the processor needs, on a subscription the learner owns. The section mini-project covers the processor with checkpoints, watermarks and kill tests."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The processor reproduces identical window outputs across a mid-window kill for a fixed history with retries, one late event and one idle input.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Flink checkpointing and watermark guides plus one Dataflow trigger and accumulation mode cover the build; the session drill plus the section mini-project give checked practice."
       }
     },
     {
@@ -798,47 +1386,82 @@
         "lag-throughput-recovery-and-duplicate-measurement"
       ],
       "outcomes": [
-        "TODO"
+        "Measure end-to-end lag, throughput and backlog drain with the durability, concurrency and batching settings labeled.",
+        "Measure recovery time, duplicate rate and rebalance pause under killed-consumer, replay and late-event faults."
       ],
-      "why": "TODO",
+      "why": "Contracts without measurements are wishes: lag, duplicates and recovery time are where ordering and effect promises meet reality. Measure them before claiming them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/security-operations-evolution-data-governance/slos-telemetry-incidents",
+          "note": "Turn these measurements into SLOs and runbooks."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/evidence-labels-reproduction-defense",
+          "note": "Label measured versus inferred claims in the defense."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "builders-library-backlogs-ds7",
+          "title": "Measuring backlogs and drain",
+          "url": "https://aws.amazon.com/builders-library/avoiding-insurmountable-queue-backlogs/",
+          "locator": "Measuring availability and latency (message age as the lag signal); Backlogs (drain at spare capacity)"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Backpressure metrics",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/ops/monitoring/back_pressure/",
+          "locator": "Back Pressure with Task performance metrics: busy, backpressured and idle time per second as the stall signal"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Lag monitoring on the log",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, When consumers cannot keep up with producers (p. 499): monitor how far a consumer is behind the head of the log and alert before it misses messages"
         }
       ],
       "focus": [
-        "TODO"
+        "Lag is the log end offset minus the committed offset, reported in records and in time. Report both with the workload and durability settings.",
+        "A measured number is a labeled example: versions, concurrency, batching, `acks`, retention and run count travel with it. Unlabeled numbers do not transfer.",
+        "Duplicates are counted end to end across retry, rebalance and replay faults, not per component. Per-component zeros can hide end-to-end doubles.",
+        "Recovery time runs from fault injection to caught-up offsets with matching state, not just to process restart."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run a fixed-rate producer against a bounded consumer, record lag, kill one consumer through a rebalance, and report the lag peak, duplicate count and catch-up time with the full setup label.",
       "traps": [
-        "TODO"
+        "Reporting a mean without the spread. Backlog and rebalance pauses live in the tail, so report the max and the run count.",
+        "Measuring throughput the broker accepted. End-to-end goodput counts effects applied once at the sink.",
+        "Comparing lag across different setups. Batching, `acks` and partition counts change the numbers, so compare only matched runs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What two numbers make up a lag report, and what travels with them?",
+          "a": "Records behind (end offset minus committed offset) and time behind. The workload, versions, concurrency, batching, `acks`, retention and run count travel with them."
+        },
+        {
+          "q": "A consumer is killed at t = 0 s, restarts at t = 2 s, and reaches caught-up offsets with matching state at t = 42 s. What is the recovery time?",
+          "a": "42 seconds, from the fault to caught-up offsets with matching state. The 2-second restart is one step inside it."
+        },
+        {
+          "q": "Retries show zero duplicates at the producer and the sink counts doubles after a rebalance. Where is the gap?",
+          "a": "The consumer redelivered processed-but-uncommitted records to the new owner. Component zeros hid the end-to-end double; count at the sink."
+        },
+        {
+          "q": "What does the 5c efficiency run establish that a 5b run does not?",
+          "a": "Fewer messages per operation under the same workload and flags. It measures coordination cost, not stronger correctness."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Gossip Glomers 5c: Kafka-style log efficiency",
+          "url": "https://fly.io/dist-sys/5c",
+          "locator": "Run the same two-node kafka command as 5b. The specification asks for significantly fewer messages per operation and fewer compare-and-swap failures on `lin-kv` while every correctness check still passes; the page calls it a looser definition of success",
+          "note": "Use it as the efficiency drill. Full lag, throughput and recovery measurement with labeled setups is section mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can report lag, goodput, duplicates and recovery time for a matched run with the full setup label, and say which comparisons that label permits.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Builders Library plus the Flink backpressure page and DDIA reach measure depth on lag, drain and stall signals; Glomers 5c gives checked efficiency practice."
       }
     }
   ]
