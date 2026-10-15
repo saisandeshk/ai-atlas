@@ -816,47 +816,89 @@
         "late-data-and-update-policy"
       ],
       "outcomes": [
-        "TODO"
+        "Derive an operator's event time as the minimum over its inputs and show how one idle source stalls it.",
+        "Explain watermarks as progress estimates and configure idleness detection plus allowed lateness with a side output.",
+        "Implement a late-data policy (drop with a counter versus update with a correction) inside a retention horizon."
       ],
-      "why": "TODO",
+      "why": "Windows never close by themselves: something must declare the past complete while stragglers still arrive. The watermark is that declaration, and the late-data policy is what keeps it honest.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/keyed-state-checkpoints",
+          "note": "Hold the buffered events and corrections in checkpointed state."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Implement the watermark and late-data rule with checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "millwheel-ds7",
+          "title": "Low watermarks and bounded deduplication",
+          "url": "https://www.vldb.org/pvldb/vol6/p1033-akidau.pdf",
+          "locator": "Low watermarks with the recursive definition over inputs; at-least-once delivery with deduplication and strong productions; the retention bound on what dedup can catch"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Generating watermarks and handling idle sources",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/event-time/generating_watermarks/",
+          "locator": "Dealing With Idle Sources (the minimum-over-inputs stall with `.withIdleness`); periodic versus punctuated watermark generators; how operators process watermarks"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Allowed lateness and late-data side outputs",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/operators/windows/",
+          "locator": "Allowed Lateness (default 0 drops events behind the watermark, in-lateness refires via the event-time trigger); getting late data as a side output"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Stragglers and timestamp estimation",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Handling straggler events and Whose clock are you using (pp. 520 to 521): ignore versus publish a correction; the three timestamps that estimate true event time from an untrusted device clock"
         }
       ],
       "focus": [
-        "TODO"
+        "A watermark of \\(t\\) asserts that no more events with timestamp at most \\(t\\) should follow. It is a progress estimate, not a promise the transport enforces.",
+        "An operator's event time is the minimum watermark over its inputs, so one idle partition stalls the whole operator unless idleness is declared with `.withIdleness`.",
+        "The late-data policy is explicit: drop with a counter, or update with a correction through accumulate or retract modes. Flink drops events behind the watermark by default, since allowed lateness is 0.",
+        "Deduplication and corrections hold only within retention. A duplicate older than the horizon looks new again, and expired window state cannot be corrected."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, advance two input watermarks to 5 and a stalled 2, compute the operator watermark, apply idleness detection, then route an event at time 3 under the drop versus update policy.",
       "traps": [
-        "TODO"
+        "Treating watermarks as guarantees. Late events still arrive; the policy decides their fate, not the watermark.",
+        "Taking the maximum over inputs. Progress follows the slowest input, which is the minimum.",
+        "Raising allowed lateness without budgeting state. Buffered events and corrections accumulate until the horizon passes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two inputs hold watermarks 5 and 2. What is the operator's event time, and what happens to a window ending at 5?",
+          "a": "Event time 2, the minimum. The window cannot fire yet; the stalled input holds it back until its watermark advances or idleness is declared."
+        },
+        {
+          "q": "Allowed lateness is 0 and an event arrives behind the watermark. What happens to it by default, and where can it go instead?",
+          "a": "It is dropped. With a side output configured, it is routed there for counting or separate handling instead of vanishing silently."
+        },
+        {
+          "q": "MillWheel redelivers an event first seen a month ago. Does deduplication catch it?",
+          "a": "Only if the dedup horizon still covers it. Past the retention bound the redelivery looks new and is processed again."
+        },
+        {
+          "q": "A phone buffers events offline for a day, then uploads them. Which timestamp describes the user action, and why is it suspect?",
+          "a": "The device-clock occurrence time describes the action, but device clocks may be wrong. The server-receive time is accurate yet describes arrival, so the three-timestamp method estimates the offset between them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Deduplicate Stream Events with TTL",
+          "url": "https://algomaster.io/practice/system-design/deduplicate-stream-events-with-ttl",
+          "locator": "Accept within the TTL is rejected; the expiry boundary accepts and replaces the stored time; rejections do not refresh the TTL",
+          "note": "A single-process drill that makes the retention horizon concrete, on a subscription the learner owns. Watermark propagation and the drop-versus-update policy are mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can compute operator watermarks by hand, configure idleness and lateness for a stated policy, and say exactly which late events each choice drops or corrects.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MillWheel plus the Flink watermark and windowing guides reach derive depth on watermarks, stalls and lateness; the owned TTL-dedup drill exercises the retention horizon."
       }
     },
     {
@@ -873,47 +915,90 @@
         "source-state-sink-recovery-boundary"
       ],
       "outcomes": [
-        "TODO"
+        "Explain keyed state partitioning and how rescaling reassigns key groups with their state.",
+        "Derive the barrier snapshotting rule for acyclic graphs and the marker rules it inherits from Chandy and Lamport.",
+        "Derive the source-state-sink recovery boundary: what restores, what rewinds, and which sinks keep exactly-once."
       ],
-      "why": "TODO",
+      "why": "State makes streams useful and recovery hard: a restart must bring back the same derived state and the same input position together, or outputs silently double or vanish.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Implement the checkpoint and recovery boundary."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the recovery you derive here."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "abs-snapshots-ds7",
+          "title": "Asynchronous barrier snapshots for acyclic graphs",
+          "url": "https://arxiv.org/abs/1506.08603",
+          "locator": "The barrier broadcast and snapshot-on-receipt algorithm with its alignment discussion; the acyclic-graph scope. Barriers assume FIFO channels.",
+          "depth": "Study the acyclic case only. Skip the cyclic extension."
+        },
+        {
+          "resource": "chandy-lamport-ds7",
+          "title": "Marker rules and consistent cuts",
+          "url": "https://lamport.azurewebsites.net/pubs/chandy.pdf",
+          "locator": "The marker-sending and marker-receiving rules with the channel-state procedure, and why the recorded state is a consistent cut. Assumes FIFO channels with a spontaneously initiating process."
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Keyed state, barriers and recovery",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/concepts/stateful-stream-processing/",
+          "locator": "Keyed State; Checkpointing with Barriers (inline barriers, alignment, async write); Recovery (restore state and rewind sources such as Kafka offsets); Exactly Once versus At Least Once (when alignment skips trade down to duplicates)"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Rebuilding state after a failure",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Fault Tolerance (pp. 526 to 528): Flink state snapshots, Kafka Streams changelog topics with log compaction, and rebuilding short-window state by input replay"
         }
       ],
       "focus": [
-        "TODO"
+        "Barriers flow with the data and separate pre-snapshot from post-snapshot records, so each operator snapshots a consistent cut without stopping the stream.",
+        "Recovery restores operator state from the snapshot and rewinds replayable sources to the checkpointed offsets, then replays the suffix.",
+        "Checkpoint exactly-once covers state and participating sinks only. Skipping alignment replays in-flight records, which non-idempotent sinks see twice.",
+        "Keyed state partitions by key with the operator, so rescaling reassigns key groups together with their state instead of reshuffling records."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, run barrier snapshotting on a two-operator pipeline with one in-flight record: state which records each snapshot includes, and where the sources rewind on recovery.",
       "traps": [
-        "TODO"
+        "Snapshotting without channel state or FIFO order. An in-flight record belongs to neither snapshot unless barriers order it.",
+        "Restoring state but resuming sources from latest. Post-checkpoint inputs must replay or their effects are lost.",
+        "Claiming exactly-once for a nonparticipating sink. A sink outside the checkpoint boundary repeats on recovery."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A barrier reaches an operator while one record is still in flight on an input channel. Which side of the snapshot does the record fall on?",
+          "a": "The post-snapshot side. The snapshot includes only pre-barrier records; the in-flight record replays from the rewound source on recovery."
+        },
+        {
+          "q": "A checkpoint restores operator state. What else must restore, and what happens if it does not?",
+          "a": "The source offsets must rewind to the checkpointed positions. Resuming from latest silently drops every post-checkpoint input."
+        },
+        {
+          "q": "What does skipping barrier alignment trade away, and when is it used?",
+          "a": "It avoids stalling on slow channels under backpressure but replays in-flight records on recovery, so sinks must tolerate duplicates. It trades exactly-once for progress."
+        },
+        {
+          "q": "A Kafka Streams task keeps a local aggregate. How does a replacement task rebuild it without a snapshot copy?",
+          "a": "It reads the dedicated changelog topic with log compaction, which holds the latest value per key, the same rebuild pattern as CDC from offset 0."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Checkpoint Sidecar Log Delivery",
+          "url": "https://algomaster.io/practice/system-design/checkpoint-sidecar-log-delivery",
+          "locator": "The checkpoint advances only on acknowledged batches; a failed flush retries the exact batch; duplicate appends are rejected as reserved",
+          "note": "A drill for the checkpoint-after-acknowledgement boundary, on a subscription the learner owns. Barrier alignment and state restore are mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can run a barrier snapshot by hand on a small graph, state the full restore-plus-rewind procedure, and name which sinks keep exactly-once.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The barrier and marker papers plus the Flink state pages and DDIA reach derive depth on snapshots and the recovery boundary; the owned sidecar drill exercises checkpoint-after-ack."
       }
     },
     {
