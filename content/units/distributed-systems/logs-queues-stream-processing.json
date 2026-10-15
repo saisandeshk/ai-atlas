@@ -127,7 +127,7 @@
         {
           "name": "Gossip Glomers 5a: single-node Kafka-style log",
           "url": "https://fly.io/dist-sys/5a",
-          "locator": "Implement `send`, `poll`, `commit_offsets` and `list_committed_offsets`; pass `./maelstrom test -w kafka --bin ~/go/bin/maelstrom-kafka --node-count 1 --concurrency 2n --time-limit 20 --rate 1000`",
+          "locator": "Implement `send`, `poll`, `commit_offsets` and `list_committed_offsets`; run the Evaluation section's kafka workload on one node with the flags given on the page",
           "note": "The checker catches lost writes and nonmonotonic or skipped offsets. It does not check recency, so an acknowledged send that never appears in a poll still passes."
         }
       ],
@@ -1182,7 +1182,7 @@
         {
           "name": "AlgoMaster: Maintain an Incremental Materialized View",
           "url": "https://algomaster.io/practice/system-design/maintain-an-incremental-materialized-view",
-          "locator": "`apply` accepts only sequences above the checkpoint, adds the delta and advances it; the rest are ignored without effect",
+          "locator": "`apply` accepts only sequences above the checkpoint, adds the increment and advances it; the rest are ignored without effect",
           "note": "Same scope as above: checkpoint-gated application here, real snapshot restores in the mini-project."
         }
       ],
@@ -1204,47 +1204,86 @@
         "consumer-group-and-replay-implementation"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a checksummed segmented partition log with offsets, an index, retention and recovery that truncates torn tails.",
+        "Implement consumer-group ownership with epochs, committed offsets, kill-and-reassign replay and a retry and dead-letter boundary."
       ],
-      "why": "TODO",
+      "why": "This is the section's build: a log you can kill mid-append and a consumer group you can kill mid-commit, both recovering to matching offsets and outputs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Process the log's events with checkpoints next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the log you build here."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/property-based-schedule-exploration",
+          "note": "Explore its schedules with property tests later."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "kafka-2011-ds7",
+          "title": "The build ancestor to mirror and diverge from",
+          "url": "https://notes.stephenholiday.com/Kafka.pdf",
+          "locator": "The log design to mirror (segments, offsets, pull consumers) and the final section to see what to add (replication and durability beyond fire-and-forget)"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "The segment contract to compare against",
+          "url": "https://kafka.apache.org/43/implementation/log/",
+          "locator": "Writes (serial append with segment roll), Reads (offset lookup with range checks), Deletes (time and size retention over whole segments)"
+        },
+        {
+          "resource": "replicated-log-capstone-ds7",
+          "title": "Milestones A to C requirements",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "Milestone A (local checksummed log with recovery), Milestone B (instrumented histories), Milestone C (producer dedup, partition routing, consumer group with replay)"
         }
       ],
       "focus": [
-        "TODO"
+        "Appended, flushed, committed, applied and exposed are distinct states. Tests assert each transition separately.",
+        "No wall-clock timestamp decides order; offsets do. Ownership moves with epochs so a stale consumer cannot commit past the new owner.",
+        "Acknowledge only after the record is stable per the declared contract: flushed or replicated, never merely buffered.",
+        "Compare each contract (retention, visibility, commit rule) with the Kafka 4.3 behavior and write down every deliberate difference."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, rebuild the single-partition log with its index and recovery, then replay a recorded history through a kill-and-reassign test and show matching offsets and outputs.",
       "traps": [
-        "TODO"
+        "Acknowledging before the record is stable. An ack must follow flush or replication per the declared contract, never buffer acceptance.",
+        "Letting two owners commit for one partition. Fence every commit with the ownership epoch.",
+        "Testing only clean shutdown. Kill mid-append, mid-commit and mid-compaction; recovery must truncate the torn tail, never invent records."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A crash leaves a half-written record at the segment tail with a failing checksum. What does recovery do?",
+          "a": "It truncates at the last valid record and exposes nothing partial. The torn tail is discarded, never repaired by guessing."
+        },
+        {
+          "q": "Acks for offsets 0, 2 and 3 arrive but 1 is missing. What is the committed offset?",
+          "a": "Offset 0. The commit is the greatest fully acknowledged prefix, so the gap at 1 blocks 2 and 3 until it arrives."
+        },
+        {
+          "q": "A fenced-out consumer commits offset 8 after the group moved its partition to a new owner at epoch 7. Accepted?",
+          "a": "No. The commit carries the old epoch and is rejected. The new owner resumes from the last committed offset."
+        },
+        {
+          "q": "What evidence shows the build preserves its contract rather than passing clean-path tests?",
+          "a": "Deterministic kill schedules with retained raw histories: kill points at every append, commit and compaction boundary plus a minimized failing history for each bug found."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Commit Contiguous Consumer Offsets",
+          "url": "https://algomaster.io/practice/system-design/commit-contiguous-consumer-offsets",
+          "locator": "The committed offset is the greatest fully acknowledged prefix; out-of-order and repeated acks are safe; partitions stay independent",
+          "note": "Drill the contiguous-commit rule here, on a subscription the learner owns. The section mini-project covers the full log with consumer groups, epochs and replay."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The log survives kills at every boundary with matching offsets, the group reassigns without loss or silent duplication, and every Kafka deviation is written down.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The 2011 paper gives the build ancestor and the 4.3 log page gives the comparison contract; the contiguous-commit drill plus the section mini-project give checked practice."
       }
     },
     {
@@ -1258,47 +1297,82 @@
         "event-time-processor-and-checkpoint-implementation"
       ],
       "outcomes": [
-        "TODO"
+        "Implement tumbling or session windows over event time with an explicit watermark, trigger and accumulation mode.",
+        "Implement checkpoint of offsets plus state with restore that reproduces matching outputs on replay, including one late event."
       ],
-      "why": "TODO",
+      "why": "This is where the section's ideas meet: windows from unit 8, watermarks from unit 9 and checkpoints from unit 10, in one bounded processor that survives a kill.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Measure the processor you build here."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/property-based-schedule-exploration",
+          "note": "Explore its kill schedules with property tests later."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "flink-time-state-ds7",
+          "title": "Checkpoint configuration for the build",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/fault-tolerance/checkpointing/",
+          "locator": "Enabling and Configuring Checkpointing: interval, exactly-once versus at-least-once mode, checkpoint storage"
+        },
+        {
+          "resource": "dataflow-model-ds7",
+          "title": "One trigger and one accumulation mode",
+          "url": "https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43864.pdf",
+          "locator": "Section 2: windows, triggers and accumulation. Implement one trigger and one accumulation mode, not the catalog."
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Idle sources in the build",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/dev/datastream/event-time/generating_watermarks/",
+          "locator": "Dealing With Idle Sources with `.withIdleness`: declare idle inputs so one quiet partition cannot stall the processor"
         }
       ],
       "focus": [
-        "TODO"
+        "Checkpoint operator state and source offsets together. Restoring one without the other loses or duplicates.",
+        "One trigger decides when a window fires; one accumulation mode decides what a correction does. Implement both explicitly instead of inheriting framework defaults.",
+        "Bound the state: expire windows and dedup keys by watermark plus allowed lateness, and count what the horizon drops.",
+        "Keep sinks inside the checkpoint boundary or behind an idempotent key. A sink outside it repeats on recovery."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build the bounded processor, kill it mid-window, restore from the last checkpoint and show identical window outputs for a fixed event history with one late event.",
       "traps": [
-        "TODO"
+        "Checkpointing state but not offsets. Restore then replays from the wrong position.",
+        "Firing windows on processing time in tests. Deterministic tests advance event time and watermarks by hand.",
+        "Growing window state without expiry. Every window needs a close rule tied to watermark plus lateness."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "State is checkpointed but source offsets are not. What happens after restore?",
+          "a": "Sources replay from the wrong position: already-applied inputs apply again or unapplied inputs are skipped, depending on where reading resumes."
+        },
+        {
+          "q": "What does the trigger decide and what does the accumulation mode decide?",
+          "a": "The trigger decides when a window fires. The accumulation mode decides what a correction does to prior output: ignore, accumulate or retract."
+        },
+        {
+          "q": "A late event arrives past the horizon under the update policy with expired state. What is the correct output?",
+          "a": "No correction. Expired state is gone, so the event is counted as dropped-late; updating would need state that no longer exists."
+        },
+        {
+          "q": "How is the kill test deterministic?",
+          "a": "A fixed event history with scripted watermarks and a scripted kill point, asserting identical outputs before and after restore."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Assign Events to Session Windows",
+          "url": "https://algomaster.io/practice/system-design/assign-events-to-session-windows",
+          "locator": "Per-user sessions with the gap-reaches-threshold rule; interleaved users stay independent",
+          "note": "Drill the session assignment the processor needs, on a subscription the learner owns. The section mini-project covers the processor with checkpoints, watermarks and kill tests."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The processor reproduces identical window outputs across a mid-window kill for a fixed history with retries, one late event and one idle input.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Flink checkpointing and watermark guides plus one Dataflow trigger and accumulation mode cover the build; the session drill plus the section mini-project give checked practice."
       }
     },
     {
@@ -1312,47 +1386,82 @@
         "lag-throughput-recovery-and-duplicate-measurement"
       ],
       "outcomes": [
-        "TODO"
+        "Measure end-to-end lag, throughput and backlog drain with the durability, concurrency and batching settings labeled.",
+        "Measure recovery time, duplicate rate and rebalance pause under killed-consumer, replay and late-event faults."
       ],
-      "why": "TODO",
+      "why": "Contracts without measurements are wishes: lag, duplicates and recovery time are where ordering and effect promises meet reality. Measure them before claiming them.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/security-operations-evolution-data-governance/slos-telemetry-incidents",
+          "note": "Turn these measurements into SLOs and runbooks."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/evidence-labels-reproduction-defense",
+          "note": "Label measured versus inferred claims in the defense."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "builders-library-backlogs-ds7",
+          "title": "Measuring backlogs and drain",
+          "url": "https://aws.amazon.com/builders-library/avoiding-insurmountable-queue-backlogs/",
+          "locator": "Measuring availability and latency (message age as the lag signal); Backlogs (drain at spare capacity)"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Backpressure metrics",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/ops/monitoring/back_pressure/",
+          "locator": "Back Pressure with Task performance metrics: busy, backpressured and idle time per second as the stall signal"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Lag monitoring on the log",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, When consumers cannot keep up with producers (p. 499): monitor how far a consumer is behind the head of the log and alert before it misses messages"
         }
       ],
       "focus": [
-        "TODO"
+        "Lag is the log end offset minus the committed offset, reported in records and in time. Report both with the workload and durability settings.",
+        "A measured number is a labeled example: versions, concurrency, batching, `acks`, retention and run count travel with it. Unlabeled numbers do not transfer.",
+        "Duplicates are counted end to end across retry, rebalance and replay faults, not per component. Per-component zeros can hide end-to-end doubles.",
+        "Recovery time runs from fault injection to caught-up offsets with matching state, not just to process restart."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Run a fixed-rate producer against a bounded consumer, record lag, kill one consumer through a rebalance, and report the lag peak, duplicate count and catch-up time with the full setup label.",
       "traps": [
-        "TODO"
+        "Reporting a mean without the spread. Backlog and rebalance pauses live in the tail, so report the max and the run count.",
+        "Measuring throughput the broker accepted. End-to-end goodput counts effects applied once at the sink.",
+        "Comparing lag across different setups. Batching, `acks` and partition counts change the numbers, so compare only matched runs."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What two numbers make up a lag report, and what travels with them?",
+          "a": "Records behind (end offset minus committed offset) and time behind. The workload, versions, concurrency, batching, `acks`, retention and run count travel with them."
+        },
+        {
+          "q": "A consumer restarts in 2 seconds but takes 40 seconds to catch up with matching state. What is the recovery time?",
+          "a": "40 seconds plus the fault-to-detection delay. Restart is one step; recovery ends at caught-up offsets with matching state."
+        },
+        {
+          "q": "Retries show zero duplicates at the producer and the sink counts doubles after a rebalance. Where is the gap?",
+          "a": "The consumer redelivered processed-but-uncommitted records to the new owner. Component zeros hid the end-to-end double; count at the sink."
+        },
+        {
+          "q": "What does the 5c efficiency run establish that a 5b run does not?",
+          "a": "Fewer messages per operation under the same workload and flags. It measures coordination cost, not stronger correctness."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Gossip Glomers 5c: Kafka-style log efficiency",
+          "url": "https://fly.io/dist-sys/5c",
+          "locator": "Same setup as 5b on two nodes; run the Evaluation section's kafka workload with the page's efficiency flags, which demand fewer messages per operation",
+          "note": "Use it as the efficiency drill. Full lag, throughput and recovery measurement with labeled setups is section mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can report lag, goodput, duplicates and recovery time for a matched run with the full setup label, and say which comparisons that label permits.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Builders Library plus the Flink backpressure page and DDIA reach measure depth on lag, drain and stall signals; Glomers 5c gives checked efficiency practice."
       }
     }
   ]
