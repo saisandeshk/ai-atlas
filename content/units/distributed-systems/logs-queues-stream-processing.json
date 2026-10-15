@@ -97,7 +97,7 @@
         "An offset identifies a position in one partition only. It never restarts and is never reused within that partition.",
         "A segment bounds the unit of deletion, and a sparse index maps sampled offsets to file positions, so lookup stays fast while index memory stays bounded.",
         "Time and size retention deletes whole segments, so a consumer that falls behind the oldest retained segment misses messages. Compaction instead keeps the latest value per key plus tombstones, so a scan from offset 0 rebuilds current state.",
-        "The book's bound is concrete: 20 TB at 250 MB/s fills in about 22 hours, so a disk log always buffers at least that much at full write rate. Real deployments retain days or weeks because they write below full bandwidth."
+        "The book gives a concrete bound: one 20 TB disk written at 250 MB/s fills in about 22 hours, so even at full write bandwidth a single disk holds about a day of messages. Real deployments write well below full bandwidth, so retention reaches days or weeks."
       ],
       "reproduce": "Closed-book, derive the 20 TB at 250 MB/s bound (about 22 hours) and sketch the segment layout, sparse index entries, and the scan-from-0 rebuild of a compacted topic with one tombstoned key.",
       "traps": [
@@ -128,7 +128,7 @@
           "name": "Gossip Glomers 5a: single-node Kafka-style log",
           "url": "https://fly.io/dist-sys/5a",
           "locator": "Implement `send`, `poll`, `commit_offsets` and `list_committed_offsets`; run the Evaluation section's kafka workload on one node with the flags given on the page",
-          "note": "The checker catches lost writes and nonmonotonic or skipped offsets. It does not check recency, so an acknowledged send that never appears in a poll still passes."
+          "note": "The checker catches lost writes and nonmonotonic or skipped offsets. It has no recency requirement, so an acknowledged send need not appear in a poll right away; your own log should still serve it on the next poll."
         }
       ],
       "stopWhen": "You can derive the retention bound, explain what compaction keeps, and your 5a node passes the single-node run with its history retained.",
@@ -186,7 +186,7 @@
         "A partition is the unit of ordering and of parallelism: more partitions raise throughput but also the number of independent sequences.",
         "All events that need a fixed relative order must share a partition key. Key by entity ID, not by timestamp.",
         "Followers pull like consumers, and the leader commits a write only after all in-sync replicas receive it.",
-        "The high watermark is the largest committed offset. Consumers read up to the watermark, never the log end offset, so uncommitted tail records stay invisible."
+        "The high watermark marks the end of the committed prefix: consumers read only offsets below it, never up to the log end offset, so uncommitted tail records stay invisible."
       ],
       "reproduce": "Closed-book, draw one partition with a leader and two followers, mark the log end offset and the high watermark after a write reaches the leader and one follower, and state which `acks` values would have returned success.",
       "traps": [
@@ -297,7 +297,7 @@
         },
         {
           "q": "A transaction writes partitions A and B plus offsets, then aborts. What does a `read_committed` consumer see?",
-          "a": "Nothing from that transaction. Its offsets stay below the consumer's view until a commit moves them forward."
+          "a": "Nothing from that transaction: `read_committed` skips its aborted records. The consumer offsets written in the transaction never take effect either, so the input records are read and processed again."
         }
       ],
       "practice": [],
@@ -376,15 +376,15 @@
       "selfTest": [
         {
           "q": "Six partitions, four live members, then a fifth member joins. How many members read, and with what split?",
-          "a": "Four members read, split 2, 2, 1 and 1. The fifth member sits idle because there are only six partitions and each partition has exactly one owner."
+          "a": "All five read, split 2, 1, 1, 1 and 1, since each partition has exactly one owner. A member sits idle only when members outnumber partitions."
         },
         {
-          "q": "A member processes offsets 10 to 12, crashes with 9 committed, and its partitions move. Where does the new owner start, and what repeats?",
-          "a": "It starts at offset 10, the last committed position. Offsets 10 to 12 are redelivered and processed a second time."
+          "q": "A member has committed position 10 (offsets up to 9 done), processes offsets 10 to 12, then crashes before its next commit, and its partitions move. Where does the new owner start, and what repeats?",
+          "a": "It resumes at 10, the committed position. Offsets 10 to 12 are delivered and processed a second time."
         },
         {
           "q": "What does `group.instance.id` change on a rolling restart?",
-          "a": "The restarted process rejoins as the same static member and keeps its partitions, so no rebalance moves ownership and no redelivery follows."
+          "a": "The restarted process rejoins as the same static member, so if it returns within the session timeout it keeps its partitions and no rebalance moves ownership. Records it processed but had not committed before the restart are still read again."
         },
         {
           "q": "Why do log-based brokers pull instead of pushing?",
@@ -448,8 +448,8 @@
         {
           "resource": "hld-streams-ds7",
           "title": "Exactly-once as at-least-once plus idempotence",
-          "url": "https://github.com/handbook-academy/engineering-handbook/tree/main/content/hld",
-          "locator": "Part 3, 07-idempotency-exactly-once: the Two Generals framing through the Kafka idempotent and transactional producer sections",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/07-idempotency-exactly-once.md",
+          "locator": "The Two Generals framing through the Kafka idempotent and transactional producer sections",
           "depth": "Review after the DDIA items. Treat its deployment numbers as reported figures from their era, not targets."
         }
       ],
@@ -467,8 +467,8 @@
       ],
       "selfTest": [
         {
-          "q": "A consumer commits offset 10, then crashes before processing record 10. What happens to record 10?",
-          "a": "It is lost. The commit claimed progress the consumer never made, which is at-most-once behavior."
+          "q": "A consumer commits position 11, past record 10, then crashes before processing record 10. What happens to record 10?",
+          "a": "It is lost to the group: the next owner resumes at 11. The commit claimed progress the consumer never made, which is at-most-once behavior."
         },
         {
           "q": "A consumer writes a database row, crashes before committing the offset, and restarts. What does it see, and what prevents a duplicate row?",
@@ -578,7 +578,7 @@
         },
         {
           "q": "Arrivals run at twice the drain rate for one hour, then spare capacity is 10 percent of drain. How long to clear the backlog?",
-          "a": "About 10 hours. The backlog holds one drain-hour of work, and \\(1 / 0.1 = 10\\) drain-hours clear it once arrivals stop."
+          "a": "About 10 hours. The backlog holds one drain-hour of work, and with arrivals continuing it shrinks only by the spare 10 percent, so \\(1 / 0.1 = 10\\) hours."
         }
       ],
       "practice": [
@@ -654,7 +654,7 @@
         "Replay is deterministic only with event-time timestamps and versioned logic. Reprocessing with processing-time windows rewrites history instead of repeating it.",
         "A CDC consumer keeps source offsets with its projection so a restart resumes without reapplying or skipping. A snapshot plus a log position restarts a new projection the same way.",
         "Backward compatibility lets new code read old data, Forward lets old code read new data, and Full allows both. Check transitively when many schema versions coexist in the log.",
-        "Avro resolution matches fields by name: unknown writer fields are ignored and missing reader fields come from defaults. Defaults are part of the contract, so adding a required field breaks both directions."
+        "Avro resolution matches fields by name: unknown writer fields are ignored and missing reader fields come from defaults. Defaults are part of the contract: a field added without a default breaks backward compatibility, since new readers cannot fill it in old data, while old readers simply ignore it."
       ],
       "reproduce": "Closed-book, replay a three-event CDC sequence (upsert version 1, delete version 2, late upsert version 1) against a projection and show the late event rejected; then add an optional field under Backward compatibility and state which readers break.",
       "traps": [
@@ -758,7 +758,7 @@
         "Two events five minutes apart can share a five-minute sliding window while falling in different tumbling windows. Fixed boundaries and pairwise intervals answer different questions.",
         "Window state cost follows the buffering need: counters stay constant size, while sliding windows and joins buffer events until the window closes."
       ],
-      "reproduce": "Closed-book, assign events at 10:03:39 and 10:08:12 to five-minute tumbling, hopping, sliding and session windows with a 30-minute gap, and state which windows they share.",
+      "reproduce": "Closed-book, assign events at 10:03:39 and 10:08:12 to five-minute tumbling windows, five-minute hopping windows with a one-minute hop, five-minute sliding windows and session windows with a 30-minute gap, and state which windows they share.",
       "traps": [
         "Windowing by arrival time and calling it event time. Reprocessing history then answers a different question than live processing did.",
         "Assuming hopping equals sliding. Hopping has fixed boundaries; sliding is defined by pairwise intervals.",
@@ -770,8 +770,8 @@
           "a": "The chart is windowed by processing time, so the backlog compressed into seconds of processing. Window by event time to recover the steady real rate."
         },
         {
-          "q": "Two events occur at 10:03:39 and 10:08:12. Which five-minute windows do they share?",
-          "a": "Only a five-minute sliding window, since they are less than five minutes apart. Tumbling and hopping windows use fixed boundaries that separate them; a 30-minute session window also holds both."
+          "q": "Two events occur at 10:03:39 and 10:08:12. Which windows do they share: five-minute tumbling, five-minute hopping with a one-minute hop, five-minute sliding, or sessions with a 30-minute gap?",
+          "a": "The sliding window and the session. They are 4 minutes 33 seconds apart, so some five-minute interval holds both, and the gap is far below 30 minutes. Tumbling windows put them in 10:00 to 10:05 and 10:05 to 10:10. The last one-minute hop holding 10:03:39 is 10:03 to 10:08, which ends before 10:08:12; a 30-second hop would give 10:03:30 to 10:08:30, which holds both."
         },
         {
           "q": "Events for users `[a, a, b, a, b]` arrive at `[0, 4, 5, 10, 11]` with inactivity gap 6, starting a new session when the gap reaches the threshold. What are the session numbers?",
@@ -971,8 +971,8 @@
       ],
       "selfTest": [
         {
-          "q": "A barrier reaches an operator while one record is still in flight on an input channel. Which side of the snapshot does the record fall on?",
-          "a": "The post-snapshot side. The snapshot includes only pre-barrier records; the in-flight record replays from the rewound source on recovery."
+          "q": "An operator has one input channel. A record is sent on it right after a checkpoint barrier. Which side of the snapshot does the record fall on?",
+          "a": "The post-snapshot side. The snapshot holds state from pre-barrier records only; after a failure the source rewinds to the barrier position and the record is replayed."
         },
         {
           "q": "A checkpoint restores operator state. What else must restore, and what happens if it does not?",
@@ -980,7 +980,7 @@
         },
         {
           "q": "What does skipping barrier alignment trade away, and when is it used?",
-          "a": "It avoids stalling on slow channels under backpressure but replays in-flight records on recovery, so sinks must tolerate duplicates. It trades exactly-once for progress."
+          "a": "Flink's at-least-once mode skips alignment: it avoids stalling on slow channels under backpressure, but records from fast channels already reach the state before the snapshot and replay on recovery, so it trades exactly-once for progress. Unaligned checkpoints are the other route: the barrier overtakes in-flight records, which are stored in the checkpoint, so exactly-once holds at the cost of larger checkpoints."
         },
         {
           "q": "A Kafka Streams task keeps a local aggregate. How does a replacement task rebuild it without a snapshot copy?",
@@ -1045,8 +1045,8 @@
         {
           "resource": "hld-streams-ds7",
           "title": "Stream versus batch review",
-          "url": "https://github.com/handbook-academy/engineering-handbook/tree/main/content/hld",
-          "locator": "Part 4, 03-stream-vs-batch: event versus processing versus ingestion time, engines comparison, lambda versus kappa",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/03-stream-vs-batch.md",
+          "locator": "Event versus processing versus ingestion time, engines comparison, lambda versus kappa",
           "depth": "Review after the DDIA items. Treat its deployment figures as reported examples, not targets."
         }
       ],
@@ -1054,7 +1054,7 @@
         "A dataflow graph wires operators with shuffle edges: records are repartitioned by key so all records of one key reach the same downstream task.",
         "The shuffle is the all-to-all bulk transfer, so partition counts and key skew decide the runtime more than per-record speed does.",
         "Batch tasks retry transparently because inputs are immutable and outputs publish atomically. The visible result matches a failure-free run even though tasks recomputed.",
-        "Stream graphs are usually acyclic pipelines with one well-defined input set per stream. Arbitrary cyclic request patterns break that reasoning."
+        "Dataflow graphs are usually acyclic, so each task's input is fixed by the operators upstream of it and a failed task can recompute from that input. Cycles and arbitrary request patterns between tasks break that reasoning."
       ],
       "reproduce": "Closed-book, trace a word count over two mappers and two reducers: hash-partition the keys, name what crosses the shuffle, and state which reducer a hot key overloads.",
       "traps": [
@@ -1073,11 +1073,11 @@
         },
         {
           "q": "What crosses the network in a shuffle, and what does not?",
-          "a": "Intermediate records repartitioned by key cross to their assigned reducers. The input splits and the final outputs stay local to their tasks."
+          "a": "Intermediate records, repartitioned by key, cross to their assigned reducers. Map tasks read their input splits, ideally from local disk, and the final output is written to the distributed filesystem; neither is the shuffle."
         },
         {
-          "q": "What two values does a reducer-skew analysis return?",
-          "a": "The load total per reducer and the index of the hottest reducer."
+          "q": "One word carries 40 percent of all records in a word count. Why do more reducers not help, and what two fixes do?",
+          "a": "Every record of one key hashes to one reducer, so that reducer still gets 40 percent of the input. A combiner pre-aggregates on the map side, so the hot reducer gets one partial count per mapper; this works because addition is associative and commutative. Key splitting appends a small salt to the hot key, spreads it over several reducers, and merges the partial counts in a second step."
         }
       ],
       "practice": [
@@ -1111,7 +1111,7 @@
         "Explain open table snapshots: immutable files plus an atomic metadata-pointer swap as the commit.",
         "Explain optimistic lakehouse commits and incremental views applied after a durable checkpoint."
       ],
-      "why": "Streams feed tables and tables seed streams: tiered log storage already lands as table files. The metadata swap is the commit point both sides share.",
+      "why": "Streams feed tables and tables seed streams: some brokers' tiered storage already writes Iceberg tables. The metadata swap is the commit point both sides share.",
       "next": [
         {
           "unit": "distributed-systems/logs-queues-stream-processing/replay-schema-registry-cdc",
@@ -1139,7 +1139,7 @@
           "resource": "delta-protocol-ds7",
           "title": "Transaction log replay and optimistic commits",
           "url": "https://github.com/delta-io/delta/blob/6a62fd86d58eea07a57720a80320b29f1130924e/PROTOCOL.md",
-          "locator": "Transaction log with checkpoints as the reader's replay path; optimistic concurrency with conflict detection on overlapping writes (commit pinned 2026-09-30)"
+          "locator": "Transaction log with checkpoints as the reader's replay path; optimistic concurrency with conflict detection on overlapping writes"
         }
       ],
       "focus": [
@@ -1261,7 +1261,7 @@
         },
         {
           "q": "Acks for offsets 0, 2 and 3 arrive but 1 is missing. What is the committed offset?",
-          "a": "Offset 0. The commit is the greatest fully acknowledged prefix, so the gap at 1 blocks 2 and 3 until it arrives."
+          "a": "Offset 0 is the end of the fully acknowledged prefix, so in Kafka's convention you store position 1, the next offset to read. The gap at 1 blocks 2 and 3 until it arrives."
         },
         {
           "q": "A fenced-out consumer commits offset 8 after the group moved its partition to a new owner at epoch 7. Accepted?",
@@ -1300,7 +1300,7 @@
         "Implement tumbling or session windows over event time with an explicit watermark, trigger and accumulation mode.",
         "Implement checkpoint of offsets plus state with restore that reproduces matching outputs on replay, including one late event."
       ],
-      "why": "This is where the section's ideas meet: windows from unit 8, watermarks from unit 9 and checkpoints from unit 10, in one bounded processor that survives a kill.",
+      "why": "This is where the section's ideas meet: event-time windows, watermarks with a late-data policy, and checkpoint barriers, in one bounded processor that survives a kill.",
       "next": [
         {
           "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
@@ -1438,8 +1438,8 @@
           "a": "Records behind (end offset minus committed offset) and time behind. The workload, versions, concurrency, batching, `acks`, retention and run count travel with them."
         },
         {
-          "q": "A consumer restarts in 2 seconds but takes 40 seconds to catch up with matching state. What is the recovery time?",
-          "a": "40 seconds plus the fault-to-detection delay. Restart is one step; recovery ends at caught-up offsets with matching state."
+          "q": "A consumer is killed at t = 0 s, restarts at t = 2 s, and reaches caught-up offsets with matching state at t = 42 s. What is the recovery time?",
+          "a": "42 seconds, from the fault to caught-up offsets with matching state. The 2-second restart is one step inside it."
         },
         {
           "q": "Retries show zero duplicates at the producer and the sink counts doubles after a rebalance. Where is the gap?",
@@ -1454,7 +1454,7 @@
         {
           "name": "Gossip Glomers 5c: Kafka-style log efficiency",
           "url": "https://fly.io/dist-sys/5c",
-          "locator": "Same setup as 5b on two nodes; run the Evaluation section's kafka workload with the page's efficiency flags, which demand fewer messages per operation",
+          "locator": "Run the same two-node kafka command as 5b. The specification asks for significantly fewer messages per operation and fewer compare-and-swap failures on `lin-kv` while every correctness check still passes; the page calls it a looser definition of success",
           "note": "Use it as the efficiency drill. Full lag, throughput and recovery measurement with labeled setups is section mini-project work."
         }
       ],
