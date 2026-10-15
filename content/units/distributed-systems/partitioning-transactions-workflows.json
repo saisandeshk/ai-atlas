@@ -14,47 +14,85 @@
         "hash-partitioning"
       ],
       "outcomes": [
-        "TODO"
+        "Explain when range partitioning keeps scans local and when it piles sequential writes onto one shard.",
+        "Route keys under hash-mod-N placement and predict which keys move when the node count changes.",
+        "State the fixed-shard-count trade-off between cheap moves and metadata and recovery overhead."
       ],
-      "why": "TODO",
+      "why": "Partitioning decides which machine answers each key. Range keeps related keys together for scans but piles sequential writes onto one shard, while hash spreads writes and scatters ranges. You met the basics in Systems partitioning-rebalancing; the work here is choosing from the access pattern.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/consistent-rendezvous-hashing",
+          "note": "Replace mod-N with a ring when nodes join and leave."
+        },
+        {
+          "unit": "distributed-systems/partitioning-transactions-workflows/partition-maps-routing",
+          "note": "Look shards up in a versioned map instead of recomputing placement."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "Sharding by key range and by hash of key",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Sharding of Key-Value Data (pp. 255-262): Sharding by Key Range, Rebalancing key-range sharded data, Sharding by Hash of Key with Figures 7-2 and 7-3, plus Fixed number of shards and Sharding by hash range",
+          "depth": "Stop before Consistent hashing (p. 263); the next unit derives it."
+        },
+        {
+          "resource": "hld-partition-transactions-ds6",
+          "title": "Sharding strategies and choosing a partition key",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-2-building-blocks/06-database-partitioning-sharding.md",
+          "locator": "Sharding strategies (range, hash, consistent-hash, directory, geographic) and Choosing partition key: high-cardinality, stable keys that appear in queries"
+        },
+        {
+          "resource": "algomaster-system-design-ds6",
+          "title": "Why one database stops being enough",
+          "url": "https://algomaster.io/learn/system-design/sharding",
+          "locator": "The opening: vertical scaling limits, read replicas, and why data is divided across servers",
+          "depth": "Use as vocabulary for the sharding decision. The routing math comes from DDIA and the drill below."
         }
       ],
       "focus": [
-        "TODO"
+        "Range keeps nearby keys on one shard, so range scans stay local. Sequential keys such as timestamps pile writes onto the newest shard.",
+        "Hash spreads uneven keys uniformly but destroys key order, so a range query fans out to every shard.",
+        "Mod-N placement couples every key to the node count: adding one node reassigns most keys, as Figure 7-3 shows.",
+        "Fixed shard counts decouple keys from nodes so only whole shards move, but no cluster can use more nodes than shards, and a wrong initial count forces expensive resharding."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, route keys 1 to 8 across 3 shards with `key % 3` and get loads `[2, 3, 3]`. Then move keys 0 to 7 from 3 to 4 shards under mod-N and list the 5 that change shard.",
       "traps": [
-        "TODO"
+        "Hashing the key does not remove skew. It removes correlation between key order and placement; a hot key stays hot on whichever shard owns it.",
+        "More shards are not free. Each shard adds metadata and recovery work; DDIA warns the size must be just right, neither too big nor too small.",
+        "Range scans on hash-sharded data touch all shards. Never assume hash partitioning preserves any order."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Sensor writes keyed by timestamp land on one shard under range partitioning. Why, and what key change spreads them?",
+          "a": "Time-contiguous keys fall in one range, so the current shard takes all writes. Prefix each timestamp with the sensor ID so ordering is by sensor then time; each sensor then needs its own range scan afterward."
+        },
+        {
+          "q": "Keys 1 to 8 route by `key % 3`. What are the shard loads?",
+          "a": "Shard 0 holds 3 and 6, shard 1 holds 1, 4 and 7, shard 2 holds 2, 5 and 8, so `[2, 3, 3]`."
+        },
+        {
+          "q": "A 10-node cluster holds 1,000 fixed shards and adds an 11th node. What moves?",
+          "a": "Only whole shards move from old nodes to the new one until shares even out. No key changes shard; only the shard-to-node assignment changes."
+        },
+        {
+          "q": "Why can a cluster hold fewer nodes than shards but never usefully more?",
+          "a": "Each node serves whole shards, so a node with no shard serves nothing. Splitting shards to make room is the expensive reshard operation."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster Calculate Hash Shard Load",
+          "url": "https://algomaster.io/practice/system-design/calculate-hash-shard-load",
+          "locator": "Implement `shardLoads(keys, numShards)` routing each key to `key % numShards`. Example 1 ([1, 2, 3, 4, 5, 6, 7, 8], 3) gives `[2, 3, 3]`; Example 2 ([10, 20, 30, 40], 4) gives `[2, 0, 2, 0]`",
+          "note": "This drills mod-N routing only. Rings, movement and skew arrive in later units."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You route both example key sets by hand and can say, for a stated access pattern, whether range or hash wins and what breaks.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers both topics at explain depth with figures; HLD and the AlgoMaster lesson add strategy vocabulary and the drill checks routing."
       }
     },
     {
@@ -71,47 +109,91 @@
         "virtual-nodes-and-weighted-placement"
       ],
       "outcomes": [
-        "TODO"
+        "Derive key movement for a node join and leave under mod-N, ring and rendezvous placement.",
+        "Implement a hash ring with virtual nodes that maps each key to its clockwise owner.",
+        "Size virtual-node counts and weights so uneven machines take proportional shares."
       ],
-      "why": "TODO",
+      "why": "Mod-N placement reshuffles nearly every key on each membership change. Rings and rendezvous move only the keys the new owner takes over, which is what makes adding capacity affordable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/partition-maps-routing",
+          "note": "Run the ring behind a versioned map with redirects."
+        },
+        {
+          "unit": "distributed-systems/partitioning-transactions-workflows/shard-movement-ownership-epochs",
+          "note": "Move the ranges the ring reassigns under epoch fencing."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "The consistent hashing contract in two paragraphs",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Consistent hashing (p. 263): the two properties (roughly equal keys per shard, minimal movement on change) and the pointers to rendezvous and jump hashing",
+          "depth": "Read for the definition only. The derivations come from the HLD chapter; DDIA names rendezvous hashing without deriving it."
+        },
+        {
+          "resource": "hld-partition-transactions-ds6",
+          "title": "Rings, virtual nodes, bounded load and rendezvous",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-3-distributed-systems-theory/09-consistent-hashing.md",
+          "locator": "Why modulo hashing breaks, The hash ring (successor lookup, about 1/N move on join), Virtual nodes (V >= 100 guidance with about 10 percent deviation, heterogeneous weights as more entries), Rendezvous/HRW (one score per node, minimal disruption) and the Trade-offs table"
+        },
+        {
+          "resource": "algomaster-system-design-ds6",
+          "title": "The five-server cache problem",
+          "url": "https://algomaster.io/learn/system-design/consistent-hashing",
+          "locator": "The problem: five cache servers, one key to one server, and why membership changes must move few profiles",
+          "depth": "Use for intuition. The movement math comes from the HLD chapter."
         }
       ],
       "focus": [
-        "TODO"
+        "A ring maps keys and nodes to one circle and each key belongs to the first node clockwise. A join steals one arc from a neighbor; a leave hands its arc to its successor.",
+        "Virtual nodes give each physical node many scattered ring positions. Weight is just more positions per strong machine, for example twice the entries for a weight-2 host.",
+        "Rendezvous scores every node per key and takes the maximum: no ring state, but lookup costs one hash per node, so it fits small clusters.",
+        "Consistent here means key stability, not replica or ACID consistency. Rings balance keys, not requests; a hot key still lands on one owner."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, show keys 0 to 7 moving 5 records when shards go from 3 to 4 under mod-N, then show why a ring join moves only the stolen arc (about \\(1/N\\) of keys). Price lookups as ring binary search in \\(O(\\log(V \\cdot N))\\) against rendezvous at \\(O(N)\\) hashes.",
       "traps": [
-        "TODO"
+        "Treating consistent hashing as a hot-key fix. It bounds movement on membership change; a popular key still lands on one owner.",
+        "Running one ring position per node. With `V = 1` one node can take 3 times its fair share; the chapter sets `V >= 100` for caches.",
+        "Letting two deciders use different member lists under rendezvous. The same key then maps to different owners, which is a membership problem for the next unit."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Keys 0 to 7 move from 3 to 4 shards under mod-N. How many move, and what would a ring move instead?",
+          "a": "Five move under mod-N; only 0, 1 and 2 stay. A ring join moves only the keys in the stolen arc, about one new share, and every other key stays put."
+        },
+        {
+          "q": "Two physical nodes own 70 and 30 percent of a ring. Name two fixes and their cost.",
+          "a": "Add virtual nodes (100 or more per node) so scattered arcs even out, or weight by giving the stronger node more positions. Both cost ring memory: one entry per virtual node."
+        },
+        {
+          "q": "Rendezvous over 5 nodes versus 5,000: what changes per lookup?",
+          "a": "Five score computations against 5,000. Lookup is linear in node count, so rendezvous fits the small cluster and the ring fits the large one."
+        },
+        {
+          "q": "Two clients hold different member lists under rendezvous. What breaks?",
+          "a": "The same key maps to different owners, so reads miss and writes split. Both deciders need one current list, which the partition map supplies."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: consistent hashing for sharding (RA-2)",
+          "url": "https://builddistributedsystem.com/tracks/sharder/tasks/task-8-2-consistent-hash",
+          "locator": "Place shards on a hash ring, hash each key to a ring position, and take the next shard clockwise",
+          "note": "Free browser-graded drill. Keep your own ring with virtual nodes and seeded keys as the evidence."
+        },
+        {
+          "name": "AlgoMaster Count Keys Moved by Resharding",
+          "url": "https://algomaster.io/practice/system-design/count-keys-moved-by-resharding",
+          "locator": "Implement `keysMoved(keys, oldShards, newShards)`. Example 1 ([0 to 7], 3, 4) gives 5; Example 2 ([10, 20, 30, 40], 4, 5) gives 2",
+          "note": "Counts mod-N movement only. Contrast each result with what your ring moves for the same join."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your ring routes a seeded key set, a join moves only the new range, and you can price mod-N against ring and rendezvous on movement and lookup.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA states the contract; the HLD chapter derives ring, virtual-node and rendezvous math, and the two drills check placement and movement."
       }
     },
     {
@@ -127,47 +209,77 @@
         "partition-map-implementation-and-movement-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a versioned partition map with atomic installation and per-key routing.",
+        "Recover stale clients through redirects and map refresh instead of failed writes.",
+        "Prove single ownership and no lost keys across a move with movement tests."
       ],
-      "why": "TODO",
+      "why": "Hashes name shards; maps own them. A versioned map lets ownership move while requests are in flight, and turns stale caches into retried redirects instead of lost writes.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/shard-movement-ownership-epochs",
+          "note": "Rebalance shards under epoch fencing."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/partition-ordering-high-watermark",
+          "note": "Carry map versions into partition ownership and visibility."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "Request routing and who tracks assignments",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Request Routing (pp. 265-267): the three routing approaches, who decides placement, the cutover problem, and Figure 7-8 on ZooKeeper-tracked assignment with the gossip alternative"
+        },
+        {
+          "resource": "mit-transactions-shards-ds6",
+          "title": "Numbered configs with redirect and retry",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-shard1.html",
+          "locator": "Lab 5 Sharded KV (Spring 2026): the ShardConfig number ordering, the shardkv clerk with Query plus ErrWrongGroup retry, and ChangeConfigTo as FreezeShard, InstallShard and DeleteShard fenced by number"
+        },
+        {
+          "resource": "replicated-log-capstone-ds6",
+          "title": "Partition routing and rebalance contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "Milestone C: partition routing with reassignment without lost ownership; the stretch goal adds partition rebalance with ownership epochs"
         }
       ],
       "focus": [
-        "TODO"
+        "Every routing decision reads a numbered map version. Replies carry the version so stale clients detect and refresh.",
+        "Wrong-owner contact is a redirect, not an error. The client fetches the new config and retries, as the shardkv clerk does on `ErrWrongGroup`.",
+        "Movement has a cutover window where both assignments exist. The map version, not arrival order, decides the owner.",
+        "Gossip-disseminated maps can split brain with two owners for one shard. Consensus-tracked maps cost more but give one authoritative version."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the routing function: given map version `v` with ranges and a key, return the owner; given a reply stamped `v + 1`, describe the client refresh and retry. Sketch the three movement states (serving old, migrating, serving new) and say where each request lands.",
       "traps": [
-        "TODO"
+        "Caching the map without its version. A fast stale cache that cannot detect staleness silently double-owns keys.",
+        "Treating a redirect as failure. `ErrWrongGroup` is the normal path during movement; fetching the config and retrying is correct.",
+        "Dropping in-flight requests at cutover. The new owner serves, but requests already sent to the old owner need forwarding or retry, never silent drops."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A client holds map v5 while the shard moved in v6. What tells the client?",
+          "a": "The reply carries v6, or an `ErrWrongGroup` naming v6. The client refreshes its map and retries against the new owner."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why must the map version ride on every assignment instead of shipping the shard list alone?",
+          "a": "Without versions two maps cannot be ordered. With monotonic numbers the higher version wins and stale writers are fenced."
+        },
+        {
+          "q": "Gossip versus ZooKeeper for distributing the map: what changes?",
+          "a": "Gossip is fast but can leave two sides with different owners for one shard. ZooKeeper or etcd gives one authoritative map through consensus."
+        },
+        {
+          "q": "A read arrives at the old owner after cutover. What is correct?",
+          "a": "Forward it to the new owner or redirect the client there. Never serve stale data as current and never drop the request."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: versioned map routing, stale-route injection, and movement tests with no double ownership.",
+      "stopWhen": "Your map routes a seeded key set across a join, a stale client recovers through redirects, and a movement test shows single ownership throughout.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA gives routing and coordination options and Lab 5 gives the versioned-config mechanism; implementation practice lives in the section mini-project."
       }
     },
     {
@@ -184,47 +296,83 @@
         "ownership-epochs-during-rebalance"
       ],
       "outcomes": [
-        "TODO"
+        "Place shard replicas across failure domains so one rack or node loss cannot take a shard.",
+        "Run an online shard move that keeps serving while state transfers, fenced by config numbers.",
+        "Recover an interrupted move from stored current and next configurations."
       ],
-      "why": "TODO",
+      "why": "Moving a shard while clients write to it is where data is lost or doubled. Numbered configs make old owners provably stale, so exactly one owner serves each key through the move.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/skew-movement-abort-recovery-measurement",
+          "note": "Measure the move: traffic, cutover pause and availability."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/consumer-groups-rebalance",
+          "note": "Compare shard movement with consumer-group rebalance."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "Hot spots, splits and who runs rebalancing",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Skewed Workloads and Relieving Hot Spots and Operations: Automatic Versus Manual Rebalancing (pp. 263-265): hot keys, shard splits, automatic versus manual control and the cascading-failure warning"
+        },
+        {
+          "resource": "mit-transactions-shards-ds6",
+          "title": "Freeze, install, delete with numbered configs",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-shard1.html",
+          "locator": "Lab 5 Sharded KV (Spring 2026), Parts A and B: ChangeConfigTo as FreezeShard, InstallShard and DeleteShard fenced by config Num, InitController recovery from stored current and next configurations, and the Part D note that cross-shard transactions need two-phase commit with two-phase locking"
+        },
+        {
+          "resource": "replicated-log-capstone-ds6",
+          "title": "Ownership epochs as the movement contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "The partition rebalance with ownership epochs stretch goal with the correctness rule that stale epochs cannot mutate current ownership"
         }
       ],
       "focus": [
-        "TODO"
+        "Placement is two decisions: which keys form a shard and which failure domains hold its replicas. Correlated failures kill shards stacked on one rack.",
+        "Online movement copies state while the old owner still serves, then cuts over at a version boundary. Writes during the copy must forward or replay, never vanish.",
+        "The config number is an ownership epoch: higher wins, and RPCs carrying older numbers are rejected or redirected.",
+        "Automatic rebalancing can cascade. A slow node misdiagnosed as dead triggers moves that overload the rest, so DDIA keeps a human in the loop."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, walk a move of one shard from group 1 to group 2: freeze, state copy, install at the new config number, delete. Show where a write landing mid-copy goes and which number fences the old owner.",
       "traps": [
-        "TODO"
+        "Deleting the old copy before the new owner serves. A crash between copy and cutover then loses the shard.",
+        "Ordering owners by wall-clock time. Epochs must be monotonic numbers from the controller, never timestamps.",
+        "Moving many shards at once for speed. Parallel moves multiply transfer traffic and stall serving; move, verify, then repeat."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A shard keeps 3 replicas on one rack and the rack switch dies. What happens?",
+          "a": "The whole shard goes dark despite 3 copies. Replicas must span failure domains so one correlated failure cannot take a quorum of any shard."
+        },
+        {
+          "q": "The old owner accepts a write after cutover. How does the epoch stop it?",
+          "a": "Its RPCs carry the old config number, so the group rejects them and the client retries on `ErrWrongGroup` against the higher-numbered owner."
+        },
+        {
+          "q": "Why does DDIA warn against fully automatic rebalancing?",
+          "a": "Moves are expensive and failure detection can be wrong. A slow node suspected dead triggers moves that worsen overload into cascading failure."
+        },
+        {
+          "q": "A controller dies mid-move and a new one starts. What must it recover?",
+          "a": "The stored current and next configurations, so it completes the interrupted move instead of starting a conflicting one."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT 6.5840 Lab 5 Sharded KV, Parts A and B",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-shard1.html",
+          "locator": "Implement the shardctrler, shardgrp server and clerk in src/shardkv1. Run Part A (`make RUN=\"-run 5A\" shardkv`, from TestInitQuery5A through the join and leave movement tests) and Part B (controller recovery after failure)",
+          "note": "Enrolled-student lab: study the public handout and tests, keep your solution private and never publish it. Part C is optional stretch."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You move a shard between two local groups under continuous writes, no write lands on two owners, and a killed and restarted controller resumes the move.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers placement and rebalance trade-offs and Lab 5 covers numbered movement with recovery; its public tests are the checked practice."
       }
     },
     {
@@ -240,47 +388,77 @@
         "scatter-gather-tail-latency"
       ],
       "outcomes": [
-        "TODO"
+        "Quantify per-shard load from a key distribution and price a hot-key split as write relief against read fan-out.",
+        "Derive scatter-gather latency from per-shard latency distributions, including the tail.",
+        "Measure skew and tails on your machine with fixed seeds and labeled setups."
       ],
-      "why": "TODO",
+      "why": "Uniform hashing balances data, not traffic. One hot key can saturate a shard while the cluster idles, and every cross-shard query waits for the slowest shard.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/secondary-indexes-cross-shard-queries",
+          "note": "Run scatter-gather against secondary indexes."
+        },
+        {
+          "unit": "distributed-systems/partitioning-transactions-workflows/skew-movement-abort-recovery-measurement",
+          "note": "Measure skew and tails in your own harness."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "Hot spots and the split-key remedy",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Skewed Workloads and Relieving Hot Spots (pp. 263-264): hot shards and keys, isolating a hot key, the random-digit suffix split with its read and bookkeeping costs"
+        },
+        {
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "Why scatter queries amplify tails",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Sharding and Secondary Indexes on local indexes (p. 269): scatter to all shards with tail latency amplification and the scaling limit it sets"
         }
       ],
       "focus": [
-        "TODO"
+        "Skew is about access, not data size. Equal key counts still overload one shard when one key takes most traffic.",
+        "Splitting a hot write key with a random suffix divides writes by the suffix count but multiplies the read fan-out by the same factor.",
+        "Scatter-gather latency is the maximum over shards, so one slow shard sets the query time. Parallelism helps the median, not the tail.",
+        "Read-hot and write-hot keys need different fixes: replicate or cache hot reads, split hot writes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, compute loads for keys `[10, 20, 30, 40]` over 4 shards (`[2, 0, 2, 0]`) and name the hot shards. Then split the hot key across 100 suffix keys and state the new write share per key with the new read fan-out.",
       "traps": [
-        "TODO"
+        "Adding shards to fix a hot key. The key still hashes to one shard; only splitting or replicating the key helps.",
+        "Averaging shard latencies for scatter-gather. The query waits for the slowest shard, so report the maximum and the tail.",
+        "Splitting every key preemptively. Tracking which keys are split costs more than it saves for cold keys."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Four shards hold loads `[2, 0, 2, 0]`. Is the cluster balanced?",
+          "a": "No. Shards 0 and 2 hold everything while 1 and 3 idle. The skew comes from key choice, not data size."
+        },
+        {
+          "q": "A hot key takes 10,000 writes per second and gets a two-digit suffix split. What is the per-key rate and the read cost?",
+          "a": "About 100 writes per second per split key. Each read now fans out to 100 keys and combines the results."
+        },
+        {
+          "q": "Ten shards each show p99 of 20 ms. What is the scatter-gather p99?",
+          "a": "Higher than 20 ms. The query needs all 10 shards under 20 ms at once, which happens with probability \\(0.99^{10} \\approx 0.904\\), so the combined p99 exceeds any single shard."
+        },
+        {
+          "q": "A celebrity key is read-hot but rarely written. Split it or replicate it?",
+          "a": "Replicate or cache it. Splitting relieves writes but multiplies reads, which is exactly the wrong trade here."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster Calculate Hash Shard Load, skewed case",
+          "url": "https://algomaster.io/practice/system-design/calculate-hash-shard-load",
+          "locator": "Example 2 ([10, 20, 30, 40], 4) gives `[2, 0, 2, 0]`. Extend it with a 100-way hot-key split and report per-key writes with read fan-out",
+          "note": "This drills load arithmetic only. Tail-latency measurement runs in the skew measurement unit and the mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You quantify a skewed distribution by hand and can price a split as write relief against read fan-out and a scatter as tail from the maximum.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA derives hot-key splits and scatter tails at the unit depth; the skewed drill checks load arithmetic and the mini-project checks tails."
       }
     },
     {
@@ -296,47 +474,77 @@
         "change-data-capture-driven-index-maintenance"
       ],
       "outcomes": [
-        "TODO"
+        "Contrast local and global secondary indexes on query fan-out and write cost.",
+        "Price a cross-shard aggregation or join as scatter plus merge.",
+        "Describe CDC-maintained index updates and their staleness window."
       ],
-      "why": "TODO",
+      "why": "Sharding by primary key breaks every other access path. Each secondary query either fans out to all shards or maintains a second sharded index that writes must keep in sync.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/outbox-idempotent-effects",
+          "note": "Feed CDC-maintained indexes through the outbox relay."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/replay-schema-registry-cdc",
+          "note": "Use change data capture as the maintenance feed."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-sharding-transactions-ds6",
+          "title": "Local and global secondary indexes",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 7, Sharding and Secondary Indexes (pp. 268-271): local indexes with Figure 7-9, term-partitioned global indexes with Figure 7-10, the write-sync cost and DynamoDB async staleness"
+        },
+        {
+          "resource": "hld-partition-transactions-ds6",
+          "title": "Outbox relay as the index maintenance feed",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-3-distributed-systems-theory/06-distributed-transactions.md",
+          "locator": "The outbox pattern: one local transaction writes the business row plus the outbox row, Debezium tails the WAL, delivery is at-least-once so consumers stay idempotent"
         }
       ],
       "focus": [
-        "TODO"
+        "Local indexes write with the record but reads by value fan out to all shards. Global indexes answer one term from one shard but every write touches index shards.",
+        "A global index is itself sharded data: term-partitioned postings live apart from the records they point to, so fetching records re-fans out.",
+        "Cross-shard joins cost a shuffle or a broadcast. Colocating related rows on one shard avoids it but constrains the partition key.",
+        "CDC-maintained indexes are eventually consistent by construction. The relay lag is the staleness window."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw the red-cars postings for two shards under local versus global indexing: where `color:red` lives in each case, which shards a `color = red` query touches, and which shards a record fetch touches.",
       "traps": [
-        "TODO"
+        "Assuming a global index keeps reads single-shard end to end. Postings sit on one index shard, but the records they point to still live on many shards.",
+        "Hand-rolling a value-to-ID map without transactions. Races and partial writes desync it; DDIA warns about exactly this on p. 268.",
+        "Treating CDC-maintained indexes as current. Async relay means reads may be stale by the full relay lag."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A user table is sharded by user ID with a local email index. What does a lookup by email cost?",
+          "a": "A fan-out to all shards plus a combine, since matching rows may sit on any shard. Cheap writes, expensive secondary reads."
+        },
+        {
+          "q": "A global color index holds `color:red` on index shard 0. Which shards serve the query and the record fetch?",
+          "a": "One index shard serves the postings. Fetching the red-car records fans out again to every shard that owns those IDs."
+        },
+        {
+          "q": "An AND of two terms living on different index shards has long postings. What is the cost?",
+          "a": "Shipping postings over the network to intersect them. Short postings are cheap; long ones make the query slow."
+        },
+        {
+          "q": "The CDC relay lags 5 seconds. What may an index read miss?",
+          "a": "Writes from the last 5 seconds. The read reflects the log position the relay has reached, nothing newer."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster Merge Cross-Shard Top-K Results",
+          "url": "https://algomaster.io/practice/system-design/merge-cross-shard-top-k-results",
+          "locator": "Implement `topK(shardScores, k)` over per-shard descending streams with a heap. Example 1 ([[9, 7, 3], [8, 6], [10, 5]], 4) gives `[10, 9, 8, 7]`",
+          "note": "Drills the merge side of scatter-gather. It does not move data or measure tails."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You place postings for both index kinds without notes and can price a cross-shard query as fan-out plus merge.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers local, global and cross-shard costs at explain depth and the HLD outbox section covers CDC maintenance; the merge drill checks aggregation."
       }
     },
     {
