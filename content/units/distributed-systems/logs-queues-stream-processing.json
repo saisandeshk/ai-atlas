@@ -609,47 +609,95 @@
         "change-data-capture-and-source-offsets"
       ],
       "outcomes": [
-        "TODO"
+        "Explain what makes a replay deterministic and how reprocessing supports schema migration with old and new views side by side.",
+        "Explain backward, forward and full compatibility, and implement per-key version checks with tombstone handling in a CDC projection.",
+        "Implement offset-deduped application of a CDC stream with source offsets tracked for resume."
       ],
-      "why": "TODO",
+      "why": "Derived state is only as trustworthy as its replay: the same log must rebuild the same projection after a bug fix, a new index, or a schema change. Compatibility rules decide which readers survive that replay.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-windows",
+          "note": "Replay needs event-time windows to answer the same question twice."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/batch-stream-table-formats",
+          "note": "Feed replayed streams into table snapshots next."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Change data capture and log compaction",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Change Data Capture (pp. 503 to 504): Debezium source connectors, Kafka Connect, async lag; Initial snapshot (p. 504): snapshot plus log position with DBLog watermarking; Log compaction (pp. 505 to 506): rebuild from offset 0"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Reprocessing for application evolution",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 13, Reprocessing data for application evolution through Unifying batch and stream processing (pp. 545 to 546): old and new views side by side; replay needs event-time windowing and exactly-once output"
+        },
+        {
+          "resource": "schema-registry-compat-ds7",
+          "title": "Compatibility types",
+          "url": "https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html",
+          "locator": "Compatibility types: Backward, Forward and Full compatibility with their Transitive variants; the default BACKWARD check. New code reads old data under Backward; old code reads new data under Forward."
+        },
+        {
+          "resource": "avro-spec-ds7",
+          "title": "Avro schema resolution",
+          "url": "https://avro.apache.org/docs/1.12.0/specification/",
+          "locator": "Schema Resolution: records match by field name, writer-only fields are ignored, reader-only fields are filled from defaults, plus the promotion rules"
         }
       ],
       "focus": [
-        "TODO"
+        "Replay is deterministic only with event-time timestamps and versioned logic. Reprocessing with processing-time windows rewrites history instead of repeating it.",
+        "A CDC consumer keeps source offsets with its projection so a restart resumes without reapplying or skipping. A snapshot plus a log position restarts a new projection the same way.",
+        "Backward compatibility lets new code read old data, Forward lets old code read new data, and Full allows both. Check transitively when many schema versions coexist in the log.",
+        "Avro resolution matches fields by name: unknown writer fields are ignored and missing reader fields come from defaults. Defaults are part of the contract, so adding a required field breaks both directions."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, replay a three-event CDC sequence (upsert version 1, delete version 2, late upsert version 1) against a projection and show the late event rejected; then add an optional field under Backward compatibility and state which readers break.",
       "traps": [
-        "TODO"
+        "Replaying without idempotent application. A retried offset applies twice unless the projection dedups by offset or by per-key version.",
+        "Letting a late event resurrect a deleted row. Compare per-key versions and keep tombstones until the retention horizon.",
+        "Adding a required field and calling it backward compatible. Old records carry no value for it; only optional-with-default keeps both directions working."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Apply offset 1 upsert, then offset 1 again, then offset 2 delete. What does each call return, and what does the view hold?",
+          "a": "True, false, true. The retry changes nothing and the delete removes the key, so the view is empty with size 0."
+        },
+        {
+          "q": "A version 3 delete is followed by a late version 2 upsert for the same key. Accepted or rejected, and why?",
+          "a": "Rejected. Versions are per key and only strictly newer versions apply, so the tombstone stands and the row is not resurrected."
+        },
+        {
+          "q": "A writer sends fields `a` and `b` while the reader expects only `a`. Then a writer sends only `a` while the reader expects `a` and `b` with a default. What does the reader see?",
+          "a": "First `a` only, with `b` ignored. Then `a` plus `b` filled from its default."
+        },
+        {
+          "q": "Old and new readers and writers coexist on one topic. Which compatibility level do you require?",
+          "a": "Full, in its transitive form if versions can skip. Only it lets old code read new data and new code read old data."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Apply Ordered CDC Changes",
+          "url": "https://algomaster.io/practice/system-design/apply-ordered-cdc-changes",
+          "locator": "`apply` accepts a change only when its version is strictly newer per key; deletes leave tombstones; equal versions are rejected as duplicates",
+          "note": "The judge tests one projection with no partitions. Cross-partition ordering and schema checks live in the mini-project."
+        },
+        {
+          "name": "AlgoMaster: Replay CDC into a Materialized View",
+          "url": "https://algomaster.io/practice/system-design/replay-cdc-into-a-materialized-view",
+          "locator": "`apply` dedups by log offset so retries return false without changing state; `get` returns -1 for absent keys",
+          "note": "The judge supplies offsets in log order with repeats. Out-of-order arrivals and snapshot-plus-position restarts are mini-project work."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can replay a CDC history with retries, deletes and late events to the same projection state, and defend a schema change under the right compatibility level.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the schema-resolution mechanism: the pool names Avro resolution rules but supplies no locator, so the Avro 1.12.0 Schema Resolution section fills that gap beside the Confluent compatibility types."
       }
     },
     {
@@ -665,47 +713,93 @@
         "tumbling-sliding-and-session-windows"
       ],
       "outcomes": [
-        "TODO"
+        "Explain event time versus processing time and the artifacts that processing-time windowing invents during backlogs.",
+        "Derive window membership for tumbling, hopping, sliding and session windows on a fixed event sequence.",
+        "State the per-window output rule, including empty windows and the session-gap boundary."
       ],
-      "why": "TODO",
+      "why": "Windows turn an unbounded stream into finite pieces, and the clock behind them decides what each piece means. A redeploy that replays a backlog must not rewrite the measured history.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/watermarks-late-data",
+          "note": "Decide when each window is complete next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/keyed-state-checkpoints",
+          "note": "Hold the window state you define here."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/event-time-processor-checkpoints",
+          "note": "Implement these windows with checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "dataflow-model-ds7",
+          "title": "What, where, when and how",
+          "url": "https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43864.pdf",
+          "locator": "Section 2: the what, where, when and how questions; event time versus processing time; windows, triggers and accumulation with discard, accumulate and retract modes"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Reasoning about time and window types",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Reasoning About Time through Types of windows (pp. 518 to 522): event versus processing time, the backlog rate-spike artifact, tumbling, hopping, sliding and session windows with their state costs"
+        },
+        {
+          "resource": "flink-time-state-ds7",
+          "title": "Timely stream processing: notions of time and windowing",
+          "url": "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/concepts/time/",
+          "locator": "Notions of Time: Event Time and Processing Time; Event Time and Watermarks; Lateness; Windowing (tumbling, sliding, session and time versus data driven windows)"
         }
       ],
       "focus": [
-        "TODO"
+        "Event time comes from the event and never changes; processing time comes from the machine clock. Measuring a replayed backlog by processing time invents a spike the real request rate never had.",
+        "Tumbling assigns each event to exactly one fixed window. Hopping overlaps fixed windows. Sliding holds events that occur within an interval of each other, even across fixed boundaries. Session groups one user's events until an inactivity gap ends the session.",
+        "Two events five minutes apart can share a five-minute sliding window while falling in different tumbling windows. Fixed boundaries and pairwise intervals answer different questions.",
+        "Window state cost follows the buffering need: counters stay constant size, while sliding windows and joins buffer events until the window closes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, assign events at 10:03:39 and 10:08:12 to five-minute tumbling, hopping, sliding and session windows with a 30-minute gap, and state which windows they share.",
       "traps": [
-        "TODO"
+        "Windowing by arrival time and calling it event time. Reprocessing history then answers a different question than live processing did.",
+        "Assuming hopping equals sliding. Hopping has fixed boundaries; sliding is defined by pairwise intervals.",
+        "Leaving the session-gap boundary unstated. Record whether a gap equal to the threshold starts a new session, since systems differ."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A redeployed processor burns through a one-minute backlog and the per-second request chart spikes. What caused it, and what is the fix?",
+          "a": "The chart is windowed by processing time, so the backlog compressed into seconds of processing. Window by event time to recover the steady real rate."
+        },
+        {
+          "q": "Two events occur at 10:03:39 and 10:08:12. Which five-minute windows do they share?",
+          "a": "Only a five-minute sliding window, since they are less than five minutes apart. Tumbling and hopping windows use fixed boundaries that separate them; a 30-minute session window also holds both."
+        },
+        {
+          "q": "Events for users `[a, a, b, a, b]` arrive at `[0, 4, 5, 10, 11]` with inactivity gap 6, starting a new session when the gap reaches the threshold. What are the session numbers?",
+          "a": "`[1, 1, 1, 2, 2]`. User a continues at gap 4 and restarts at gap 6; user b starts at 5 and restarts at gap 6. Each user is tracked independently."
+        },
+        {
+          "q": "Events at timestamps 2 and 12 carry values 10 and 5 with window size 5, windows starting at 0. What does the tumbling aggregation return?",
+          "a": "`[10, 0, 5]`. Window index is integer division \\(t / w\\), so the events land in windows 0 and 2, and the empty window 1 reports 0."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Aggregate Tumbling Windows",
+          "url": "https://algomaster.io/practice/system-design/aggregate-tumbling-windows",
+          "locator": "Sum values per window index from 0 through the highest touched window, with 0 for empty windows; timestamps need not be sorted",
+          "note": "The judge tests the assignment function only, on a subscription the learner owns. Watermarking, lateness and state recovery are mini-project work."
+        },
+        {
+          "name": "AlgoMaster: Assign Events to Session Windows",
+          "url": "https://algomaster.io/practice/system-design/assign-events-to-session-windows",
+          "locator": "Per-user sessions with the gap-reaches-threshold rule; interleaved users stay independent",
+          "note": "Same scope as above: assignment logic here, event-time execution and recovery in the mini-project."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can bucket any timestamp by hand under each window type and predict what a backlog replay does to processing-time charts.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The Dataflow model plus DDIA and the Flink time concepts reach derive depth on clocks and windows, with two owned AlgoMaster drills as checked assignment practice."
       }
     },
     {
