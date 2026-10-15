@@ -136,7 +136,7 @@
           "resource": "hld-partition-transactions-ds6",
           "title": "Rings, virtual nodes, bounded load and rendezvous",
           "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-3-distributed-systems-theory/09-consistent-hashing.md",
-          "locator": "Why modulo hashing breaks, The hash ring (successor lookup, about 1/N move on join), Virtual nodes (V >= 100 guidance with about 10 percent deviation, heterogeneous weights as more entries), Rendezvous/HRW (one score per node, minimal disruption) and the Trade-offs table"
+          "locator": "Why modulo hashing breaks, The hash ring (successor lookup, about \\(1/N\\) move on join), Virtual nodes (\\(V \\ge 100\\) guidance with about 10 percent deviation, heterogeneous weights as more entries), Rendezvous/HRW (one score per node, minimal disruption) and the Trade-offs table"
         },
         {
           "resource": "algomaster-system-design-ds6",
@@ -796,7 +796,7 @@
           "resource": "ddia-sharding-transactions-ds6",
           "title": "MVCC chains with optimistic control",
           "url": "https://dataintensive.net/",
-          "locator": "Chapter 8 (pp. 295-299): multiversion chains with inserted_by and deleted_by, visibility and garbage collection; plus Pessimistic versus optimistic concurrency control (pp. 318-319)"
+          "locator": "Chapter 8 (pp. 295-299): multiversion chains with `inserted_by` and `deleted_by`, visibility and garbage collection; plus Pessimistic versus optimistic concurrency control (pp. 318-319)"
         },
         {
           "resource": "spanner-ds6",
@@ -1016,7 +1016,7 @@
         },
         {
           "q": "Where does failure debugging happen under orchestration versus choreography?",
-          "a": "The orchestrator logs the sequence centrally. Choreography spreads it across service event logs that must be correlated."
+          "a": "The saga coordinator logs the sequence centrally. Choreography spreads it across service event logs that must be correlated."
         },
         {
           "q": "Payment is captured, shipment fails, and the refund API is down. What is the saga state?",
@@ -1101,7 +1101,7 @@
         "Per-aggregate sequences enforce order: apply only the next sequence, reject duplicates, and park gaps for redelivery.",
         "Exactly-once covers effects inside the boundary (database plus acknowledged processing). External sends such as email can still duplicate."
       ],
-      "reproduce": "Closed-book, implement the ordered consumer: `apply` of sequence 1 with delta 100 returns `APPLIED` with balance 100, its repeat returns `DUPLICATE`, sequence 3 returns `GAP`, then sequence 2 returns `APPLIED` with balance 150 and last sequence 2.",
+      "reproduce": "Closed-book, implement the ordered consumer: `apply` of sequence 1 with increment 100 returns `APPLIED` with balance 100, its repeat returns `DUPLICATE`, sequence 3 returns `GAP`, then sequence 2 returns `APPLIED` with balance 150 and last sequence 2.",
       "traps": [
         "Publishing before committing. A crash between publish and commit emits events for rolled-back work; write the outbox row inside the transaction.",
         "Folding ID cleanup into the processing transaction. The cleanup runs separately; folding it in reopens the duplicate window.",
@@ -1142,7 +1142,7 @@
     {
       "id": "durable-workflow-reconciliation",
       "title": "A durable workflow with fault tests and invariant reconciliation",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -1151,47 +1151,80 @@
         "durable-workflow-implementation-and-fault-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a durable workflow with persisted intent, replayable steps and a reconciler.",
+        "Recover from coordinator death, ambiguous replies, duplicate steps and failed compensation.",
+        "Check terminal business conditions independently of workflow status, and distinguish pending repair from completion."
       ],
-      "why": "TODO",
+      "why": "Build on Sagas and compensation and Outbox and idempotent effects. Now durable decisions, service-side deduplication and reconciliation must work together when the coordinator dies between an effect and its reply.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/partitioning-transactions-workflows/skew-movement-abort-recovery-measurement",
+          "note": "Measure the workflow: latency, aborts, duplicates and recovery time."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/keyed-state-checkpoints",
+          "note": "Compare workflow checkpoints with stream checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "sagas-ds6",
+          "title": "Sagas (SIGMOD 1987): recovery state and the recovery daemon",
+          "url": "https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf",
+          "locator": "Backward Recovery and Forward Recovery, printed pp. 253-254; Other Errors, pp. 254-255; Section 7, Implementing Sagas on Top of an Existing DBMS, pp. 255-256",
+          "depth": "Focus on logged progress, save-points, failed compensation and the daemon's periodic scan. The paper assumes local database transactions; remote effects need the preceding unit's atomic deduplication boundary. Skip parallel sagas."
+        },
+        {
+          "resource": "hld-partition-transactions-ds6",
+          "title": "Ledger reconciliation and failed compensation",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/06-distributed-transactions.md",
+          "locator": "When you do not need distributed transactions: linked ledger entries and reconciliation; Common Pitfalls: Compensations that do not semantically undo and Forgetting idempotency in saga compensations",
+          "depth": "Use only these paragraphs as design review. Reconciliation does not make separate commits atomic, and a timed-out action can still complete later. Do not use the checkout solution's unresolved-payment timeout as permission to close a workflow."
+        },
+        {
+          "resource": "replicated-log-capstone-ds6",
+          "title": "Recovery evidence in loglab",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "Architecture constraints; Milestone D - Failure handling; Correctness requirements; Failure-injection requirements",
+          "depth": "Apply the durable-history, timeout-after-commit and stale-epoch requirements to the DS-6 workflow slice. Stream checkpoints and the full project's fault campaign come later."
         }
       ],
       "focus": [
-        "TODO"
+        "Persist step intent and stable operation identity before dispatch. Record replies durably; if a reply is missing, query or replay the same identity against an endpoint that commits deduplication and effect atomically.",
+        "Recovery must fence a replaced coordinator and respect the recorded forward or compensating decision. Compensation itself can time out, fail or repeat; retain unresolved work with bounded retries and an escalation owner.",
+        "State safety conditions that hold during pending work separately from terminal conditions. A charge awaiting refund is unresolved, not a completed cancellation; eventual repair assumes the dependency recovers or a manual path succeeds.",
+        "Reconcile service ledgers by business identity, not just workflow status. In local fault tests, pause actors before the independent scan; with live services, validate versions before an idempotent repair so a stale scan cannot reverse newer work."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In Python 3 on your machine, implement a local durable order fixture with one item available and price 100 integer currency units. Each service atomically stores its effect and stable operation ID; use separate stores from coordinator state. Reserve the item, charge once, then discard the reply and restart the coordinator from persisted intent. Replaying the charge must leave total charged at 100. Make shipping definitively reject without an effect; persist the compensating decision. Fail the first refund without an effect, then restart and retry with the same refund ID. After refund and release succeed, pause actors and independently read ledgers: charged 100, refunded 100, shipped 0, available 1, reserved 0. Repeat compensation and confirm those values stay unchanged. Before the refund succeeds, the order must remain unresolved, not canceled.",
       "traps": [
-        "TODO"
+        "Treating durable intent as proof that a remote effect happened, or a missing reply as proof that it did not. Only the endpoint's durable result resolves that ambiguity.",
+        "Treating compensation as an alternative to retry safety. Even a compensatable charge must not be duplicated by an ambiguous retry.",
+        "Checking only global totals. One order's missing refund can cancel another order's duplicate refund; reconcile by order and operation identity."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A charge committed but its reply and coordinator completion record were lost. What should recovery do?",
+          "a": "Recover intent, fence the prior coordinator, then query or retry the original charge identity. Atomically persisted endpoint deduplication returns the prior result without another charge. A new identity would be unsafe."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "The refund dependency stays unavailable. Has the cancellation passed its terminal condition?",
+          "a": "No. Keep compensation pending with bounded retry and escalation. Safety still forbids duplicate charges or refunds, but eventual cancellation needs recovery of the dependency or an explicit manual resolution."
+        },
+        {
+          "q": "Does a charge with no shipment always prove corruption?",
+          "a": "No. It may be valid pending work. Check the workflow decision and age, and resolve unknown shipping outcomes before retrying or refunding. A terminal canceled order with an unreconciled net charge violates this fixture's contract."
+        },
+        {
+          "q": "Why can an independent scan report a false mismatch while services are changing?",
+          "a": "Separate reads may observe different stages of progress. Pause actors for the test oracle, or use a versioned observation and revalidate before repair. A correct global total alone also misses per-order drift."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: durable intent, outbox-fed steps, coordinator-death and duplicate injection, failed compensation and invariant reconciliation.",
+      "stopWhen": "Your retained crash trace shows a single charge, an unresolved failed refund and an idempotent completed compensation. An independent per-order check passes after recovery, and an order incorrectly marked canceled without its refund makes it fail.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Sagas supplies persisted recovery and a scanning daemon; the pool's HLD ledger paragraphs supply reconciliation review, and loglab supplies independent fault-test practice within six hours."
       }
     },
     {
@@ -1205,47 +1238,73 @@
         "skew-movement-abort-and-recovery-measurement"
       ],
       "outcomes": [
-        "TODO"
+        "Measure per-shard load, movement traffic and time, abort and compensation rates, duplicates and recovery time.",
+        "Compare partition or workflow policies under matched workloads and fault schedules, with raw histories behind every table.",
+        "Separate exact fixture counts, simulated time and local timing results, including runs that fail to recover."
       ],
-      "why": "TODO",
+      "why": "A balanced key count can hide an overloaded shard, and a low abort rate can hide a broken isolation boundary. Measure costs together with invariant verdicts so an apparent improvement cannot come from silently dropping work.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/stream-lag-recovery-measurement",
+          "note": "Carry the measurement discipline into stream lag and recovery."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/evidence-labels-reproduction-defense",
+          "note": "Label raw histories, evidence and reproduction bounds."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "replicated-log-capstone-ds6",
+          "title": "What to measure with which setup",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "Milestone B - Instrumentation; Milestone E - Measurement / optimization; Measurement requirements; Reproducibility and Engineering judgment in the rubric",
+          "depth": "Apply the instrumentation and open-loop load guidance to partition movement and workflow recovery. Do not build the later stream-processing measurements yet."
+        },
+        {
+          "resource": "hld-partition-transactions-ds6",
+          "title": "Reported figures are not targets",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/09-consistent-hashing.md",
+          "locator": "Virtual nodes: Practical numbers and Heterogeneous capacity; Bounded-load variant, opening hot-key paragraph; Real-World Example, Vimeo's bounded-load consistent hashing in HAProxy",
+          "depth": "Use these as hypotheses to test, not targets. Vnode counts and reported deviations do not guarantee request balance; the Vimeo figures describe its cache workload, not your database. Stop before Trade-offs."
         }
       ],
       "focus": [
-        "TODO"
+        "Separate logical requests, attempts, aborts and successful unique effects. Give each rate a denominator; suppressed duplicate deliveries are not duplicate committed effects. Report invariant violations alongside throughput.",
+        "Measure per-shard keys, bytes and requests separately. Count keys whose owner changes separately from bytes actually copied, including replica transfers, catch-up and retries; timestamp the cutover and record availability and tail latency during movement.",
+        "For recovery, name the start event and the completion predicate. Fault healing, coordinator restart and invariant reconciliation are different clocks; a run still pending at the observation limit has no measured completion time.",
+        "On your machine, compare a baseline and changed policy using the same workload and fault trace, then repeat across seeds. Record versions, offered load, concurrency, key sizes, durability settings, warmup, observation window, run count and spread; a seed alone cannot control OS scheduling."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write a Python 3 metric extractor for this fixed synthetic fixture, not a benchmark: requests are `[0]*8 + [1]*2`, routed by `key % 2`; keys 0 through 7 change owners from `key % 3` to `key % 4`; a separate transaction history contains 12 completed attempts, three aborted and nine committed. Assert shard request counts `[8, 2]`, maximum-to-mean request load 1.6, five changed owners and attempt abort fraction 0.25. If faults heal at simulated tick 20 and the first quiescent reconciled terminal state is tick 27, recovery is seven simulated ticks, not seven seconds. Then use the extractor on retained baseline and fault-run histories from loglab; label real durations as local measurements and preserve unresolved runs.",
       "traps": [
-        "TODO"
+        "Reporting only latency of successful requests. Include errors, timeouts, pending work and achieved goodput at the stated offered load; otherwise overload can look faster.",
+        "Treating observed key movement as a universal exact fraction. It depends on the key set, hash, placement and membership change; equal key counts need not mean equal bytes or request rates.",
+        "Reporting zero aborts as a win without checking isolation, or excluding stuck recoveries from the summary. Both can reward a weaker or broken implementation."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does the fixture's five-of-eight movement result predict bytes copied?",
+          "a": "No. It counts owner changes for those keys and those modulo mappings. Byte cost also depends on record sizes, replica placement, catch-up and retransmission."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Three aborts in 12 completed attempts give what abort fraction, and do they prove three failed workflows?",
+          "a": "The attempt abort fraction is 0.25. They need not be three different workflows, and a retry may eventually commit. Report logical workflow outcomes separately."
+        },
+        {
+          "q": "Can the maximum alone decide whether a latency SLO passed?",
+          "a": "Only if the SLO is a maximum-latency bound. A percentile SLO needs that percentile over its defined request population and window, with errors and timeouts accounted for."
+        },
+        {
+          "q": "Faults heal, but reconciliation has not finished when observation ends. What recovery time should you report?",
+          "a": "Report recovery as incomplete at the observation limit, with elapsed time and pending state. Do not invent a completion time or omit the run. Simulated ticks remain separate from measured seconds."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: matched baseline and fault runs for skew, movement, aborts, compensation, duplicate suppression and recovery, with raw histories and invariant verdicts.",
+      "stopWhen": "The extractor passes the fixed fixture, and a matched baseline/fault table reports skew, moved keys and bytes, abort and compensation denominators, duplicate effects, latency distributions, availability and completed or pending recovery. Keep three repetitions per setup and explain one cost or negative result without weakening the invariant.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The pool's capstone instrumentation and measurement rubric plus HLD's workload examples support the measurement job; the fixed fixture checks accounting and the mini-project supplies repeated local runs."
       }
     }
   ]
