@@ -59,7 +59,7 @@
           "resource": "hld-clocks-failure-ds2",
           "title": "Why wall-clock time fails",
           "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/04-clocks-and-ordering.md",
-          "locator": "Theory, Why wall-clock time fails: quartz drift, NTP skew range, leap-second cases and VM pauses; Warnings on `ORDER BY created_at` and leap-second timing code",
+          "locator": "Theory, Why wall-clock time fails: quartz drift, NTP skew range, leap-second cases and VM pauses; Common Pitfalls warnings on `ORDER BY created_at` and leap-second timing code",
           "depth": "Use as review after DDIA and the notes. Treat its cloud skew ranges and TrueTime bounds as reported figures from its cited sources, not targets you must reproduce."
         }
       ],
@@ -73,12 +73,12 @@
       "traps": [
         "Comparing monotonic readings from two nodes. They start from unrelated boot points, so the comparison is meaningless even when each node is correct.",
         "Using a wall clock for elapsed time. A step or leap second can make the difference negative or inflated; use a monotonic source for intervals.",
-        "Reading NTP as a bound. NTP gives a best-effort estimate with no stated confidence interval, so design the consumer to tolerate the full skew window."
+        "Reading a synced timestamp as exact. NTP estimates its own error, but common clock APIs return a point with no error bound, so design the consumer to tolerate the full skew window."
       ],
       "selfTest": [
         {
-          "q": "Why can two writes 3 ms apart get timestamps in the wrong order even with good NTP?",
-          "a": "Skew between the writers can exceed the real gap. DDIA Figure 9-3 shows writes at 42.004 and 42.003 seconds where the causally later write carries the smaller stamp, so last-write-wins drops the increment."
+          "q": "Why can a causally later write get the smaller timestamp even when clock skew is under 3 ms?",
+          "a": "The skew only has to exceed the real gap between the writes. In DDIA Figure 9-3 the skew is under 3 ms, yet x = 1 is stamped 42.004 s and the later increment 42.003 s, so last-write-wins drops the increment."
         },
         {
           "q": "What is the difference between drift and skew?",
@@ -242,14 +242,14 @@
           "title": "Dotted version vectors",
           "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/04-clocks-and-ordering.md",
           "locator": "Theory, Dotted version vectors: server-keyed vectors, one dot per value, and the rule for when clients outnumber servers",
-          "depth": "Use as review after the notes. The Riak sibling-explosion story is a reported deployment result, not a setup you reproduce here."
+          "depth": "Use as review after the notes. It credits server keys with ending sibling explosion; Riak's own account is that server-keyed vectors kept clocks small and the dots fixed sibling explosion. The deployment story is a reported result, not a setup you reproduce here."
         }
       ],
       "focus": [
         "On an event at node \\(N_i\\), increment \\(T[i]\\). On send, attach \\(T\\). On receive, take the element-wise maximum, then increment \\(T[i]\\). Entry \\(T[i]\\) counts events of \\(N_i\\) observed so far.",
         "A vector stamps a causal history: event plus everything before it. So \\(V(a) < V(b)\\) holds exactly when \\(a \\rightarrow b\\), equality means the same event, and incomparability means concurrency.",
         "The worked example shows indirect knowledge: when C receives from B, its A entry jumps to 2 without ever hearing from A, because B already knew.",
-        "Dotted version vectors key the vector on servers, not clients, and tag each value with one dot. A put subsumes the siblings its context observed, so only truly concurrent siblings survive, which ends the client-id explosion."
+        "Dotted version vectors key the vector on servers, not clients, and tag each value with one dot naming the server event that wrote it. A put subsumes the siblings its context observed, so only truly concurrent siblings survive. Server keys keep the vector small; the dots fix the sibling explosion that plain server-keyed vectors cause."
       ],
       "reproduce": "Closed-book, compare \\([2, 2, 0]\\) with \\([0, 0, 1]\\): the first leads in entries 0 and 1, the second in entry 2, so they are concurrent. Then run a receive at process 0 with local \\([1, 0, 0]\\) and message \\([0, 1, 0]\\): the merge is \\([1, 1, 0]\\), plus one for the receive, giving \\([2, 1, 0]\\).",
       "traps": [
@@ -280,7 +280,7 @@
           "name": "Compare Two Vector Clocks",
           "url": "https://algomaster.io/practice/system-design/compare-two-vector-clocks",
           "locator": "Implement `compare`: `before` when every entry of `a` is at most `b`'s with one smaller, `after` for the reverse, `equal` for identical, else `concurrent`",
-          "note": "Write the four-way rule from memory first. The checker tests the boundary between before and concurrent."
+          "note": "Write the four-way rule from memory first, then add your own tests for equal vectors and for vectors that tie in every entry but one."
         },
         {
           "name": "Update a Vector Clock on Receive",
@@ -416,12 +416,12 @@
           "resource": "ddia-trouble-ds2",
           "title": "ID generators and Lamport pairs",
           "url": "https://dataintensive.net/",
-          "locator": "Chapter 10, ID Generators and Logical Clocks: autoincrement and linearizable single-node IDs, random UUIDs and wall-clock timestamp schemes (pp. 417-419); Lamport (counter, node ID) pairs with the Aaliyah, Bryce and Caleb ordering (pp. 420-422)"
+          "locator": "Chapter 10, ID Generators and Logical Clocks: autoincrement and linearizable single-node IDs, random UUIDs and wall-clock timestamp schemes (pp. 417-419); Lamport (counter, node ID) pairs with the Aaliyah, Bryce and Caleb ordering and Figure 10-9 (pp. 420-421)"
         },
         {
           "resource": "swim-ds2",
           "title": "Incarnation numbers against false suspicion",
-          "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
+          "url": "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf",
           "locator": "Section 4.2, Suspicion Mechanism: incarnation initialized at join, incremented only by the suspected node itself; Alive refutes older Suspect, but Confirm overrides Alive and Suspect at any incarnation"
         },
         {
@@ -432,7 +432,7 @@
         }
       ],
       "focus": [
-        "Single-node autoincrement is linearizable: a completed post always gets the smaller ID. No distributed scheme in this unit keeps that without coordination.",
+        "Single-node autoincrement is linearizable: an insert that completes before another begins gets the smaller ID. No distributed scheme in this unit keeps that without coordination.",
         "Random 128-bit IDs need no communication and give no order. Wall-clock schemes sort roughly but lean on NTP, a shard or random part, and a per-shard sequence for same-millisecond uniqueness.",
         "A Lamport pair is unique when node IDs are unique, and orders causally but not by wall time. Two nodes that never communicate can hold wildly different counters.",
         "Only the suspected member increments its SWIM incarnation; a higher Alive refutes older Suspect, but the original paper's Confirm is terminal for that member identity. Separately, persist an ID epoch before using it and advance it durably on restart, so new IDs cannot collide with pre-crash IDs."
@@ -440,7 +440,7 @@
       "reproduce": "Closed-book, show the restart hole: node B issues (counter 1..50, node B), crashes without persisting, restarts at counter 0 and reissues counter 1, colliding with a live record. Then fix it: persist an epoch that increments once per restart, so post-restart IDs read (epoch 2, counter 1) and never equal epoch 1 IDs.",
       "traps": [
         "Reading wall-clock ID order as causal order. A fast clock stamps an earlier write above a later one from a slow clock, and one NTP step reorders a single node's IDs.",
-        "Letting another node bump a member's incarnation. Only the member itself increments; anything else lets a partitioner forge a refutation.",
+        "Letting another node bump a member's incarnation. Only the member itself increments; anything else lets a node that never heard from the member refute its suspicion.",
         "Rejoining with the same identity and a reset counter. The group still holds the old incarnation, so rejoin as a new epoch or a new member, never as a silent reset."
       ],
       "selfTest": [
@@ -514,7 +514,7 @@
         {
           "resource": "swim-ds2",
           "title": "Direct and indirect probing",
-          "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
+          "url": "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf",
           "locator": "Section 3.1, SWIM failure detector: one random ping per protocol period, k indirect ping-reqs when the ack misses, and the end-of-period check"
         },
         {
@@ -617,7 +617,7 @@
         {
           "resource": "swim-ds2",
           "title": "Suspicion before conviction",
-          "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
+          "url": "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf",
           "locator": "Section 4.2: the suspicion timeout trades longer detection time for fewer false detections",
           "depth": "Read for the tradeoff sentence only; the full mechanism returns in the gossip and membership units."
         }
@@ -694,7 +694,7 @@
         {
           "resource": "swim-ds2",
           "title": "Infection-style dissemination",
-          "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
+          "url": "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf",
           "locator": "Section 4.1: piggybacking on ping, ping-req and ack with no extra packets, the bounded buffer, and preferring updates gossiped fewer times"
         },
         {
@@ -787,7 +787,7 @@
         {
           "resource": "swim-ds2",
           "title": "Join, leave and refutation",
-          "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
+          "url": "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf",
           "locator": "Section 3.2 (join through a contact member or coordinator, leave by announcement), Section 4.1 (buffered dissemination), and Section 4.2 (Alive and Suspect incarnation comparisons; terminal Confirm after the suspicion timeout)"
         },
         {
