@@ -1,6 +1,27 @@
 {
   "section": "storage-engines-recovery",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "parquet-format",
+      "role": "reference",
+      "priority": "support",
+      "name": "Apache Parquet File Format",
+      "provider": "Apache Software Foundation",
+      "access": "Free",
+      "use": "Read the File Format layout (row groups, column chunks, footer metadata) and the Page Index page (ColumnIndex and OffsetIndex with per-page min and max values for page skipping). Use it only for file layout and skipping; it does not cover table metadata or catalogs.",
+      "url": "https://parquet.apache.org/docs/file-format/"
+    },
+    {
+      "id": "linux-man-fsync",
+      "role": "reference",
+      "priority": "support",
+      "name": "Linux man-pages: fsync",
+      "provider": "Linux man-pages project",
+      "access": "Free",
+      "use": "Read the DESCRIPTION for what `fsync` and `fdatasync` guarantee and the directory-sync requirement for new file names, and the ERRORS section for what an `EIO` from write-back can refer to.",
+      "url": "https://man7.org/linux/man-pages/man2/fsync.2.html"
+    }
+  ],
   "units": [
     {
       "id": "storage-workloads-layout",
@@ -15,47 +36,85 @@
         "oltp-versus-olap-access-patterns"
       ],
       "outcomes": [
-        "TODO"
+        "Classify a workload as point, range or analytical access and state which layout serves each shape.",
+        "Contrast OLTP and OLAP access patterns by rows touched, concurrency and latency target.",
+        "Explain how records pack into pages and how pages group into segments or files."
       ],
-      "why": "TODO",
+      "why": "Every engine choice later in this section is a bet on workload shape. A point lookup, a range scan and a full-table aggregation stress different parts of the storage stack.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/append-log-wal-checksums",
+          "note": "The append-only log is the first engine structure you build."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/columnar-layout-table-metadata",
+          "note": "Columnar layout is the other branch of the same workload decision."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-ds3",
+          "title": "Storage engines for OLTP and analytics",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Storage and Retrieval: the chapter introduction and Storage and Indexing for OLTP, printed pp. 115-116, then Data Storage for Analytics, printed pp. 134-136"
+        },
+        {
+          "resource": "cmu-storage-ds3",
+          "title": "CMU 15-445 Fall 2025 storage lectures",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/03-storage1.pdf",
+          "locator": "Lecture #03: Database Storage I, then Lecture #05: Database Storage II and Lecture #06: Storage Models and Compression",
+          "depth": "Use these for pages, heap layout and row versus column models. Leave buffer-pool replacement and B+ tree operations for their own units."
+        },
+        {
+          "resource": "hld-storage-ds3",
+          "title": "HLD Handbook storage and OLTP versus OLAP",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/01-oltp-vs-olap.md",
+          "locator": "Workload shapes table and Row vs column layout, with the four-column Alice, Bob and Carol example",
+          "depth": "Treat the vendor latency and compression ranges as reported figures, never as targets for your machine."
         }
       ],
       "focus": [
-        "TODO"
+        "Point access touches one to a hundred rows by key. Range access walks keys in order. Analytical access scans millions of rows and aggregates a few columns.",
+        "OLTP means thousands of short transactions per second with 1 to 10 ms targets. OLAP means a few heavy queries with seconds to minutes targets.",
+        "A row store keeps each tuple contiguous for cheap point access. A column store keeps each attribute contiguous so an aggregation reads only the columns it needs.",
+        "Records pack into fixed-size pages, and pages group into segments or files that higher units compact and index."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, fill a decision table for three workloads: key-value point lookups, ordered range scans, and a full-table sum over 3 of 50 columns. Name the layout for each and show that, with equal-width columns, the aggregation reads about 6% of the row-store bytes before compression.",
       "traps": [
-        "TODO"
+        "Calling OLTP and OLAP database brands. They are workload shapes; one product can serve either shape badly.",
+        "Assuming a row store plus an index matches a column store on wide scans. The column store reads fewer bytes by construction.",
+        "Assuming hybrid engines remove the trade-off. A second physical copy with a replication lag replaces it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A fact table has 50 equal-width columns and a query sums 3 of them over all rows. About what fraction of the row-store bytes does a column store read?",
+          "a": "About \\(3/50\\), or 6%, before compression. The row store reads every column of every row; the column store reads only the three referenced columns."
+        },
+        {
+          "q": "Why does a point lookup favor a row store while a full-table aggregation favors a column store?",
+          "a": "The row store keeps one tuple contiguous, so one lookup reads one place. The aggregation touches few columns across many rows, so contiguous columns read fewer bytes."
+        },
+        {
+          "q": "What distinguishes a page from a segment in this section?",
+          "a": "A page is a fixed-size unit such as 8 KiB that the engine reads and writes. A segment is a larger immutable file of many pages that the log and LSM units write once and later compact."
+        },
+        {
+          "q": "A workload issues thousands of single-row updates per second and one nightly full-table report. Which shape dominates engine choice?",
+          "a": "The updates dominate. Choose the engine for the sustained write and point-access shape, and serve the report from a separate analytical copy instead of compromising the write path."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CMU 15-445 Fall 2025 Homework #2: Slotted Pages and Log-Structured Storage",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/files/hw2-clean.pdf",
+          "locator": "Question 1, Slotted Pages and Log-Structured Storage: the slotted-page problems and the log-structured versus slotted-page comparison",
+          "note": "Work Question 1 on paper, then check your answers on the course's Gradescope site for non-CMU learners (entry code in the course FAQ). Keep Questions 2 and 3 on storage models and compression for their units."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You classify a new workload by shape in one minute and defend the layout with a byte-count argument.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus CMU storage lectures plus the HLD workload chapter cover all three topics at explain depth, with the CMU homework as checked practice."
       }
     },
     {
@@ -71,47 +130,92 @@
         "checksummed-records-and-metadata"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a length-prefixed append-only log with per-record checksums.",
+        "Explain the write-ahead rule: the log record reaches stable storage before the data it describes.",
+        "State what a checksum detects and which corruptions need more than a checksum."
       ],
-      "why": "TODO",
+      "why": "The log is the durability primitive for everything after it. Checkpoints, compaction and recovery all assume an ordered checksummed record stream.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/durability-states-fsync",
+          "note": "Appending to a file is not durability; the fsync contract decides what survives."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/torn-writes-metadata-publication",
+          "note": "Partial appends are the first crash case your log must handle."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-ds3",
+          "title": "Log-structured storage",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Storage and Indexing for OLTP with Log-Structured Storage, printed pp. 115-124: the two-bash-function store on p. 116, the in-memory hash map, SSTables and the LSM overview"
+        },
+        {
+          "resource": "postgres-internals-ds3",
+          "title": "PostgreSQL WAL segments and XLOG records",
+          "url": "https://www.interdb.jp/pg/pgsql09/02.html",
+          "locator": "Chapter 9, Sections 9.2 to 9.4: WAL segment files, the internal layout of a WAL segment, and the internal layout of an XLOG record (page read 2026-10-15)",
+          "depth": "Read for record layout and LSN ordering. Leave checkpoint processing and recovery for the recovery unit."
+        },
+        {
+          "resource": "ostep-crash-consistency-ds3",
+          "title": "OSTEP log-structured file system",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-lfs.pdf",
+          "locator": "Chapter 43, Sections 43.1 and 43.2: the sequential-write motivation and segment writing",
+          "depth": "Use it for why all writes become sequential."
+        },
+        {
+          "resource": "ostep-crash-consistency-ds3",
+          "title": "OSTEP checksums",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-integrity.pdf",
+          "locator": "Chapter 45, Sections 45.3 Detecting Corruption: The Checksum and 45.4 Using Checksums",
+          "depth": "Read the checksum mechanics only; misdirected and lost writes belong to the torn-writes unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Each record is a length prefix, a payload and a checksum. The reader never trusts a length or payload whose checksum fails.",
+        "Write-ahead means the log record is stable before the change it describes becomes visible. A crash between the two replays the log; a crash before the log leaves nothing to replay.",
+        "A checksum detects random corruption inside a record. It does not detect a record written to the wrong address or a write that never arrived; those need addresses and read-back checks.",
+        "The Systems unit on write-ahead logging, recovery, checksums and durability taught the concept. Here the hours go to record layout and ordering at engine depth."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement `append(rec)` and `scan()` over a file of length-prefixed records with a 4-byte checksum each. `binascii.crc32(b'hello')` must equal `0x3610a686`, and flipping one payload bit must fail the check on rescan.",
       "traps": [
-        "TODO"
+        "Treating the Python `binascii.crc32` demo value as a cross-system constant. It is CRC-32 IEEE; RocksDB and PostgreSQL WAL use CRC-32C with a different polynomial, so the values are not interchangeable.",
+        "Calling a log durable because `write` returned. The bytes may sit in the OS page cache; durability needs the next unit's sync step.",
+        "Letting one file grow forever. Real logs roll fixed-size segments so old data can be reclaimed; later units compact whole segments at a time."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What three fields does each log record need, and in what order are they written?",
+          "a": "Length prefix, payload, then checksum over both. The scanner reads the length, then the payload, then verifies the checksum before returning the record."
+        },
+        {
+          "q": "A crash lands between the log append and the in-memory index update. What does recovery do?",
+          "a": "It rescans the log and rebuilds the index from the records found. The log is the source of truth; the index is derived state."
+        },
+        {
+          "q": "A record has a valid checksum but holds another record's data. Did the checksum fail?",
+          "a": "No. The checksum proves the bytes arrived intact, not that they belong at this address. Misdirected writes need per-record identity such as a key or offset bound to the checksum."
+        },
+        {
+          "q": "Why does PostgreSQL give every WAL record a monotonically increasing LSN?",
+          "a": "The LSN orders records across segments, so replay, checkpoints and replication can name a position and agree on what comes before and after it."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems TH-1: Implement a Write-Ahead Log",
+          "url": "https://builddistributedsystem.com/tracks/logger/tasks/task-10-1-1-wal-impl",
+          "locator": "Task TH-1, Implement a Write-Ahead Log: append path with checksum",
+          "note": "This is a free drill graded in the browser after login. Treat a pass as a drill and keep your local log implementation as the evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your local log round-trips records, rejects a one-bit flip on rescan, and you can state the write-ahead rule in one sentence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus PostgreSQL WAL layout plus OSTEP segments and checksums cover all three topics at implement depth, with the free TH-1 drill as checked practice."
       }
     },
     {
@@ -127,47 +231,84 @@
         "fsync-and-acknowledged-write-contract"
       ],
       "outcomes": [
-        "TODO"
+        "Distinguish buffered, flushed and durable write states and name which failures each survives.",
+        "State an acknowledgement contract that names the exact sync step behind every ack.",
+        "Measure sync latency on your machine and explain group commit from the numbers."
       ],
-      "why": "TODO",
+      "why": "Replication cannot repair an undefined local ack. A client that hears success must know whether the data survives a process crash, an OS crash or a power loss.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/torn-writes-metadata-publication",
+          "note": "Even a synced write can arrive torn or reordered."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/recovery-scan-tail-repair",
+          "note": "The checkpoint and redo record turn these states into a recovery start point."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "postgres-wal-docs-ds3",
+          "title": "PostgreSQL WAL configuration, internals and reliability",
+          "url": "https://www.postgresql.org/docs/18/wal-configuration.html",
+          "locator": "Section 28.5, WAL Configuration: the checkpoint paragraphs including the 5-minute `checkpoint_timeout` and 1 GB `max_wal_size` defaults and the redo-record definition; then Section 28.6, WAL Internals, and Section 28.1, Reliability",
+          "depth": "Section 28.1 also documents CRC-32C per WAL record and checksummed data pages with full-page images; read it as the contract statement, not as a tutorial."
+        },
+        {
+          "resource": "ostep-crash-consistency-ds3",
+          "title": "OSTEP journaling write ordering",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-journaling.pdf",
+          "locator": "Chapter 42, Section 42.3: the checkpoint sequence and the side note on forcing writes to disk with barriers, plus the checksum-in-journal fix for batched transaction writes"
+        },
+        {
+          "resource": "linux-man-fsync",
+          "title": "fsync contract and error semantics",
+          "url": "https://man7.org/linux/man-pages/man2/fsync.2.html",
+          "locator": "DESCRIPTION for `fsync` versus `fdatasync` and the directory-sync requirement for new file names; ERRORS: an `EIO` from write-back may concern data written through any descriptor of the file"
+        },
+        {
+          "resource": "postgres-wal-docs-ds3",
+          "title": "PostgreSQL error handling for a failed flush",
+          "url": "https://www.postgresql.org/docs/18/runtime-config-error-handling.html",
+          "locator": "Section 19.14, Error Handling: `data_sync_retry`, why PostgreSQL panics on a failed flush, and why a retried flush can report success after the kernel dropped the data"
         }
       ],
       "focus": [
-        "TODO"
+        "Buffered means visible to the process. Flushed means handed to the OS. Durable means confirmed on stable storage after `fsync` or `fdatasync` returns success.",
+        "Acknowledge only after the sync the contract names. An ack after the bytes reach the OS but before sync survives a process crash, not an OS crash or power loss; an ack while they still sit in the process's buffer survives neither. A renamed or newly created file needs its directory synced too.",
+        "The Systems unit on files, page cache, fsync, atomic rename and durability taught the calls. Here the new material is the ack contract, group commit and measured sync latency.",
+        "A failed `fsync` may leave clean page cache over lost data, so retrying `fsync` is not proof the data landed. Treat the write as uncertain and reconcile from the log."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write down the three states for one Python file append and the failures each survives, with the PostgreSQL checkpoint defaults of 5 minutes and 1 GB beside them. Then time 100 syncs of one small write on your machine with `os.fsync` and report the median and the spread over one run.",
       "traps": [
-        "TODO"
+        "Reading `write` return as durability. It confirms the OS accepted the bytes, not that any disk holds them.",
+        "Syncing once and assuming later writes are covered. Every byte needs its own completed sync before its ack.",
+        "Calling a retry after a failed `fsync` a fix. PostgreSQL's `data_sync_retry` documentation explains why: after a write-back failure the kernel may have dropped the data, so a second `fsync` can report success over lost bytes. Recovery must decide from the log, not from the retry."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A server acks a write after `write` but before `fsync`, then the OS crashes. Is the data durable?",
+          "a": "No. The data was buffered and possibly flushed to the OS cache, but never confirmed on stable storage. Only post-sync acks survive an OS crash or power loss."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A file is synced but its directory entry is not, then power fails. What can be lost?",
+          "a": "The name. The file contents may sit on disk while the directory never records the rename or creation, so the file is unreachable after reboot."
+        },
+        {
+          "q": "Why does PostgreSQL batch several commits behind one flush with `commit_delay`?",
+          "a": "Each flush pays one sync latency. Letting concurrent commits share the leader's sync amortizes that cost across transactions at the price of a small added delay."
+        },
+        {
+          "q": "What does the checkpoint redo record tell crash recovery?",
+          "a": "The WAL position from which REDO must start. All data-file changes before it are already on disk, so earlier WAL segments can be recycled."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the acknowledgement contract of your checksummed log with a sync-latency measurement and a crash schedule that separates buffered, flushed and durable acks.",
+      "stopWhen": "You can label any ack in your log as buffered, flushed or durable and point at the sync call that justifies it.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for directory-sync and failed-fsync semantics; the Linux fsync man page and PostgreSQL's `data_sync_retry` notes fill that gap beside the PostgreSQL contract and OSTEP ordering."
       }
     },
     {
@@ -183,47 +324,79 @@
         "crash-consistent-metadata-publication"
       ],
       "outcomes": [
-        "TODO"
+        "Enumerate crash states for torn, truncated and reordered writes at sector and file granularity.",
+        "Implement atomic metadata publication with write-ahead records, checksums and a synced rename.",
+        "Explain when full-page images are needed and what turns them off safely."
       ],
-      "why": "TODO",
+      "why": "Disks write sectors, not your records. Any multi-sector update can land partially, and only an ordered publication protocol makes the partial state detectable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/recovery-scan-tail-repair",
+          "note": "Publication order decides what the recovery scan can trust."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ostep-crash-consistency-ds3",
+          "title": "OSTEP journaling crash scenarios",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-journaling.pdf",
+          "locator": "Chapter 42, Section 42.3: the five-block journal transaction, the torn-transaction garbage-block example, and the checksum fix that lets the whole transaction issue at once"
+        },
+        {
+          "resource": "ostep-crash-consistency-ds3",
+          "title": "OSTEP misdirected and lost writes",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-integrity.pdf",
+          "locator": "Chapter 45, Sections 45.5 and 45.6: Misdirected Writes and Lost Writes, with the read-back verification discussion"
+        },
+        {
+          "resource": "postgres-wal-docs-ds3",
+          "title": "PostgreSQL torn pages and full-page images",
+          "url": "https://www.postgresql.org/docs/18/wal-reliability.html",
+          "locator": "Section 28.1, Reliability: the sector-tear paragraph with the 8 KiB page over 512-byte sectors, and the full-page-image paragraph including the `full_page_writes` condition"
         }
       ],
       "focus": [
-        "TODO"
+        "A torn write lands some sectors of one page. A truncated write lands a prefix of a multi-block transaction. A reordered write lands a later block before an earlier one.",
+        "Publication is journal first with a transaction-end marker and checksum, then checkpoint to final locations, then a synced rename or manifest swap that flips the visible state at once.",
+        "A matching begin and end marker is not enough when the disk reorders internally. The checksum over the transaction body is what exposes the garbage middle block.",
+        "PostgreSQL writes full page images after each checkpoint because a torn 8 KiB page cannot be repaired from per-tuple WAL records alone. ZFS-like stacks that prevent partial writes may disable it; ordinary stacks must not."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On paper, list the crash states for a five-block journal transaction TxB, I, B, Db, TxE: crash before TxE is stable, crash with TxE stable but checkpoint incomplete, and crash after checkpoint. State what recovery replays or discards in each case.",
       "traps": [
-        "TODO"
+        "Assuming an 8 KiB page write is atomic because one call issued it. The drive writes 512-byte sectors, and power can fail between any two of them.",
+        "Treating `rename` as durable without syncing the directory. The new name is visible but not yet crash-safe.",
+        "Disabling `full_page_writes` for speed on a plain filesystem. Without page images, a torn page has no repair source during REDO."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "The journal holds TxB, I, B, garbage and TxE with matching IDs. Is this transaction valid?",
+          "a": "No. Matching IDs without a body checksum cannot expose a reordered middle block. Recovery must reject it by checksum, not accept it by markers."
+        },
+        {
+          "q": "What distinguishes a truncated transaction from a torn page?",
+          "a": "Truncation cuts a multi-block transaction short, so the end marker or checksum is missing or wrong. A tear corrupts the middle of one page while its framing looks complete."
+        },
+        {
+          "q": "Why does the publication protocol sync the directory after renaming a new segment file?",
+          "a": "The rename changes a directory, not the file. Until the directory itself is synced, a crash can lose the name even though the file contents are durable."
+        },
+        {
+          "q": "When is turning off `full_page_writes` safe?",
+          "a": "Only when the layer below provably prevents partial page writes, such as a copy-on-write filesystem. Otherwise recovery cannot repair torn pages."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems TH-2: Implement WAL Recovery on Startup",
+          "url": "https://builddistributedsystem.com/tracks/logger/tasks/task-10-1-2-wal-recovery",
+          "locator": "Task TH-2, Implement WAL Recovery on Startup: half-written tail handling",
+          "note": "This is a free drill graded in the browser after login. Reproduce the torn-tail case in your local log and keep the local crash schedule as evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You enumerate all three crash outcomes for a journal transaction and your local log discards the torn tail on every injected schedule.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "OSTEP crash scenarios and integrity failures plus the PostgreSQL torn-page contract cover both topics with a free recovery drill as practice."
       }
     },
     {
@@ -239,47 +412,84 @@
         "recovery-time-and-data-integrity-measurement"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a recovery scan that replays from the last checkpoint and stops at the first invalid record.",
+        "Explain ARIES analysis, redo and undo passes and the page LSN rule in one paragraph each.",
+        "Measure recovery time against log size and state the integrity the scan guarantees."
       ],
-      "why": "TODO",
+      "why": "Recovery is the read half of the durability contract. Its scan rule decides which prefix of the log is truth after every crash.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/indexes-btree-invariants",
+          "note": "Indexes rebuild from the recovered log prefix."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/crash-safe-kv-store-tests",
+          "note": "Recovery plus tail repair is the read half of your crash-safe store."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cmu-storage-ds3",
+          "title": "CMU 15-445 Fall 2025 logging and recovery",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/21-logging.pdf",
+          "locator": "Lecture #21: Database Logging with Lecture #22: Database Recovery, including LSNs, checkpoints and the ARIES recovery phases"
+        },
+        {
+          "resource": "postgres-internals-ds3",
+          "title": "PostgreSQL checkpoint and recovery processing",
+          "url": "https://www.interdb.jp/pg/pgsql09/07.html",
+          "locator": "Chapter 9, Sections 9.7 and 9.8: Checkpoint Processing and Database Recovery, with 9.8.2 on LSN comparison and idempotency, read with Section 28.5 on the redo record (page read 2026-10-15)"
+        },
+        {
+          "resource": "aries-ds3",
+          "title": "ARIES restart processing",
+          "url": "https://cs.stanford.edu/people/chrismre/cs345/rl/aries.pdf",
+          "locator": "Sections 1 and 3 for the repeating-history overview, then Section 6 with 6.1 Analysis, 6.2 Redo and 6.3 Undo",
+          "depth": "Read the pass structure and the page LSN rule. Skip physiological logging detail and the 1992 storage taxonomy; the rest is beyond this section."
         }
       ],
       "focus": [
-        "TODO"
+        "Start from the last checkpoint redo record, not from the beginning of time. Everything before the redo point is already on disk, so recovery time grows with replayed bytes and checkpoint frequency trades write cost against recovery time.",
+        "ARIES repeats history first: redo all logged actions to rebuild the crash state, then undo the losers. Redo before undo is the order that makes the result correct.",
+        "A page is redone only when the log record LSN exceeds the page LSN. The comparison is what makes replay idempotent across repeated crashes.",
+        "A corrupt record with nothing valid after it is a torn append: truncate it and continue. A corrupt record with valid records after it may hide acknowledged writes, so stop with a corruption error and keep the evidence; recovering only the prefix is an explicit, lossy choice. Recovery never invents missing records."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Given a log with records r1 and r2 checksummed and a torn r3, state the recovered prefix and the index contents after recovery. Then crash partway through recovery, run it again and show the result is identical: in a paged engine the page LSN check makes redo idempotent, and in your log the index is rebuilt from the same valid prefix.",
       "traps": [
-        "TODO"
+        "Replaying from segment zero after every crash. The redo record exists so recovery skips already-checkpointed work.",
+        "Redoing only committed transactions. Repeating history redoes everything including losers, then undoes them; skipping the redo pass breaks the chain the undo pass assumes.",
+        "Skipping over a corrupt middle record to salvage later ones. Only a corrupt tail is safely truncatable; a corrupt middle record ends the trustworthy prefix."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the three ARIES restart passes in order, and what does each produce?",
+          "a": "Analysis rebuilds the dirty-page and transaction tables. Redo repeats history to the crash state. Undo rolls back loser transactions with compensation records."
+        },
+        {
+          "q": "A log record has LSN 100 and the page has LSN 100. Does redo apply it?",
+          "a": "No. Redo applies only when the record LSN exceeds the page LSN. Equal LSNs mean the page already contains the change."
+        },
+        {
+          "q": "Recovery finds a corrupt record in the middle of a segment with valid records after it. What is the safe outcome?",
+          "a": "Do not skip it, and do not silently truncate there: the later records may be acknowledged writes. Stop with a corruption error and keep the evidence; serving only the prefix before it is an explicit, lossy operator choice."
+        },
+        {
+          "q": "Checkpoints run twice as often. What happens to recovery time and steady-state cost?",
+          "a": "Recovery replays less log so it finishes faster, but each checkpoint flushes dirty pages and emits full-page images more often, raising steady-state write cost."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CMU 15-445 Fall 2025 Homework #6: Recovery",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/files/hw6-clean.pdf",
+          "locator": "Recovery homework: ARIES pass and LSN reasoning questions",
+          "note": "Work the pass-order and LSN questions on paper, then check your answers on the course's Gradescope site for non-CMU learners (entry code in the course FAQ). Keep your local log replay as the implementation evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your log recovers the valid prefix on torn-tail and clean schedules, halts with evidence on a corrupt middle record, and recovery time tracks replayed bytes on your machine.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CMU logging and recovery plus PostgreSQL checkpoint processing plus ARIES restart passes cover both topics with the recovery homework as checked practice."
       }
     },
     {
@@ -295,47 +505,80 @@
         "b-tree-page-and-split-invariants"
       ],
       "outcomes": [
-        "TODO"
+        "Explain when an in-memory index suffices and when a sparse on-disk index pays off.",
+        "State the B-tree page and split invariants and check them after every mutation.",
+        "Derive tree depth from page size and entry size for a stated row count."
       ],
-      "why": "TODO",
+      "why": "Every range query in this track walks an ordered structure. The B-tree invariants are what keep that walk correct after splits and merges.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/lsm-memtables-bloom-filters",
+          "note": "The LSM tree replaces update-in-place with sorted runs."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-ds3",
+          "title": "B-trees",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, B-Trees, printed pp. 125-128: fixed-size pages, page numbers as disk pointers, and branch versus leaf layout"
+        },
+        {
+          "resource": "cmu-storage-ds3",
+          "title": "CMU 15-445 Fall 2025 index lectures and B+ tree project",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/08-indexes1.pdf",
+          "locator": "Lecture #08: Indexes and Filters I with Lecture #07: Hash Tables for the hash-index contrast and Lecture #10: Index Concurrency Control for latch crabbing; project page for the B+ tree with the Fall 2025 leaf tombstone buffer",
+          "depth": "Use the lectures for page layout and split behavior. Leave optimistic latch crabbing internals for later; the invariant work here is single-threaded correctness."
+        },
+        {
+          "resource": "hld-storage-ds3",
+          "title": "HLD Handbook B-tree mechanics",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/00-storage-engines.md",
+          "locator": "B-tree mechanics: fixed pages with InnoDB 16 KiB and PostgreSQL 8 KiB sizes, fanout and depth, page splits, clustered versus heap layout"
         }
       ],
       "focus": [
-        "TODO"
+        "An in-memory hash map from key to log offset is fast but must fit in RAM and rebuilds by scanning the log. A sparse index keeps one entry per page or segment and bounds memory at the cost of one extra page read.",
+        "Every leaf sits at the same depth. Every node except the root holds between the minimum and maximum key count. A split moves half the keys and posts the middle key upward, possibly cascading.",
+        "A 16 KiB page with 200-byte entries holds about 80 children, so a billion-row table needs 5 levels since \\(80^4 = 40{,}960{,}000\\). Depth grows logarithmically, not with data size.",
+        "The Systems unit on hash indexes, B-trees, selectivity and range scans taught the structures. Here the new work is checking split and merge invariants in code. InnoDB stores row data in the primary-key leaf while PostgreSQL keeps rows in a heap, so their secondary pointers and vacuum behavior differ."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive depth for \\(10^9\\) keys with 16 KiB pages and 200-byte entries: fanout about \\(80\\), since \\(80^4 = 40{,}960{,}000\\) is too small and \\(80^5\\) exceeds \\(10^9\\), lookups touch at most 5 pages.",
       "traps": [
-        "TODO"
+        "Counting depth as linear in data size. Each level multiplies capacity by the fanout, so one more level absorbs roughly 80x more keys.",
+        "Assuming every secondary index points at the heap. InnoDB secondary entries store the primary key and need a second traversal.",
+        "Splitting only the leaf. An overflowing internal node splits too, and a root split grows the tree by one level."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When does a sparse index beat a dense in-memory hash map?",
+          "a": "When the key count exceeds RAM or restart time matters. The sparse index keeps one entry per page or segment, trading one bounded page read for a small memory footprint and fast rebuild."
+        },
+        {
+          "q": "A leaf with capacity 4 holds keys 1, 2, 3 and 4, and key 5 arrives. What changes?",
+          "a": "The leaf splits into two leaves with 2 or 3 keys each, the middle key posts to the parent, and all leaves stay at the same depth. A full parent splits recursively."
+        },
+        {
+          "q": "Why do B-tree range scans stay cheap while hash-index range scans do not?",
+          "a": "B-tree leaves hold keys in sorted order with sibling links, so a range walks forward. A hash index scatters neighboring keys across buckets with no order to walk."
+        },
+        {
+          "q": "PostgreSQL updates a row three times without vacuum. How many heap tuples exist?",
+          "a": "Four versions until cleanup: the original plus three new ones, the older three dead once the updates commit. Vacuum, or pruning when the page is next read, reclaims them."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CMU 15-445 Fall 2025 Project 2: B+ Tree with leaf tombstone buffer",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/project2/",
+          "locator": "B+ tree insert, delete and iterator tests including the leaf tombstone buffer behavior across merge, split and redistribute",
+          "note": "Configure with `-DCMAKE_CXX_FLAGS=\"-include cstdint\"` under GCC 15 and strip the `DISABLED_` test prefix to run them. Keep scope to single-threaded invariants."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive depth for a new page and entry size without notes and your invariant checker passes splits, merges and redistributes.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus CMU index lectures and the B+ tree project plus HLD mechanics cover both topics with public B+ tree tests as practice."
       }
     },
     {
@@ -352,47 +595,81 @@
         "bloom-filter-false-positives"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the Bloom filter false-positive rate from bits per key and hash count.",
+        "Explain memtable insert, immutable freeze, flush and leveled organization with overlap rules.",
+        "Size a Bloom filter for a stated key count and rate target."
       ],
-      "why": "TODO",
+      "why": "Write-heavy stores accept background merge work to keep foreground writes sequential. The Bloom filter is what keeps the resulting multi-level reads affordable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/compaction-tombstones-manifests",
+          "note": "Levels and tombstones need a compaction policy."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-ds3",
+          "title": "LSM trees and SSTables",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Log-Structured Storage, printed pp. 118-124: SSTables, memtables, sorted-run merging and the Bloom filter and compaction strategy notes, then Comparing B-Trees and LSM-Trees, printed pp. 129-131",
+          "depth": "The Bloom filter and tombstone treatments here are brief; take the sizing math from the HLD sizing page in this unit."
+        },
+        {
+          "resource": "hld-storage-ds3",
+          "title": "HLD Handbook LSM mechanics and Bloom filters",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/00-storage-engines.md",
+          "locator": "LSM-tree mechanics with the 64 MB memtable and 10x level growth, then Bloom filters and read optimization with the 10-bits-per-key 1% rule",
+          "depth": "Treat the RocksDB defaults as examples that label the mechanism, not as settings to copy blindly."
+        },
+        {
+          "resource": "hld-storage-ds3",
+          "title": "Bloom filter sizing formula",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-0-prerequisites/02-data-structures-for-systems.md",
+          "locator": "Bloom filters: the bit array mechanism with \\(m = -n \\ln(p) / (\\ln 2)^2\\) and \\(k = (m/n) \\ln 2\\), the 1% worked sizing and the RocksDB 10-bits-per-key default"
         }
       ],
       "focus": [
-        "TODO"
+        "Writes land in a sorted memtable. A full memtable freezes to immutable, flushes as one sorted SSTable, and a new memtable takes over without blocking the ack path.",
+        "Level 0 files overlap because each is a direct flush. Deeper levels hold non-overlapping sorted runs, so a read checks every L0 file but at most one file per deeper level.",
+        "A Bloom filter has no false negatives and a tunable false-positive rate \\((1 - e^{-kn/m})^k\\). Negatives skip the SSTable; positives still read it. Optimal hash count is \\((m/n) \\ln 2\\), so 10 bits per key uses 7 hashes for about 1% and 16 bits per key uses 11 hashes for about 0.05%.",
+        "Bloom filters do not help range scans. A range must open every overlapping run because hashing every key in the range is impractical."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the rate for \\(m/n = 10\\) and \\(k = 7\\): \\((1 - e^{-0.7})^7\\) is about \\(0.008\\), or 0.8%. Then size 1 million keys at 1%: about 1.2 MB of filter bits with 7 hashes.",
       "traps": [
-        "TODO"
+        "Reading a negative Bloom answer as uncertain. Negative is certain absence; only positive answers are probabilistic.",
+        "Adding hash functions past the optimum to lower the rate. Excess hashes fill the bit array faster and the rate rises again.",
+        "Treating Level 0 as non-overlapping. Overlap is the defining L0 property and the reason reads check every L0 file newest first."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A memtable fills while a flush is still running. Where does the next write go?",
+          "a": "Into a new active memtable. The full one is already immutable, so foreground writes never wait for the flush to finish; backpressure only starts if immutable tables pile up."
+        },
+        {
+          "q": "With \\(m/n = 10\\) bits per key, which integer \\(k\\) minimizes the rate and what is it?",
+          "a": "About \\(10 \\ln 2\\), so \\(k = 7\\), giving roughly 0.8%. That is the 1% rule quoted for 10 bits per key."
+        },
+        {
+          "q": "A point lookup misses in every Bloom filter. How many SSTable reads happen?",
+          "a": "None for the skipped files. The filters rule out every level, so the read returns not-found without loading data blocks."
+        },
+        {
+          "q": "Why keep deletes as tombstones instead of removing the key during the flush?",
+          "a": "Older levels may still hold the key. Removing it only from the new file would resurrect the stale copy on reads; the tombstone must compact through every level that can contain the key."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CMU 15-445 Fall 2025 Homework #3: Bloom Filter",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/files/hw3-clean.pdf",
+          "locator": "Question 4, Bloom Filter: the bit-array walkthrough and the true-or-false Bloom statements",
+          "note": "Work the 8-bit example by hand, then check against the published solutions. Keep the B+ tree project for the index unit."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the rate for a new bits-per-key value without notes and can state which SSTable files a point read touches.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus HLD LSM and sizing pages plus CMU filters homework cover all three topics at derive depth with a checked Bloom exercise."
       }
     },
     {
@@ -409,47 +686,74 @@
         "segment-compaction-with-atomic-swap"
       ],
       "outcomes": [
-        "TODO"
+        "Contrast leveled and tiered compaction on read, write and space amplification.",
+        "Explain tombstone resurrection and the rule that prevents it.",
+        "Implement segment compaction with an atomic manifest swap."
       ],
-      "why": "TODO",
+      "why": "An LSM without compaction is an ever-growing pile of overlapping files. Compaction policy decides what stalls, what resurrects and what the disk holds.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/read-write-space-amplification",
+          "note": "Compaction policy sets all three amplifications."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hld-storage-ds3",
+          "title": "HLD Handbook compaction strategies",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/00-storage-engines.md",
+          "locator": "Compaction strategies: leveled with 10-30x write amplification and 10% space overhead, size-tiered with lower write amplification and about 100% transient space overhead, and time-windowed for TTL data"
+        },
+        {
+          "resource": "ddia-storage-ds3",
+          "title": "SSTable merging and compaction",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Log-Structured Storage, printed pp. 118-124: the SSTable merge walkthrough and compaction notes, with the write-stall and backpressure discussion at printed pp. 129-131"
+        },
+        {
+          "resource": "cmu-storage-ds3",
+          "title": "CMU 15-445 Fall 2025 B+ tree tombstone buffer",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/project2/",
+          "locator": "Project 2: the leaf tombstone buffer with its recency rule across merge, split and redistribute",
+          "depth": "Read the tombstone survival rule as the small-scale version of LSM tombstone handling. Leave concurrent latch behavior for later."
         }
       ],
       "focus": [
-        "TODO"
+        "Leveled compaction bounds reads to one file per level and space to about 10% overhead, at 10-30x write amplification. Tiered compaction writes less but reads more and transiently doubles disk use.",
+        "A tombstone is a deletion marker with a sequence number. Dropping it before it meets every older copy resurrects the deleted key on later reads.",
+        "The manifest lists the live files. Compaction writes new files, syncs them, then swaps the manifest atomically; a crash before the swap keeps the old list, never a half-published merge.",
+        "Write stalls are backpressure, not a bug. When compaction cannot keep up with flushes, the engine suspends writes rather than letting overlapping files grow without bound."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Merge two sorted runs on paper: L0 holds (a, 1) and a tombstone for b; L1 holds (a, 0) and (c, 3). Newest wins per key, so the output is (a, 1) and (c, 3) with the b tombstone retained because levels below L1 may still hold an older b.",
       "traps": [
-        "TODO"
+        "Deleting a tombstone at the first merge that sees no copy in the files being merged. Deeper levels are unchecked, so the key resurrects.",
+        "Publishing compacted files in place. New files must be complete and synced before the manifest swap names them live.",
+        "Reading a stall as lost throughput to tune away. The stall protects read amplification bounds; removing it trades a latency spike for permanent read debt."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "When is a tombstone safe to drop during compaction?",
+          "a": "Only when the merge covers every level that can hold an older copy of the key, so no stale version survives below the tombstone."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A crash lands between writing compacted files and swapping the manifest. What does recovery see?",
+          "a": "The old manifest and old files. The new files are orphans until the next compaction relists or cleans them; no reader ever saw a half-published merge."
+        },
+        {
+          "q": "Why does leveled compaction amplify writes more than tiered compaction?",
+          "a": "Each level merge rewrites overlapping data from the next level down. Aggressive re-sorting keeps reads bounded but recopies bytes through every level."
+        },
+        {
+          "q": "Memtable pressure rises while compaction lags. What should the engine do?",
+          "a": "Apply backpressure and suspend writes until a flush completes. Accepting unbounded L0 overlap trades a short stall for permanently slower reads."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: segment compaction with an atomic manifest swap plus a tombstone-resurrection fault test.",
+      "stopWhen": "Your compaction merges two runs with a tombstone correctly and a crash before the manifest swap loses nothing acknowledged.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "HLD compaction policy plus DDIA merge mechanics plus the CMU tombstone rule cover all four topics, with compaction practice assigned to the section mini-project."
       }
     },
     {
@@ -466,47 +770,81 @@
         "sequential-versus-random-i-o"
       ],
       "outcomes": [
-        "TODO"
+        "Explain dictionary, run-length and \\(\\Delta\\) difference encoding and which column shapes each suits.",
+        "Distinguish buffer-pool hits from misses and state what each costs.",
+        "Measure sequential versus random read patterns on your machine and explain the gap."
       ],
-      "why": "TODO",
+      "why": "Most storage wins come from reading fewer bytes, not faster bytes. Encoding, caching and access pattern decide how many bytes each query moves.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/read-write-space-amplification",
+          "note": "Encoding and caching set the constants inside every amplification ratio."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cmu-storage-ds3",
+          "title": "CMU 15-445 Fall 2025 compression and buffer pool",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/notes/06-storage3.pdf",
+          "locator": "Lecture #06: Storage Models and Compression, Section 5 Columnar Compression with run-length, bit-packing, bitmap, difference and dictionary schemes, with Lecture #04: Memory Management for buffer-pool structure and replacement",
+          "depth": "Use Lecture #06 for encoding schemes and Lecture #04 for pool mechanics. Leave ARC tuning internals for the project code."
+        },
+        {
+          "resource": "postgres-internals-ds3",
+          "title": "PostgreSQL buffer management and dirty-page flushing",
+          "url": "https://www.interdb.jp/pg/pgsql08/04.html",
+          "locator": "Chapter 8, Sections 8.4 and 8.6: buffer management mechanisms and dirty-page flushing (page read 2026-10-15)",
+          "depth": "Read for clock-sweep behavior and flush timing. Skip Section 8.5 on PostgreSQL 18 asynchronous I/O; it is beyond this unit."
+        },
+        {
+          "resource": "ddia-storage-ds3",
+          "title": "Columnar compression and sequential writes",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Column-Oriented Storage, printed pp. 136-141 for bitmap encoding, run-length for bitmaps and sorted-column compression, with the sequential-versus-random-writes discussion at printed pp. 129-131"
         }
       ],
       "focus": [
-        "TODO"
+        "Dictionary encoding suits low-cardinality strings. Run-length suits sorted runs. \\(\\Delta\\) and frame-of-reference suit timestamps and monotonic IDs. Random UUIDs compress poorly under all of them.",
+        "A buffer-pool hit serves from memory with no disk I/O. A miss pays the full device read plus possible eviction and write-back of a dirty victim.",
+        "Sequential access amortizes seek and rotation cost on disks and maximizes prefetch everywhere. Random access pays per-page positioning; NVMe parallelism narrows the gap; your measurement shows how much is left on your machine.",
+        "The Systems units on I/O access patterns and storage devices and on pages, buffer pools and storage layouts taught the mechanisms. Here the new work is encoding detail and measuring your own hit and pattern costs."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Compute dictionary savings for 1 million rows over 100 distinct 20-byte strings: a 2,000-byte dictionary plus 1 byte per code is about 1.0 MB against 20 MB raw, roughly 20x. Then measure cached versus cold reads of one 64 MB file on your machine and report both medians and how you made the reads cold, for example `os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)` on the file before each cold read.",
       "traps": [
-        "TODO"
+        "Claiming compression always speeds queries. It saves I/O but costs CPU; incompressible data pays decode overhead for no byte savings.",
+        "Reading a hot-cache benchmark as device speed. The first cold read after invalidating the page cache is the device number; the rest measure memory.",
+        "Treating SSD random reads as free. They avoid seek physics but still pay per-request addressing and controller limits."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which encoding fits a sorted status column with long runs of equal values?",
+          "a": "Run-length encoding: each run becomes one value plus a count. Dictionary alone would repeat the same code for every row of the run."
+        },
+        {
+          "q": "A working set fits in the buffer pool, then doubles. What changes at the boundary?",
+          "a": "Hits turn into misses with eviction churn. Latency jumps from memory speed to device speed plus the write-back cost of dirty victims."
+        },
+        {
+          "q": "Why do LSM flushes and compactions favor sequential I/O?",
+          "a": "They write whole sorted files at once instead of scattering page overwrites. Sequential streams reach device bandwidth; scattered overwrites pay positioning per page."
+        },
+        {
+          "q": "A benchmark reports 5 GB/s reads from a file that fits in RAM. What does it measure?",
+          "a": "Page-cache speed, not the device. Size the file above RAM or drop caches between runs to see device behavior."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CMU 15-445 Fall 2025 Project 1: Buffer Pool Manager",
+          "url": "https://15445.courses.cs.cmu.edu/fall2025/project1/",
+          "locator": "Buffer pool manager tests including the ARC replacer, disk scheduler and page-guard behavior",
+          "note": "Configure with `-DCMAKE_CXX_FLAGS=\"-include cstdint\"` under GCC 15 and strip the `DISABLED_` test prefix to run them."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You predict the cheaper access for a new column shape and your cached-versus-cold measurement confirms the mechanism.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CMU compression and buffer-pool lectures plus PostgreSQL flush mechanics plus DDIA encoding cover all three topics with public buffer-pool tests."
       }
     },
     {
@@ -524,47 +862,78 @@
         "latency-throughput-and-amplification-measurement"
       ],
       "outcomes": [
-        "TODO"
+        "Define read, write and space amplification as ratios over user bytes.",
+        "Derive page-level write amplification for B-trees and level-driven amplification for LSM trees.",
+        "Measure throughput and latency on your store and explain the result from amplification evidence."
       ],
-      "why": "TODO",
+      "why": "Throughput and latency numbers are effects. Amplification ratios are the cause, and they predict how each engine behaves before you benchmark it.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/storage-engines-recovery/columnar-layout-table-metadata",
+          "note": "Wide scans change the byte counts inside every ratio."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/crash-safe-kv-store-tests",
+          "note": "Measure your own store and defend its trade-offs."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hld-storage-ds3",
+          "title": "HLD Handbook amplification trade-offs",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/00-storage-engines.md",
+          "locator": "The TL;DR impossibility statement with the B-tree 16-256x and LSM 10-30x write amplification ranges, the B-tree versus LSM write-path diagram, and Trade-offs",
+          "depth": "Treat the vendor migration numbers as reported case figures, never as targets. Derive your own ratios in Reproduce."
+        },
+        {
+          "resource": "ddia-storage-ds3",
+          "title": "B-tree versus LSM performance detail",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Comparing B-Trees and LSM-Trees, printed pp. 129-131: read paths, Bloom filter limits on ranges, write stalls with backpressure, and sequential versus random writes"
         }
       ],
       "focus": [
-        "TODO"
+        "Write amplification is device bytes per user byte. Read amplification is bytes read per byte requested. Space amplification is disk bytes per live byte.",
+        "A 100-byte update rewriting a 16 KiB page costs about \\(164\\times\\) at page level before batching. Batching several updates per flush lowers the observed ratio without changing the mechanism.",
+        "Leveled LSM compaction commonly costs 10-30x with about 10% space overhead. Tiered compaction writes less but holds more overlapping runs and transiently doubles disk use.",
+        "You cannot minimize all three at once. Report all three ratios with the workload beside them; a single ratio without workload context proves nothing."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive page-level write amplification for a 100-byte update in a 16 KiB page: \\(16{,}384/100\\), about \\(164\\times\\). Then size 200,000 writes per second of 200-byte records: 40 MB/s user data, so 10-30x compaction writes 400 MB/s to 1.2 GB/s to the device.",
       "traps": [
-        "TODO"
+        "Quoting one amplification number as the engine constant. Each ratio moves with entry size, batching, level count and workload mix.",
+        "Comparing benchmark numbers across different workloads. Amplification explains the gap only when both sides state entry sizes and read-write mix.",
+        "Crediting Bloom filters for range-query speed. They skip point reads only; ranges still open every overlapping run."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What are the three amplification ratios as formulas?",
+          "a": "Write amplification is device write bytes over user write bytes. Read amplification is bytes read over bytes requested. Space amplification is stored bytes over live bytes."
+        },
+        {
+          "q": "A B-tree batches 8 updates of 100 bytes into one 16 KiB page flush. What is the observed write amplification?",
+          "a": "About \\(16{,}384/800\\), or 20x. Batching amortizes the page rewrite across updates; the unbatched page-level cost stays near 164x."
+        },
+        {
+          "q": "An LSM reports 20x write amplification at 40 MB/s ingest. What device bandwidth does compaction consume?",
+          "a": "About 800 MB/s. The ratio multiplies user bytes into device bytes regardless of which level does the rewriting."
+        },
+        {
+          "q": "Why can two engines with equal write amplification show different p99 read latency?",
+          "a": "Because read amplification differs. The LSM may check several runs per read while the B-tree touches one page per level, so equal write cost coexists with unequal read cost."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "HLD Handbook storage-engines exercise: size a 200K writes per second service",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/00-storage-engines.md",
+          "locator": "Exercise: the 200,000 writes per second service with the memtable, block-cache and compaction-strategy solution",
+          "note": "Recompute the 40 MB/s bandwidth and the 10-30x device range yourself before opening the solution, then argue the Postgres baseline in your own numbers."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive all three ratios for a new entry size and workload without notes and explain a measured latency from them.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "HLD amplification ranges plus DDIA comparison detail plus the HLD sizing exercise cover derivation and measurement with a named exercise."
       }
     },
     {
@@ -580,47 +949,85 @@
         "object-storage-table-metadata"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why analytical queries read fewer bytes from columnar files.",
+        "Describe Parquet row groups, column chunks and footer metadata with the page index.",
+        "Explain how zone maps skip data and how table metadata tracks immutable files."
       ],
-      "why": "TODO",
+      "why": "Analytical copies of transactional data live in object storage as immutable columnar files. Skipping whole files and pages is what makes petabyte scans affordable.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/segmented-log-offsets-retention",
+          "note": "Segments, retention and compaction reappear in the partitioned log."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/crash-safe-kv-store-tests",
+          "note": "Your crash-safe store stays row-oriented; state why that is the correct scope."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-storage-ds3",
+          "title": "Data storage for analytics",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 4, Data Storage for Analytics, printed pp. 134-141: column-oriented storage with the fact-table example, storage and table format with Parquet and Iceberg, and data catalogs"
+        },
+        {
+          "resource": "parquet-format",
+          "title": "Parquet file layout and page index",
+          "url": "https://parquet.apache.org/docs/file-format/",
+          "locator": "File Format: the magic-number, column-chunk, row-group and footer-metadata layout diagram, then the Page Index page with ColumnIndex and OffsetIndex per-page min and max values",
+          "depth": "Read layout and page skipping only. Skip thrift field errata and nested-encoding detail; this unit needs the skipping mechanism, not encoder internals."
+        },
+        {
+          "resource": "hld-storage-ds3",
+          "title": "HLD Handbook OLTP versus OLAP with columnar detail",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/01-oltp-vs-olap.md",
+          "locator": "Row vs column layout with the byte-count example, then compression tricks and vectorized execution",
+          "depth": "Stop at execution internals; query compilation and vectorization are beyond this unit."
         }
       ],
       "focus": [
-        "TODO"
+        "A Parquet file groups rows into row groups and columns into column chunks, with footer metadata naming every chunk location. Readers consult the footer first and fetch only referenced chunks.",
+        "Each page carries min and max statistics in the page index. A predicate skips pages whose range cannot match, which is the zone-map mechanism under its Parquet name.",
+        "Parquet files are immutable once written. A table format tracks which files form a table with schema, snapshots and time travel; a catalog tracks which tables form a database.",
+        "Columnar wins when queries touch few columns across many rows. Point lookups that reassemble full rows across many chunks stay slower than row-store fetches."
       ],
-      "reproduce": "TODO",
+      "reproduce": "For a 50-column table with a query over 3 columns, show the scan reads about \\(3/50\\) of the row-store bytes before compression, then name which row groups survive a predicate that overlaps only one group's min-max range.",
       "traps": [
-        "TODO"
+        "Treating Parquet files as mutable tables. Files are immutable; inserts and deletes arrive as new files plus table-metadata updates.",
+        "Calling min-max skipping an index lookup. Skipping avoids I/O but still scans the surviving pages; it is not a point-index seek.",
+        "Expecting min-max statistics to skip pages on an unsorted column. When values are spread at random, almost every page range overlaps the predicate, so sort or cluster on the filter column first."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A query filters on a sorted column with per-page min and max values. Which pages are read?",
+          "a": "Only pages whose min-max range overlaps the predicate. The reader binary-searches ordered ranges or scans unordered ranges and skips the rest."
+        },
+        {
+          "q": "Why does footer-first reading matter for object storage?",
+          "a": "The footer names every column-chunk offset, so the reader fetches only referenced chunks over range requests instead of downloading whole files."
+        },
+        {
+          "q": "What do a storage format, a table format and a catalog each define?",
+          "a": "The storage format encodes rows as bytes in files. The table format names which files plus schema form a table with snapshots. The catalog names which tables form a database."
+        },
+        {
+          "q": "A point lookup by key needs the full row. Why might the columnar copy be slower than the row store?",
+          "a": "It must fetch and stitch one position from every referenced column chunk. The row store reads one contiguous tuple instead."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "HLD Handbook OLTP versus OLAP exercise: split a struggling Postgres service",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-4-data-systems/01-oltp-vs-olap.md",
+          "locator": "Exercise: the 500M-row dashboard service with the Postgres plus CDC plus warehouse solution",
+          "note": "Recompute the 100 GB raw to 20-30 GB compressed estimate yourself before opening the solution, then name the acceptable lag for your dashboard."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You sketch the file, page-index and table-metadata layers for a new analytical copy and justify each skipping decision.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the file-format contract; the Parquet layout and page-index pages supply the verified primary beside DDIA and HLD."
       }
     },
     {
@@ -637,47 +1044,91 @@
         "randomized-model-based-operation-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a checksummed append-only key-value store with a declared acknowledgement contract.",
+        "Inject crashes at every persistence boundary and corrupted bytes at every read boundary.",
+        "Test random operation sequences against a dictionary model and fail loudly on divergence."
       ],
-      "why": "TODO",
+      "why": "This is the section artifact. Every earlier unit lands here: ordered records, sync states, torn tails, scans, indexes, compaction and measured amplification.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/segmented-log-offsets-retention",
+          "note": "Your segments become log partitions with offsets and retention."
+        },
+        {
+          "unit": "distributed-systems/replication-consistency/history-model-consistency-checker",
+          "note": "The operation histories you keep here feed the consistency checker."
+        },
+        {
+          "unit": "distributed-systems/formal-validation-real-system-extension/property-based-schedule-exploration",
+          "note": "Keep the state machine and add deterministic schedule exploration."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hypothesis-stateful-ds3",
+          "title": "Hypothesis stateful testing",
+          "url": "https://hypothesis.readthedocs.io/en/latest/stateful.html",
+          "locator": "Rule-based state machines with `rule`, `invariant`, `Bundle` and `consumes`, including the DatabaseComparison example that tests a store against a `dict` model",
+          "depth": "Record the Hypothesis version with every saved failure. The machine proves only the explored interleavings; plant a bug to show it detects the fault class before trusting a pass."
+        },
+        {
+          "resource": "ostep-crash-consistency-ds3",
+          "title": "OSTEP data integrity as the corruption spec",
+          "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-integrity.pdf",
+          "locator": "Chapter 45, Sections 45.3 to 45.7: checksums, misdirected writes, lost writes and scrubbing",
+          "depth": "Turn each failure mode into one injection point: torn tail, flipped payload bit, misdirected record and lost write."
+        },
+        {
+          "resource": "build-redis-ds3",
+          "title": "Build Your Own Redis key-value server as a warm-up",
+          "url": "https://build-your-own.org/redis/07_basic_server",
+          "locator": "Chapter 7, Key-Value Server, with Chapters 8 and 9 for hashtable and serialization behavior",
+          "depth": "Use this only for request parsing and in-memory behavior. It defines no acknowledgement or crash contract, so it must not replace your crash-tested store."
+        },
+        {
+          "resource": "replicated-log-capstone-ds3",
+          "title": "Replicated log storage slice as the artifact spec",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/replicated-log-stream-processor.md",
+          "locator": "Core requirements on checksummed WAL segments with recovery and atomic metadata publication, plus Milestone A on the local append log with torn and corrupt tail recovery",
+          "depth": "Implement the local slice only: segments, indexes, ack states, recovery and atomic metadata. Replication and consensus arrive in later sections."
         }
       ],
       "focus": [
-        "TODO"
+        "Name the ack contract first: which sync backs every success reply. Buffered, flushed and durable acks are separate code paths with separate tests. The Programming units on property, metamorphic and differential testing with shrinking and on regression tests, failure injection and flaky tests taught the tools; here they test a crash contract.",
+        "Inject at every boundary: before and after each append, checksum, flush, index update, manifest swap and ack. A boundary without a crash test is an untested promise.",
+        "Corruption has two outcomes: truncate a corrupt tail and continue, or halt on corrupt middle state. Never skip a bad record and keep reading as if the log were whole.",
+        "The `dict` model decides truth for every random sequence. Identical puts, deletes and reads run against both sides; any divergence fails the run with the shrunken sequence kept."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, build a length-prefixed CRC log with `put`, `get` and `delete` plus an in-memory index, then drive it with a `RuleBasedStateMachine` using `Bundle` keys against a `dict` model. Plant a no-op `delete` bug and show the machine fails; fix it and show the run passes with the seed retained.",
       "traps": [
-        "TODO"
+        "Trusting a green run as proof. The machine covers explored interleavings against your model; an incomplete model or short run hides whole fault classes.",
+        "Fsyncing once per batch but acking per write. Either ack after the shared sync completes or track per-write sync state; mixed accounting loses acknowledged writes.",
+        "Recovering past corruption by skipping. A corrupt tail truncates; corrupt middle state is terminal until an operator or snapshot intervenes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "What must a crash test cover that a normal operation test does not?",
+          "a": "Every persistence boundary in both orders: crash before and after each append, checksum write, flush, index update, manifest swap and ack, then recovery to the contract state."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "The model says a key is deleted but the store returns its value. What failed?",
+          "a": "The implementation diverged from the model on the delete path. Keep the shrunken failing sequence as the regression test and fix the tombstone or index update."
+        },
+        {
+          "q": "Recovery finds a corrupt record with valid records after it. What is the correct behavior?",
+          "a": "Halt with a terminal corruption error, preserving the evidence. Only a corrupt tail may truncate; skipping middle corruption invents history."
+        },
+        {
+          "q": "Why retain the random seed with every failing sequence?",
+          "a": "The seed plus the shrunken steps make the failure replayable on any machine. Without them the fault report is an anecdote, not a regression test."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the crash-safe store with injection at every boundary, corruption handling and randomized model-based operation tests.",
+      "stopWhen": "Random sequences pass against the model, every injected crash recovers to the ack contract, and corruption either truncates the tail or halts with evidence.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Hypothesis state machines plus OSTEP integrity failures plus the capstone storage slice cover all four topics, with implementation practice assigned to the section mini-project."
       }
     }
   ]
