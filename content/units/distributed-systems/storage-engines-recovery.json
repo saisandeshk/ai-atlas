@@ -452,13 +452,13 @@
         "Start from the last checkpoint redo record, not from the beginning of time. Everything before the redo point is already on disk, so recovery time grows with replayed bytes and checkpoint frequency trades write cost against recovery time.",
         "ARIES repeats history first: redo all logged actions to rebuild the crash state, then undo the losers. Redo before undo is the order that makes the result correct.",
         "A page is redone only when the log record LSN exceeds the page LSN. The comparison is what makes replay idempotent across repeated crashes.",
-        "A corrupt record with nothing valid after it is a torn append: truncate it and continue. A corrupt record with valid records after it may hide acknowledged writes, so stop with a corruption error and keep the evidence; recovering only the prefix is an explicit, lossy choice. Recovery never invents missing records."
+        "A corrupt record with nothing valid after it is treated as a torn append and truncated, which is safe only if that record was never acknowledged. A corrupt record with valid records after it may hide acknowledged writes, so stop with a corruption error and keep the evidence; recovering only the prefix is an explicit, lossy choice. Recovery never invents missing records."
       ],
       "reproduce": "Given a log with records r1 and r2 checksummed and a torn r3, state the recovered prefix and the index contents after recovery. Then crash partway through recovery, run it again and show the result is identical: in a paged engine the page LSN check makes redo idempotent, and in your log the index is rebuilt from the same valid prefix.",
       "traps": [
         "Replaying from segment zero after every crash. The redo record exists so recovery skips already-checkpointed work.",
         "Redoing only committed transactions. Repeating history redoes everything including losers, then undoes them; skipping the redo pass breaks the chain the undo pass assumes.",
-        "Skipping over a corrupt middle record to salvage later ones. Only a corrupt tail is safely truncatable; a corrupt middle record ends the trustworthy prefix."
+        "Skipping over a corrupt middle record to salvage later ones. Only a corrupt tail that was never acknowledged is safely truncatable; a corrupt middle record ends the trustworthy prefix."
       ],
       "selfTest": [
         {
@@ -988,7 +988,7 @@
       ],
       "focus": [
         "A Parquet file groups rows into row groups and columns into column chunks, with footer metadata naming every chunk location. Readers consult the footer first and fetch only referenced chunks.",
-        "Each page carries min and max statistics in the page index. A predicate skips pages whose range cannot match, which is the zone-map mechanism under its Parquet name.",
+        "When the writer emits the optional page index, it holds min and max statistics for each page. A predicate skips pages whose range cannot match, which is the zone-map mechanism under its Parquet name.",
         "Parquet files are immutable once written. A table format tracks which files form a table with schema, snapshots and time travel; a catalog tracks which tables form a database.",
         "Columnar wins when queries touch few columns across many rows. Point lookups that reassemble full rows across many chunks stay slower than row-store fetches."
       ],
@@ -1096,7 +1096,7 @@
       "focus": [
         "Name the ack contract first: which sync backs every success reply. Buffered, flushed and durable acks are separate code paths with separate tests. The Programming units on property, metamorphic and differential testing with shrinking and on regression tests, failure injection and flaky tests taught the tools; here they test a crash contract.",
         "Inject at every boundary: before and after each append, checksum, flush, index update, manifest swap and ack. A boundary without a crash test is an untested promise.",
-        "Corruption has two outcomes: truncate a corrupt tail and continue, or halt on corrupt middle state. Never skip a bad record and keep reading as if the log were whole.",
+        "Corruption has two outcomes: truncate a corrupt tail that was never acknowledged and continue, or halt on corrupt middle state. Never skip a bad record and keep reading as if the log were whole.",
         "The `dict` model decides truth for every random sequence. Identical puts, deletes and reads run against both sides; any divergence fails the run with the shrunken sequence kept."
       ],
       "reproduce": "From a blank file, build a length-prefixed CRC log with `put`, `get` and `delete` plus an in-memory index, then drive it with a `RuleBasedStateMachine` using `Bundle` keys against a `dict` model. Plant a no-op `delete` bug and show the machine fails; fix it and show the run passes with the seed retained.",
