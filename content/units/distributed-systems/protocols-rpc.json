@@ -100,7 +100,7 @@
         },
         {
           "q": "Why is the Protocol Buffers encoding of the DDIA example 33 bytes while JSON needs 81?",
-          "a": "JSON repeats field names and punctuation in every message. The binary form carries compact type tags and lengths under a shared schema, so names are sent once in the schema rather than per message."
+          "a": "JSON repeats field names and punctuation in every message. Protocol Buffers replaces each name with a numeric field tag from the shared schema and adds compact type and length bytes, so names never travel with the data."
         },
         {
           "q": "Why do field numbers 1 to 15 cost one byte while higher numbers cost more?",
@@ -158,7 +158,7 @@
           "resource": "ddia-encoding-ds1",
           "title": "DDIA 2e Chapter 5: Avro, Protobuf and schema merits",
           "url": "https://dataintensive.net/",
-          "locator": "Chapter 5, Protocol Buffers (pp. 169-172), Avro (pp. 172-176) with Figures 5-3 and 5-4, and The Merits of Schemas (p. 177)"
+          "locator": "Chapter 5, Protocol Buffers (pp. 169-172) with Figure 5-3, Avro (pp. 172-177) with Figures 5-4 to 5-6 on writer and reader schemas, and The Merits of Schemas (p. 177)"
         },
         {
           "resource": "protobuf-avro-evolution-ds1",
@@ -174,7 +174,7 @@
         }
       ],
       "focus": [
-        "Proto3 implicit scalar fields cannot distinguish explicitly set zero from unset. Use `optional` or message presence when the distinction matters.",
+        "The Systems unit on RPC schemas, versions, errors and trace context taught field identity and proto3 presence. Here the new work is what survives a hop between versions: unknown fields, Avro resolution and the four-version fixtures.",
         "Reserving a deleted number and name is the change, not tidying. Reuse makes old bytes decode under a new meaning.",
         "Avro carries no field identifiers on the wire, so reader and writer schemas resolve by name and defaults. Protobuf carries tags, so unknown fields can survive a binary proxy hop.",
         "JSON and text-format conversions are lossy hops for unknown fields even when binary hops preserve them."
@@ -183,20 +183,20 @@
       "traps": [
         "Treating a default value as proof the sender set the field. An absent field also reads as the default, so defaults cannot carry I was explicitly cleared.",
         "Renumbering fields for neatness. Renumbering deletes and re-adds every field involved and breaks stored data.",
-        "Proxying unknown fields through JSON for debugging and assuming they survive. Only binary copy paths such as `CopyFrom` and `MergeFrom` preserve them."
+        "Proxying unknown fields through JSON for debugging and assuming they survive. Binary parsing and serialization and message-level copies such as `CopyFrom` and `MergeFrom` keep them; JSON output and field-by-field copies drop them."
       ],
       "selfTest": [
         {
           "q": "An old binary reads new data with one added field. What happens in Protobuf and in Avro?",
-          "a": "Protobuf keeps the extra field as unknown bytes and ignores it on read, preserving it on binary reserialization. Avro ignores the writer-only field during resolution, but only if the reader schema is available to resolve against."
+          "a": "Protobuf keeps the extra field as unknown bytes and ignores it on read, preserving it on binary reserialization. Avro ignores the writer-only field during resolution, but only if the reader has the writer's schema to resolve against."
         },
         {
           "q": "A field is deleted and its number reused for a new string field. What breaks?",
-          "a": "Old integers decode as the new string type or corrupt the record, and leaked bytes can cross a privacy boundary. Reserve the number and the name instead."
+          "a": "Old bytes for that number are decoded under the new definition. The proto3 guide lists the outcomes: a parse error at best, otherwise leaked personal data or silent corruption. Reserve the number and the name instead."
         },
         {
           "q": "When is widening int to long safe in Avro, and what is the rollout condition?",
-          "a": "The schemas match by promotion rule, but it is only conditionally safe: keep writing int-range values until every reader deploys, then write wider values."
+          "a": "A reader whose schema says `long` can read data written as `int`, because int promotes to long. The reverse does not resolve: a reader still on `int` fails on data written with a `long` schema, whatever the values. So deploy the `long` reader schema everywhere first, then switch writers."
         },
         {
           "q": "Why does `optional` matter for a boolean that switches behavior when false?",
@@ -249,28 +249,28 @@
           "resource": "beej-ds1",
           "title": "Beej sections on send, recv and partial sends",
           "url": "https://beej.us/guide/bgnet/",
-          "locator": "Section 5.7 send and recv: short sends and `recv` returning 0 on peer close; Section 7.4 Handling Partial send: the `sendall` loop that repeats until all bytes leave"
+          "locator": "Section 5.7 send and recv: short sends and `recv` returning 0 on peer close; Section 7.4 Handling Partial send: the `sendall` loop that repeats until all bytes leave; Section 7.6 Son of Data Encapsulation: a length header on each packet so the receiver can find where one message ends"
         },
         {
           "resource": "protobuf-avro-evolution-ds1",
           "title": "Avro 1.12.0 message framing",
           "url": "https://avro.apache.org/docs/1.12.0/specification/",
-          "locator": "Message Framing: a message is a list of buffers, each a four-byte big-endian length plus bytes, terminated by a zero-length buffer; writers should emit large objects as their own buffers"
+          "locator": "Message Framing: a message is a list of buffers, each a four-byte big-endian length plus bytes, terminated by a zero-length buffer; framing lets large binary objects travel as their own buffers and be copied fewer times"
         },
         {
           "resource": "ddia-encoding-ds1",
           "title": "DDIA 2e Chapter 5: length prefixes in encodings",
           "url": "https://dataintensive.net/",
-          "locator": "Chapter 5, JSON, XML, and Binary Variants (pp. 165-169): length-prefixed strings need no terminator or escaping, unlike delimited text"
+          "locator": "Chapter 5, JSON, XML, and Binary Variants (pp. 165-169): in the MessagePack walk-through on p. 169, a string preceded by its length needs no end marker or escaping"
         }
       ],
       "focus": [
         "A length prefix states the frame size up front, so the receiver buffers exactly that many bytes. A delimiter scans for a terminator, so payload bytes need escaping and a split delimiter needs a carried-over buffer.",
         "`send` may move fewer bytes than requested and `recv` may return any positive amount up to the buffer size. Loops on both sides, not larger buffers, fix this.",
-        "Coalescing is normal, not a bug: Nagle, segment packing and fast retransmits join sends. The framer must emit zero, one or several messages per read.",
+        "Coalescing is normal, not a bug: Nagle's algorithm on the sender and buffering in the receiver's kernel join sends. The framer must emit zero, one or several messages per read.",
         "The Systems unit on sockets, partial reads and writes, and message framing taught the socket calls. Here the new work is the framed parser and its fault fixtures."
       ],
-      "reproduce": "From a blank file, implement a four-byte big-endian length-prefixed framer with a 1 MiB cap, then feed it a split header, a body in two chunks, two messages in one read, and a delimiter split across reads, and emit exactly the right messages.",
+      "reproduce": "From a blank file, implement a four-byte big-endian length-prefixed framer with a 1 MiB cap, then feed it a split header, a body in two chunks and two messages in one read, then feed a line-delimited variant a `\\r\\n` split across reads, and emit exactly the right messages.",
       "traps": [
         "Treating `recv` returning 0 as an empty message. It means the peer closed; a zero-length frame is a separate protocol event such as the Avro terminator.",
         "Growing the receive buffer to avoid partial reads. The stream can split anywhere, so any read size still needs the reassembly loop.",
@@ -334,31 +334,31 @@
           "resource": "algomaster-system-design-ds1",
           "title": "AlgoMaster checksums lesson",
           "url": "https://algomaster.io/learn/system-design/checksums",
-          "locator": "What a checksum is, what checksums can and cannot tell you, and CRC for accidental damage versus hash for identity versus HMAC or signature for authenticity"
+          "locator": "Sections 1 to 4 and 7: what a checksum can and cannot tell you; parity, additive checksums, CRC, cryptographic hashes, HMACs and signatures; end-to-end integrity"
         },
         {
           "resource": "protobuf-avro-evolution-ds1",
-          "title": "Avro single-object encoding integrity marker",
+          "title": "Avro schema fingerprints and block checksums",
           "url": "https://avro.apache.org/docs/1.12.0/specification/",
-          "locator": "Single-object encoding: two-byte marker `C3 01` plus 8-byte little-endian CRC-64-AVRO fingerprint of the writer schema, then the binary object"
+          "locator": "Single-object encoding: marker `C3 01`, then the 8-byte little-endian CRC-64-AVRO fingerprint of the writer schema, which identifies the schema and does not check the payload; Object Container Files, Optional Codecs: each snappy block is followed by a 4-byte big-endian CRC32 of the uncompressed data"
         }
       ],
       "focus": [
         "Check the length before allocating the body, and cap decompressed output independently of compressed input. A small compressed frame can expand by orders of magnitude.",
         "A checksum answers only whether these bytes match the expected bytes under this algorithm. It says nothing about who produced them or whether they are the latest.",
         "Cover the bytes that matter with the check you verify: header plus payload, or payload only, must be an explicit contract, and every hop must know which one it checks.",
-        "The lesson page prints the first checksum sum as 0x617E, but the words sum to 0x6182. The expected output 40573 is correct and equals `~0x6182 & 0xFFFF`; use the corrected sum."
+        "Simple additive checksums such as the Internet checksum can miss reordered words and errors that cancel; CRCs catch burst errors and bit flips far better. Neither stops a deliberate change: that needs an HMAC or a signature."
       ],
       "reproduce": "From a blank file, implement the Internet checksum over 16-bit words with carry folding and complement, and verify `[0x4500, 0x003C, 0x1C46]` gives 40573 and `[0xFFFF, 0x0001]` folds through `0x10000` to `0xFFFE`. Then add a 1 MiB frame cap and a separate decompression cap to your framer.",
       "traps": [
         "Allocating `length` bytes before validating `length`. Validate against the cap first, then allocate, then read the body.",
         "Using CRC where authenticity is needed. CRC catches accidental damage; it does not stop a forged message, which needs a keyed check.",
-        "Checksumming the wrong range. A header-only check misses payload flips and a payload-only check misses length tampering; state the range in the contract."
+        "Checksumming the wrong range. A header-only check misses payload flips and a payload-only check misses a corrupted length; state the range in the contract."
       ],
       "selfTest": [
         {
           "q": "Why fold the carry instead of truncating the sum to 16 bits?",
-          "a": "The Internet checksum uses ones-complement arithmetic, so overflow wraps around and is added back with carry folding before complementing, as the `checksum` steps in the lesson define."
+          "a": "The Internet checksum uses ones-complement arithmetic, so overflow wraps around and is added back with carry folding before complementing, as the practice problem's `checksum` steps define."
         },
         {
           "q": "A 10-byte compressed frame claims a 100 MiB body. Which cap fires and when?",
@@ -378,7 +378,7 @@
           "name": "Compute the Internet Checksum",
           "url": "https://algomaster.io/practice/system-design/compute-the-internet-checksum",
           "locator": "Implement `checksum(words)` with carry folding and complement; the judge checks the two worked cases including 40573",
-          "note": "The judge output 40573 is correct. Ignore the printed 0x617E partial sum in the explanation and use 0x6182; then add frame and decompression caps with oversized and corrupt fixtures in your own harness."
+          "note": "The expected 40573 is correct, but the first example's explanation prints the sum as `0x617E` and its complement as `0x9E81` (40577); the words sum to `0x6182`, whose complement `0x9E7D` is 40573. Then add frame and decompression caps with oversized and corrupt fixtures in your own harness."
         }
       ],
       "stopWhen": "Your checksum matches both worked cases, your framer rejects an over-cap length before allocating and a corrupt payload on verify, and you can state the covered byte range.",
@@ -432,7 +432,7 @@
       "focus": [
         "Identity has three parts: which client incarnation sent it, which request of that incarnation, and which side effect the request intends. One UUID for all three conflates them.",
         "The server stores the key plus the request parameters plus the result. A repeat with the same key and same parameters returns the stored result; the same key with different parameters is a validation error, never a second execution.",
-        "Recording the key and mutating state must be atomic. Recording without applying, or applying without recording, reopens the duplicate on crash.",
+        "The Systems unit on deadlines, retries and idempotency across RPC built the durable key state machine with atomic transitions. Here the new work is identity across client restarts, parameter-mismatch rejection and the retention bound.",
         "Retention is bounded by policy such as resource lifetime plus an interval. After expiry, a late duplicate looks new, so callers must handle that window."
       ],
       "reproduce": "From a blank file, implement an `execute(key, proposed)` store with first-write-wins semantics, parameter-mismatch rejection and a TTL, and show a retried create returning the first result while a changed-parameter repeat raises a validation error.",
@@ -452,7 +452,7 @@
         },
         {
           "q": "Why is a per-message UUID without a client incarnation insufficient after a restart?",
-          "a": "A restarted client can regenerate or lose the UUID sequence, so the server cannot tell a replay from a new request. Binding the key to caller plus incarnation plus intent closes that gap."
+          "a": "A client that numbers requests from 1 again after a restart collides with its old numbers, so the server suppresses a new request as a duplicate. A client that lost an unacknowledged request retries it under a fresh ID, so it runs twice. An incarnation number separates old numbering from new, and a key saved with the intent before the first send lets the retry reuse it."
         },
         {
           "q": "Why must key recording and the mutation be one atomic step?",
@@ -530,7 +530,7 @@
       "focus": [
         "Four windows, four different truths: dropped before receive means nothing ran, during execution means unknown progress, after side effect means done but unreported, during response means done with a lost reply. The client sees one event: no reply in time.",
         "`ErrMaybe` is the honest answer for a retried conditional write that meets a version mismatch. The first attempt may have applied and its success reply was lost, or another client may have moved the version first.",
-        "Deadlines are points in time but propagate as remaining durations. The Systems unit on cancellation, deadlines and shutdown state machines taught the timer mechanics; here the new work is the cross-hop budget.",
+        "The Systems units on cancellation, deadlines and shutdown state machines and on deadlines, retries and idempotency across RPC taught timer mechanics and remaining-time propagation. Here the new work is reporting ambiguity to the caller and testing each timeout window against an unreliable network.",
         "The server handler must check cancellation and stop spawned work. gRPC cancels the call, but it cannot interrupt application code that never checks."
       ],
       "reproduce": "Without notes, enumerate the four windows and the correct client conclusion for each, then implement a Clerk that retries until a reply arrives with a 100 ms pause and returns `ErrMaybe` exactly when a retried `Put` meets `ErrVersion`.",
@@ -615,12 +615,12 @@
         }
       ],
       "focus": [
-        "Multiplication, not addition: with \\(r\\) tries at each of \\(L\\) layers, worst-case downstream load is \\(r^L\\). Three tries at five layers is \\(3^5 = 243\\).",
+        "The Systems unit on deadlines, retries and idempotency across RPC derived layered amplification: with \\(r\\) tries at each of \\(L\\) layers the bottom sees \\(r^L\\), so three tries at five layers is \\(3^5 = 243\\). Here the new work is the jittered schedule, the token throttle and the size of the dedup store.",
         "Backoff without jitter still thunders. Independent uniform jitter spreads the retry front so one recovery does not become the next overload spike.",
         "The throttle is a separate bound from the attempt count: per server, failures consume tokens and successes refund a fraction, and retries pause when tokens fall below half.",
         "Dedup retention must cover the maximum retry age plus clock and queue delay. A retry older than the store looks new."
       ],
-      "reproduce": "Closed-book, derive \\(3^5 = 243\\) for three tries at five layers, then compute a capped backoff schedule with base 0.1 s, multiplier 2, cap 1.0 s and uniform jitter in \\([0.8, 1.2]\\): with seed 7 the five delays in ms are 93.0, 172.1, 424.1, 663.2 and 1014.4.",
+      "reproduce": "Closed-book, derive \\(3^5 = 243\\) for three tries at five layers, then compute a capped backoff schedule with base 0.1 s, multiplier 2, cap 1.0 s and uniform jitter in \\([0.8, 1.2]\\) applied after the cap: with Python's `random.Random(7)` and one `uniform(0.8, 1.2)` draw per delay, the five delays in ms are 93.0, 172.1, 424.1, 663.2 and 1014.4.",
       "traps": [
         "Retrying at every layer for safety. Each layer multiplies the one below, so bound retries at one layer and let the others fail fast with a clear error.",
         "Using fixed backoff under overload. Synchronized waiters return together and re-overload the dependency; jitter is the decorrelation, not a nicety.",
@@ -739,7 +739,7 @@
           "a": "Poll the serving context for cancellation, stop work, clean up, and cancel the downstream call explicitly, since Python does not auto-cancel outgoing calls."
         },
         {
-          "q": "Client and server each write 1,000 stream messages without reading. What happens?",
+          "q": "Client and server both use synchronous reads, and each writes a large burst of stream messages before reading any. What happens?",
           "a": "Both block in flow control once windows fill, and neither drains, so they deadlock. At least one side must interleave reads, or use async handlers."
         }
       ],
@@ -803,7 +803,7 @@
         {
           "resource": "hld-api-network-ds1",
           "title": "HLD service discovery and API design",
-          "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-2-building-blocks/12-service-discovery-mesh.md",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-2-building-blocks/12-service-discovery-mesh.md",
           "locator": "Service Discovery and Service Mesh: DNS with TTL, registry, Kubernetes endpoints, sidecars; plus the API Design Basics chapter for auth, versioning and idempotency-key placement"
         }
       ],
@@ -878,14 +878,14 @@
         {
           "resource": "hld-api-network-ds1",
           "title": "HLD load balancers and networking fundamentals",
-          "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-2-building-blocks/00-load-balancers.md",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-2-building-blocks/00-load-balancers.md",
           "locator": "Load Balancers: layer-4 5-tuple versus layer-7 routing, health checks and affinity; plus the Networking Fundamentals chapter for TCP versus UDP and HTTP/1.1 through HTTP/3 head-of-line blocking"
         },
         {
           "resource": "grpc-guides-ds1",
           "title": "gRPC keepalive guide",
           "url": "https://grpc.io/docs/guides/keepalive/",
-          "locator": "Overview and configuration table: HTTP/2 PING keepalives, client default disabled, server default 2 hours, 20 s timeout, `too_many_pings` GOAWAY on abuse; keep below about one per minute only with owner agreement"
+          "locator": "Overview and configuration table: HTTP/2 PING keepalives, client default disabled, server default 2 hours, 20 s timeout, `too_many_pings` GOAWAY on abuse; clients should not set keepalive much below one minute and must agree settings with the service owner"
         },
         {
           "resource": "rfc-quic-v1",
@@ -896,14 +896,14 @@
         }
       ],
       "focus": [
-        "Pools bound concurrency: max size, checkout timeout and idle eviction. Exhaustion must surface as a fast explicit error, never an unbounded wait.",
+        "The Systems unit on connection shutdown, pools and latency decomposition sized pools with Little's law. Here the new work is the caller's side under failure: checkout timeouts and exhaustion as a fast explicit error, never an unbounded wait, plus health gating and the balancer's choice.",
         "Layer-4 balancers forward bytes by 5-tuple; layer-7 balancers parse requests and can route, shed and retry per call. Affinity buys cache warmth and pays with hot replicas.",
         "Health checking is about the service, keepalive about the connection. A live TCP connection to a sick service still needs a health-gated balancer decision.",
-        "QUIC moves reliability into user space over UDP: independent streams avoid TCP head-of-line blocking, and connection IDs survive address changes via migration."
+        "QUIC runs over UDP and does its own loss recovery, usually in a user-space library: independent streams avoid TCP head-of-line blocking, and connection IDs survive address changes via migration."
       ],
       "reproduce": "Without notes, contrast L4 versus L7 decisions on one example each, state the keepalive defaults and abuse signal, and explain why one lost TCP packet stalls all HTTP/2 streams while QUIC stalls only the affected stream.",
       "traps": [
-        "Sizing pools by server count. Size by latency times concurrency plus headroom, with checkout timeouts; an infinite wait on checkout is a distributed deadlock.",
+        "Sizing pools by server count. Size by arrival rate times hold time plus headroom, with checkout timeouts; an infinite wait on checkout is a distributed deadlock.",
         "Reading affinity as load balancing. Sticky routing concentrates load and failure, so use it only where cache or state locality pays, with a rebalance path.",
         "Enabling aggressive keepalive unilaterally. The server treats ping floods as abuse and sends `too_many_pings` GOAWAY; coordinate intervals with owners."
       ],
@@ -939,7 +939,7 @@
           "note": "The judge checks routing logic only. Add health gating and an affinity-cost comparison in your own harness."
         }
       ],
-      "stopWhen": "You can size a pool from latency and concurrency, predict the balancer move for one failure, and state the QUIC stream and migration differences without claiming production QUIC operation.",
+      "stopWhen": "You can size a pool from arrival rate and hold time, predict the balancer move for one failure, and state the QUIC stream and migration differences without claiming production QUIC operation.",
       "fit": {
         "verdict": "added",
         "note": "Coverage failed for the optional QUIC topic; RFC 9000 and RFC 9114 supply the verified transport reference beside HLD and gRPC."
@@ -983,14 +983,14 @@
         {
           "resource": "hld-api-network-ds1",
           "title": "HLD resilience and rate limiting",
-          "url": "https://github.com/handbook-academy/engineering-handbook/blob/main/content/hld/part-6-reliability-and-operations/02-resilience-patterns.md",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-6-reliability-and-operations/02-resilience-patterns.md",
           "locator": "Resilience Patterns: timeouts, retries with backoff and jitter, breakers, bulkheads and the DynamoDB 2015 retry-storm case as a reported example; plus the Rate Limiting chapter for token, leaky, fixed and sliding windows with `429` plus `Retry-After`"
         }
       ],
       "focus": [
         "Bound every queue and name what happens at the bound: drop newest, drop oldest, or reject with `RESOURCE_EXHAUSTED`. An unnamed bound is an unbounded queue with extra steps.",
         "Hop-local backpressure protects one process; end-to-end backpressure protects the chain. Retry budgets and throttles are the end-to-end half, and they must pause together.",
-        "Rejection is a feature with a code. `RESOURCE_EXHAUSTED` plus `Retry-After` lets callers back off; silent queueing lets them time out and retry blindly, which amplifies.",
+        "Rejection is a feature with a code. gRPC `RESOURCE_EXHAUSTED`, or HTTP `429` with `Retry-After`, lets callers back off; silent queueing lets them time out and retry blindly, which amplifies.",
         "The Systems units on bounded queues, admission and backpressure and on retry budgets, circuit breaking and load shedding taught the primitives. Here the new work is the RPC-wide budget and the measured comparison."
       ],
       "reproduce": "Closed-book, derive \\(3^5 = 243\\) and the token-pause rule, then run one workload at two overload levels and report offered versus admitted versus rejected versus retried counts with p50 and p99 for each policy.",
@@ -1014,7 +1014,7 @@
         },
         {
           "q": "A dependency reports p99.9 at 800 ms. Where do you set the timeout and why?",
-          "a": "Near 2000 ms with padding for network variance. Too low creates false timeouts and retry storms; too high stops protecting threads and ports. Validate by load test on your machine."
+          "a": "Start at the p99.9, 800 ms, which accepts about 0.1 percent false timeouts, then pad for network variance; the HLD chapter's example pads it to 2,000 ms. Too low creates false timeouts and retry storms; too high stops protecting threads and ports. Check the choice with a load test on your machine."
         }
       ],
       "practice": [
@@ -1080,7 +1080,7 @@
       ],
       "focus": [
         "Correlate by identifiers, order by causality. A `traceparent` like `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01` links the hops; timestamp comparison across machines proves nothing about order.",
-        "Every hop must forward and update: set a new parent id per outgoing call, move the updated vendor entry to the left of `tracestate`, and never use the headers for sensitive data.",
+        "The Systems unit on RPC schemas, versions, errors and trace context taught `traceparent` parsing and the legal forwarding mutations. Here the new work is joining several processes' logs by those IDs, and the rule that the headers never carry sensitive data.",
         "The network model is a seeded program: per-message delay, drop, duplicate, reorder and corrupt actions plus partition, restart and cancel, all from one retained seed.",
         "The Systems unit on deterministic network fault injection taught the harness shape. Here the new work is the RPC envelope logging plus the seeded schedule that the rollout matrix will reuse."
       ],
@@ -1097,7 +1097,7 @@
         },
         {
           "q": "What must change in `traceparent` at each hop, and what must not?",
-          "a": "Set a new parent id for the outgoing call and optionally the sampled flag with it. Never change the trace id mid-trace and never invent other mutations."
+          "a": "Set a new parent id for the outgoing call, and change the sampled flag only if your sampling decision changed. Keep the trace id unless you deliberately restart the trace, which splits it."
         },
         {
           "q": "A fault run fails once in ten tries. What do you keep to make it deterministic?",
