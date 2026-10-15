@@ -478,7 +478,7 @@
     {
       "id": "raft-apply-persist-restart",
       "title": "Ordered exactly-once application, persistent term, vote and log state, and crash and restart",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -488,47 +488,74 @@
         "crash-and-restart-behavior"
       ],
       "outcomes": [
-        "TODO"
+        "Persist term, vote and log changes before issuing replies that rely on them.",
+        "Restore application state and its applied boundary consistently across restart.",
+        "Distinguish once-per-index application from deduplication of retried client operations."
       ],
-      "why": "TODO",
+      "why": "Crash recovery is part of the consensus proof. A vote forgotten after a restart can invalidate election safety even when every live transition looked correct.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/consensus-coordination/stale-leaders-fenced-locks",
+          "note": "Extend protection beyond the replicated state machine."
+        },
+        {
+          "unit": "distributed-systems/consensus-coordination/raft-snapshots-compaction",
+          "note": "Persist a compacted application prefix with its recovery boundary."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "raft-paper-ds5",
+          "title": "Raft extended paper: durable protocol state and client retries",
+          "url": "https://raft.github.io/raft.pdf",
+          "locator": "Figure 2 persistent state and application rule; Section 5.5, Follower and candidate crashes; Section 8 client serial numbers and cached responses",
+          "depth": "Stop before Section 8 read-only queries; read paths have their own unit."
+        },
+        {
+          "resource": "mit-raft-lab-ds5",
+          "title": "MIT 6.5840 Spring 2026 Lab 3C: persistence",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-raft1.html",
+          "locator": "Part 3C: persistence, `persist()`, `readPersist()`, `ReadRaftState()` and `Save()`, and the 3C tests"
         }
       ],
       "focus": [
-        "TODO"
+        "Persist `currentTerm`, `votedFor` and log updates before replying to RPCs that rely on the changes. Reload them before processing new traffic after restart.",
+        "Apply committed entries in increasing index order. Replaying the log into fresh volatile application state is legitimate; reapplying it to already durable effects without a matching applied boundary is not.",
+        "If application state survives restart, its applied index must survive consistently with it. Reuse the crash-consistent publication boundary from the storage section, rather than independently saving two unrelated values.",
+        "The same client operation can occupy several log indexes after retry. Durable client identity, sequence state and cached replies suppress duplicate logical effects inside the replicated application; they do not make an external API call atomic with the log."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw a voter granting a term-5 vote to one candidate, crashing after the reply, and receiving another candidate's term-5 request after restart. With the saved vote it rejects; without it, a second vote can let two majorities elect different leaders. Then trace an increment committed and applied before a lost client reply. Show why a retry at another log index increments twice without client deduplication, but returns the saved result without another increment when deduplication state and application state recover together.",
       "traps": [
-        "TODO"
+        "Calling Lab 3C a test of disk flush or power-loss behavior. Its `Persister` simulates retained bytes; `loglab` must test the actual durable boundary separately.",
+        "Persisting an applied index before the corresponding application update, or persisting the update but forgetting its applied index.",
+        "Dropping duplicate-suppression state during snapshot or restart, then claiming exactly-once client semantics."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is saving a granted vote after sending the reply unsafe?",
+          "a": "A crash in between can erase the vote and permit a second vote in the same term, breaking the intersection argument."
+        },
+        {
+          "q": "Does once-per-index application imply once-per-client-request execution?",
+          "a": "No. A retried request may appear at another index. The application needs a stable request identity and recovered deduplication state."
+        },
+        {
+          "q": "Can the paper's volatile applied index be reset on restart?",
+          "a": "Yes if the application is rebuilt from a consistent snapshot or fresh state with the corresponding replay boundary. It is unsafe to replay old effects into retained application state without coordinating that boundary."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT 6.5840 Spring 2026 Lab 3C: retained-state recovery",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-raft1.html",
+          "locator": "Part 3C; `TestPersist13C`, `TestPersist23C`, `TestPersist33C`, `TestFigure83C` and the remaining 3C tests; run `make RUN=\"-run 3C\" raft1` from `src`",
+          "note": "The persistence tests crash and restart servers while agreement continues; Figure 8 stress repeatedly crashes leaders and finally asks all servers to agree. Preserve these public results separately from `loglab` storage-crash and client-retry evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Lab 3C passes with 3A and 3B still passing, and your recovery ledger covers both the vote-before-reply window and the application-state/deduplication boundary.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Figure 2 and Section 8 distinguish protocol and application persistence; Lab 3C checks simulated recovery and the mini-project adds durable crash injection."
       }
     },
     {
