@@ -800,7 +800,7 @@
     {
       "id": "linearizable-reads-readindex-leases",
       "title": "Linearizable read paths, ReadIndex and lease reads",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive",
         "implement"
@@ -811,47 +811,71 @@
         "lease-reads-and-clock-assumptions"
       ],
       "outcomes": [
-        "TODO"
+        "Derive why a leader-local read can violate linearizability after a partition.",
+        "Implement a ReadIndex path with current-term commitment, fresh quorum confirmation and an application barrier.",
+        "State the clock and leadership-transfer assumptions that lease reads add to safety."
       ],
-      "why": "TODO",
+      "why": "A safe write log does not automatically give safe reads. The read must establish both authority and a sufficiently applied state while it is in flight.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/consensus-coordination/deterministic-scheduler-seeded-schedules",
+          "note": "Exercise read barriers against delayed replies and partitions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "raft-paper-ds5",
+          "title": "Raft extended paper: read-only operations",
+          "url": "https://raft.github.io/raft.pdf",
+          "locator": "Section 8, read-only operations: current-term no-op commitment and heartbeat confirmation"
+        },
+        {
+          "resource": "ongaro-thesis-ds5",
+          "title": "Ongaro's 2014 thesis: ReadIndex and leases",
+          "url": "https://web.stanford.edu/~ouster/cgi-bin/papers/OngaroPhD.pdf",
+          "locator": "Section 6.4, steps 1 to 5 and follower reads; Section 6.4.1 through the clock-drift warning after Figure 6.3",
+          "depth": "Implement quorum-confirmed reads. Derive the lease assumptions only; stop before the sequential-consistency fallback extension."
+        },
+        {
+          "resource": "etcd-guarantees-ds5",
+          "title": "etcd v3.7: read consistency contract (page read 2026-10-15)",
+          "url": "https://etcd.io/docs/v3.7/learning/api_guarantees/",
+          "locator": "KV APIs: Strict serializability, Linearizability and the `serializable` read-mode paragraph",
+          "depth": "Use the invocation-to-response definition, not the following claim about the most current value at completion. A concurrent write need not be reflected by the read."
         }
       ],
       "focus": [
-        "TODO"
+        "Logging and committing a read command is a simple baseline. Bypassing the log still requires a committed current-term entry before using the leader's commit boundary.",
+        "Capture `readIndex`, confirm leadership with a new quorum heartbeat round associated with the pending read, then wait until the serving state machine has applied through `readIndex` before querying it.",
+        "Old heartbeat acknowledgements cannot certify a later read. A follower also needs a safe index from the leader and its own application barrier; merely receiving a heartbeat is insufficient.",
+        "Lease reads replace fresh communication with a timing promise. They require bounded relative clock drift, conservative lease accounting and expiry before leadership transfer; pauses and clock behavior must respect that model. Raft write safety alone supplies none of these bounds."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Trace a read received after a new leader has committed a write while the old leader remains isolated: an immediate old-leader reply is stale. On the quorum-confirmed path, set the saved read index to 8 and the serving applied index to 6. Even after a fresh quorum confirms the read round, the read waits for application through index 8. Delay an acknowledgement from an earlier round and show it cannot release this barrier. Repeat with a follower as the serving state machine.",
       "traps": [
-        "TODO"
+        "Confusing log possession, commitment knowledge and state-machine application. Each is a separate prerequisite.",
+        "Treating etcd's `serializable` read option as equivalent to its default linearizable reads. It permits stale data.",
+        "Demanding the value latest at response time. Linearizability permits a point anywhere inside the operation interval, so an overlapping write can be ordered after the read."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "A read's quorum round finished but application is behind its saved index. Can it reply?",
+          "a": "Not yet. The serving state machine must first apply through the saved read index."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Must a read include a write that completed before the read was invoked?",
+          "a": "Yes, or a later overwriting value. It need not include every write concurrent with the read."
+        },
+        {
+          "q": "Does switching to a monotonic clock alone justify lease reads?",
+          "a": "No. Monotonicity does not bound relative rates or pauses. The lease proof needs explicit timing bounds and coordination with elections and transfer."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a logged-read baseline and a quorum-confirmed `loglab` read path, with old-leader partitions, old-round replies and delayed application; lease reads remain a documented assumption analysis.",
+      "stopWhen": "The isolated old leader cannot return a successful stale linearizable read, and neither old-round acknowledgements nor a lagging applied index can release your read barrier.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The thesis fills the paper's ReadIndex and lease-detail gap; the mini-project supplies implementation tests, with the etcd prose overstatement explicitly corrected."
       }
     },
     {
