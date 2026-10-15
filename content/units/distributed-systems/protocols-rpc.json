@@ -1,6 +1,37 @@
 {
   "section": "protocols-rpc",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "rfc-quic-v1",
+      "role": "reference",
+      "priority": "reference",
+      "name": "RFC 9000 - QUIC Version 1",
+      "provider": "IETF",
+      "access": "Free",
+      "use": "Read Section 2 (streams), Section 4 (flow control) and Section 9 (connection migration) for QUIC transport behavior. No implementation; compare with TCP behavior from the Systems stage.",
+      "url": "https://www.rfc-editor.org/rfc/rfc9000.html"
+    },
+    {
+      "id": "rfc-http3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "RFC 9114 - HTTP/3",
+      "provider": "IETF",
+      "access": "Free",
+      "use": "Read Sections 3 (connection setup), 6 (stream mapping) and 7 (framing) for how HTTP semantics map onto QUIC streams.",
+      "url": "https://www.rfc-editor.org/rfc/rfc9114.html"
+    },
+    {
+      "id": "w3c-trace-context",
+      "role": "reference",
+      "priority": "reference",
+      "name": "W3C Trace Context",
+      "provider": "W3C",
+      "access": "Free",
+      "use": "Read Section 3.2 (traceparent fields), Section 3.3 (tracestate) and Section 4 (processing model) for trace correlation without synchronized clocks.",
+      "url": "https://www.w3.org/TR/trace-context/"
+    }
+  ],
   "units": [
     {
       "id": "rpc-state-machines-encoding",
@@ -15,47 +46,83 @@
         "textual-versus-binary-encoding-trade-offs"
       ],
       "outcomes": [
-        "TODO"
+        "Explain the states of a unary call and of each direction of a streaming call, including half-close and cancellation.",
+        "Contrast textual and binary encodings on size, schema dependence and human readability using measured byte counts.",
+        "Implement a unary request-response exchange with structured errors over a byte transport."
       ],
-      "why": "TODO",
+      "why": "Every later guarantee in this track crosses an RPC boundary. If the call states and the encoding contract are vague, retries, versioning and tracing have nothing to attach to.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/schema-evolution-wire-compatibility",
+          "note": "Carry the encoding choice into field rules and compatibility fixtures."
+        },
+        {
+          "unit": "distributed-systems/protocols-rpc/message-framing-partial-io",
+          "note": "Put the encoded message on the wire with explicit framing."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-encoding-ds1",
+          "title": "DDIA 2e Chapter 5: services and encoding sizes",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 5, Dataflow Through Services: REST and RPC (pp. 180-186) for service, IDL and rolling-upgrade framing; Formats for Encoding Data (pp. 163-169) for the worked sizes: JSON 81 bytes, binary JSON 66 bytes, Protocol Buffers 33 bytes"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC core concepts: unary and streaming lifecycles",
+          "url": "https://grpc.io/docs/what-is-grpc/core-concepts/",
+          "locator": "RPC life cycle: unary call versus server, client and bidirectional streaming; how one request maps to one response or to independent message streams"
+        },
+        {
+          "resource": "protobuf-avro-evolution-ds1",
+          "title": "Proto3 scalar types and binary wire shape",
+          "url": "https://protobuf.dev/programming-guides/proto3/",
+          "locator": "Scalar Value Types table and Assigning Field Numbers: field numbers 1 to 15 take one byte on the wire; numbers 19000 to 19999 are reserved"
         }
       ],
       "focus": [
-        "TODO"
+        "A unary call has one terminal state per side. A streaming direction closes independently, so one side can finish sending while still receiving.",
+        "Textual JSON carries field names in every message. Binary schema encodings omit names and rely on shared field numbers or positional schemas, which is where the byte savings come from.",
+        "Services expose only predetermined inputs and outputs, unlike databases with ad hoc queries. The IDL plus the framework owns routing, metrics and auth plumbing, not the business handler.",
+        "Rolling upgrades mean old and new clients and servers coexist. The encoding decision is also a compatibility decision, finished in the next unit."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, draw the unary state machine and each direction of a bidirectional stream, then explain the DDIA byte counts: JSON 81 bytes, binary JSON 66 bytes and Protocol Buffers 33 bytes for the same record, and why the schema lets the binary form drop field names.",
       "traps": [
-        "TODO"
+        "Calling a streaming RPC a single request and response. Each direction has its own open, half-closed and closed states and they change independently.",
+        "Reading compactness as the whole argument for binary encodings. The schema is also documentation and a compatibility contract; size is only one term.",
+        "Assuming field numbers are free metadata. On the wire the number identifies the field, so changing or reusing one changes the meaning of stored bytes."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A client finishes sending on a bidirectional stream but keeps receiving. Which states changed?",
+          "a": "Only the client-to-server direction moved to half-closed. The server-to-client direction stays open until the server finishes, and cancellation can still end both."
+        },
+        {
+          "q": "Why is the Protocol Buffers encoding of the DDIA example 33 bytes while JSON needs 81?",
+          "a": "JSON repeats field names and punctuation in every message. Protocol Buffers replaces each name with a numeric field tag from the shared schema and adds compact type and length bytes, so names never travel with the data."
+        },
+        {
+          "q": "Why do field numbers 1 to 15 cost one byte while higher numbers cost more?",
+          "a": "The number is encoded on the wire with the type tag. Small numbers fit the short varint form, so frequently set fields should take numbers 1 to 15."
+        },
+        {
+          "q": "Two versions of a service run at once during a rollout. Why must the encoding be compatible across versions?",
+          "a": "Old clients talk to new servers and new clients talk to old servers until the rollout finishes. An incompatible change corrupts or drops fields on those mixed paths."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: HE-3 echo service and RP-1 sync RPC with timeout",
+          "url": "https://builddistributedsystem.com/tracks/messenger/tasks/task-1-3-echo-service",
+          "locator": "HE-3 echo service at /tracks/messenger/tasks/task-1-3-echo-service, then RP-1 sync RPC with timeout at /tracks/messenger/tasks/task-1-2-1-sync-rpc",
+          "note": "Tasks are graded in the browser after login, so treat a pass as a drill and keep your local request-response exchange with structured errors as the evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can draw both state machines from memory, explain the three DDIA byte counts, and your local unary exchange returns a structured error for unknown methods and malformed payloads.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus the gRPC lifecycle and proto3 wire rules cover both topics at explain and implement depth, with free Messenger drills as practice."
       }
     },
     {
@@ -71,47 +138,83 @@
         "backward-and-forward-wire-compatibility"
       ],
       "outcomes": [
-        "TODO"
+        "Explain proto3 defaults, field-number rules and unknown-field retention, and Avro reader-writer resolution.",
+        "Build a four-version compatibility table and wire fixtures that prove each claim.",
+        "State which changes are safe, which need rollout order, and which are never safe."
       ],
-      "why": "TODO",
+      "why": "Rollouts mix old and new binaries for days. A field added carelessly becomes data loss or a privacy leak on the mixed paths.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/versioned-rpc-rollout-matrix",
+          "note": "Turn the compatibility table into the mixed-version test matrix."
+        },
+        {
+          "unit": "distributed-systems/partitioning-transactions-workflows/range-hash-partitioning",
+          "note": "Reuse wire-compatibility discipline when partition maps and configs evolve."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-encoding-ds1",
+          "title": "DDIA 2e Chapter 5: Avro, Protobuf and schema merits",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 5, Protocol Buffers (pp. 169-172) with Figure 5-3, Avro (pp. 172-177) with Figures 5-4 to 5-6 on writer and reader schemas, and The Merits of Schemas (p. 177)"
+        },
+        {
+          "resource": "protobuf-avro-evolution-ds1",
+          "title": "Proto3 updating rules and unknown fields",
+          "url": "https://protobuf.dev/programming-guides/proto3/",
+          "locator": "Updating A Message Type: wire-safe additions, reserved numbers and names, never reuse a number; Unknown Fields: binary parse preserves unknown fields but JSON and text-format round trips lose them"
+        },
+        {
+          "resource": "protobuf-avro-evolution-ds1",
+          "title": "Avro 1.12.0 schema resolution",
+          "url": "https://avro.apache.org/docs/1.12.0/specification/",
+          "locator": "Schema Resolution: readers ignore writer-only fields, fill reader-only fields from defaults, int promotes to long, float and double, string to bytes and back; aliases map renamed names"
         }
       ],
       "focus": [
-        "TODO"
+        "The Systems unit on RPC schemas, versions, errors and trace context taught field identity and proto3 presence. Here the new work is what survives a hop between versions: unknown fields, Avro resolution and the four-version fixtures.",
+        "Reserving a deleted number and name is the change, not tidying. Reuse makes old bytes decode under a new meaning.",
+        "Avro carries no field identifiers on the wire, so reader and writer schemas resolve by name and defaults. Protobuf carries tags, so unknown fields can survive a binary proxy hop.",
+        "JSON and text-format conversions are lossy hops for unknown fields even when binary hops preserve them."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write a four-version table for one record (add optional field, delete a field with reservation, rename with alias, widen int to long) and produce binary fixtures showing old reads new and new reads old for each row.",
       "traps": [
-        "TODO"
+        "Treating a default value as proof the sender set the field. An absent field also reads as the default, so defaults cannot carry I was explicitly cleared.",
+        "Renumbering fields for neatness. Renumbering deletes and re-adds every field involved and breaks stored data.",
+        "Proxying unknown fields through JSON for debugging and assuming they survive. Binary parsing and serialization and message-level copies such as `CopyFrom` and `MergeFrom` keep them; JSON output and field-by-field copies drop them."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "An old binary reads new data with one added field. What happens in Protobuf and in Avro?",
+          "a": "Protobuf keeps the extra field as unknown bytes and ignores it on read, preserving it on binary reserialization. Avro ignores the writer-only field during resolution, but only if the reader has the writer's schema to resolve against."
+        },
+        {
+          "q": "A field is deleted and its number reused for a new string field. What breaks?",
+          "a": "Old bytes for that number are decoded under the new definition. The proto3 guide lists the outcomes: a parse error at best, otherwise leaked personal data or silent corruption. Reserve the number and the name instead."
+        },
+        {
+          "q": "When is widening int to long safe in Avro, and what is the rollout condition?",
+          "a": "A reader whose schema says `long` can read data written as `int`, because int promotes to long. The reverse does not resolve: a reader still on `int` fails on data written with a `long` schema, whatever the values. So deploy the `long` reader schema everywhere first, then switch writers."
+        },
+        {
+          "q": "Why does `optional` matter for a boolean that switches behavior when false?",
+          "a": "Without presence, unset and explicitly false both read as false, so a default rollout silently enables the behavior. Presence separates the two states."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: TH-1 typed schema",
+          "url": "https://builddistributedsystem.com/tracks/messenger/tasks/task-1-3-1-typed-schema",
+          "locator": "TH-1 typed schema: wrap raw messages in validated classes with explicit fields and serialization methods",
+          "note": "Tasks are graded in the browser after login, so treat a pass as a drill and keep your four-version binary fixtures and compatibility table as the evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your table predicts all four version crossings correctly and your fixtures show unknown-field survival on binary paths and loss on JSON paths.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus the proto3 and Avro specification sections cover both topics, with the free typed-schema drill as practice."
       }
     },
     {
@@ -126,47 +229,77 @@
         "partial-reads-partial-writes-and-coalesced-messages"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a length-prefixed framer that reassembles split messages and splits coalesced buffers.",
+        "Explain why one `send` is not one message on a byte stream and where delimiter framing needs escaping.",
+        "Test partial, split-delimiter and coalesced cases with fixed byte fixtures."
       ],
-      "why": "TODO",
+      "why": "TCP delivers a byte stream, not messages. Without framing, one send can arrive as two reads or three sends as one read, and the parser reads across message boundaries.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/message-limits-checksums",
+          "note": "Add size caps and integrity checks to the framer."
+        },
+        {
+          "unit": "distributed-systems/protocols-rpc/versioned-rpc-rollout-matrix",
+          "note": "Reuse the framer inside the versioned RPC and its fault matrix."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "beej-ds1",
+          "title": "Beej sections on send, recv and partial sends",
+          "url": "https://beej.us/guide/bgnet/",
+          "locator": "Section 5.7 send and recv: short sends and `recv` returning 0 on peer close; Section 7.4 Handling Partial send: the `sendall` loop that repeats until all bytes leave; Section 7.6 Son of Data Encapsulation: a length header on each packet so the receiver can find where one message ends"
+        },
+        {
+          "resource": "protobuf-avro-evolution-ds1",
+          "title": "Avro 1.12.0 message framing",
+          "url": "https://avro.apache.org/docs/1.12.0/specification/",
+          "locator": "Message Framing: a message is a list of buffers, each a four-byte big-endian length plus bytes, terminated by a zero-length buffer; framing lets large binary objects travel as their own buffers and be copied fewer times"
+        },
+        {
+          "resource": "ddia-encoding-ds1",
+          "title": "DDIA 2e Chapter 5: length prefixes in encodings",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 5, JSON, XML, and Binary Variants (pp. 165-169): in the MessagePack walk-through on p. 169, a string preceded by its length needs no end marker or escaping"
         }
       ],
       "focus": [
-        "TODO"
+        "A length prefix states the frame size up front, so the receiver buffers exactly that many bytes. A delimiter scans for a terminator, so payload bytes need escaping and a split delimiter needs a carried-over buffer.",
+        "`send` may move fewer bytes than requested and `recv` may return any positive amount up to the buffer size. Loops on both sides, not larger buffers, fix this.",
+        "Coalescing is normal, not a bug: Nagle's algorithm on the sender and buffering in the receiver's kernel join sends. The framer must emit zero, one or several messages per read.",
+        "The Systems unit on sockets, partial reads and writes, and message framing taught the socket calls. Here the new work is the framed parser and its fault fixtures."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement a four-byte big-endian length-prefixed framer with a 1 MiB cap, then feed it a split header, a body in two chunks and two messages in one read, then feed a line-delimited variant a `\\r\\n` split across reads, and emit exactly the right messages.",
       "traps": [
-        "TODO"
+        "Treating `recv` returning 0 as an empty message. It means the peer closed; a zero-length frame is a separate protocol event such as the Avro terminator.",
+        "Growing the receive buffer to avoid partial reads. The stream can split anywhere, so any read size still needs the reassembly loop.",
+        "Scanning for a delimiter without unescaping. Payload bytes that match the terminator split one message into two corrupt ones."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "One `send` of 5 bytes arrives as 2 then 3 bytes. What does a correct receiver do?",
+          "a": "Buffer both chunks against the length prefix and emit the message only when all 5 payload bytes arrive. Partial reads are expected on a stream."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Two 5-byte messages arrive in one `recv` of 18 bytes including prefixes. How many messages emerge?",
+          "a": "Two, with no leftover. The framer consumes two length-plus-payload frames from the 18 bytes: `00000005` plus 5 bytes, twice."
+        },
+        {
+          "q": "Why does a length prefix avoid the escaping problem of delimiter framing?",
+          "a": "The prefix gives the exact byte count, so payload bytes are never scanned for a terminator. Delimited framing must escape or forbid the terminator inside payloads."
+        },
+        {
+          "q": "A line-delimited parser splits inside `\\r\\n`. What state must survive across reads?",
+          "a": "The trailing `\\r` and the unfinished line buffer. The next read may start with `\\n`, and only the pair terminates the frame."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: versioned length-prefixed framing with split, coalesced and split-delimiter fixtures in the deterministic harness.",
+      "stopWhen": "Your framer passes split-header, split-body, coalesced-pair and split-delimiter fixtures with no leftover bytes and no cross-boundary reads.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Beej plus the Avro framing contract cover both topics at implement depth; framing practice lives in the section mini-project."
       }
     },
     {
@@ -181,47 +314,77 @@
         "checksums-and-corruption-detection-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Enforce frame, allocation and decompression caps that reject oversized input before allocating.",
+        "Compute and verify checksums over defined byte ranges and state what each check cannot catch.",
+        "Distinguish accidental-corruption detection from identity and authenticity guarantees."
       ],
-      "why": "TODO",
+      "why": "One uncapped length field lets a peer force a huge allocation. One unchecked hop lets a bit flip become a wrong applied effect.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/versioned-rpc-rollout-matrix",
+          "note": "Wire the caps and checks into the rollout fault matrix."
+        },
+        {
+          "unit": "distributed-systems/storage-engines-recovery/append-log-wal-checksums",
+          "note": "Reuse checksummed-record discipline for the local log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "algomaster-system-design-ds1",
+          "title": "AlgoMaster checksums lesson",
+          "url": "https://algomaster.io/learn/system-design/checksums",
+          "locator": "Sections 1 to 4 and 7: what a checksum can and cannot tell you; parity, additive checksums, CRC, cryptographic hashes, HMACs and signatures; end-to-end integrity"
+        },
+        {
+          "resource": "protobuf-avro-evolution-ds1",
+          "title": "Avro schema fingerprints and block checksums",
+          "url": "https://avro.apache.org/docs/1.12.0/specification/",
+          "locator": "Single-object encoding: marker `C3 01`, then the 8-byte little-endian CRC-64-AVRO fingerprint of the writer schema, which identifies the schema and does not check the payload; Object Container Files, Optional Codecs: each snappy block is followed by a 4-byte big-endian CRC32 of the uncompressed data"
         }
       ],
       "focus": [
-        "TODO"
+        "Check the length before allocating the body, and cap decompressed output independently of compressed input. A small compressed frame can expand by orders of magnitude.",
+        "A checksum answers only whether these bytes match the expected bytes under this algorithm. It says nothing about who produced them or whether they are the latest.",
+        "Cover the bytes that matter with the check you verify: header plus payload, or payload only, must be an explicit contract, and every hop must know which one it checks.",
+        "Simple additive checksums such as the Internet checksum can miss reordered words and errors that cancel; CRCs catch burst errors and bit flips far better. Neither stops a deliberate change: that needs an HMAC or a signature."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement the Internet checksum over 16-bit words with carry folding and complement, and verify `[0x4500, 0x003C, 0x1C46]` gives `40573` and `[0xFFFF, 0x0001]` folds through `0x10000` to `0xFFFE`. Then add a 1 MiB frame cap and a separate decompression cap to your framer.",
       "traps": [
-        "TODO"
+        "Allocating `length` bytes before validating `length`. Validate against the cap first, then allocate, then read the body.",
+        "Using CRC where authenticity is needed. CRC catches accidental damage; it does not stop a forged message, which needs a keyed check.",
+        "Checksumming the wrong range. A header-only check misses payload flips and a payload-only check misses a corrupted length; state the range in the contract."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why fold the carry instead of truncating the sum to 16 bits?",
+          "a": "The Internet checksum uses ones-complement arithmetic, so overflow wraps around and is added back with carry folding before complementing, as the practice problem's `checksum` steps define."
+        },
+        {
+          "q": "A 10-byte compressed frame claims a 100 MiB body. Which cap fires and when?",
+          "a": "The decompression cap fires during expansion, not the frame cap. The frame is small on the wire, so only a separate output cap stops the blowup, checked incrementally before the full output is held."
+        },
+        {
+          "q": "A CRC passes but the message is stale. Is the checksum wrong?",
+          "a": "No. The CRC only proves the bytes are intact. Freshness needs an incarnation, version or timestamp checked by the application."
+        },
+        {
+          "q": "Where does the Avro single-object header put the schema fingerprint, and why?",
+          "a": "After the `C3 01` marker as 8 bytes, before the object. Readers that store records written under several schemas need the fingerprint to pick the right writer schema for resolution."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Compute the Internet Checksum",
+          "url": "https://algomaster.io/practice/system-design/compute-the-internet-checksum",
+          "locator": "Implement `checksum(words)` with carry folding and complement; the judge checks the two worked cases including `40573`",
+          "note": "The expected `40573` is correct, but the first example's explanation prints the sum as `0x617E` and its complement as `0x9E81` (`40577`); the words sum to `0x6182`, whose complement `0x9E7D` is `40573`. Then add frame and decompression caps with oversized and corrupt fixtures in your own harness."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your checksum matches both worked cases, your framer rejects an over-cap length before allocating and a corrupt payload on verify, and you can state the covered byte range.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AlgoMaster checksums lesson and problem plus the Avro integrity marker cover both topics with a checked checksum drill."
       }
     },
     {
@@ -237,47 +400,83 @@
         "idempotency-keys-and-side-effect-identity"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why a message ID alone cannot separate a retry from a new intent after a client restarts.",
+        "Implement first-write-wins execution keyed on caller plus idempotency key with parameter-mismatch rejection.",
+        "State the retention bound on duplicate-suppression state and what happens after it expires."
       ],
-      "why": "TODO",
+      "why": "Retries replay requests. Without a key that names the intent, a retried create becomes two resources and a restarted client replays someone else's effect.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/ambiguous-outcomes-deadlines",
+          "note": "Use the key to name the ambiguous outcome after a timeout."
+        },
+        {
+          "unit": "distributed-systems/protocols-rpc/bounded-retries-jitter-dedup",
+          "note": "Size the duplicate-suppression store that retries write to."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "builders-library-idempotency-ds1",
+          "title": "AWS making retries safe with idempotent APIs",
+          "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/",
+          "locator": "Caller-provided client request identifier pattern, validation error on same key with different parameters, semantically equivalent retry responses, identifier retained only for a bounded interval"
+        },
+        {
+          "resource": "mit-rpc-ds1",
+          "title": "MIT 6.5840 Lab 2 key/value server and lock",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-kvsrv1.html",
+          "locator": "Versioned `Put` with `ErrVersion` and `ErrNoKey`; lock built on `Put` and `Get` with per-client identity from `RandValue(8)`"
         }
       ],
       "focus": [
-        "TODO"
+        "Identity has three parts: which client incarnation sent it, which request of that incarnation, and which side effect the request intends. One UUID for all three conflates them.",
+        "The server stores the key plus the request parameters plus the result. A repeat with the same key and same parameters returns the stored result; the same key with different parameters is a validation error, never a second execution.",
+        "The Systems unit on deadlines, retries and idempotency across RPC built the durable key state machine with atomic transitions. Here the new work is identity across client restarts, parameter-mismatch rejection and the retention bound.",
+        "Retention is bounded by policy such as resource lifetime plus an interval. After expiry, a late duplicate looks new, so callers must handle that window."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, implement an `execute(key, proposed)` store with first-write-wins semantics, parameter-mismatch rejection and a TTL, and show a retried create returning the first result while a changed-parameter repeat raises a validation error.",
       "traps": [
-        "TODO"
+        "Hashing parameters to invent the key. Two identical creates may be two intents, and two different parameter sets may be one retried intent; only a caller-provided key expresses intent.",
+        "Returning AlreadyExists on a retry and calling it idempotent. The side effect is single, but the caller cannot tell whose resource exists, so default retry loops break.",
+        "Keeping keys forever to be safe. Unbounded state grows without limit and old keys can collide with future intents; bound the interval and document it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A client sends create with key `a`, times out, and retries with key `a` and identical parameters. What must the server return?",
+          "a": "The stored first result, semantically equivalent to the first response. No second resource is created."
+        },
+        {
+          "q": "The retry reuses key `a` but changes the instance type. What must the server do?",
+          "a": "Reject with a validation error for parameter mismatch. The key names one intent, so changed parameters signal a different intent, not a retry."
+        },
+        {
+          "q": "Why is a per-message UUID without a client incarnation insufficient after a restart?",
+          "a": "A client that numbers requests from 1 again after a restart collides with its old numbers, so the server suppresses a new request as a duplicate. A client that lost an unacknowledged request retries it under a fresh ID, so it runs twice. An incarnation number separates old numbering from new, and a key saved with the intent before the first send lets the retry reuse it."
+        },
+        {
+          "q": "Why must key recording and the mutation be one atomic step?",
+          "a": "A crash between the two leaves either a recorded key with no effect, which wrongly replays as done, or an effect with no key, which wrongly executes twice."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Deduplicate Idempotent Requests",
+          "url": "https://algomaster.io/practice/system-design/deduplicate-idempotent-requests",
+          "locator": "Implement `execute(key, proposedResult)` first-write-wins; the judge replays keys with different proposed results",
+          "note": "The judge holds keys for the test lifetime with no expiry. Add a TTL and a parameter-mismatch error in your own store and state what the judge does not establish."
+        },
+        {
+          "name": "Build an Idempotent Consumer",
+          "url": "https://algomaster.io/practice/system-design/build-an-idempotent-consumer",
+          "locator": "Implement `process(messageId)` returning true once then false on redelivery",
+          "note": "Same harness shape. Extend it with caller-plus-key identity and a bounded retention test outside the judge."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your store replays the first result on identical retries, rejects changed parameters, expires keys on schedule, and you can name the atomicity boundary.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AWS idempotency article plus MIT Lab 2 and the two free AlgoMaster drills cover both topics with checked practice."
       }
     },
     {
@@ -293,47 +492,83 @@
         "monotonic-deadlines-and-budget-propagation"
       ],
       "outcomes": [
-        "TODO"
+        "Enumerate the four timeout windows: before receive, during execution, after side effect, during response.",
+        "Explain why a timeout never proves the effect did not happen, and how `ErrMaybe` reports that.",
+        "Propagate a monotonic deadline across hops by converting to remaining timeout at each hop."
       ],
-      "why": "TODO",
+      "why": "A timeout reports the reply was late, not that the work did not happen. Systems that treat timeout as failure retry blindly and double-apply effects.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/bounded-retries-jitter-dedup",
+          "note": "Bound the retries that ambiguity invites."
+        },
+        {
+          "unit": "distributed-systems/consensus-coordination/stale-leaders-fenced-locks",
+          "note": "Reuse ambiguity reasoning for stale leaders and fenced effects."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mit-rpc-ds1",
+          "title": "MIT 6.5840 Lecture 2 RPC failure section",
+          "url": "https://pdos.csail.mit.edu/6.824/notes/l-rpc.txt",
+          "locator": "Remote Procedure Call, RPC problem: what to do about failures: client never sees a response and does not know if the server saw the request; best-effort retry and at-most-once discussion with `kv.go`"
+        },
+        {
+          "resource": "mit-rpc-ds1",
+          "title": "MIT 6.5840 Lab 2 unreliable network and ErrMaybe",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-kvsrv1.html",
+          "locator": "Key/value server with dropped messages: retry with `time.Sleep(100 * time.Millisecond)` until a reply arrives; return `ErrMaybe` on a retried `Put` that answers `ErrVersion`"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC deadlines guide",
+          "url": "https://grpc.io/docs/guides/deadlines/",
+          "locator": "Overview and Deadlines on the Client and Server: always set a deadline, `DEADLINE_EXCEEDED` on the client, `CANCELLED` on the server; Deadline Propagation converts the point in time to a remaining timeout to avoid clock skew"
         }
       ],
       "focus": [
-        "TODO"
+        "Four windows, four different truths: dropped before receive means nothing ran, during execution means unknown progress, after side effect means done but unreported, during response means done with a lost reply. The client sees one event: no reply in time.",
+        "`ErrMaybe` is the honest answer for a retried conditional write that meets a version mismatch. The first attempt may have applied and its success reply was lost, or another client may have moved the version first.",
+        "The Systems units on cancellation, deadlines and shutdown state machines and on deadlines, retries and idempotency across RPC taught timer mechanics and remaining-time propagation. Here the new work is reporting ambiguity to the caller and testing each timeout window against an unreliable network.",
+        "The server handler must check cancellation and stop spawned work. gRPC cancels the call, but it cannot interrupt application code that never checks."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, enumerate the four windows and the correct client conclusion for each, then implement a Clerk that retries until a reply arrives with a 100 ms pause and returns `ErrMaybe` exactly when a retried `Put` meets `ErrVersion`.",
       "traps": [
-        "TODO"
+        "Treating a timeout as a failed effect. A timeout proves only that no reply arrived before the timer; the effect may have completed.",
+        "Returning `ErrVersion` for a retried write. On a first attempt it means not applied, but on a retry it is ambiguous, so the client must report maybe, not no.",
+        "Propagating an absolute timestamp across machines. Clock skew shifts it; propagate the remaining budget computed on a monotonic clock at each hop."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A `Put` reply is lost and the retry gets `ErrVersion`. Did the first `Put` run?",
+          "a": "Unknown. Either the first `Put` applied and its success reply was lost, or another client changed the version first. The Clerk must return `ErrMaybe`."
+        },
+        {
+          "q": "Why is a `Get` safe to retry but a conditional `Put` is not?",
+          "a": "A `Get` changes no state, so duplicates are harmless. A conditional `Put` changes state once, and a blind retry can apply it twice or hide whose write won."
+        },
+        {
+          "q": "A client sets a 2 s deadline and the server spends 0.5 s before calling downstream. What timeout goes downstream?",
+          "a": "At most the remaining 1.5 s, recomputed on the monotonic clock. The downstream budget is the original point in time minus elapsed time, never the full 2 s again."
+        },
+        {
+          "q": "The server notices cancellation but keeps computing to reply anyway. What breaks?",
+          "a": "Wasted work and resource exhaustion under load, plus a reply the client already abandoned. The handler must stop and release, and propagate cancellation to its own downstream calls."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT 6.5840 Lab 2: Key/Value server with dropped messages",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-kvsrv1.html",
+          "locator": "Implement `kvsrv1/client.go` retry loop and pass `TestUnreliableNet` plus the lock tests `TestOneClientUnreliable` and `TestManyClientsUnreliable`",
+          "note": "Public tests for Spring 2026. Do not publish solutions. Then add a four-window fault log that records which window each injected timeout exercised."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can place any timeout in one of the four windows, your Clerk returns `ErrMaybe` exactly on ambiguous retries, and downstream calls always carry the remaining budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "MIT Lecture 2 plus Lab 2 and the gRPC deadlines guide cover both topics with a public ambiguous-outcome test."
       }
     },
     {
@@ -350,47 +585,83 @@
         "duplicate-suppression-state-and-retention-limits"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the worst-case request multiplier for retries at every layer of a call chain.",
+        "Implement capped exponential backoff with jitter and a bounded retry budget including a token-bucket throttle.",
+        "Size duplicate-suppression state and its retention from the retry envelope."
       ],
-      "why": "TODO",
+      "why": "Unbounded per-layer retries turn one slow dependency into hundreds of downstream requests. The bound, the backoff and the dedup store are one design, not three.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/backpressure-overload-rejection",
+          "note": "Turn the retry budget into overload rejection and retry amplification defense."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/producer-acks-idempotence-transactions",
+          "note": "Reuse bounded retry plus dedup for producer semantics."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "builders-library-retries-ds1",
+          "title": "AWS timeouts, retries and backoff with jitter",
+          "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+          "locator": "Retries and backoff: three tries at each of five layers give 243x load, retry at a single point in the stack; token-bucket retry throttle; Jitter: spread periodic and retry timers"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC retry guide",
+          "url": "https://grpc.io/docs/guides/retry/",
+          "locator": "Retry configuration: enabled by default with no default policy, no retry once response headers arrive; example `maxAttempts` 4 with `initialBackoff` 0.1s, `maxBackoff` 1s, multiplier 2 and jitter plus or minus 20 percent; `retryThrottling` with `maxTokens` and `tokenRatio`"
         }
       ],
       "focus": [
-        "TODO"
+        "The Systems unit on deadlines, retries and idempotency across RPC derived layered amplification: with \\(r\\) tries at each of \\(L\\) layers the bottom sees \\(r^L\\), so three tries at five layers is \\(3^5 = 243\\). Here the new work is the jittered schedule, the token throttle and the size of the dedup store.",
+        "Backoff without jitter still thunders. Independent uniform jitter spreads the retry front so one recovery does not become the next overload spike.",
+        "The throttle is a separate bound from the attempt count: per server, failures consume tokens and successes refund a fraction, and retries pause when tokens fall below half.",
+        "Dedup retention must cover the maximum retry age plus clock and queue delay. A retry older than the store looks new."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive \\(3^5 = 243\\) for three tries at five layers, then compute a capped backoff schedule with base 0.1 s, multiplier 2, cap 1.0 s and uniform jitter in \\([0.8, 1.2]\\) applied after the cap: with Python's `random.Random(7)` and one `uniform(0.8, 1.2)` draw per delay, the five delays in ms are 93.0, 172.1, 424.1, 663.2 and 1014.4.",
       "traps": [
-        "TODO"
+        "Retrying at every layer for safety. Each layer multiplies the one below, so bound retries at one layer and let the others fail fast with a clear error.",
+        "Using fixed backoff under overload. Synchronized waiters return together and re-overload the dependency; jitter is the decorrelation, not a nicety.",
+        "Sizing dedup by the happy path. Size by the worst-case retry age times the peak request rate, plus a margin for queues and clock skew."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Five layers each retry twice more on failure. What is the worst-case downstream multiplier?",
+          "a": "\\(3^5 = 243\\). Each layer triples the load it received, so the bottom sees 243 requests for one top-level call."
+        },
+        {
+          "q": "Why does gRPC refuse to retry after response headers arrive?",
+          "a": "The call is committed: the server may have produced effects the client has seen. Replaying history after that point can double-apply."
+        },
+        {
+          "q": "With `maxTokens` 10 and `tokenRatio` 0.1, when do retries pause?",
+          "a": "Each failure removes 1 token and each success adds 0.1. When the count falls below 5, half of the maximum, retries pause until successes refill it."
+        },
+        {
+          "q": "A retry arrives 70 minutes late but dedup retains 60 minutes. What happens?",
+          "a": "It executes as a new request. Retention bounds the suppression promise, so the contract must name the 60-minute window and callers must handle late duplicates beyond it."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: RP-5 exponential backoff and TH-3 deduplication",
+          "url": "https://builddistributedsystem.com/tracks/messenger/tasks/task-1-2-5-exponential-backoff",
+          "locator": "RP-5 exponential backoff, then TH-3 deduplication with LRU cache at /tracks/messenger/tasks/task-1-3-3-deduplication",
+          "note": "Tasks are graded in the browser after login, so treat a pass as a drill and keep your seeded backoff schedule plus bounded dedup store as the evidence."
+        },
+        {
+          "name": "Classify Retry Outcomes",
+          "url": "https://algomaster.io/practice/system-design/classify-retry-outcomes",
+          "locator": "Implement `classify(failures, maxRetries)` delivering versus dead-letter routing after the retry budget",
+          "note": "The judge checks budget-exhaustion routing only. Add jitter and a token-bucket throttle in your own client and state what the judge does not establish."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive 243 without notes, your seeded schedule matches to the millisecond, and your client pauses retries when tokens run dry while duplicates stay suppressed inside retention.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AWS retry article plus the gRPC retry guide cover all three topics at derive depth, with free Messenger and AlgoMaster drills."
       }
     },
     {
@@ -407,47 +678,83 @@
         "streaming-flow-control-and-half-closed-connections"
       ],
       "outcomes": [
-        "TODO"
+        "Classify errors into retryable, reject-and-fix and never-retry using status codes.",
+        "Propagate cancellation across hops and release handler resources on cancel.",
+        "Explain streaming flow control and the half-closed states that unary calls never show."
       ],
-      "why": "TODO",
+      "why": "A bare timeout string forces every caller to guess. Structured codes plus propagated cancellation turn a failure into an instruction the whole chain can follow.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/rpc-auth-discovery-interceptors",
+          "note": "Enforce auth and policy inside the same interceptor path as error mapping."
+        },
+        {
+          "unit": "distributed-systems/protocols-rpc/backpressure-overload-rejection",
+          "note": "Map overload to explicit rejection codes instead of silent queueing."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC status codes",
+          "url": "https://grpc.io/docs/guides/status-codes/",
+          "locator": "Full list: `DEADLINE_EXCEEDED` may return even when the operation completed; `UNAVAILABLE` is the transient retryable code; only user code generates `INVALID_ARGUMENT`, `NOT_FOUND`, `ALREADY_EXISTS`, `FAILED_PRECONDITION`, `ABORTED`, `OUT_OF_RANGE` and `DATA_LOSS`"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC cancellation guide",
+          "url": "https://grpc.io/docs/guides/cancellation/",
+          "locator": "Deadline expiry and I/O errors trigger cancel; server handlers must poll and stop; outgoing calls auto-cancel in Java, Go and C++ but not Python"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC flow control guide",
+          "url": "https://grpc.io/docs/guides/flow-control/",
+          "locator": "Streaming only with framework-managed window; writes wait when the receiver is full; synchronous two-sided bulk writes without reads can deadlock"
         }
       ],
       "focus": [
-        "TODO"
+        "Codes are a contract: `UNAVAILABLE` invites a bounded retry, `FAILED_PRECONDITION` demands a state fix first, `INVALID_ARGUMENT` forbids retrying the same bytes.",
+        "`DEADLINE_EXCEEDED` after a mutation is ambiguous by definition. The code reports lateness, not non-execution, so pair it with an idempotency key.",
+        "Cancellation is cooperative. The library delivers the signal, but a handler that never checks keeps burning CPU and holding locks after the client left.",
+        "Flow control applies to streams, not unary calls. Writes block until the receiver frees window, which is why two sides doing bulk synchronous writes without reads deadlock."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, map five failures (overloaded dependency, bad argument, missing entity, expired deadline after a write, aborted transaction) to codes and retry decisions, then implement a handler that checks cancellation each work chunk and propagates cancel to its downstream call.",
       "traps": [
-        "TODO"
+        "Retrying `INVALID_ARGUMENT` on a timer. The request is bad regardless of system state, so retries only add load; fix the bytes first.",
+        "Assuming cancel kills the handler. The RPC library cannot interrupt application code, so a long loop without checks runs to completion anyway.",
+        "Applying streaming flow-control reasoning to unary calls. Unary calls have no window to manage; their failure modes are deadlines, caps and errors."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A call fails with `UNAVAILABLE`, then with `FAILED_PRECONDITION`. Which one retries?",
+          "a": "Only `UNAVAILABLE`, with backoff and a budget. `FAILED_PRECONDITION` needs an explicit state fix such as emptying the directory before any retry."
+        },
+        {
+          "q": "A write returns `DEADLINE_EXCEEDED`. May the client assume it did not apply?",
+          "a": "No. The guide states this error may return even when the operation completed, for example when the success reply arrived after the timer. Reconcile by key."
+        },
+        {
+          "q": "A Python server spawns a downstream RPC and the client cancels. What must the handler do?",
+          "a": "Poll the serving context for cancellation, stop work, clean up, and cancel the downstream call explicitly, since Python does not auto-cancel outgoing calls."
+        },
+        {
+          "q": "Client and server both use synchronous reads, and each writes a large burst of stream messages before reading any. What happens?",
+          "a": "Both block in flow control once windows fill, and neither drains, so they deadlock. At least one side must interleave reads, or use async handlers."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: RP-3 async callbacks and RP-4 callback reaper",
+          "url": "https://builddistributedsystem.com/tracks/messenger/tasks/task-1-2-3-async-rpc",
+          "locator": "RP-3 async RPC callbacks, then RP-4 callback reaper at /tracks/messenger/tasks/task-1-2-4-callback-reaper for leaked-call cleanup",
+          "note": "Tasks are graded in the browser after login, so treat a pass as a drill and keep your code-mapped errors plus cancellation-propagating handlers as the evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your error map routes each code to retry, fix-first or never-retry, and your streaming handler stops within one work chunk of cancellation while propagating it downstream.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The gRPC status, cancellation and flow-control guides cover all three topics, with free async and reaper drills."
       }
     },
     {
@@ -465,47 +772,77 @@
         "production-grpc-interceptors-and-reflection"
       ],
       "outcomes": [
-        "TODO"
+        "Explain channel versus call credentials and why auth runs before application dispatch.",
+        "Propagate caller identity through metadata and enforce per-method authorization in an interceptor.",
+        "Explain discovery staleness and generation changes, and where interceptors stop being the right tool."
       ],
-      "why": "TODO",
+      "why": "An RPC that reaches business logic unauthenticated has already failed. Identity, discovery and cross-cutting policy belong in the path before dispatch, not inside each handler.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/connections-load-balancing-quic",
+          "note": "Resolve the authenticated identity to a balanced, healthy endpoint."
+        },
+        {
+          "route": "distributed-systems",
+          "note": "Reuse the identity and discovery contract in the security and operations section."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC authentication guide",
+          "url": "https://grpc.io/docs/guides/auth/",
+          "locator": "Supported mechanisms and Credential types: channel credentials such as `SslCredentials` versus call credentials, composite credentials sending a token per call, server-side token verification in an interceptor"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC interceptors guide",
+          "url": "https://grpc.io/docs/guides/interceptors/",
+          "locator": "When to Use Interceptors: metadata, logging, fault injection, caching, metrics, policy, server-side auth and authz; client versus server interceptors and order effects"
+        },
+        {
+          "resource": "hld-api-network-ds1",
+          "title": "HLD service discovery and API design",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-2-building-blocks/12-service-discovery-mesh.md",
+          "locator": "Service Discovery and Service Mesh: DNS with TTL, registry, Kubernetes endpoints, sidecars; plus the API Design Basics chapter for auth, versioning and idempotency-key placement"
         }
       ],
       "focus": [
-        "TODO"
+        "Authenticate the channel, authorize the call. TLS proves who dialed, while per-call tokens plus a server interceptor decide which methods that caller may invoke.",
+        "Identity travels in metadata, and the interceptor is the enforcement point. Handlers behind it assume a verified caller and never re-parse tokens.",
+        "Discovery data is stale by design: TTLs, caches and propagation delays mean the client routes on a recent generation, so servers must reject misrouted requests with an explicit error.",
+        "The Systems unit on identity, authorization, least privilege and secrets taught the credential mechanics. Here the new work is the RPC path: credentials to metadata to interceptor to handler."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, add a server interceptor that verifies a bearer token, attaches the caller ID to the call context, rejects one unauthorized method with `PERMISSION_DENIED`, and logs the decision; then show a stale-endpoint retry against a bumped generation.",
       "traps": [
-        "TODO"
+        "Checking auth inside each handler. Handlers drift, so one forgotten method stays open; enforce once in the interceptor before dispatch.",
+        "Sending call credentials on an insecure channel. Most implementations refuse, and tokens on plaintext are stealable; compose call credentials over TLS channel credentials.",
+        "Treating discovery as exact. Endpoints change under you, so clients must handle wrong-generation redirects and servers must validate ownership on arrival."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Where should token verification live, and why not in each handler?",
+          "a": "In a server interceptor before dispatch. One path verifies, propagates identity and enforces policy, so handlers cannot forget or disagree."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A client uses TLS but no call credentials. What is proven and what is missing?",
+          "a": "The server identity and channel privacy are proven. Caller identity and per-method permission are missing, so the server must deny protected methods with `UNAUTHENTICATED` or `PERMISSION_DENIED`."
+        },
+        {
+          "q": "Discovery says the shard moved but the client still dials the old owner. What should happen?",
+          "a": "The old owner rejects with a versioned wrong-target error naming the new generation. The client refreshes discovery and retries once against the new owner."
+        },
+        {
+          "q": "What can interceptors not do?",
+          "a": "Manage connections, ports or TLS setup. They run per call between application and network, so transport configuration stays outside them."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: token-issuing test client, auth interceptor before dispatch, per-method policy table, and stale-discovery generation faults.",
+      "stopWhen": "Unauthenticated calls never reach handlers, one policy test denies the right method, and a stale endpoint produces a versioned redirect rather than a silent wrong write.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "gRPC auth and interceptor guides plus HLD discovery cover all topics; interceptor practice lives in the section mini-project."
       }
     },
     {
@@ -522,47 +859,90 @@
         "http-3-and-quic-transport-behavior"
       ],
       "outcomes": [
-        "TODO"
+        "Explain pool sizing, checkout timeouts and exhaustion signals, and graceful drain on shutdown.",
+        "Contrast layer-4 versus layer-7 balancing, health checking and the cost of affinity.",
+        "Explain QUIC streams, migration and HTTP/3 mapping at review depth without implementing them."
       ],
-      "why": "TODO",
+      "why": "Pools and balancers decide which server pays for each call. An exhausted pool or a naive balancer turns one slow replica into a system-wide stall.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/backpressure-overload-rejection",
+          "note": "Turn pool and balancer signals into backpressure and shedding."
+        },
+        {
+          "unit": "distributed-systems/time-identity-membership-failure/membership-views-replacement",
+          "note": "Reuse health and generation reasoning for membership views."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hld-api-network-ds1",
+          "title": "HLD load balancers and networking fundamentals",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-2-building-blocks/00-load-balancers.md",
+          "locator": "Load Balancers: layer-4 5-tuple versus layer-7 routing, health checks and affinity; plus the Networking Fundamentals chapter for TCP versus UDP and HTTP/1.1 through HTTP/3 head-of-line blocking"
+        },
+        {
+          "resource": "grpc-guides-ds1",
+          "title": "gRPC keepalive guide",
+          "url": "https://grpc.io/docs/guides/keepalive/",
+          "locator": "Overview and configuration table: HTTP/2 PING keepalives, client default disabled, server default 2 hours, 20 s timeout, `too_many_pings` GOAWAY on abuse; clients should not set keepalive much below one minute and must agree settings with the service owner"
+        },
+        {
+          "resource": "rfc-quic-v1",
+          "title": "RFC 9000 QUIC transport behavior",
+          "url": "https://www.rfc-editor.org/rfc/rfc9000.html",
+          "locator": "Section 2 Streams with independent stream states, Section 4 Flow Control per stream and connection, Section 9 Connection Migration; HTTP/3 mapping in RFC 9114 Sections 3, 6 and 7",
+          "depth": "Review only for the optional QUIC topic. Read the cited sections and compare with TCP head-of-line blocking; do not implement QUIC."
         }
       ],
       "focus": [
-        "TODO"
+        "The Systems unit on connection shutdown, pools and latency decomposition sized pools with Little's law. Here the new work is the caller's side under failure: checkout timeouts and exhaustion as a fast explicit error, never an unbounded wait, plus health gating and the balancer's choice.",
+        "Layer-4 balancers forward bytes by 5-tuple; layer-7 balancers parse requests and can route, shed and retry per call. Affinity buys cache warmth and pays with hot replicas.",
+        "Health checking is about the service, keepalive about the connection. A live TCP connection to a sick service still needs a health-gated balancer decision.",
+        "QUIC runs over UDP and does its own loss recovery, usually in a user-space library: independent streams avoid TCP head-of-line blocking, and connection IDs survive address changes via migration."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, contrast L4 versus L7 decisions on one example each, state the keepalive defaults and abuse signal, and explain why one lost TCP packet stalls all HTTP/2 streams while QUIC stalls only the affected stream.",
       "traps": [
-        "TODO"
+        "Sizing pools by server count. Size by arrival rate times hold time plus headroom, with checkout timeouts; an infinite wait on checkout is a distributed deadlock.",
+        "Reading affinity as load balancing. Sticky routing concentrates load and failure, so use it only where cache or state locality pays, with a rebalance path.",
+        "Enabling aggressive keepalive unilaterally. The server treats ping floods as abuse and sends `too_many_pings` GOAWAY; coordinate intervals with owners."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Checkout waits grow while server latency is flat. What is exhausted?",
+          "a": "The client pool, not the server. All connections are checked out, so new calls queue at checkout; surface a fast error and fix sizing or downstream fan-out."
+        },
+        {
+          "q": "Why is a health check not redundant with TCP keepalive?",
+          "a": "Keepalive proves the connection is alive. Health proves the service behind it can serve; a hung handler on a live connection needs health gating to drain."
+        },
+        {
+          "q": "What do the gRPC keepalive defaults say about who pays?",
+          "a": "Clients default to disabled and servers to 2-hour intervals with 20 s timeouts. Frequent client pings cost the server, so they need explicit agreement."
+        },
+        {
+          "q": "A client changes Wi-Fi networks mid-download. Why does QUIC survive where TCP restarts?",
+          "a": "QUIC identifies the connection by ID, not by address tuple, and Section 9 migration revalidates the new path. TCP binds to the tuple, so the new address is a new connection."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: TC-2 pool and TC-3 drain",
+          "url": "https://builddistributedsystem.com/tracks/networker",
+          "locator": "TC-2 connection pool with backlog, TC-3 graceful shutdown with in-flight drain; both are in the free first three Networker tasks",
+          "note": "Tasks are graded in the browser after login, so treat a pass as a drill and keep your pool-exhaustion and drain-timing measurements as the evidence."
+        },
+        {
+          "name": "Design a Least Requests Load Balancer",
+          "url": "https://algomaster.io/practice/system-design/design-a-least-requests-load-balancer",
+          "locator": "Implement `acquire` least-loaded with smallest-index tie-break and `release` floored at zero",
+          "note": "The judge checks routing logic only. Add health gating and an affinity-cost comparison in your own harness."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can size a pool from arrival rate and hold time, predict the balancer move for one failure, and state the QUIC stream and migration differences without claiming production QUIC operation.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the optional QUIC topic; RFC 9000 and RFC 9114 supply the verified transport reference beside HLD and gRPC."
       }
     },
     {
@@ -578,47 +958,83 @@
         "overload-rejection-and-retry-amplification"
       ],
       "outcomes": [
-        "TODO"
+        "Derive queue bounds from latency objectives and explain end-to-end versus hop-local backpressure.",
+        "Implement bounded queues with explicit rejection codes and a retry budget that pauses under throttle.",
+        "Measure amplification under overload and compare two shedding policies on one workload."
       ],
-      "why": "TODO",
+      "why": "An unbounded queue turns overload into unbounded latency and then collapse. Explicit rejection plus a bounded retry budget keeps one slow hop from sinking the stack.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/trace-correlation-faulty-network",
+          "note": "Observe overload through correlated traces and the fault harness."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/poison-records-backpressure",
+          "note": "Reuse bounded-backlog and dead-letter reasoning for stream consumers."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "builders-library-retries-ds1",
+          "title": "AWS retries: amplification and token-bucket throttle",
+          "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+          "locator": "Retries and backoff: the 243x five-layer example, retry at one layer, token-bucket local retry limit; Timeouts: pick from downstream latency percentiles such as p99.9 for a 0.1 percent false-timeout rate"
+        },
+        {
+          "resource": "hld-api-network-ds1",
+          "title": "HLD resilience and rate limiting",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-6-reliability-and-operations/02-resilience-patterns.md",
+          "locator": "Resilience Patterns: timeouts, retries with backoff and jitter, breakers, bulkheads and the DynamoDB 2015 retry-storm case as a reported example; plus the Rate Limiting chapter for token, leaky, fixed and sliding windows with `429` plus `Retry-After`"
         }
       ],
       "focus": [
-        "TODO"
+        "Bound every queue and name what happens at the bound: drop newest, drop oldest, or reject with `RESOURCE_EXHAUSTED`. An unnamed bound is an unbounded queue with extra steps.",
+        "Hop-local backpressure protects one process; end-to-end backpressure protects the chain. Retry budgets and throttles are the end-to-end half, and they must pause together.",
+        "Rejection is a feature with a code. gRPC `RESOURCE_EXHAUSTED`, or HTTP `429` with `Retry-After`, lets callers back off; silent queueing lets them time out and retry blindly, which amplifies.",
+        "The Systems units on bounded queues, admission and backpressure and on retry budgets, circuit breaking and load shedding taught the primitives. Here the new work is the RPC-wide budget and the measured comparison."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive \\(3^5 = 243\\) and the token-pause rule, then run one workload at two overload levels and report offered versus admitted versus rejected versus retried counts with p50 and p99 for each policy.",
       "traps": [
-        "TODO"
+        "Adding capacity to fix a retry storm. Correlated retries saturate the dependency faster than capacity arrives; pause retries first, then scale.",
+        "Breaking the circuit and calling it fixed. Breakers add modal behavior and slow recovery; prefer bounded budgets and throttles with measured half-open probing.",
+        "Returning `UNAVAILABLE` for every overload. Distinguish retryable transient from shed load with `RESOURCE_EXHAUSTED`, so callers do not retry what you just refused to do."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Offered load doubles past saturation with an unbounded queue. What do latency and retries do?",
+          "a": "Queueing delay grows without bound, timeouts fire, callers retry, and retries add load past saturation. Latency diverges and goodput falls; a bound plus rejection stops this loop."
+        },
+        {
+          "q": "Why retry at one layer instead of every layer?",
+          "a": "Per-layer retries multiply to \\(r^L\\) downstream. One bounded retry point with fail-fast errors elsewhere caps amplification while preserving availability on transient faults."
+        },
+        {
+          "q": "When does the gRPC-style token throttle pause retries?",
+          "a": "When the per-server token count falls below half of `maxTokens`. Failures decrement by 1 and successes refund `tokenRatio`, so sustained failure pauses retries automatically."
+        },
+        {
+          "q": "A dependency reports p99.9 at 800 ms. Where do you set the timeout and why?",
+          "a": "Start at the p99.9, 800 ms, which accepts about 0.1 percent false timeouts, then pad for network variance; the HLD chapter's example pads it to 2,000 ms. Too low creates false timeouts and retry storms; too high stops protecting threads and ports. Check the choice with a load test on your machine."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Design a Sliding Window Log Rate Limiter",
+          "url": "https://algomaster.io/practice/system-design/design-a-sliding-window-log-rate-limiter",
+          "locator": "Implement exact sliding-window admission over request timestamps",
+          "note": "The judge checks admission logic only. Pair it with the token-bucket problem below and measure both under one bursty workload with rejection counts."
+        },
+        {
+          "name": "Design a Token Bucket Rate Limiter",
+          "url": "https://algomaster.io/practice/system-design/design-a-token-bucket-rate-limiter",
+          "locator": "Implement refill plus burst admission and compare with the sliding-window policy on the same trace",
+          "note": "Report admitted, rejected and retried counts with p50 and p99 on your machine, labeled as one example, not a target."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your bounded queue rejects with codes at the bound, retries pause under throttle, and your two-policy comparison names which overload region each policy wins.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The AWS retry analysis plus HLD resilience and rate limiting cover both topics, with two free limiter drills as practice."
       }
     },
     {
@@ -633,47 +1049,77 @@
         "deterministic-delay-loss-duplication-and-reordering"
       ],
       "outcomes": [
-        "TODO"
+        "Correlate a request across client and server logs using trace and span IDs without comparing timestamps.",
+        "Implement a seeded faulty network with delay, drop, duplicate, reorder, disconnect, corrupt, restart and cancel injection.",
+        "Retain seeds and raw histories so any failure replays exactly."
       ],
-      "why": "TODO",
+      "why": "Clocks lie across machines, but IDs do not. A deterministic faulty network turns he-said-she-said debugging into a replayable history with a seed.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/protocols-rpc/versioned-rpc-rollout-matrix",
+          "note": "Run the rollout matrix inside the faulty network and keep every history."
+        },
+        {
+          "unit": "distributed-systems/consensus-coordination/deterministic-scheduler-seeded-schedules",
+          "note": "Reuse the seeded scheduler for consensus message faults."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "w3c-trace-context",
+          "title": "W3C traceparent, tracestate and processing model",
+          "url": "https://www.w3.org/TR/trace-context/",
+          "locator": "Section 3.2 traceparent: version, 16-byte trace id, 8-byte parent id and flags with sampled bit; Section 3.3 tracestate vendor pairs; Section 4 processing model for forwarding versus participating"
+        },
+        {
+          "resource": "dslabs-rpc-ds1",
+          "title": "DSLabs Lab 1 exactly-once RPC",
+          "url": "https://github.com/emichael/dslabs/tree/49c4a1f9ed59547501376dd3ccfcdd9c1eb7b427/labs/lab1-clientserver",
+          "locator": "README Parts 2 and 3: at-least-once with sequence numbers then exactly-once shim; Resend/Discard versus Tick timer patterns; search tests that print minimal violating traces"
         }
       ],
       "focus": [
-        "TODO"
+        "Correlate by identifiers, order by causality. A `traceparent` like `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01` links the hops; timestamp comparison across machines proves nothing about order.",
+        "The Systems unit on RPC schemas, versions, errors and trace context taught `traceparent` parsing and the legal forwarding mutations. Here the new work is joining several processes' logs by those IDs, and the rule that the headers never carry sensitive data.",
+        "The network model is a seeded program: per-message delay, drop, duplicate, reorder and corrupt actions plus partition, restart and cancel, all from one retained seed.",
+        "The Systems unit on deterministic network fault injection taught the harness shape. Here the new work is the RPC envelope logging plus the seeded schedule that the rollout matrix will reuse."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, propagate one trace through two hops with new parent ids and a left-added `tracestate` entry, then replay seed 7 through your faulty network and show the same drop, duplicate and reorder positions twice from the retained log.",
       "traps": [
-        "TODO"
+        "Sorting cross-machine logs by timestamp to find causality. Skew and jumps reorder them; join on trace id and parent id and infer order from send and receive pairs.",
+        "Using `random` without a seed for faults. An unseeded run cannot replay, so the failure is anecdote; retain the seed and the raw history with every run.",
+        "Resetting sequence numbers or timers carelessly. DSLabs search tests require finite, sequential numbering to exhaust the state space; ad hoc numbering explodes it."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two logs show the server receiving before the client sent, by timestamps. What do you trust?",
+          "a": "The IDs, not the timestamps. Join on trace id and parent id; the send precedes the receive by causality, and the clock comparison is skew."
+        },
+        {
+          "q": "What must change in `traceparent` at each hop, and what must not?",
+          "a": "Set a new parent id for the outgoing call, and change the sampled flag only if your sampling decision changed. Keep the trace id unless you deliberately restart the trace, which splits it."
+        },
+        {
+          "q": "A fault run fails once in ten tries. What do you keep to make it deterministic?",
+          "a": "The seed, the code version, the schedule of faults, and the raw message history. Rerun the same seed to replay the same orderings."
+        },
+        {
+          "q": "When should a proxy modify `tracestate` order?",
+          "a": "Modified keys move to the left; unmodified pairs keep order. Deleting unknown keys breaks other vendors, so only remove for documented privacy or size reasons."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Building Distributed Systems: TH-2 envelope logger and TH-5 chaos mode",
+          "url": "https://builddistributedsystem.com/tracks/messenger/tasks/task-1-3-2-envelope-logger",
+          "locator": "TH-2 envelope logger with timestamps, then TH-5 chaos mode with random drops at /tracks/messenger/tasks/task-1-3-5-chaos-mode",
+          "note": "Tasks are graded in the browser after login, so treat a pass as a drill and keep your seeded harness with retained histories as the evidence."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "One trace reconstructs across two processes by ID alone, and two runs of the same seed produce byte-identical fault histories.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for trace correlation without clocks; W3C Trace Context adds the verified standard beside DSLabs fault patterns."
       }
     },
     {
@@ -690,47 +1136,89 @@
         "protocol-rollout-rollback-and-deprecation-contract"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a versioned framed RPC with caps, checks, identities, deadlines and structured errors.",
+        "Pass a mixed-version matrix covering partial I/O, corrupt frames, ambiguity, duplicates, cancel, overload, restart and rollback.",
+        "State the rollout and rollback contract: what may repeat, what never repeats, and how callers detect ambiguity."
       ],
-      "why": "TODO",
+      "why": "This is the DS-1 exit gate in code. Everything before it was a part; this unit proves the parts survive each other and a rollout.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/time-identity-membership-failure/unique-ids-incarnations",
+          "note": "Harden the request and incarnation identity the matrix just exercised."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Carry the framed protocol into the partitioned log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-encoding-ds1",
+          "title": "DDIA 2e Chapter 5 rollout and evolution",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 5, Dataflow Through Services (pp. 180-186) for rolling upgrades with mixed versions, and Avro and Protobuf sections (pp. 169-177) for the compatibility rules the matrix checks"
+        },
+        {
+          "resource": "mit-rpc-ds1",
+          "title": "MIT 6.5840 Lab 2 as the mixed-version harness model",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-kvsrv1.html",
+          "locator": "Versioned `Put` with `ErrVersion`, `ErrNoKey` and `ErrMaybe` plus lock tests; Spring 2026 suite `TestReliablePut`, `TestUnreliableNet`, `TestOneClientUnreliable`, `TestManyClientsUnreliable`"
+        },
+        {
+          "resource": "beej-ds1",
+          "title": "Beej partial-send loop for the transport edge",
+          "url": "https://beej.us/guide/bgnet/",
+          "locator": "Section 7.4 Handling Partial send: `sendall` loop; Section 5.7 for short sends and close semantics applied at the frame boundary"
         }
       ],
       "focus": [
-        "TODO"
+        "Version every layer once: envelope version, schema version and endpoint generation. The matrix crosses old and new on each axis, not just one happy-path pair.",
+        "Rollout order is part of the contract: expand (add, ignore), migrate (dual-write, backfill), contract (remove) with reserved numbers held through rollback.",
+        "The fault list is the section checkpoint: partial I/O, oversized and corrupt frames, timeout ambiguity, duplicate mutation, cancellation, overload, restart and rollback.",
+        "Measure on your machine as labeled examples: latency distributions and throughput over payload and concurrency regimes, plus retry, duplicate and rejection counts. Numbers from papers or vendor docs stay cited with their setups, never as targets."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank repository, build the versioned framed RPC with a 1 MiB cap, Internet-checksum frames, idempotency keys, deadlines and an auth interceptor, then pass a matrix of old and new clients against old and new servers over seeded partial, corrupt, duplicate, cancel and restart faults, and publish the compatibility table plus the rollout and rollback steps.",
       "traps": [
-        "TODO"
+        "Testing only new-to-new. Production is mixed for the whole rollout window, so old-to-new and new-to-old with rollback are the cases that corrupt data.",
+        "Removing a field and freeing its number at release time. Rollback resurrects the old binary, which then misreads the reused number; reserve through the rollback horizon.",
+        "Reporting a latency number without its setup. Name versions, workload, concurrency, durability settings, run count and spread, or the number is not comparable."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "What rows does the minimum mixed-version matrix need?",
+          "a": "Old client with old server, old with new, new with old, and new with new, each under partial I/O, corrupt frames, timeout, duplicate, cancel, overload, restart and rollback faults."
+        },
+        {
+          "q": "Rollback happens one hour after a field removal. What breaks if the number was reused immediately?",
+          "a": "The rolled-back old binary reads new bytes under the old meaning, or new bytes under the reused meaning corrupt old state. Reservations must outlive the rollback window."
+        },
+        {
+          "q": "A test times out but the effect applied. How does the matrix classify it?",
+          "a": "Ambiguous, not failed. The caller reconciles by idempotency key and the history records maybe, matching the `ErrMaybe` discipline from Lab 2."
+        },
+        {
+          "q": "What must the rollout contract state about repetition?",
+          "a": "Exactly which requests or effects may repeat, inside which identity and retention boundary, and how callers detect or tolerate the ambiguous cases."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT 6.5840 Lab 2: full Key/Value plus lock suite",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-kvsrv1.html",
+          "locator": "Pass `TestReliablePut`, `TestPutConcurrentReliable`, `TestUnreliableNet` and all lock tests; Spring 2026, Go 1.22 or later",
+          "note": "Public study material; never publish solutions. Then extend with size-limit, cancellation and mixed-version faults in your own matrix."
+        },
+        {
+          "name": "DSLabs Lab 1: exactly-once RPC parts 2 and 3",
+          "url": "https://github.com/emichael/dslabs/tree/49c4a1f9ed59547501376dd3ccfcdd9c1eb7b427/labs/lab1-clientserver",
+          "locator": "Part 2 at-least-once then Part 3 exactly-once shim via `run-tests.py --lab 1 --part 2` and `run-tests.py --lab 1 --part 3`; Java 21",
+          "note": "Search tests print minimal violating traces. Compare its ordering coverage with your seeded socket-level matrix and state what each harness misses."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The full matrix passes on your machine with retained seeds and histories, rollback restores the old version without corruption, and the contract names every repeatable effect.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA plus MIT Lab 2, DSLabs Lab 1 and Beej framing cover the implementation and matrix with two public test suites."
       }
     }
   ]
