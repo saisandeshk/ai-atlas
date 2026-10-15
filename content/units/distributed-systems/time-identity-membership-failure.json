@@ -59,7 +59,7 @@
           "resource": "hld-clocks-failure-ds2",
           "title": "Why wall-clock time fails",
           "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/04-clocks-and-ordering.md",
-          "locator": "Theory, Why wall-clock time fails: quartz drift, NTP skew range, leap-second cases and VM pauses; Warnings on ORDER BY created_at and leap-second timing code",
+          "locator": "Theory, Why wall-clock time fails: quartz drift, NTP skew range, leap-second cases and VM pauses; Warnings on `ORDER BY created_at` and leap-second timing code",
           "depth": "Use as review after DDIA and the notes. Treat its cloud skew ranges and TrueTime bounds as reported figures from its cited sources, not targets you must reproduce."
         }
       ],
@@ -160,9 +160,8 @@
       "focus": [
         "Happens-before has three rules: same-node order, send before matching receive, and transitivity. Concurrent means no message path either way, not simultaneity.",
         "IR1 increments the clock between successive events. IR2 attaches the send stamp to the message, and the receiver moves past \\(\\max(\\text{local}, t)\\) and adds one, so the receive itself counts as an event.",
-        "The Clock Condition says \\(a \\rightarrow b\\) implies \\(C(a) < C(b)\\). The converse is false, and equal stamps do not imply concurrency: the notes show two different events that both stamp 3.",
-        "The pair \\((L, N)\\) ordered lexicographically is a causal linear extension of happens-before. Concurrent pairs fall wherever the node names put them.",
-        "The algorithm assumes a crash-stop model. Crash recovery needs the stamp in stable storage, or a restarted node reuses low stamps."
+        "The Clock Condition says \\(a \\rightarrow b\\) implies \\(C(a) < C(b)\\). The converse is false. Distinct events with equal stamps are concurrent when the clock rules hold.",
+        "Order \\((L, N)\\) lexicographically: compare timestamps first and use node IDs only for ties. This extends happens-before but imposes an arbitrary order on concurrent events. Persist the clock or establish a safe recovery epoch before restarting; ordered eventual delivery is an extra assumption of the paper's mutual-exclusion protocol, not of timestamp assignment."
       ],
       "reproduce": "Closed-book, write IR1 and IR2, then stamp this history: A has a local event, A sends m to B, B receives m, B has a local event, and C has one local event throughout. Result: A stamps 1 and 2, B stamps 3 and 4, C stamps 1. State that B stamps 3 and 4 prove nothing about C, since C is concurrent with all four.",
       "traps": [
@@ -181,7 +180,7 @@
         },
         {
           "q": "Two events share stamp 3. Are they the same event, ordered, or concurrent?",
-          "a": "Nothing follows from the stamp alone. They may be ordered or concurrent; identity needs the (timestamp, node) pair."
+          "a": "If they are distinct events and the Lamport rules hold, they are concurrent: happens-before would require strictly increasing stamps. Equal stamps alone do not identify an event; the timestamp and node ID together do, assuming no reuse after restart."
         },
         {
           "q": "Why does the total order need node names, and what does it settle for concurrent events?",
@@ -343,13 +342,12 @@
         "State is \\((l_j, c_j)\\). On a local event or send, \\(l_j\\) becomes \\(\\max(l_j, pt_j)\\); \\(c_j\\) increments if \\(l_j\\) is unchanged and resets otherwise. On receive, \\(l_j\\) becomes \\(\\max(l_j, l_m, pt_j)\\), and \\(c_j\\) follows the four-way rule for which of the three inputs won.",
         "Comparison is lexicographic. Theorem 1 gives causality one way: happened-before implies a smaller stamp, never the reverse, exactly like Lamport.",
         "Theorem 2 keeps \\(l\\) at or ahead of \\(pt\\), and Corollary 1 bounds \\(|l - pt|\\) by the synchronization uncertainty \\(\\epsilon\\). Theorem 4 reads \\(c\\) as the length of a same-\\(l\\) causal chain, which Corollary 3 bounds further.",
-        "HLC only reads the physical clock and never writes it, so NTP clients are unaffected. On a bound violation the node resets \\(l\\) to \\(pt\\) with \\(c = 0\\), ignores out-of-bounds messages, and raises an alert.",
-        "In the paper's AWS run, \\(c\\) stays near zero: about 84 percent of events carry \\(c = 0\\) on four nodes. That is their setup with a stratum-2 server, not a number you must reproduce."
+        "HLC reads but never adjusts the physical clock. Section 4.1 resets \\((l, c)\\) to \\((pt, 0)\\) after a bound violation and ignores out-of-bounds messages, raising an alert. These are recovery actions outside the normal causality proof, not permission to rewind timestamps silently. Section 5.1's counter frequencies belong to its AWS and NTP setup, not yours."
       ],
       "reproduce": "Closed-book, run Figure 5 from \\((0, 0)\\): local event at \\(pt = 10\\) gives \\((10, 0)\\), another local at \\(pt = 10\\) gives \\((10, 1)\\), a receive at \\(pt = 10\\) of remote \\((12, 4)\\) gives \\((12, 5)\\), and a local at \\(pt = 50\\) gives \\((50, 0)\\). Name which case of the receive rule fires each time.",
       "traps": [
-        "Reading \\((l, c)\\) as wall time. \\(l\\) can run ahead of \\(pt\\) by up to \\(\\epsilon\\), so only differences above that width carry causal meaning.",
-        "Restarting with \\(l = 0\\). Pre-crash stamps stay in other nodes' state, so a fresh zero rewinds this node's stamps. Persist the maximum \\(l\\) to stable storage and reload it.",
+        "Reading \\((l, c)\\) as proof of causality. Even with the paper's clock-error bound, a smaller HLC stamp does not establish happens-before.",
+        "Persisting only \\(l\\). If physical time has not advanced, resetting \\(c\\) can reuse or rewind a stamp. Persist the pair before exposing it, or reserve a durable range that recovery skips.",
         "Packing the pair into 64 bits and comparing the packed integer across layouts. Decode to \\((l, c)\\) first, since layouts disagree on the split."
       ],
       "selfTest": [
@@ -367,7 +365,7 @@
         },
         {
           "q": "An NTP step pushes \\(pt\\) an hour forward. What fires, and what is lost?",
-          "a": "The masking bound breaks, so the node resets \\(l\\) to \\(pt\\) with \\(c = 0\\) and ignores far-ahead messages with an alert. Causality survives; closeness to true time waits on NTP."
+          "a": "The normal local rule adopts the larger physical time and resets the counter. Other nodes may reject the resulting far-ahead messages under Section 4's guard. A forward jump alone need not violate the local bound, but it breaks the assumed synchronization envelope; the normal cross-node guarantees cannot simply be claimed."
         }
       ],
       "practice": [
@@ -424,21 +422,20 @@
           "resource": "swim-ds2",
           "title": "Incarnation numbers against false suspicion",
           "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
-          "locator": "Section 4.2, Suspicion mechanism: incarnation initialized at join, incremented only by the suspected node itself, Alive with a higher number refuting Suspect and Failed"
+          "locator": "Section 4.2, Suspicion Mechanism: incarnation initialized at join, incremented only by the suspected node itself; Alive refutes older Suspect, but Confirm overrides Alive and Suspect at any incarnation"
         },
         {
           "resource": "gossip-glomers-ds2",
           "title": "Unique IDs under partition",
           "url": "https://fly.io/dist-sys/2",
-          "locator": "Challenge 2: `generate` with any ID type, tested with `--node-count 3 --availability total --nemesis partition`; uniqueness is checked, ordering and monotonicity are not"
+          "locator": "Challenge 2: `generate` with any ID type under partition with total availability; run `./maelstrom test -w unique-ids --bin ~/go/bin/maelstrom-unique-ids --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition` with the binary path pointed at your own node; uniqueness is checked, ordering and monotonicity are not"
         }
       ],
       "focus": [
         "Single-node autoincrement is linearizable: a completed post always gets the smaller ID. No distributed scheme in this unit keeps that without coordination.",
         "Random 128-bit IDs need no communication and give no order. Wall-clock schemes sort roughly but lean on NTP, a shard or random part, and a per-shard sequence for same-millisecond uniqueness.",
         "A Lamport pair is unique when node IDs are unique, and orders causally but not by wall time. Two nodes that never communicate can hold wildly different counters.",
-        "SWIM incarnations start at join and only the named node increments its own, when it sees itself suspected. A higher number overrides older Suspect and Failed reports about that member.",
-        "Restart safety is persisted state: an epoch or the maximum counter on stable storage, reloaded before the first new ID. Without it the counter restarts at zero and old and new IDs collide."
+        "Only the suspected member increments its SWIM incarnation; a higher Alive refutes older Suspect, but the original paper's Confirm is terminal for that member identity. Separately, persist an ID epoch before using it and advance it durably on restart, so new IDs cannot collide with pre-crash IDs."
       ],
       "reproduce": "Closed-book, show the restart hole: node B issues (counter 1..50, node B), crashes without persisting, restarts at counter 0 and reissues counter 1, colliding with a live record. Then fix it: persist an epoch that increments once per restart, so post-restart IDs read (epoch 2, counter 1) and never equal epoch 1 IDs.",
       "traps": [
@@ -468,11 +465,11 @@
         {
           "name": "Gossip Glomers 2: Unique ID Generation",
           "url": "https://fly.io/dist-sys/2",
-          "locator": "Run `./maelstrom test -w unique-ids --bin <your-binary> --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition` and keep the run directory",
-          "note": "Then kill and restart one node mid-run and show IDs stay unique: that restart path is the epoch test above, and the checker only proves this run."
+          "locator": "Run `./maelstrom test -w unique-ids --bin ~/go/bin/maelstrom-unique-ids --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition` with the binary path pointed at your node; keep the run directory",
+          "note": "Maelstrom runs local processes over a simulated network, but this challenge does not test restart. The section mini-project covers this: issue IDs, restart with the same durable state, issue more, and check uniqueness across both batches."
         }
       ],
-      "stopWhen": "The challenge passes with a restart in the middle, and you can state from memory which state survives the crash and why.",
+      "stopWhen": "The challenge passes, your separate restart test has no duplicate across both batches, and you can name the durable state that prevents reuse.",
       "fit": {
         "verdict": "kept",
         "note": "DDIA plus SWIM cover schemes and incarnations at explain depth, and the required Glomers challenge gives checked practice."
@@ -493,7 +490,7 @@
       ],
       "outcomes": [
         "Explain what a heartbeat proves and what silence cannot prove, using the observation-window idea.",
-        "State detector completeness against accuracy, and say which side a shorter timeout buys.",
+        "State detector completeness against accuracy, and distinguish detection delay from eventual detection.",
         "Compare fixed thresholds with adaptive ones, and name the workload change that breaks each."
       ],
       "why": "Every membership and failover decision starts as a suspicion. This vocabulary decides whether a pause looks like death, before any threshold is tuned.",
@@ -537,12 +534,11 @@
       ],
       "focus": [
         "A received heartbeat proves the sender was alive at send time, nothing more. Silence inside one window proves nothing: delay, pause, overload and death look identical until the window closes.",
-        "Completeness means every crash is eventually suspected; accuracy means no live node is. A shorter timeout buys completeness and spends accuracy, and DDIA shows premature suspicion can cascade under load.",
-        "Explicit signals beat guessing where they exist: a refused connection or a crash notification, as HBase sends, reports death without waiting out a timeout.",
-        "SWIM separates the two failure modes: a direct miss may be a bad path, so k indirect probes ask whether anyone can reach the target before suspicion.",
+        "Completeness concerns eventual suspicion of crashed processes; accuracy concerns avoiding suspicion of correct ones, with strong and eventual variants. Shorter timeouts reduce delay, not improve the eventuality guarantee. Explicit crash notifications can help, but connection refusal proves only that an endpoint rejected the connection, not that the machine died.",
+        "SWIM uses \\(k\\) indirect probes after a direct miss to reduce false suspicion from one bad path. Failure of every probe still cannot distinguish an isolated live target from a crashed one.",
         "Raft shows the split this section keeps: timeouts and heartbeats drive progress (elections, suppression), while majority votes carry safety when the old leader is still talking."
       ],
-      "reproduce": "Closed-book, derive the 2d+r bound: with at most d delay each way and at most r handling time, every successful request answers within 2d+r, so later silence proves something failed. Then name the two bounds a real deployment lacks, which is why the timeout becomes a tradeoff instead of a proof.",
+      "reproduce": "Closed-book, derive \\(2d + r\\): with reliable delivery taking at most \\(d\\) each way and handling taking at most \\(r\\), a non-faulty request answers within \\(2d + r\\). Later silence means a fault or an assumed bound was violated, not necessarily process death. Explain why unbounded network delay and process pauses remove this inference.",
       "traps": [
         "Treating a missed heartbeat as death. The detector output is suspicion with a threshold, and acting on it needs fencing or a quorum, as later units show.",
         "Tuning the timeout down to detect faster without costing anything. Faster detection spends accuracy, and false convictions add failover load exactly when the system is slowest.",
@@ -568,7 +564,7 @@
       ],
       "practice": [],
       "practiceNote": "The section mini-project covers this: a configurable heartbeat detector in the deterministic network simulation, with suspicion traces under delay, pause and partition schedules.",
-      "stopWhen": "You derive 2d+r with its two missing bounds from memory, and can call each of delay, pause, overload and death from the same silence trace.",
+      "stopWhen": "You derive \\(2d + r\\) with its two missing bounds from memory, and explain why delay, pause, overload and death remain indistinguishable from silence alone.",
       "fit": {
         "verdict": "kept",
         "note": "DDIA plus SWIM cover vocabulary and mechanism at explain and derive depth, with detector practice assigned to the section mini-project."
@@ -576,7 +572,7 @@
     },
     {
       "id": "false-suspicion-phi-accrual",
-      "title": "False suspicion, a phi-accrual detector and detection-delay measurement",
+      "title": "False suspicion, a \\(\\phi\\) accrual detector and detection-delay measurement",
       "hours": 4,
       "target": [
         "implement",
@@ -589,10 +585,10 @@
       ],
       "outcomes": [
         "Name the non-death causes of silence, pause, overload and loss bursts, and show one on a heartbeat trace.",
-        "Implement the phi computation over a sliding window and trigger suspicion at a chosen threshold.",
+        "Implement the \\(\\phi\\) computation over a sliding window and trigger suspicion at a chosen threshold.",
         "Measure detection delay against false-suspicion rate across thresholds and window sizes on one trace."
       ],
-      "why": "One fixed timeout forces one tradeoff on every consumer. Phi separates the suspicion signal from the decision, so each consumer picks its own point on the curve.",
+      "why": "One fixed timeout forces one tradeoff on every consumer. The \\(\\phi\\) value separates the suspicion signal from the decision, so each consumer picks its own point on the curve.",
       "next": [
         {
           "unit": "distributed-systems/time-identity-membership-failure/gossip-dissemination-membership",
@@ -606,17 +602,17 @@
       "study": [
         {
           "resource": "phi-accrual-ds2",
-          "title": "The phi accrual detector",
+          "title": "The \\(\\phi\\) accrual detector",
           "url": "https://dspace.jaist.ac.jp/dspace/bitstream/10119/4784/1/IS-RR-2004-010.pdf",
-          "locator": "Section III (accrual abstraction with per-application thresholds), Section IV-A with Equation 2 (meaning of phi), Section IV-B with Equations 3 and 4 and Figure 4 (window sampling with the normal estimate), Section V-A (Japan to Switzerland UDP setup) and Experiments 1 to 3 with Figures 8 and 9",
-          "depth": "Read the paper as report IS-RR-2004-010. Its normal approximation misleads under bursty delay, so rerun the measurement on a pause trace too, as the last focus point says."
+          "locator": "Report IS-RR-2004-010: Section III-A (monitoring, interpretation and action), Section IV-A Equation 2, Section IV-B Equations 3 and 4 with Figure 4, Section V-A (Switzerland-to-Japan UDP trace and replay), and Sections V-B to V-D, Figures 8 to 10 and Equation 5",
+          "depth": "Stop after Experiment 3. Treat Equation 5 as the paper's estimate for a crash immediately after sending a heartbeat, not a universal detection-delay bound."
         },
         {
           "resource": "hld-clocks-failure-ds2",
-          "title": "Phi in production",
+          "title": "The \\(\\phi\\) detector in production",
           "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/08-failure-detection.md",
-          "locator": "Theory, Phi-accrual detectors with the Cassandra example: window of 1,000 arrivals, threshold 8 with the 0.434 factor, and the pause guard",
-          "depth": "Treat the threshold-8 silence seconds as that deployment's arithmetic on its own gossip interval, not a portable constant."
+          "locator": "Theory, \\(\\phi\\) accrual detectors: the mean-based calculation and The GC-pause guard",
+          "depth": "Read only this subsection. Its mean-only calculation corresponds to an exponential tail, not the paper's normal fit. Ignore its claim that jitter alone changes this calculation: equal means give equal values regardless of variance. The guard detects pauses of the observer, not arbitrary remote silence."
         },
         {
           "resource": "swim-ds2",
@@ -627,39 +623,38 @@
         }
       ],
       "focus": [
-        "Phi is \\(\\phi(t) = -\\log_{10} P_{later}(t)\\), where \\(P_{later}\\) comes from a normal model fitted to the sliding window of past inter-arrival times. Each extra unit divides the modeled late probability by ten.",
-        "The window keeps arrival times with running sum and sum of squares, giving \\(\\mu\\) and \\(\\sigma^2\\). The threshold is per application: low means fast with mistakes, high means slow with few.",
-        "On the paper's intercontinental trace, most late beats are caught by threshold 2, while detection time climbs sharply past thresholds 10 to 11. Both numbers belong to 100 ms heartbeats over that link, not to your network.",
-        "Bursts break the model: the trace holds a 1,093-message loss burst of about two minutes. A normal fit on calm samples calls that death with high phi, which is why deployments add pause guards and minimum-deviation floors.",
-        "Detection time splits into propagation plus the threshold's equivalent timeout. Raising the threshold only spends the second term, never the first."
+        "Let \\(t\\) be elapsed time since the last received heartbeat. The paper computes \\(\\phi(t) = -\\log_{10} P_{\\text{later}}(t)\\) from a normal fit to recent inter-arrival intervals. Each extra unit divides the modeled tail probability by ten; it is not the probability that the peer is dead.",
+        "Keep a sliding window of intervals and their sum and sum of squares to estimate \\(\\mu\\) and \\(\\sigma^2\\). Define startup behavior and a positive minimum deviation for identical samples. Use a survival function such as `math.erfc` rather than subtracting a rounded CDF from one.",
+        "Replay the same arrivals for every threshold and window size. Count false-suspicion episodes per unit of live-peer observation time; measure crash-to-suspicion delay on separate injected-crash continuations. Exclude or report warmup consistently, as Section V-A does.",
+        "Remote pause, overload and packet loss can all raise suspicion without a crash. A local-pause guard limits accusations after the observer itself stalls; it cannot guarantee protection from a remote loss burst. Safety still needs an authority protocol and storage-side fencing."
       ],
-      "reproduce": "Closed-book, compute phi for a heartbeat 120 ms late when the window says \\(\\mu = 100\\) ms and \\(\\sigma = 5\\) ms: the deviation is 4 sigma, so \\(1 - F\\) is about \\(3.2 \\times 10^{-5}\\) and phi is about 4.5. State the normal-model assumption the 4.5 depends on.",
+      "reproduce": "Closed-book, compute \\(\\phi\\) at 120 ms since the last received heartbeat, using a normal model with \\(\\mu = 100\\) ms and \\(\\sigma = 5\\) ms. The standardized deviation is \\(4\\), the survival probability is about \\(3.1671 \\times 10^{-5}\\), and \\(\\phi \\approx 4.4993\\). Check in Python 3 with `tail = math.erfc(4 / math.sqrt(2)) / 2` and `phi = -math.log10(tail)` after `import math`. This is 20 ms beyond the mean, not 120 ms beyond it.",
       "traps": [
-        "Reading phi as the probability the node is dead. It is the modeled rarity of this much lateness; death needs a threshold policy plus fencing or a quorum.",
+        "Reading a tail probability as a measured false-suspicion rate. Model mismatch and correlated loss can make observed mistakes much more frequent; even quorum agreement cannot prove physical death.",
         "Moving a threshold across networks. Threshold 8 means different silence seconds under 100 ms and 1 s heartbeats, so recalibrate the curve per deployment.",
-        "Sizing the window in samples while jitter changes the rate. Under bursty loss the window fills with gap samples and the mean drifts; test with pause traces, not only steady ones."
+        "Updating the window during silence. No new interval exists until another heartbeat arrives; a long loss burst contributes one long interval on recovery, not one sample per missed beat."
       ],
       "selfTest": [
         {
-          "q": "Two applications watch one phi signal with thresholds 2 and 8. A beat arrives very late. Who suspects, and who may act?",
-          "a": "Both see the same phi curve, but 2 trips earlier and risks a false call while 8 waits. Each acts only under its own policy; the signal itself decides nothing."
+          "q": "Two applications use thresholds 2 and 8. The signal reaches 5 before a heartbeat arrives. Who suspects, and who may act?",
+          "a": "Only the threshold-2 application suspects. The threshold-8 application has not crossed its threshold. Neither gains exclusive authority merely from suspicion; actions must obey the application's coordination and fencing rules."
         },
         {
           "q": "Why does the paper replay recorded traces instead of testing detectors live side by side?",
           "a": "Replay feeds every detector the identical arrival sequence, so threshold and window differences, not network luck, explain the mistake and delay curves."
         },
         {
-          "q": "A two-minute loss burst arrives during calm operation. What does phi report, and what should the deployment do?",
-          "a": "Phi climbs steeply and crosses most thresholds: a false suspicion under the model. A pause guard or deviation floor should absorb it before any failover acts."
+          "q": "A two-minute loss burst arrives during calm operation. What does \\(\\phi\\) report, and what should the deployment do?",
+          "a": "With a calm fitted window, suspicion rises and can cross the threshold even though the peer is alive. A local-pause guard does not mask network loss, and a deviation floor gives no such guarantee. Failover must remain safe even when this suspicion is wrong."
         },
         {
-          "q": "Threshold rises from 2 to 12. Which part of detection time grows, and which never shrinks?",
-          "a": "The equivalent timeout from the threshold grows. Propagation delay stays, so detection never beats the round trip no matter the threshold."
+          "q": "For one fixed fitted distribution, what changes when the threshold rises from 2 to 12? Does Equation 5 impose a round-trip lower bound?",
+          "a": "The equivalent timeout grows. Equation 5 adds estimated one-way propagation to that timeout for a crash immediately after a send. It is not a round-trip lower bound or a formula for every crash phase."
         }
       ],
       "practice": [],
-      "practiceNote": "The section mini-project covers this: a phi-accrual detector over recorded heartbeat traces with pause and burst schedules, reporting detection-delay against false-suspicion curves per threshold with seeds retained.",
-      "stopWhen": "You compute the reproduce phi from memory with its assumption stated, and can place any threshold choice on the delay-versus-mistakes curve for your own trace.",
+      "practiceNote": "The section mini-project covers this: a \\(\\phi\\) accrual detector over recorded heartbeat traces with pause and burst schedules, reporting detection-delay against false-suspicion curves per threshold with seeds retained.",
+      "stopWhen": "You compute the reproduce \\(\\phi\\) from memory with its assumption stated, and can place any threshold choice on the delay-versus-mistakes curve for your own trace.",
       "fit": {
         "verdict": "kept",
         "note": "Paper plus handbook cover the detector and its tuning at implement and measure depth, with trace practice assigned to the section mini-project."
@@ -706,7 +701,7 @@
           "resource": "gossip-glomers-ds2",
           "title": "Broadcast challenges 3a to 3c",
           "url": "https://fly.io/dist-sys/3a",
-          "locator": "Challenge 3a (single node), 3b (five nodes, no partitions) and 3c (five nodes with `--nemesis partition`); the checker tests convergence of every value to every node, not order or recency",
+          "locator": "Challenge 3a (single node), 3b (five nodes, no partitions) and 3c (five nodes with the partition nemesis); the checker tests convergence of every value to every node, not order or recency",
           "depth": "Stop at 3c. The 3d and 3e efficiency thresholds belong to their own 25-node setup and are not targets here."
         }
       ],
@@ -744,8 +739,8 @@
         {
           "name": "Gossip Glomers 3a to 3c: Broadcast",
           "url": "https://fly.io/dist-sys/3a",
-          "locator": "Run 3a with `--node-count 1 --time-limit 20 --rate 10`, 3b with `--node-count 5`, and 3c adding `--nemesis partition`, each with `--bin` pointing at your binary; keep every run directory",
-          "note": "Read messages-per-operation and stable latencies from your own 3c results file as a labeled example, and compare convergence rounds with the rumor model."
+          "locator": "Run 3a with one node, 3b with five nodes, and 3c with five nodes plus the partition nemesis, at rate 10 for 20 seconds, as `./maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition` adjusted per challenge; keep every run directory",
+          "note": "The command quotes the page's Go binary path; point it at your own binary. Read messages-per-operation and stable latencies from your own 3c results file as a labeled example, and compare convergence rounds with the rumor model."
         },
         {
           "name": "Simulate Gossip Rumor Spread",
@@ -793,7 +788,7 @@
           "resource": "swim-ds2",
           "title": "Join, leave and refutation",
           "url": "https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf",
-          "locator": "Section 3.2 (join through a contact member or coordinator, leave by announcement) with Section 4.1 (buffered dissemination) and Section 4.2 (Suspect refuted by Alive with a higher incarnation, Failed after the timeout)"
+          "locator": "Section 3.2 (join through a contact member or coordinator, leave by announcement), Section 4.1 (buffered dissemination), and Section 4.2 (Alive and Suspect incarnation comparisons; terminal Confirm after the suspicion timeout)"
         },
         {
           "resource": "ddia-trouble-ds2",
@@ -805,11 +800,10 @@
       "focus": [
         "Join needs a contact: a coordinator, a well-known address, or probabilistic replies. Leave is an announcement over unreliable spread, so treat it as a hint and keep probing.",
         "Suspect is not Failed. A suspected member stays on the list and stays a probe target until the timeout passes with no Alive refutation.",
-        "Higher incarnation wins for one member's reports. Alive at 4 refutes Suspect at 3, and a late Failed at 3 is dropped, not applied.",
-        "Death declarations belong to a quorum, not to one watcher. A node that hears only itself, like the book's one-way listener, must step down when the majority disagrees.",
-        "Replacement is a new epoch, never a reset counter. The group still holds the old incarnation, so a restart that reuses it splits the view."
+        "In original SWIM, Alive at incarnation 4 refutes Suspect at 3, while Suspect overrides Alive at equal incarnation. Confirm overrides both at any incarnation. Do not substitute an incarnation-first rule for terminal failure without explicitly changing the protocol.",
+        "SWIM membership is weakly consistent, not quorum agreement. DDIA's majority rule concerns coordinated authority: a node whose outgoing messages are lost must honor removal from authority. Replacement needs a fresh process identity or an explicit rejoin protocol so old terminal reports cannot evict the replacement."
       ],
-      "reproduce": "Closed-book, apply this sequence for member A: Suspect at incarnation 3, Alive at incarnation 4, then a delayed Failed at incarnation 3. Final view: A alive at 4, with the Failed dropped as stale. State the comparison each message needs: member id, then incarnation, then type precedence.",
+      "reproduce": "Closed-book, apply original SWIM Section 4.2 to member A: Suspect at incarnation 3, Alive at incarnation 4, then Confirm at incarnation 3. Alive first refutes Suspect, but Confirm removes A despite the higher Alive incarnation. Explain why replacement needs a fresh identity or an explicit rejoin protocol.",
       "traps": [
         "Deleting a failed member immediately. Late refutations and delayed messages then have nowhere to land; keep the recently failed alongside the living, as SWIM does.",
         "Acting on one reporter's Failed. A partition makes every watcher on one side wrong together; wait for quorum agreement before reassigning work.",
@@ -817,8 +811,8 @@
       ],
       "selfTest": [
         {
-          "q": "Two watchers report Failed for A at incarnation 3 while A broadcasts Alive at 4. What is A's state?",
-          "a": "Alive at 4. Reports compare by incarnation first, and 4 beats any number of 3s regardless of reporter count."
+          "q": "Two watchers send Confirm for A at incarnation 3 while A broadcasts Alive at 4. What does original SWIM keep?",
+          "a": "A is removed. Section 4.2 makes Confirm override Alive regardless of incarnation. If the watchers had sent only Suspect at 3, Alive at 4 would refute them."
         },
         {
           "q": "A node restarts and rejoins with incarnation 0 while the group holds it failed at incarnation 2. What happens without an epoch?",
@@ -834,11 +828,11 @@
         }
       ],
       "practice": [],
-      "practiceNote": "The section mini-project covers this: versioned membership views with join, leave and replacement, plus stale-view tests where delayed Suspect, Alive and Failed messages arrive out of order with seeds retained.",
-      "stopWhen": "You apply the reproduce sequence with the drop reason stated per message, and can argue any override dispute from incarnation numbers alone.",
+      "practiceNote": "The section mini-project covers this: versioned membership views with join, leave and replacement, plus stale-view tests where delayed Suspect, Alive and Confirm messages arrive out of order with seeds retained.",
+      "stopWhen": "You apply the reproduce sequence and explain each override using both message type and incarnation, without confusing membership reports with exclusive authority.",
       "fit": {
         "verdict": "kept",
-        "note": "SWIM plus DDIA cover transitions and quorum death at explain and implement depth, with view practice assigned to the section mini-project."
+        "note": "SWIM covers membership transitions; DDIA supplies the distinct quorum-authority boundary. View and replacement practice belongs to the section mini-project."
       }
     },
     {
@@ -880,7 +874,7 @@
           "resource": "gossip-glomers-ds2",
           "title": "Partition behavior on a real run",
           "url": "https://fly.io/dist-sys/3c",
-          "locator": "Challenge 3c: five nodes with `--nemesis partition`; watch which nodes the checker still converges and which values wait for healing",
+          "locator": "Challenge 3c: five nodes with the partition nemesis; watch which nodes the checker still converges and which values wait for healing",
           "depth": "Read the run as a partition log, not only a pass. Note what no node could conclude mid-run about the other side."
         }
       ],
@@ -943,7 +937,7 @@
         "lease-and-fencing-implementation"
       ],
       "outcomes": [
-        "State the lease contract and the three timing assumptions it stands on.",
+        "State the lease contract and the timing assumptions a client-side validity check needs.",
         "Construct a pause scenario that lets an expired holder write, and show fencing blocking it.",
         "Implement lease acquire, renew and release with monotonic fencing tokens, tested for expiry, pause and partition cases."
       ],
@@ -974,11 +968,10 @@
         }
       ],
       "focus": [
-        "A lease says the holder may act until expiry and the granter may reassign after. It assumes bounded clock error for comparing expiry, bounded pauses between check and act, and timely renewal delivery. Break any one and authority overlaps.",
+        "A lease grants authority until expiry. A timing-only client needs bounded clock error or drift and a bound on delay from its validity check through the protected operation. Delayed renewal must not extend authority without confirmation. A pause or delayed request can invalidate a client's check; fencing closes that gap at storage.",
         "The book's loop fails twice: expiry set by one machine is read against another's clock, and a 15-second pause between the validity check and the request lets the lease die mid-act unnoticed.",
         "Fencing moves enforcement to storage: every grant carries a higher token, here 33 then 34, and storage rejects any write whose token moved backward. The lock service grants; the storage service refuses.",
-        "Token sources must already be monotonic per resource: Chubby sequencers, Kafka epochs, ZooKeeper version numbers, etcd revisions. A token that resets on failover reopens the hole.",
-        "With replicas, put the token in the most significant bits of the timestamp and write a quorum. A zombie write can still land on one missed replica, but the next quorum read prefers the higher token and repair overwrites it."
+        "Tokens must rise across grants and survive failover. DDIA Figure 9-7 separately assumes a fixed leaderless replica set, intersecting read and write quorums, and last-write-wins comparison with the token dominating the timestamp. Only under those rules can a stale write on a missed replica lose at the next quorum read and later be repaired; this is not protection for arbitrary external side effects."
       ],
       "reproduce": "Closed-book, walk tokens 33 and 34: client 1 holds 33 and pauses past expiry; client 2 takes 34 and writes; client 1 resumes and writes with 33, which storage rejects as backward. State the storage invariant: the largest token seen wins, and anything lower is refused.",
       "traps": [
@@ -1063,9 +1056,8 @@
       "focus": [
         "Seed everything: topology, delays, drops, duplicates, reorder windows, partition intervals, crash and restart points. A run is its seed plus its schedule, and both are retained.",
         "Simulate time as an integer tick, never the wall clock. Timers, heartbeats and lease checks read the tick, so reruns cannot drift.",
-        "Safety checks must not read timing: membership convergence, suspicion traces and fencing verdicts are functions of delivered messages and ticks only. Name liveness assumptions separately.",
-        "Cover the DS-2 slice: split brain attempt, clock jump, stale lease and epoch, dual incarnation, pause and partition healing. Later sections add their own entries to the same harness.",
-        "Keep raw message and state traces, then minimize: shrink the schedule to the smallest seed that still fails before reporting."
+        "Check fencing safety after every transition; no stale token may bypass the storage check. Membership convergence is a liveness goal, not a safety invariant, and needs eventual communication and fair scheduling. Simulated-time reads are valid for detector and lease behavior; do not require real-time bounds to establish fencing safety.",
+        "Cover the DS-2 slice: split brain attempt, clock jump, stale lease and epoch, dual incarnation, pause and partition healing. Keep raw message and state traces, then shrink the event schedule while preserving the failure. A numerically smaller seed is not a smaller counterexample."
       ],
       "reproduce": "Closed-book, state the determinism contract: same seed plus same schedule gives byte-identical message and state traces on rerun. Demonstrate it by running a three-node partition schedule twice and diffing the two trace files, which must match exactly.",
       "traps": [
@@ -1079,8 +1071,8 @@
           "a": "Wall-clock reads, an unseeded RNG such as a default hash seed or thread race, and iteration over an unordered set or map. Fix all three before trusting any diff."
         },
         {
-          "q": "Why must safety checks avoid the tick, not just the wall clock?",
-          "a": "A check that reads simulated time can pass at one tick and fail at another for the same messages. Safety must follow from message content and order alone."
+          "q": "May a deterministic test read simulated time, and does a convergence check establish safety?",
+          "a": "Yes. Detector and lease transitions depend on simulated timers, which replay deterministically. Convergence is a liveness property under eventual-delivery assumptions; fencing safety is the separate invariant that stale tokens cannot pass the storage check."
         },
         {
           "q": "A dual-incarnation bug appears once in fifty seeds. What do you keep?",
@@ -1088,7 +1080,7 @@
         },
         {
           "q": "Your simulated broadcast converges under every partition schedule. Does 3c still add anything?",
-          "a": "Yes, as an independent oracle: it runs your real node binary over a real network stack, catching harness blind spots like framing or protocol bugs the sim cannot see."
+          "a": "Yes. Maelstrom drives the actual node processes through their JSON input and output with an independent workload and checker. Its network is simulated, not the production TCP stack, so it adds evidence without covering every transport fault."
         }
       ],
       "practice": [],
