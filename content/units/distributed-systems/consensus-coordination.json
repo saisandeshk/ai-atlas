@@ -321,7 +321,7 @@
     {
       "id": "raft-conflict-repair-backtracking",
       "title": "Conflict truncation, log repair and slow-follower backtracking",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -330,47 +330,70 @@
         "slow-follower-and-backtracking"
       ],
       "outcomes": [
-        "TODO"
+        "Implement first-conflict truncation while retaining matching suffix entries not contradicted by a request.",
+        "Use rejection hints to backtrack by conflicting term rather than one index at a time.",
+        "Diagnose slow catch-up using rejected requests and replication cursors."
       ],
-      "why": "TODO",
+      "why": "Leaders inherit followers with missing, extra and conflicting suffixes. Repair must tolerate reordered requests without turning an optimization into a destructive log rewrite.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/consensus-coordination/raft-commitment-leader-completeness",
+          "note": "Establish why repaired entries cannot replace committed history."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "raft-paper-ds5",
+          "title": "Raft extended paper: divergent suffix repair",
+          "url": "https://raft.github.io/raft.pdf",
+          "locator": "Section 5.3, follower inconsistencies and `nextIndex` repair, pp. 7 to 8; Figure 7; Figure 2 receiver rules 2 to 4"
+        },
+        {
+          "resource": "mit-raft-lab-ds5",
+          "title": "MIT 6.5840 Spring 2026 Lab 3B and 3C: backtracking",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-raft1.html",
+          "locator": "Part 3B: `TestBackup3B`; Part 3C: the `XTerm`, `XIndex`, `XLen` rejection-hint example",
+          "depth": "Read only the backtracking guidance from 3C here. Implement persistence in its own unit."
         }
       ],
       "focus": [
-        "TODO"
+        "After a matching predecessor, compare incoming entries in order. Delete the follower suffix only at the first same-index, different-term conflict, then append the remaining incoming entries.",
+        "A short delayed request that matches existing entries must not truncate the follower merely because the request ends earlier than the log.",
+        "If the leader lacks the conflicting term, jump to its first follower index. If it has that term, try after the leader's last entry of that term. A too-short follower needs a separate length hint.",
+        "Tie reply handling to the relevant leader term and request. A delayed rejection must not undo newer confirmed progress or cause an endless backward/forward loop."
       ],
-      "reproduce": "TODO",
+      "reproduce": "With 1-based entries and a sentinel at index 0, let the leader's term sequence be `[1, 1, 4, 4]` and the follower's `[1, 1, 2, 2, 2]`. A check at predecessor index 4 fails with conflicting term 2, first index 3. Since the leader lacks term 2, retry from index 3 using predecessor index 2, term 1. The follower becomes `[1, 1, 4, 4]`. Now deliver a shorter matching request ending at index 3: index 4 must remain.",
       "traps": [
-        "TODO"
+        "Truncating to the predecessor on every successful request, including duplicates and empty heartbeats.",
+        "Using a length hint without documenting whether it includes the sentinel; translate it to an absolute next log index.",
+        "Letting one slow follower block replication to all others. Send and track follower work independently."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "The leader has the follower's conflicting term. Where does the optimized retry start?",
+          "a": "Immediately after the leader's last entry in that term. The next predecessor check still decides whether the prefix actually matches."
+        },
+        {
+          "q": "A duplicate request contains no conflict but ends before the follower log. May it delete the tail?",
+          "a": "No. Ending the request is not evidence of a conflicting entry. Retain the tail until an actual conflict is supplied."
+        },
+        {
+          "q": "Does a rejection-hint optimization change which histories can be committed?",
+          "a": "No. It changes where the next consistency check starts, not the checks, election restrictions or commitment rules."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "MIT 6.5840 Spring 2026 Lab 3B: fast backup",
+          "url": "https://pdos.csail.mit.edu/6.824/labs/lab-raft1.html",
+          "locator": "Part 3B; `TestBackup3B`; run `make RUN=\"-run '^TestBackup3B$'\" raft1` from `src`",
+          "note": "The test builds long uncommitted suffixes in minority partitions, commits in other majorities, then reconnects all servers for agreement. Keep your own shorter-request regression too. Finish the whole 3B suite after the commitment unit."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The fixed repair trace retains index 4 after the shorter request, and `TestBackup3B` passes without changing the public tests or the prefix check.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The paper supplies safe repair and the lab handout fills in the hint cases; the public backup test exercises divergent suffix recovery."
       }
     },
     {
