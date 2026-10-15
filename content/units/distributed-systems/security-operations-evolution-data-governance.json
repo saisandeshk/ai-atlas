@@ -1220,47 +1220,72 @@
         "online-and-offline-feature-equivalence"
       ],
       "outcomes": [
-        "TODO"
+        "Join features to entity rows as of each row's event time with TTL bounds, by hand on a small fixture.",
+        "Exclude backfilled values that were not yet available at prediction time with created-timestamp filtering.",
+        "Test that the online path serves the same values the offline join produced for the same entity and time."
       ],
-      "why": "TODO",
+      "why": "Training on a feature value the model could not have seen at prediction time is future leakage with infrastructure. The join rule is what keeps offline metrics honest about online behavior.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/security-operations-evolution-data-governance/ml-artifact-version-identity",
+          "note": "Version the feature service and dataset the join produces."
+        },
+        {
+          "route": "classical-ml",
+          "note": "Retest the joined data against leakage-taxonomy discipline before any model consumes it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "feast-docs",
+          "title": "Point-in-time joins: entity frames, TTL, created timestamps",
+          "url": "https://docs.feast.dev/getting-started/concepts/point-in-time-joins",
+          "locator": "The entity dataframe and `get_historical_features` call; the TTL backward scan (TTL is relative to each entity timestamp, not to query time); the joined result with its two unjoined rows; Retrieving features as of the event time (`filter_by_created_timestamp`, NULL created timestamps excluded)"
+        },
+        {
+          "resource": "feast-docs",
+          "title": "Feature retrieval: historical versus online paths",
+          "url": "https://docs.feast.dev/getting-started/concepts/feature-retrieval",
+          "locator": "Event timestamp (upper bound, inclusive; leakage without it); Retrieving historical features; Retrieving online features (`get_online_features` takes entity rows without timestamps); Feature Services (one service per model version)"
         }
       ],
       "focus": [
-        "TODO"
+        "Each entity timestamp is an upper bound, inclusive. The join takes the latest feature row at or before it, scanning back at most the TTL.",
+        "TTL is relative to each entity row, not to when the query runs. Replaying the same entity frame later must return the same rows.",
+        "Corrections and backfills carry a created timestamp. Without the filter flag, a value corrected after prediction time still joins into training.",
+        "Online serving returns the latest value with no timestamp argument, so equivalence means the online store held exactly what the historical join saw. One feature service per model version pins both sides.",
+        "The leakage unit leakage-taxonomy already named this failure: features from the future inflating offline metrics. The join rule is its mechanical fix."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, join the fixture below with TTL 25, then repeat with created-timestamp filtering. Feature rows (entity, event time, value, created): (1, 10, a, 10), (1, 20, b, 20), (1, 28, b2, 40), (1, 35, c, 35). Entity rows (entity, event time): (1, 12), (1, 30), (1, 65), (2, 10).",
       "traps": [
-        "TODO"
+        "Joining the latest feature row regardless of the entity time. The (1, 30) row must never see the value from event time 35.",
+        "Enabling the created filter with NULL created timestamps. The docs exclude those rows instead of treating them as always available.",
+        "Comparing online output to a retrained offline join after a backfill. Equivalence is checked against the stored training frame, not a fresh recomputation."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Default join: what does each entity row get?",
+          "a": "(1, 12) gets a; (1, 30) gets b2; (1, 65) gets nothing (65 minus 35 exceeds TTL 25); (2, 10) gets nothing (no rows for entity 2)."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With created-timestamp filtering, what does (1, 30) get, and why?",
+          "a": "b. The b2 row was created at 40, after the entity time 30, so it is excluded and the join falls back to the b row from event time 20."
+        },
+        {
+          "q": "Why does the TTL miss on (1, 65) not depend on when the query runs?",
+          "a": "TTL measures back from each entity timestamp: 65 minus 35 is 30 either way. Query time never enters the join."
+        },
+        {
+          "q": "The online path serves c for entity 1 while the stored training frame for a (1, 30) row holds b. Is that a serving bug?",
+          "a": "Not necessarily: online serves the latest value and time has passed since training. It is a bug only if the online value differs from what the same-time historical join produces."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a reduced feature-store path with point-in-time joins on a hand-checkable fixture, TTL and created-timestamp cases, and an online versus offline equivalence test.",
+      "stopWhen": "Your hand join matches the stated answers for both flags, and you can say for any served value which entity time and filter produced it.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for feature joins: no pool resource teaches them, so the Feast concepts pages fill the gap beside the leakage unit, with join practice assigned to the section mini-project."
       }
     },
     {
@@ -1278,47 +1303,85 @@
         "dataset-and-evaluation-version-identity"
       ],
       "outcomes": [
-        "TODO"
+        "Promote and roll back model versions through registry aliases with lineage to the producing run.",
+        "Verify artifacts and checkpoints by checksum before serving or evaluating them.",
+        "Bound retrieval-index staleness with a materialize watermark and versioned index swaps.",
+        "Give every dataset and evaluation input a content identity independent of its path."
       ],
-      "why": "TODO",
+      "why": "A model version, a dataset path and an index name are pointers, and pointers move. Lineage plus checksums plus watermarks turn them into identities a later audit can resolve.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/security-operations-evolution-data-governance/point-in-time-feature-joins",
+          "note": "Feed the versioned dataset back into point-in-time training frames."
+        },
+        {
+          "unit": "distributed-systems/security-operations-evolution-data-governance/chaos-restore-campaign-costs",
+          "note": "Prove rollback and rebuild timing in the campaign."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mlflow-registry",
+          "title": "Model Registry: versions, lineage, aliases, stages",
+          "url": "https://mlflow.org/docs/latest/ml/model-registry/",
+          "locator": "Why Model Registry (version control, lineage and traceability); Concepts (annotations and descriptions); Model Registry in practice (aliases such as @champion, stages, tags)"
+        },
+        {
+          "resource": "dvc-versioning",
+          "title": "Dataset identity: checksum sidecars and pipeline locks",
+          "url": "https://dvc.org/doc/command-reference/add",
+          "locator": "`dvc add` (checksum sidecar files recording content identity); with Versioning Data and Models (https://dvc.org/doc/example-scenarios/versioning-data-and-models): `dvc.yaml`, `dvc.lock`, `push` and `pull`"
+        },
+        {
+          "resource": "feast-docs",
+          "title": "Serving versions: feature services and materialize refresh",
+          "url": "https://docs.feast.dev/getting-started/concepts/feature-retrieval",
+          "locator": "Feature Services (one service per model version); Retrieving online features; Pre-computed feature vectors (rebuilt on `materialize` and `materialize-incremental`)",
+          "depth": "Read as the versioning pattern for serving state: a named service version plus a refresh watermark. The join mechanics belong to the previous unit."
         }
       ],
       "focus": [
-        "TODO"
+        "An alias resolves to a version, and a version resolves to a run with its dataset, parameters and code. Promotion moves the alias; the version and its lineage never change.",
+        "The checksum is the identity. A registry row that points at an artifact hash plus a dataset sidecar hash plus a commit hash reproduces; a row that points at paths hopes.",
+        "Served state is stale by at most its refresh watermark: everything materialized up to the watermark is visible, nothing after it is. A versioned swap moves readers atomically instead of mixing builds.",
+        "DVC tracks content, git tracks the pointer. The small `.dvc` file commits to git while the bytes live in cache or remote; `pull` restores exactly the committed bytes."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, resolve `@champion` before and after a promotion and a rollback, and list the three hashes (artifact, dataset sidecar, code commit) an evaluation rerun must match.",
       "traps": [
-        "TODO"
+        "Versioning the pointer file but not fetching the bytes. A `.dvc` sidecar without `pull` reproduces the hash of data you do not have.",
+        "Reading index freshness from wall-clock age. Staleness is measured against the materialize watermark: which writes are included, not how old the files are.",
+        "Promoting by copying the artifact. Copies fork identity; promotion moves the alias so lineage still points at the one producing run."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "`@champion` points at v3, then v4 is promoted, then rolled back. What does `@champion` resolve to at each step?",
+          "a": "v3, then v4, then v3 again. Promotion repoints the alias; rollback repoints it back. Neither step rewrites v3 or v4 or their lineage."
+        },
+        {
+          "q": "An evaluation reruns with the same dataset path but a different `.dvc` hash. Is it the same evaluation?",
+          "a": "No. Identity is the content hash, not the path. Different bytes mean a different input even under the same filename."
+        },
+        {
+          "q": "The index watermark covers writes through offset 1000, and offset 1042 just committed. Which rows may a served query reflect?",
+          "a": "Only rows through offset 1000. The watermark is the visibility bound; newer writes wait for the next materialize and swap."
+        },
+        {
+          "q": "A recreated registry key reuses version number 2 after v2 was deleted. What breaks?",
+          "a": "Lineage: two different artifacts claim one identity, and old references to v2 become ambiguous. Versions are append-only; the versioned store in the deletion unit keeps history across expiry for the same reason."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "AlgoMaster: Build a Versioned TTL Key-Value Store",
+          "url": "https://algomaster.io/practice/system-design/build-a-versioned-ttl-key-value-store",
+          "locator": "Monotonic versions per key across expiry and deletion; `compareAndSet` and `remove` act only on live matching versions",
+          "note": "Treat versions as append-only registry discipline in miniature. The section mini-project covers this: registry promotion with checksums and a watermarked index rebuild."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You resolve alias moves without touching versions, name the three reproduction hashes for any evaluation, and bound any served read by its watermark.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for registry, artifact and dataset identity: no pool resource teaches them, so the MLflow, DVC and Feast serving pages fill the gap, with registry practice in the section mini-project."
       }
     },
     {
