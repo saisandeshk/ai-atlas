@@ -1,6 +1,37 @@
 {
   "section": "logs-queues-stream-processing",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "iceberg-spec-ds7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Apache Iceberg - Table Specification",
+      "provider": "Apache Iceberg",
+      "access": "Free",
+      "use": "Read the snapshot, manifest list and manifest sections for the read path, and the table metadata section for the atomic metadata-file swap that commits a snapshot.",
+      "url": "https://iceberg.apache.org/spec/"
+    },
+    {
+      "id": "delta-protocol-ds7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Delta Lake Protocol (pinned commit)",
+      "provider": "Delta Lake",
+      "access": "Free",
+      "use": "Read the transaction log replay and checkpoint sections for how readers reconstruct table state, and the concurrency section for the optimistic commit rule.",
+      "url": "https://github.com/delta-io/delta/blob/6a62fd86d58eea07a57720a80320b29f1130924e/PROTOCOL.md"
+    },
+    {
+      "id": "avro-spec-ds7",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Apache Avro 1.12.0 Specification - Schema Resolution",
+      "provider": "Apache Avro",
+      "access": "Free",
+      "use": "Read Schema Resolution only: records match by field name, writer-only fields are ignored, reader-only fields are filled from defaults, plus the promotion rules.",
+      "url": "https://avro.apache.org/docs/1.12.0/specification/"
+    }
+  ],
   "units": [
     {
       "id": "segmented-log-offsets-retention",
@@ -16,47 +47,94 @@
         "retention-versus-compaction"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why a log assigns monotonically increasing offsets per partition and what a consumer offset marks.",
+        "Explain segments, sparse indexes, time and size retention, and log compaction as latest-value-per-key retention.",
+        "Implement an append-only segmented log with a sparse index, retention and recovery that replays from the last valid record."
       ],
-      "why": "TODO",
+      "why": "Every later contract in this section, from consumer positions to checkpoints, is an offset into a durable log. If the log cannot bound its storage or rebuild its index after a crash, nothing above it holds.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/partition-ordering-high-watermark",
+          "note": "Shard the log once the single-log layout is sound."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/delivery-semantics-offset-commits",
+          "note": "Commit offsets against application state on top of this layout."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Build the mini log on this segment, index and retention layout."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "the-log-ds7",
+          "title": "The log as the unifying abstraction",
+          "url": "https://www.linkedin.com/blog/engineering/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying",
+          "locator": "Part One: the log as an append-only totally ordered sequence; the state-machine replication principle; tables and changelogs as dual views of the log"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Log-based message brokers, offsets and retention",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log-Based Message Brokers: per-partition offsets (pp. 495 to 496); consumer offsets (p. 498); segments, retention and the circular-buffer bound with the 22-hour calculation (pp. 498 to 499)"
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Log compaction",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log compaction (pp. 505 to 506): keep the latest value per key, tombstones for deletes, rebuild derived state with a scan from offset 0"
+        },
+        {
+          "resource": "kafka-2011-ds7",
+          "title": "Kafka design ancestor: segments, offsets, pull consumers",
+          "url": "https://notes.stephenholiday.com/Kafka.pdf",
+          "locator": "The log-structured design (segments, offsets, stateless broker, pull consumers) and the final section (replication as future work)",
+          "depth": "Take durability and replication from the current Kafka 4.3 docs, not this paper. Its producer is fire-and-forget with no delivery guarantee."
         }
       ],
       "focus": [
-        "TODO"
+        "An offset identifies a position in one partition only. It never restarts and is never reused within that partition.",
+        "A segment bounds the unit of deletion, and a sparse index maps sampled offsets to file positions, so lookup stays fast while index memory stays bounded.",
+        "Time and size retention deletes whole segments, so a consumer that falls behind the oldest retained segment misses messages. Compaction instead keeps the latest value per key plus tombstones, so a scan from offset 0 rebuilds current state.",
+        "The book's bound is concrete: 20 TB at 250 MB/s fills in about 22 hours, so a disk log always buffers at least that much at full write rate. Real deployments retain days or weeks because they write below full bandwidth."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the 20 TB at 250 MB/s bound (about 22 hours) and sketch the segment layout, sparse index entries, and the scan-from-0 rebuild of a compacted topic with one tombstoned key.",
       "traps": [
-        "TODO"
+        "Treating offsets as global across partitions. Ordering and positions hold within one partition only.",
+        "Expecting compaction to shrink append-only event streams. Without repeated keys nothing is deduplicated.",
+        "Assuming a slow consumer can always catch up. Retention deletes segments, so a lagging offset can point at deleted data."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A topic has 3 partitions and a consumer reads offsets 0 to 99 on each. How many totally ordered sequences is it reading?",
+          "a": "Three, one per partition. There is no ordering guarantee across partitions."
+        },
+        {
+          "q": "A drive holds 20 TB and ingest runs at 250 MB/s. How long before the oldest segment must be deleted?",
+          "a": "About 22 hours: \\(20 \\times 10^{12} / (250 \\times 10^{6}) = 80{,}000\\) seconds, which is about 22 hours. Deployments that write below full bandwidth retain days or weeks."
+        },
+        {
+          "q": "A compacted topic holds keys mew, purr and scratch, then a tombstone for purr. What does a scan from offset 0 return?",
+          "a": "The latest value for mew and scratch, and nothing for purr. The tombstone removes purr during compaction."
+        },
+        {
+          "q": "Why does the Kafka 2011 paper not settle your durability design?",
+          "a": "Replication is future work in that paper and its producer is fire-and-forget, so broker loss behavior must come from the current 4.3 docs and your own acknowledgement contract."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Gossip Glomers 5a: single-node Kafka-style log",
+          "url": "https://fly.io/dist-sys/5a",
+          "locator": "Implement `send`, `poll`, `commit_offsets` and `list_committed_offsets`; pass `./maelstrom test -w kafka --bin ~/go/bin/maelstrom-kafka --node-count 1 --concurrency 2n --time-limit 20 --rate 1000`",
+          "note": "The checker catches lost writes and nonmonotonic or skipped offsets. It does not check recency, so an acknowledged send that never appears in a poll still passes."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can derive the retention bound, explain what compaction keeps, and your 5a node passes the single-node run with its history retained.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers segments, offsets, retention and compaction at explain depth; the 2011 paper gives the mini-log ancestor and Glomers 5a gives checked practice."
       }
     },
     {
@@ -71,47 +149,75 @@
         "replication-and-high-watermark-visibility"
       ],
       "outcomes": [
-        "TODO"
+        "Explain per-partition ordering and how a partition key routes all events of one entity to the same partition.",
+        "Explain leader, followers and in-sync replicas, and why only committed offsets below the high watermark are visible to consumers.",
+        "State which writes survive a leader loss under `acks=all` with `min.insync.replicas` set, and which are refused instead."
       ],
-      "why": "TODO",
+      "why": "Partitioning buys throughput by giving up global order, and replication buys survival by hiding uncommitted records. Every routing key and every read after a failover depends on this boundary.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/producer-acks-idempotence-transactions",
+          "note": "Choose acknowledgement settings against this commit rule."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/consumer-groups-rebalance",
+          "note": "Assign these partitions to consumers next."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Reproduce the commit and visibility rule in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-streaming-ds7",
+          "title": "Partitions and per-partition ordering",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Log-Based Message Brokers (pp. 496 to 497): Figure 12-3, offsets within a partition, no ordering across partitions, routing by partition key such as user ID"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "Replication, ISR and durability guarantees",
+          "url": "https://kafka.apache.org/43/design/design/",
+          "locator": "Replication; Replicated Logs: Quorums, ISRs, and State Machines; Availability and Durability Guarantees (`acks` with `min.insync.replicas`; committed writes safe while one in-sync replica lives); Unclean leader election"
         }
       ],
       "focus": [
-        "TODO"
+        "A partition is the unit of ordering and of parallelism: more partitions raise throughput but also the number of independent sequences.",
+        "All events that need a fixed relative order must share a partition key. Key by entity ID, not by timestamp.",
+        "Followers pull like consumers, and the leader commits a write only after all in-sync replicas receive it.",
+        "The high watermark is the largest committed offset. Consumers read up to the watermark, never the log end offset, so uncommitted tail records stay invisible."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, draw one partition with a leader and two followers, mark the log end offset and the high watermark after a write reaches the leader and one follower, and state which `acks` values would have returned success.",
       "traps": [
-        "TODO"
+        "Reading uncommitted tail records. A record the leader holds but has not committed can vanish in a failover.",
+        "Enabling unclean leader election for availability and still claiming no loss. An out-of-sync replica elected leader drops records the old leader had committed.",
+        "Assuming partition count can be lowered later. Kafka supports only increasing partitions per topic, which changes the key-to-partition mapping."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Two requests from one user are handled by different web servers. How do their events keep a fixed relative order?",
+          "a": "Route both by the user ID as partition key so they land in the same partition, which is totally ordered."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A write reaches the leader only. Which `acks` settings report success, and can a consumer read the record?",
+          "a": "`acks=1` and `acks=0` report success; `acks=all` does not. No consumer can read it yet because it is still above the high watermark."
+        },
+        {
+          "q": "With `min.insync.replicas=2`, one follower lags out of the ISR and then the leader dies. What happens to committed writes and to new `acks=all` writes?",
+          "a": "Committed writes are safe while one in-sync replica lives. New `acks=all` writes are refused with an error until the ISR recovers; nothing is silently lost."
+        },
+        {
+          "q": "Unclean leader election is enabled, all in-sync replicas die, and an out-of-sync replica is elected. What breaks?",
+          "a": "Records committed on the dead replicas but missing on the new leader are lost, and consumers can see gaps. Availability is preserved at the cost of the durability contract."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: replicated commit with an explicit high watermark and leader-failover tests.",
+      "stopWhen": "You can trace a write from leader append through ISR acknowledgement to consumer visibility, and predict the outcome of each failover case above.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "DDIA covers partition ordering and the ISR commit rule at explain depth; replicated-commit practice lives in the section mini-project."
       }
     },
     {
@@ -128,47 +234,78 @@
         "transactional-producer-scope"
       ],
       "outcomes": [
-        "TODO"
+        "Explain `acks` 0, 1 and all as durability versus latency choices gated by `min.insync.replicas`.",
+        "Explain the idempotent producer's per-partition sequence state and what breaks duplicate suppression.",
+        "Derive the atomic scope of a Kafka transaction: which partition writes and offsets commit together, and what stays outside it."
       ],
-      "why": "TODO",
+      "why": "Retried requests are certain and ambiguous outcomes are permanent: a timeout never says whether the write landed. Acknowledgements, sequence state and transactions are the three tools that make retries safe.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/logs-queues-stream-processing/delivery-semantics-offset-commits",
+          "note": "Apply the same retry logic on the consumer side."
+        },
+        {
+          "unit": "distributed-systems/logs-queues-stream-processing/mini-partition-log-consumers",
+          "note": "Implement producer identity in the mini log."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "kafka-design-ds7",
+          "title": "Delivery semantics and transactions",
+          "url": "https://kafka.apache.org/43/design/design/",
+          "locator": "Message Delivery Semantics (at-most, at-least and exactly-once; idempotent producer with producer ID and sequence numbers); Using Transactions (offsets atomic with output; `isolation.level=read_committed` with `enable.auto.commit=false` and `transactional.id`)"
+        },
+        {
+          "resource": "kafka-design-ds7",
+          "title": "Server-side transaction defense",
+          "url": "https://kafka.apache.org/43/operations/transaction-protocol/",
+          "locator": "Overview: KIP-890 Transactions Server Side Defense, generally available since 4.0, with a producer epoch bump per transaction",
+          "depth": "Read the Overview only. Skip Upgrade and Downgrade and Performance unless you run a multi-version setup."
+        },
+        {
+          "resource": "ddia-streaming-ds7",
+          "title": "Atomic commit scope in stream processors",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 12, Atomic commit revisited (pp. 527 to 528): internal transactions in Dataflow, VoltDB and Kafka; overhead amortized over several input messages per transaction"
         }
       ],
       "focus": [
-        "TODO"
+        "`acks=0` never waits, `acks=1` waits for the leader only, and `acks=all` waits for all current in-sync replicas, further gated by `min.insync.replicas`. Without that gate the ISR can shrink to the leader and `all` means the leader only.",
+        "Idempotence keys each retried batch by producer ID plus per-partition sequence numbers, so a batch the broker already wrote is acknowledged without a second append. It is per partition and holds only while the broker retains that producer's sequence state.",
+        "A transaction commits a set of partition writes plus consumer offsets atomically, readable under `read_committed`. Anything outside Kafka, such as a database write or an email, is not in that atomic scope.",
+        "Timeout ambiguity remains: a producer that times out cannot tell a lost request from a lost reply, so it must retry and let deduplication or the transaction decide."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, write the `acks` and `min.insync.replicas` settings that lose an acknowledged write when the leader dies, and the settings that refuse the write instead, and state the read rule that hides aborted transactions.",
       "traps": [
-        "TODO"
+        "Calling `acks=all` alone durable. Without `min.insync.replicas` the ISR can shrink to the leader, so `all` means the leader only.",
+        "Expecting transactions to cover external effects. The atomic scope ends at Kafka partition writes plus offsets.",
+        "Using `kafka-console-producer.sh` to test transactions. It cannot run transactions; use client code."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "With `acks=1`, the leader acknowledges a write and dies before replicating it. Is the write lost?",
+          "a": "Yes. Only the leader held it, so the acknowledgement promised nothing about replication."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "With `min.insync.replicas=2` and an ISR of just the leader, what does an `acks=all` write return?",
+          "a": "An error refusing the write until the ISR recovers. The broker rejects instead of silently weakening durability."
+        },
+        {
+          "q": "A batch times out and the producer retries with the same sequence number. The broker already appended it. What happens?",
+          "a": "The broker detects the duplicate sequence and acknowledges without appending again, so the retry is safe."
+        },
+        {
+          "q": "A transaction writes partitions A and B plus offsets, then aborts. What does a `read_committed` consumer see?",
+          "a": "Nothing from that transaction. Its offsets stay below the consumer's view until a commit moves them forward."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: producer identity with retry and duplicate tests, including timeout-after-commit cases.",
+      "stopWhen": "You can predict the fate of a write for each `acks` value under leader death, and draw the exact boundary of a transaction's atomic scope.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The 4.3 design and transaction-protocol pages cover acks, idempotence and transactional scope at explain and derive depth; producer practice lives in the section mini-project."
       }
     },
     {
