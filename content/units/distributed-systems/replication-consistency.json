@@ -1,6 +1,17 @@
 {
   "section": "replication-consistency",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "riak-dotted-versions-ds4",
+      "role": "article",
+      "priority": "support",
+      "name": "Vector Clocks Revisited Part 2: Dotted Version Vectors",
+      "provider": "Riak - Russell Brown",
+      "access": "Free",
+      "use": "Read Sibling Explosion through Dot The clocks for the per-sibling dot and incoming-context replacement rule. This fills the implementation gap left by DDIA's brief dotted-vector mention; use the 2015 example, not its product-default statements as current guidance.",
+      "url": "https://riak.com/posts/technical/vector-clocks-revisited-part-2-dotted-version-vectors/index.html?p=9929.html"
+    }
+  ],
   "units": [
     {
       "id": "replication-topologies",
@@ -777,7 +788,7 @@
     {
       "id": "version-vectors-tombstones",
       "title": "Version vectors, dotted conflict sets and delete convergence with tombstones",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -788,47 +799,81 @@
         "dotted-version-vector-conflict-sets"
       ],
       "outcomes": [
-        "TODO"
+        "Derive causal dominance and retain incomparable versions as siblings.",
+        "Implement version-aware delete propagation and demonstrate resurrection after unsafe tombstone removal.",
+        "Use per-sibling dots and incoming causal context to avoid false sibling conflicts."
       ],
-      "why": "TODO",
+      "why": "Vector clocks and dotted versions supplied the timestamp comparison rules earlier in the track. Now attach them to actual values, sibling replacement and deletion, where losing causal metadata can resurrect data or manufacture conflicts.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "distributed-systems/replication-consistency/replicated-store-fault-simulation",
+          "note": "Exercise versioned writes, deletes and replica rejoin in the same fault harness."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "ddia-replication-ds4",
+          "title": "DDIA, 2nd edition: versioned siblings",
+          "url": "https://dataintensive.net/",
+          "locator": "Chapter 6, Replication: Capturing the happens-before relationship through Version vectors, pp. 239 to 242, including Figures 6-15 and 6-16"
+        },
+        {
+          "resource": "dynamo-ds4",
+          "title": "Dynamo (SOSP 2007): version context and reconciliation",
+          "url": "https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf",
+          "locator": "Section 4.4, Data Versioning, including Figure 3 and the clock-truncation discussion"
+        },
+        {
+          "resource": "hld-consistency-ds4",
+          "title": "HLD Handbook: deletion metadata and repair coverage",
+          "url": "https://github.com/handbook-academy/engineering-handbook/blob/d177ae2b48b4dfebf8ad0ddae51a345b3e17d99e/content/hld/part-3-distributed-systems-theory/10-merkle-trees-anti-entropy.md",
+          "locator": "Theory: The divergence problem; Common Pitfalls: Repair slower than gc_grace causes tombstone resurrection",
+          "depth": "Read for the stale-replica resurrection mechanism. Do not adopt a fixed grace duration as a proof that every replica has learned a delete."
+        },
+        {
+          "resource": "riak-dotted-versions-ds4",
+          "title": "Russell Brown (2015): dots identify the siblings an update replaces",
+          "url": "https://riak.com/posts/technical/vector-clocks-revisited-part-2-dotted-version-vectors/index.html?p=9929.html",
+          "locator": "Sibling Explosion, What Just Happened?, Dots To The Rescue and Dot The clocks (page read 2026-10-15)",
+          "depth": "The dotted conflict-set extension is optional. Stop before Further Material; implement the illustrated per-sibling rule, not all of Riak's metadata machinery."
         }
       ],
       "focus": [
-        "TODO"
+        "A vector dominates another when every component is at least as large; strict dominance also needs one larger component. Incomparable versions remain siblings until a policy resolves them.",
+        "A returned context says what the client has observed. Allocating a new server event must not falsely imply that the client observed every sibling the server has seen.",
+        "A tombstone is a versioned delete, not missing data. Repair must propagate it through the same causal comparison and conflict rules as values.",
+        "Safe tombstone reclamation needs evidence that stale data cannot return, including rejoining replicas, replacements and old messages. A timeout alone supplies no such evidence under unbounded disconnection."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In Python 3, retain both versions with vectors \\((2,1)\\) and \\((1,2)\\), then let a client observe both and issue an update at the first origin with vector \\((3,2)\\); it supersedes both. Next let an offline replica retain a value at \\((1,0)\\) while another records its delete at \\((2,0)\\). Repair with the tombstone present must keep the deletion; erase both tombstone and causal evidence prematurely and show resurrection under the same merge. For the optional dotted extension, replay the article's Bob, Sue, Rita and Michelle writes: Rita's context covers Bob but not Sue, and Michelle's covers Bob and Sue but not Rita. The final siblings are Rita and Michelle, not all four values.",
       "traps": [
-        "TODO"
+        "Treating a larger sum of vector components as causal dominance.",
+        "Reusing an actor counter after restart or replacement and colliding with an old dot.",
+        "Dropping a tombstone from the Merkle digest or assuming every absent key means an authoritative delete."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does \\((4,1)\\) dominate \\((2,3)\\)?",
+          "a": "No. Each is larger in one component, so they are incomparable. A scalar total cannot replace componentwise comparison."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why does a shared object vector lose information about individual siblings?",
+          "a": "It summarizes all events known at the object, but does not identify which event introduced each value. A dot attached to each sibling lets an incoming context remove only siblings the client observed."
+        },
+        {
+          "q": "Must a concurrent delete always beat a concurrent update?",
+          "a": "No. That is an explicit application or datatype policy, such as remove-wins or add-wins, not something causal comparison determines. An observed prior value can be deleted causally without resolving every concurrent update."
+        },
+        {
+          "q": "What is lost by truncating version-vector entries without a safe causal argument?",
+          "a": "Accurate ancestry information. A later version may appear concurrent with an ancestor, creating unnecessary siblings or complicating safe deletion and reconciliation."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: sibling dominance, versioned deletes, stale-replica resurrection and restart-safe actor identity, with the optional per-sibling dotted replacement test in loglab.",
+      "stopWhen": "Your tests retain concurrent siblings, remove causally superseded versions and reproduce then prevent stale-value resurrection; if you take the dotted extension, its final sibling set contains only Rita and Michelle.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "DDIA and Dynamo cover vectors but not the optional dotted replacement algorithm. Riak's opened worked example fills that coverage/depth gap; the handbook and mini-project cover delete convergence and unsafe reclamation."
       }
     },
     {
