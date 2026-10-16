@@ -1,6 +1,17 @@
 {
   "section": "lmr-adaptation-distillation",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "peft-soft-prompts-lmr6",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "PEFT conceptual guide: Soft prompts",
+      "provider": "Hugging Face",
+      "access": "Free",
+      "use": "Read Prompt tuning and Prefix tuning only (page read 2026-10-16). These supply the optional soft-prompt mechanisms missing from the section pool; no extra training run is required.",
+      "url": "https://huggingface.co/docs/peft/main/en/conceptual_guides/prompting"
+    }
+  ],
   "units": [
     {
       "id": "adaptation-interventions-baselines",
@@ -416,47 +427,69 @@
         "prompt-prefix-tuning"
       ],
       "outcomes": [
-        "TODO"
+        "Separate quantized weight storage, computation dtype, trainable adapters and optimizer-state paging in QLoRA.",
+        "Explain why dequantized merge equivalence and requantized deployment equivalence are different checks.",
+        "Distinguish learned input prompts and layerwise prefixes from LoRA weight updates."
       ],
-      "why": "TODO",
+      "why": "Plain LoRA preserves a dense base. QLoRA changes its storage and numerical reference; soft prompts instead change the model's conditioning, with different serving requirements.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-adaptation-distillation/adaptation-cost-model-merging",
+          "note": "Include quantization metadata, serving compatibility and added context in the cost comparison."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "qlora-paper-lmr6",
+          "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
+          "url": "https://arxiv.org/abs/2305.14314v1",
+          "locator": "Section 2, Memory Requirement of Parameter-Efficient Finetuning; Section 3, QLoRA Finetuning, including NF4, Double Quantization, Paged Optimizers and Equations 5 and 6",
+          "depth": "Start after the plain LoRA tests pass. Stop before Section 4's large-model experiments. Required work is accounting and a numerical-reference diagram, not a bitsandbytes training run."
+        },
+        {
+          "resource": "peft-soft-prompts-lmr6",
+          "title": "Soft prompts: input embeddings versus layerwise prefixes",
+          "url": "https://huggingface.co/docs/peft/main/en/conceptual_guides/prompting",
+          "locator": "Prompt tuning and Prefix tuning (page read 2026-10-16)",
+          "depth": "Optional topic: explain these two mechanisms and their serving state. Skip P-tuning, multitask methods and all linked training walkthroughs."
         }
       ],
       "focus": [
-        "TODO"
+        "NF4 is a storage codebook, not ordinary 4-bit arithmetic for the entire training loop. The paper dequantizes frozen base weights into the computation dtype and trains higher-precision LoRA parameters.",
+        "Double quantization compresses quantization constants. Paged optimizers move optimizer-state pages between host and device; they do not remove the state or guarantee a latency improvement.",
+        "The adapter was trained against the dequantized quantized base. Merging into the original unquantized base changes that reference; requantizing a merged weight introduces another approximation. Validate outputs and held-out quality for each exported artifact.",
+        "Optional: prompt tuning learns input embeddings; prefix tuning supplies learned layerwise attention prefixes, often key/value state in decoder implementations. Both freeze base weights but require conditioning state at serving time; neither generally folds into a fixed dense weight update like LoRA."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Draw the storage-to-compute-to-gradient path for one QLoRA layer without consulting the paper. For 1,048,576 quantized scalars, 4-bit payloads and one float32 scale per block of 64, derive 524,288 payload bytes plus 65,536 scale bytes: 576 KiB before double quantization, adapters, gradients, optimizer state, alignment and other metadata. Explain why calling this total training memory would be wrong. For the optional soft-prompt topic, annotate where each method's learned state enters a decoder and where it remains during serving.",
       "traps": [
-        "TODO"
+        "Reporting exactly half a byte per parameter as complete QLoRA memory. Scales, unquantized modules, adapters, activations and temporary dequantization buffers also occupy memory.",
+        "Reusing a plain-LoRA merge tolerance after requantization. Quantization changes the reference function, so retain both a numerical residual and held-out evaluation.",
+        "Calling learned virtual tokens free at inference. Input prompts or prefixes consume conditioning capacity and attention work, even if task-specific checkpoint storage is small."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Does QLoRA train the discrete NF4 base codes by ordinary gradient descent?",
+          "a": "No. The base remains frozen. Gradients pass through its dequantized computation to the trainable adapters and earlier trainable state."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What does double quantization quantize a second time?",
+          "a": "The first quantization's scale constants, not the adapter weights or every activation."
+        },
+        {
+          "q": "Why is merging into the original full-precision checkpoint not the same reference as the training forward?",
+          "a": "Training used the dequantized quantized base, which generally differs from the original weights. Adding the same adapter update to different base tensors need not preserve outputs."
+        },
+        {
+          "q": "Optional: is prompt tuning just choosing a better text instruction?",
+          "a": "No. It optimizes continuous embedding parameters while holding the base fixed. A hard text prompt changes discrete inputs without gradient-based parameter training."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the adaptation artifact's storage/compute dtype ledger and deployment compatibility decision, including a reason to keep plain LoRA when quantization is unnecessary.",
+      "stopWhen": "You can account for the 576 KiB example with exclusions and identify the correct base reference for a quantized adapter export; optional soft-prompt study ends at its conditioning-state diagram.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "QLoRA covers quantized adaptation but the pool lacks a locator for prompt/prefix mechanisms; the opened PEFT conceptual guide closes that coverage gap without another training recipe."
       }
     },
     {
