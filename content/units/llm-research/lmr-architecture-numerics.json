@@ -1,6 +1,17 @@
 {
   "section": "lmr-architecture-numerics",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "modern-notebook-accounting-lmr2",
+      "role": "reference",
+      "priority": "support",
+      "name": "Modern LLM Notebook, Appendix B: From Parameters to Memory",
+      "provider": "Walking Labs",
+      "access": "Free",
+      "use": "Appendix B Section 1 (parameters per block and per model, GQA and SwiGLU) and Section 2 (activation memory). Recount the activation tables with autograd hooks; the notebook lists produced tensors, not saved ones. Pin commit 979eecf.",
+      "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb"
+    }
+  ],
   "units": [
     {
       "id": "residual-prenorm-depth-scaling",
@@ -119,47 +130,109 @@
         "precision-and-softmax-stability"
       ],
       "outcomes": [
-        "TODO"
+        "Derive RMSNorm from LayerNorm, state when they coincide exactly, and derive the RMSNorm Jacobian \\(\\frac{1}{r}\\left(I - \\frac{yy^\\top}{d}\\right)\\).",
+        "Derive the z-loss gradient and explain why cross-entropy alone cannot control the logit offset that z-loss controls.",
+        "Find the precision hotspots in a block (squares, exponentials, long accumulations) and measure each against a float64 reference at a stated dtype and shape.",
+        "Reproduce attention-logit growth in a small model and show what QK-norm does to it."
       ],
-      "why": "TODO",
+      "why": "Most numerical failures in a decoder sit in three places: the norm, the attention softmax and the output softmax. A variant that changes any of them changes where precision is lost, so you need to know each hotspot before you attribute a loss difference to the mechanism.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/scale-diagnostics-property-tests",
+          "note": "Turn these measurements into dtype and scale tests on your decoder."
+        },
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/mixed-precision-scaling-clipping",
+          "note": "See how loss scaling, nonfinite handling and clipping interact with the hotspots found here."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 3 slides",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_03.pdf",
+          "locator": "Slides 14 to 19 (LayerNorm versus RMSNorm, why RMSNorm, dropping bias terms); slides 52 to 56 (stability: softmax hotspots, output z-loss, QK-norm, logit soft-capping)",
+          "depth": "Slide 15 asks whether 'RMSNorm is faster because it has fewer operations' makes sense and slide 16 answers with data movement. Treat that as a claim to test, not a result."
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Assignment 1 handout",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 3.4.1 RMSNorm (pp. 19 to 20, the upcast to float32) and Section 3.4.4 softmax and masking (pp. 23 to 24)"
+        },
+        {
+          "resource": "olmo2-architecture-lmr2",
+          "title": "2 OLMo 2 Furious (arXiv:2501.00656v3)",
+          "url": "https://arxiv.org/abs/2501.00656v3",
+          "locator": "Section 3.3.1 (nonparametric LayerNorm to RMSNorm), Section 3.3.3 Z-Loss and Figure 8 (a fused and a plain implementation give the same forward value and different backward behaviour), Table 1",
+          "depth": "Section 3.3.3 writes the z-loss term as \\(10^{-4} \\cdot \\log^2 Z\\) while Table 1 lists the weight as \\(10^{-5}\\). Take the coefficient from the training configuration you reproduce, not from either."
+        },
+        {
+          "resource": "wortsman-proxies-lmr2",
+          "title": "Small-Scale Proxies for Large-Scale Transformer Training Instabilities (arXiv:2309.14322v2)",
+          "url": "https://arxiv.org/abs/2309.14322v2",
+          "locator": "Section 3.1 (3.1.1 attention logit growth and 3.1.2 output logit divergence), Figures 1 to 4",
+          "depth": "Stop before Section 3.2. The muParam, warmup and depth experiments belong to later units."
         }
       ],
       "focus": [
-        "TODO"
+        "LayerNorm is RMSNorm applied to the mean-centred input. The two agree exactly when the feature mean is zero (same \\(\\epsilon\\) and gain, no bias). Add a constant to every feature and LayerNorm does not change, while RMSNorm rescales and keeps the offset. Dropping the mean removes one reduction and the bias parameter, and the claim that this makes the model faster is about memory traffic, not FLOPs.",
+        "The Jacobian of a normalization is \\(1/r\\) times a projection, so gradients through a norm scale like one over the input scale. That is the mechanism behind Xiong's Lemma 3 and behind the learning-rate sensitivity in Wortsman et al.",
+        "Softmax is invariant to adding a constant to all logits, so cross-entropy is flat along that direction and nothing stops the offset from drifting. z-loss, \\(c(\\log Z)^2\\) with \\(Z = \\sum_i e^{z_i}\\), adds a gradient \\(2c \\log Z\\) times the softmax along it. QK-norm bounds the attention logits directly: after per-head RMSNorm with unit gains each query and key has norm \\(\\sqrt{d_h}\\), so \\(|z| \\le \\sqrt{d_h}\\) before the gains.",
+        "Name each hotspot with its failure. Squares in float16 overflow when \\(|x| \\ge 256\\), because \\(256^2 = 65536\\) exceeds the float16 maximum 65504. bfloat16 keeps the float32 range but has 8 bits of precision, so logits in \\([64, 128)\\) are rounded to multiples of 0.5. Naive sequential accumulation stalls once the running sum reaches 256 in bfloat16. Library reductions and fused norm kernels accumulate in a wider type, so you must check your own code, not the library's."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the RMSNorm Jacobian at \\(\\epsilon = 0\\) and show that its largest singular value is \\(1/r\\) with \\(r = \\sqrt{\\frac{1}{d}\\sum_i x_i^2}\\) and that \\(x\\) itself is mapped to zero. Show \\(\\operatorname{LayerNorm}(x) = \\operatorname{RMSNorm}(x - \\bar{x})\\). Then derive the z-loss gradient with respect to the logits, \\(\\operatorname{softmax}(z) - \\text{onehot}(y) + 2c \\log Z \\cdot \\operatorname{softmax}(z)\\), and check it against autograd in float64 for \\(z = [2, 0, -1]\\), \\(y = 0\\), \\(c = 10^{-4}\\): the gradient is \\([-0.15584, 0.11424, 0.04203]\\) with \\(\\log Z = 2.16985\\). Finally, in PyTorch 2.14.1 on CPU, take a float16 vector of 4095 ones and one entry 300. A hand-written `x.pow(2).mean()` gives `inf` and the normalized row is all zeros. After `x.float()` the entries are 0.2086 and 62.59. `torch.nn.functional.rms_norm` on the same float16 input returns finite values because the library upcasts.",
       "traps": [
-        "TODO"
+        "Testing a hotspot through the library function instead of your own code. In the check above `torch.nn.functional.rms_norm` is safe in float16, and `torch.ones(10000, dtype=torch.bfloat16).sum()` gives 9984 (a rounded result of a wider accumulation), but a Python loop adding ones in bfloat16 stops at 256. The hand-written norm and reduction in your block are what can fail.",
+        "Claiming QK-norm 'fixes' attention logit growth without a baseline run at the same learning rate. Wortsman et al. show growth at high learning rates in small models and relate it to the quadratic dependence of logits on parameter norms; they call that a hypothesis. Run both variants at several learning rates.",
+        "Trusting a fused z-loss kernel. OLMo 2 Figure 8 shows a fused implementation and a plain PyTorch one that agree in the forward pass and diverge in the backward pass, and the report suspects precision. Compare gradients, not only the loss value."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "When do LayerNorm (no bias) and RMSNorm give the same output, and what happens to each when you add a constant to every feature?",
+          "a": "They agree when the input already has zero mean over the feature axis, with the same \\(\\epsilon\\) and gain. Adding a constant leaves LayerNorm unchanged, because it subtracts the mean. RMSNorm still divides by the new root mean square, so the constant remains in the output at a different scale."
+        },
+        {
+          "q": "Why can't cross-entropy alone stop all the logits from drifting upward together, and what does z-loss add?",
+          "a": "Cross-entropy depends only on logit differences, so adding \\(\\delta\\) to every logit leaves the loss and its gradient unchanged while \\(\\log Z\\) rises by \\(\\delta\\). The term \\(c(\\log Z)^2\\) is not shift-invariant and adds the gradient \\(2c \\log Z \\cdot \\operatorname{softmax}(z)\\), which pulls \\(\\log Z\\) toward 0."
+        },
+        {
+          "q": "After per-head RMSNorm with unit gains, what is the largest possible attention logit \\(q \\cdot k / \\sqrt{d_h}\\)?",
+          "a": "\\(\\sqrt{d_h}\\). Each normalized vector has root mean square 1, so norm \\(\\sqrt{d_h}\\), and Cauchy-Schwarz bounds the dot product by \\(d_h\\). Learned gains multiply the bound, so the observed maximum can exceed \\(\\sqrt{d_h}\\)."
+        },
+        {
+          "q": "An activation vector in float16 has largest entry 200. Is a hand-written RMS computation safe? What if the entry is 260?",
+          "a": "At 200 the square is 40000, below the float16 maximum 65504, so the square is finite. At 260 the square is 67600, which overflows to `inf`, and every output of that row becomes 0. The threshold is 256 because \\(256^2 = 65536 > 65504\\)."
+        },
+        {
+          "q": "Two runs differ only in whether QK-norm is on, and the QK-norm run reaches a lower loss at one learning rate. What else must hold before you credit QK-norm?",
+          "a": "Several seeds at that learning rate, a learning-rate sweep for both variants (the best learning rates may differ), and the same data order and token budget. A single run at one learning rate cannot separate the mechanism from learning-rate sensitivity."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: RMSNorm Forward Pass",
+          "url": "https://www.tensortonic.com/problems/cs336-l03-rmsnorm-forward",
+          "locator": "Free problem `cs336-l03-rmsnorm-forward`, function `rmsnorm(x, g, epsilon)`",
+          "note": "The three public cases check two rows with unit gain, a learned gain of `[2, 0.5]`, and an all-zero row. They do not test float16 or bfloat16 inputs or gradients. Add your own tests: a float16 row with an entry above 256, and a float64 reference."
+        },
+        {
+          "name": "CS336 Assignment 1: `rmsnorm`",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py",
+          "locator": "Problem (`rmsnorm`), Section 3.4.1; implement `run_rmsnorm` in `tests/adapters.py` and pass `test_rmsnorm`",
+          "note": "If you passed this earlier, rerun it after adding the float16 test above."
+        },
+        {
+          "name": "Attention-logit growth with and without QK-norm",
+          "url": "https://arxiv.org/abs/2309.14322v2",
+          "locator": "Reproduce the idea of Figure 2 on a model of a few million parameters or fewer: track the maximum layer-0 attention logit during training at four learning rates, with and without QK-norm",
+          "note": "Labeled example, not a target: 4-layer pre-norm decoder, width 128, 4 heads, FFN width 344, a byte-level text corpus, batch 16 by 128 tokens, AdamW with betas 0.9 and 0.95, no weight decay, 20 warmup steps, 400 steps, one seed, PyTorch 2.14.1 on CPU. The maximum layer-0 logit seen was 45.5, 1,031, 14,242 and 363,433 at learning rates 0.003, 0.01, 0.03 and 0.1 without QK-norm, and 9.6, 13.5, 18.9 and 29.4 with it. Use three seeds on your own data and report the spread."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can derive the Jacobian and the z-loss gradient from a blank page, and you have a table of your own measurements: one row per hotspot, with dtype, shape and error against float64, plus the attention-logit curves with and without QK-norm.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 slides, A1 handout, OLMo 2 and Wortsman cover derive and measure depth. Slide 56 (soft-capping) is only named; the Jacobian, z-loss gradient and dtype thresholds are derived in the card and were run."
       }
     },
     {
@@ -174,47 +247,101 @@
         "parameter-activation-kv-cost"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the gated feed-forward width that matches a two-matrix feed-forward network in parameters, and quantify what rounding the width does to the match.",
+        "Derive per-block parameter counts, per-token KV bytes and saved-activation counts for a standard block and for one variant (SwiGLU, GQA), and say which of them a width match leaves unmatched.",
+        "Count saved activations in your own block with autograd hooks and reconcile the count with the formula."
       ],
-      "why": "TODO",
+      "why": "Every later comparison in this section says 'at matched parameters'. A gated feed-forward network matches parameters and matmul FLOPs with its ungated baseline but not activation memory, and a rounded width does not even match parameters exactly. This unit gives you the accounting to state exactly what is matched.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/kv-head-sharing-latent-attention",
+          "note": "Apply the same accounting to the attention side: KV bytes for MHA, MQA, GQA and MLA."
+        },
+        {
+          "unit": "llm-research/lmr-architecture-numerics/fair-architecture-comparison",
+          "note": "Use the accounting to set up a matched-parameter comparison."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "glu-variants-lmr2",
+          "title": "GLU Variants Improve Transformer (arXiv:2002.05202v1)",
+          "url": "https://arxiv.org/abs/2002.05202v1",
+          "locator": "Section 2 (Equations 4 to 6); Section 3.1 (hidden width 3072 reduced to 2048); Table 1 with its standard deviations at 65,536 steps"
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 3 slides",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_03.pdf",
+          "locator": "Slides 20 to 26 (activations and gated units), slides 36 to 41 (feed-forward to model-dimension ratio, the gated exception)"
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Assignment 1 handout",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 3.4.2 SwiGLU (pp. 21 to 22) and Problem (`transformer_accounting`) (pp. 27 to 28)",
+          "depth": "You did parts (a) to (c) in LLM Foundations. Redo the arithmetic for a grouped-query, SwiGLU block instead of repeating them."
+        },
+        {
+          "resource": "olmo2-architecture-lmr2",
+          "title": "2 OLMo 2 Furious (arXiv:2501.00656v3)",
+          "url": "https://arxiv.org/abs/2501.00656v3",
+          "locator": "Section 2.1, the SwiGLU bullet: hidden size about 8/3 of the model width, rounded up to a multiple of 128 (11,008 for the 7B model)"
+        },
+        {
+          "resource": "modern-notebook-accounting-lmr2",
+          "title": "Modern LLM Notebook, Appendix B: From Parameters to Memory",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb",
+          "locator": "Section 1 (Parameters) and Section 2 (Activation Memory)",
+          "depth": "Section 2 lists the tensors a forward pass produces, not the tensors autograd saves, and omits two that a SwiGLU feed-forward network saves. Use it for the layout and recount with hooks. Stop before Section 3."
         }
       ],
       "focus": [
-        "TODO"
+        "A gated feed-forward network has three \\(d \\times h\\) matrices and an ungated one has two \\(d \\times 4d\\) matrices, so equal parameters means \\(3dh = 8d^2\\) and \\(h = \\tfrac{8}{3}d\\). Shazeer's Section 3.1 states the same match as 3072 to 2048 at \\(d = 768\\): \\(2 \\cdot 768 \\cdot 3072 = 3 \\cdot 768 \\cdot 2048\\).",
+        "Real configurations round the width. For \\(d = 4096\\) the exact width is 10922.67 and OLMo 2 uses 11,008, so the gated block has 0.78% more parameters than a 4x ungated block. State the counted parameters of both variants in any comparison.",
+        "Parameters and matmul FLOPs match; saved activations do not. For one token, an ungated GELU feed-forward network at width \\(4d\\) saves \\(2h + d = 9d\\) elements for backward (input, pre-activation, activation), while the gated one at width \\(\\tfrac{8}{3}d\\) saves \\(4h + d \\approx 11.67d\\) (input, two projections, the activated gate and the product).",
+        "Shazeer's Table 1 reports means with standard deviations of 0.004 to 0.010 for four 65,536-step runs and single values at 524,288 steps. The 0.003 gap between GEGLU (1.633) and SwiGLU (1.636) at the longest run is smaller than that run-to-run spread. The setting is T5 span-filling with Adafactor and no dropout."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, for width \\(d = 4096\\): derive \\(h = 8d/3\\), then count a 4x GELU feed-forward network (\\(2 \\cdot 4096 \\cdot 16384 = 134{,}217{,}728\\) parameters) against the gated one at width 11,008 (\\(3 \\cdot 4096 \\cdot 11008 = 135{,}266{,}304\\)), a difference of 1,048,576 or 0.78%. Then for a block with 32 query heads, 8 KV heads, head size 128 and \\(d = 4096\\), derive 41,943,040 attention parameters (67,108,864 for multi-head) and 4096 bytes of bfloat16 KV cache per token per layer. Finally, wrap each feed-forward module in `torch.autograd.graph.saved_tensors_hooks`, count unique saved non-weight tensors for \\(d = 96\\) at widths 384 (GELU) and 256 (SwiGLU), and match \\(9d\\) and \\(11.67d\\) elements per token (864 and 1120). The two modules both hold 73,728 parameters. Measured in PyTorch 2.14.1 eager mode, float32.",
       "traps": [
-        "TODO"
+        "Calling a width match a cost match. Equal parameters and equal matmul FLOPs leave saved activations and elementwise work different (about 1.3 times the saved elements here), and a recompute or fused-kernel policy changes the saved set again. Report which cost you matched.",
+        "Recounting with the notebook's Section 2 recipe. It lists produced tensors, counts a feed-forward block as \\(2BSD + 2BSF\\) and rounds the gated block's \\(6.33BSD\\) up to \\(8BSD\\). Autograd also saves the activated gate and the gated product, and a count from hooks is the check.",
+        "Reading the 8/3 rule as exact. Rounding the width to a multiple of 64, 128 or 256 changes the parameter count, and the 4x baseline in the A1 SiLU ablation matches the gated width only 'approximately'."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is the matched gated width \\(\\tfrac{8}{3}d\\) and not \\(\\tfrac{2}{3} \\cdot 4d\\) of something else?",
+          "a": "It is the same number: three matrices of \\(d \\times h\\) must equal two matrices of \\(d \\times 4d\\), so \\(3h = 8d\\). Equivalently the ungated width \\(4d\\) is reduced by a factor of 2/3."
+        },
+        {
+          "q": "A model with width 4096 uses a gated feed-forward width of 11,008. By how many parameters per layer does it differ from a 4x ungated network?",
+          "a": "\\(3 \\cdot 4096 \\cdot 11008 = 135{,}266{,}304\\) against \\(2 \\cdot 4096 \\cdot 16384 = 134{,}217{,}728\\), so 1,048,576 more, about 0.78%."
+        },
+        {
+          "q": "A SwiGLU and a GELU feed-forward network have identical parameter counts. Which one saves more activations for backward, by how much, and why?",
+          "a": "SwiGLU, about 11.67d against 9d elements per token (1.3 times). It saves the shared input, both projections, the activated gate and their product, while GELU saves the input, the pre-activation and the activation."
+        },
+        {
+          "q": "Shazeer's Table 1 has GEGLU at 1.633 and SwiGLU at 1.636 after 524,288 steps. What can you conclude about their ranking?",
+          "a": "Nothing firm. The gap is 0.003, the 65,536-step runs have standard deviations of 0.004 and 0.010, and the longest runs are single values. The paper recommends SwiGLU on the whole table, not on that gap."
+        },
+        {
+          "q": "Per token and per layer, how many KV-cache bytes does a bfloat16 model with 8 KV heads of size 128 need, and what is the cache for one 8192-token sequence in a 32-layer model?",
+          "a": "\\(2 \\cdot 8 \\cdot 128 \\cdot 2 = 4096\\) bytes per token per layer. Over 32 layers and 8192 tokens that is \\(4096 \\cdot 32 \\cdot 8192 = 1{,}073{,}741{,}824\\) bytes, exactly 1 GiB (1.07 GB)."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Parameter-Matched SwiGLU Block",
+          "url": "https://www.tensortonic.com/problems/cs336-l03-parameter-matched-swiglu",
+          "locator": "Free problem `cs336-l03-parameter-matched-swiglu`, function `parameter_matched_swiglu(x, w_g, w_v, w_o, base_params)`",
+          "note": "The three public cases check the selected width (a rounded \\(P/(3d)\\), clamped to the weight pool), the parameter count \\(3dh\\) and the output on small matrices. They do not check gradients or the activation memory. Add a test that counts saved tensors with hooks and compares it with your formula."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can state, for a block you choose, the parameter count, the per-token KV bytes and the saved-activation count of both the baseline and the variant, and your hook count agrees with the formula.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for activation memory: the pool's sources give parameter and FLOP accounting but nothing on saved activations. Modern LLM Notebook Appendix B was opened and covers the layout, with the saved-set gap noted in the card."
       }
     },
     {
