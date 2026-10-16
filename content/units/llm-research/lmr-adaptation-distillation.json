@@ -656,7 +656,7 @@
     {
       "id": "sequence-onpolicy-distillation",
       "title": "Sequence and synthetic-data distillation and on-policy distillation",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -665,47 +665,75 @@
         "on-policy-distillation"
       ],
       "outcomes": [
-        "TODO"
+        "Build an offline sequence-distillation data contract with teacher provenance, filtering counts and leakage-safe splits.",
+        "Implement a bounded student-rollout and teacher-scoring loop that distinguishes prefix source from divergence direction.",
+        "Test a fixed-prefix reverse-KL gradient estimator without claiming it differentiates full trajectory visitation."
       ],
-      "why": "TODO",
+      "why": "Offline teacher completions are cheap to reuse but do not expose the student to its own mistakes. On-policy supervision changes the visited prefixes and the compute budget, not automatically the KL direction.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-adaptation-distillation/adaptation-cost-model-merging",
+          "note": "Include teacher generation, scoring and student rollout costs in the final comparison."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "rlhf-book-adaptation-lmr6",
+          "title": "RLHF Book Chapter 12: synthetic data and distillation",
+          "url": "https://rlhfbook.com/c/12-synthetic-data.html",
+          "locator": "Distillation with Synthetic Data; The Path to On-Policy, Teacher-Student Distillation, subsections Adapting Knowledge-Distillation for LMs and From Offline to On-Policy Distillation",
+          "depth": "Read for vocabulary, not a guarantee that generated answers are correct or that imitation-learning bounds transfer unchanged to language models. Headings checked 2026-10-16."
+        },
+        {
+          "resource": "raschka-distillation-lmr6",
+          "title": "Build a Reasoning Model (From Scratch): offline sequence distillation",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 8: Section 8.3, pp. 273-275; Section 8.4, pp. 276-284, especially 8.4.3, p. 282; Section 8.6, pp. 286-291; Section 8.7, pp. 291-296; Section 8.8, pp. 296-303",
+          "depth": "Skip the paid teacher generation in Section 8.2. Inspect a small subset of the pregenerated data in 8.3 or use local synthetic fixtures. Adapt the data and loss logic, not the book's whole-model run; validate masks against the earlier card."
+        },
+        {
+          "resource": "gkd-lmr6",
+          "title": "On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes",
+          "url": "https://arxiv.org/abs/2306.13649v3",
+          "locator": "Section 3, Equations 2 to 5; Section 3.1 and Algorithm 1; Section 4, GKD Variants paragraph",
+          "depth": "Implement the data-source switch and detached-rollout convention. Do not reproduce the TPU experiments. Skip notebook 31's opening reverse-KL gradient simulation: its student-minus-teacher gradient is forward KL."
         }
       ],
       "focus": [
-        "TODO"
+        "Offline sequence distillation is response-only next-token likelihood on teacher-generated text. It needs no teacher logits and can cross tokenizers by retokenizing text. Record teacher checkpoint or supplied provenance, prompt, template, decoding settings, generated text, filter decisions, license and split hashes. Unknown provenance stays unknown.",
+        "Split by source problem or document before generation and filtering, deduplicate across splits and retain an untouched evaluation set. Correct-answer filtering changes the distribution; log acceptance rates and inspect rejected and accepted traces. A correct final answer does not verify the reasoning trace.",
+        "GKD chooses a student-data fraction and a divergence separately. On-policy forward KL is valid. Collect fresh student prefixes without gradient through sampled IDs, then score teacher and student on those same prefixes with aligned vocabulary, temperature and EOS masks. GKD's detached visitation update is a semi-gradient, not the full derivative of its displayed expectation.",
+        "For a fixed prefix, let teacher probabilities be \\(p\\) and student probabilities be \\(q\\). A sampled reverse-KL surrogate is \\(\\operatorname{stopgrad}[\\log q(a)-\\log p(a)]\\log q(a)\\), with \\(a\\sim q\\). Its expected gradient matches the fixed-prefix reverse-KL gradient. This local identity omits future-prefix credit assignment; it is not a full MiniLLM reproduction."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1 float64, enumerate three actions with teacher probabilities \\((0.7,0.2,0.1)\\) and student probabilities \\((0.5,0.3,0.2)\\). Weight each surrogate by detached student probability. Match its student-logit gradient to exact reverse KL within 1e-12; it is approximately \\((-0.2142525434,0.0940296774,0.1202228661)\\), not \\((-0.2,0.1,0.1)\\). Then use a tiny two-step categorical teacher and student to log fixed-data versus freshly sampled prefix IDs under the same prompts. Show that switching the prefix source does not switch your chosen divergence. Keep masks and teacher parameters fixed and compare against a no-distillation update.",
       "traps": [
-        "TODO"
+        "Training the student to imitate its own sampled tokens without a teacher signal. On-policy collection alone supplies no corrective supervision.",
+        "Calling a negative sampled log-ratio a negative exact KL. An unbiased finite-sample estimate can be negative even when the population divergence is nonnegative; test the expectation and gradient separately.",
+        "Changing prompt distribution and calling it an exposure-bias fix. Exposure bias here concerns generated prefixes under the same prompts. Cached old student rollouts are off-policy unless explicitly treated as such."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Can offline teacher-text distillation use a different tokenizer?",
+          "a": "Yes, retokenize the text for the student. Direct token-distribution KL cannot compare unrelated vocabulary coordinates without an additional alignment method."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a student-data fraction of one imply reverse KL?",
+          "a": "No. It specifies student-generated prefixes. GKD independently chooses forward KL, reverse KL or another divergence."
+        },
+        {
+          "q": "Why detach the log-ratio coefficient in the sampled surrogate?",
+          "a": "It is the score-function coefficient, not a second differentiable loss factor. At a fixed prefix the expected detached-coefficient gradient equals reverse KL's gradient; differentiating it too changes the estimator."
+        },
+        {
+          "q": "Why keep evaluation prompts out of generation and filtering?",
+          "a": "Teacher answers, duplicate source problems and filter choices can leak evaluation information into training or selection. Hold out source groups before constructing the distillation data."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "stopWhen": "The section mini-project's distillation evidence includes the finite-vocabulary gradient oracle, a tiny detached-rollout loop, an offline provenance manifest and a matched no-distillation control. A real-model gain is not required to pass these mechanism tests.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The primary book supplies the taxonomy, Raschka supplies offline data and loss locators, and GKD supplies the on-policy implementation contract. The section mini-project covers the bounded loop and provenance evidence."
       }
     },
     {
