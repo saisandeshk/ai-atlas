@@ -274,47 +274,65 @@
         "gradient-clipping"
       ],
       "outcomes": [
-        "TODO"
+        "Integrate autocast, token-normalized accumulation, unscaling and clipping at effective-batch boundaries.",
+        "Reject nonfinite updates while retaining the offending batch and precision-state evidence.",
+        "Record the actual parameter, gradient, moment and accumulation dtypes rather than assuming them from the precision label."
       ],
-      "why": "TODO",
+      "why": "Mixed precision, autocast and gradient scaling are prerequisites. The new contract is their interaction with uneven accumulation, skipped updates, schedule position and recoverable language-model state.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-pretraining-reliability/loss-spikes-training-instrumentation",
+          "note": "Capture the first numerical event before it becomes a loss spike."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "mixed-precision-lmr3",
+          "title": "Mixed Precision Training: the three numerical safeguards",
+          "url": "https://arxiv.org/abs/1710.03740v3",
+          "locator": "Sections 3.1 FP32 Master Copy of Weights, 3.2 Loss Scaling and 3.3 Arithmetic Precision, plus Figure 1",
+          "depth": "Stop before the benchmark results. This is the FP16 rationale, not a claim that every current BF16 implementation uses the same storage layout."
+        },
+        {
+          "resource": "pytorch-reliability-lmr3",
+          "title": "PyTorch 2.14 AMP: clipping and accumulation",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/amp_examples.html#gradient-accumulation",
+          "locator": "Typical Mixed Precision Training; Working with Unscaled Gradients - Gradient clipping; Working with Scaled Gradients - Gradient accumulation",
+          "depth": "Use the single-optimizer path. Replace division by the configured accumulation length with the actual valid-token denominator from the first unit."
         }
       ],
       "focus": [
-        "TODO"
+        "With PyTorch 2.14.1, keep the scaler's scale fixed throughout an accumulation window. Unscale once after its last backward, inspect finiteness, record the unclipped norm, clip, then perform the conditional step and scale update.",
+        "FP32 parameters under autocast retain FP32 leaf gradients and normally FP32 AdamW moments. Autocast does not itself convert the stored parameters to BF16 or create an extra persistent master copy.",
+        "BF16's exponent range usually removes the need for scaling, not the need for finiteness checks. Use FP32 on CPU if BF16 operations are unsupported; a CPU `torch.amp.GradScaler('cpu')` can test skip semantics without requiring FP16 kernels.",
+        "Keep consumed-token counters even when the optimizer skips. Log scale, pre-clip norm, skip decision and schedule position so a resume preserves the chosen policy."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1, give an SGD parameter gradient `[3.0, 4.0]` through a loss scaled by 8. Unscale, record norm 5, then clip with maximum norm 1; the result is approximately `[0.6, 0.8]` within `1e-6`. Repeat with one infinite gradient using `torch.amp.GradScaler('cpu', init_scale=8.0)`: the parameter must not change and the default scale update reduces the scale to 4. Do not clip the invalid gradient before recording it.",
       "traps": [
-        "TODO"
+        "Unscaling each microbatch separately. Later scaled gradients then accumulate into unscaled buffers and cannot be interpreted with one scale.",
+        "Using the return value of `scaler.step(optimizer)` as a universal success flag. Most optimizer steps return `None` even on success; instrument the actual step decision.",
+        "Clipping each microbatch instead of the accumulated gradient. Clipping is nonlinear, so that trains a different update."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why is clipping before unscaling wrong?",
+          "a": "The threshold is applied to the scaled norm. After unscaling, the effective clipping threshold is smaller by the scale factor."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A scaler skipped an update. Should you replay the batch automatically?",
+          "a": "Not silently. Replaying changes data exposure and cost. Follow the run's declared skip or replay policy, and record the consumed tokens and every attempt either way."
+        },
+        {
+          "q": "Does enabling BF16 autocast guarantee that accumulation uses BF16?",
+          "a": "No. FP32 leaf parameters normally accumulate FP32 gradients. Inspect actual buffers and optimizer state; operation precision and stored-state precision are different choices."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the mixed-precision accumulation path, one seeded nonfinite event, a refused update and a precision-state resume regression in lmlab.",
+      "stopWhen": "Your finite accumulated update matches an FP32 control within a declared tolerance, and an injected nonfinite gradient leaves parameters and optimizer moments unchanged while the event and counters remain recorded.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Currency and coverage failed for effective-batch scaling and current skip semantics. The opened PyTorch 2.14 AMP examples fill that gap beside the original precision paper."
       }
     },
     {
