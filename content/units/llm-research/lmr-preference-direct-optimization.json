@@ -421,47 +421,77 @@
         "dpo-beta-and-gradients"
       ],
       "outcomes": [
-        "TODO"
+        "Derive DPO by substituting the KL-optimal policy into a Bradley-Terry likelihood, retaining the partition term until it cancels.",
+        "Implement stable DPO from four response log-probability tensors and verify its policy-input gradients.",
+        "Explain how the adjusted margin, label noise and regularization coefficient affect update pressure without promising behavior gains."
       ],
-      "why": "TODO",
+      "why": "The reparameterization removes a reward-model training stage, not the assumptions behind preference learning. The gradient reveals which mislabeled or poorly covered comparisons can dominate a bounded run.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-preference-direct-optimization/response-logprobs-reference-identity",
+          "note": "Replace supplied scores with tested language-model response scores."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "dpo-paper-lmr7",
+          "title": "DPO: derivation and gradient",
+          "url": "https://arxiv.org/abs/2305.18290v3",
+          "locator": "arXiv:2305.18290v3, Section 4 equations 4 to 7 and What does the DPO update do?; Appendix A.2 and A.4, deriving the Bradley-Terry objective and its gradient"
+        },
+        {
+          "resource": "rlhf-book-preferences-lmr7",
+          "title": "The RLHF Book: Chapter 8, Direct-Alignment Algorithms",
+          "url": "https://rlhfbook.com/c/08-direct-alignment.html",
+          "locator": "DPO Derivation: Deriving DPO Objectives for BT Models and Deriving the BT DPO Gradient; Implementation Details",
+          "depth": "Use the derivation and loss listing, not the claim that KL is static or that each update reaches the optimal policy. Finite-data, finite-step fitting need not recover the population optimum."
+        },
+        {
+          "resource": "rlhf-code-preference-lmr7",
+          "title": "Stable differential reference for the pair loss",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/direct_alignment/loss.py",
+          "locator": "`DPOLoss.forward`: chosen/rejected log ratios, stable logistic loss and detached logging metrics",
+          "depth": "Use the executable two-term smoothing expression if exploring soft labels. Ignore the nearby comment that combines a sum of log sigmoids into the log of their sum; that algebra is invalid."
         }
       ],
       "focus": [
-        "TODO"
+        "Let \\(\\ell_\\theta(y)=\\log\\pi_\\theta(y\\mid x)\\), \\(\\ell_{\\text{ref}}(y)=\\log\\pi_{\\text{ref}}(y\\mid x)\\), and \\(m=[\\ell_\\theta(y_w)-\\ell_\\theta(y_l)]-[\\ell_{\\text{ref}}(y_w)-\\ell_{\\text{ref}}(y_l)]\\). The pair loss is \\(L=-\\log\\sigma(\\beta m)\\).",
+        "Recover \\(r(x,y)=\\beta\\log[\\pi^*(y\\mid x)/\\pi_{\\text{ref}}(y\\mid x)]+\\beta\\log Z(x)\\). Only a shared prompt lets the partition term cancel in the pair likelihood. State the fixed-reference, Bradley-Terry and support assumptions.",
+        "The scalar derivative is \\(\\partial L/\\partial m=-\\beta\\sigma(-\\beta m)\\). Its magnitude is greater for negative than positive margins at the same coefficient. A mislabeled hard pair can therefore exert substantial pressure.",
+        "The reference is frozen. The coefficient controls both loss scaling and the population reward/KL trade-off; changing it is not merely changing the learning rate, nor a guarantee of monotonic realized KL."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Derive the substitution and margin gradient without notes. On CPU with PyTorch 2.14.1 and `torch.float64`, use policy chosen/rejected log probabilities -3 and -5, reference chosen/rejected -4 and -5, and \\(\\beta=0.4\\). Obtain \\(m=1\\), loss 0.5130152523999526, and policy-input derivatives approximately -0.1605249359550192 and 0.1605249359550192. Match the pinned `DPOLoss` and `torch.autograd.gradcheck`; compare these values with absolute tolerance \\(10^{-12}\\). Repeat stable loss evaluation at scaled logits -1000 and 1000, requiring finite losses and gradients rather than nonzero gradients at saturation.",
       "traps": [
-        "TODO"
+        "Subtracting the reference gap in the wrong direction. Write all four scores before simplifying the margin.",
+        "Using detached implicit rewards to form the training loss. Detachment is for reporting only; the policy scores in the loss must retain their graph.",
+        "Saying every parameter update raises the chosen probability and lowers the rejected probability. The scalar score derivatives have opposite signs, but shared model parameters and probability normalization can move both probabilities down."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "At identical policy and reference scores, is there no learning signal?",
+          "a": "The adjusted margin is zero and loss is \\(\\log 2\\), but the margin derivative is \\(-\\beta/2\\). The parameter gradient need not vanish unless the two policy-score gradients cancel."
+        },
+        {
+          "q": "Does increasing the coefficient always increase gradient magnitude?",
+          "a": "No. At a fixed positive margin, the coefficient multiplies a sigmoid weight that decreases as the scaled margin grows. At zero margin the magnitude is \\(\\beta/2\\); negative margins behave differently."
+        },
+        {
+          "q": "Does the derivation prove that an offline DPO run equals online RLHF in behavior?",
+          "a": "No. It reparameterizes a preference model through the optimal policy of a specified KL-regularized reward problem. Coverage, model fit, optimization and preference-model assumptions still limit the learned policy."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Implement the DPO Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l15-direct-preference-optimization-loss",
+          "locator": "Implement `direct_preference_optimization_loss(policy_chosen, policy_rejected, reference_chosen, reference_rejected, beta, label_smoothing)`",
+          "note": "Free. Public cases cover a positive margin, mixed margin signs and a zero margin with smoothing; strict reward ties count as incorrect. They do not test gradients or text masking. Add the independent derivative check above before using a model."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You derive the complete substitution, pass the public score examples and match the independent gradient oracle, including finite extreme-logit behavior.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The original derivation and book gradient reach derive depth; pinned executable loss code and the free score problem support independent numerical and gradient checks."
       }
     },
     {
