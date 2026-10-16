@@ -151,7 +151,7 @@
     {
       "id": "assistant-masks-packed-sft",
       "title": "Assistant-only loss masks and packed SFT boundaries",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "implement"
       ],
@@ -160,47 +160,87 @@
         "packed-sft-boundaries"
       ],
       "outcomes": [
-        "TODO"
+        "Implement assistant-only targets with an explicit shift convention and valid-target denominator.",
+        "Check real chat-template spans against an independently marked token table, including multiple assistant turns and truncation.",
+        "Prove packed examples are attention-isolated and label-isolated under the declared packing policy."
       ],
-      "why": "TODO",
+      "why": "Packing and loss masks established the two-mask distinction. Now prove it on a real instruction pipeline, where role headers, assistant endings and library label shifting can silently change the objective.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-adaptation-distillation/full-finetuning-memory-budget",
+          "note": "Budget training only after the actual target counts are known."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-sft-lmr6",
+          "title": "CS336 Spring 2026 Assignment 5 Supplement, Version 26.0.0",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_supplement_safety_rlhf.pdf",
+          "locator": "Section 4.2.1, Data Loader, Problem `data_loading`, pp. 9 to 10; `get_packed_sft_dataset` and `run_iterate_batches`",
+          "depth": "Implement its concatenated-stream contract separately from your isolated assistant-only path. The assignment's token fixtures do not prove assistant masks or attention isolation. Do not publish assignment solutions."
+        },
+        {
+          "resource": "hf-sft-lora-lmr6",
+          "title": "TRL 1.15.0: SFT masking and packing",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/sft_trainer",
+          "locator": "Train on assistant messages only; Train on completion only; `SFTConfig` entries for `packing`, `packing_strategy`, `padding_free`, `completion_only_loss` and `assistant_only_loss`"
+        },
+        {
+          "resource": "rlhf-code-adaptation-lmr6",
+          "title": "RLHF Book code: final-turn-only labels",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/instruction_tuning/utils.py",
+          "locator": "`_encode_batch`, `compute_loss` and `_collate`",
+          "depth": "Trace one multi-turn record. This is final-assistant-turn-only supervision, not all-assistant-turn supervision; do not reuse prefix lengths without checking prefix ID equality."
         }
       ],
       "focus": [
-        "TODO"
+        "For logits indexed by source position, supervise the next token only if it belongs to an eligible assistant span in the same example. Decide whether assistant endings are targets; include the stop token in this route. Mask padding and cross-example transitions.",
+        "Compute summed negative log likelihood divided by the number of valid shifted targets, not padded length. Reject or explicitly skip zero-target batches. Accumulated microbatches need one combined valid-token denominator.",
+        "With conversational language-modeling records, TRL 1.15.0 defaults to full-sequence loss. Prompt-completion records default to completion-only loss. `assistant_only_loss=True` is separate; the template must expose generation spans. TRL can substitute a bundled Qwen3 training template, so inspect the effective template and token IDs too.",
+        "EOS does not isolate attention. For isolated packing allow only causal, same-example visibility and reset positions as in separate forwards. On CPU use a small decoder with an explicit dense mask, or train unpacked; TRL's default `bfd` packing enables padding-free execution with a FlashAttention backend requirement."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, recover TensorTonic's first public case: `input_ids=[[10,11,20,21,2]]`, `role_ids=[[-1,0,-1,1,-1]]`, all positions attended and `assistant_role=1` give source-aligned labels `[[-100,-100,21,-100,-100]]`. Then pack two conversations from the preceding unit with the real tokenizer. Independently mark target owners and the block-causal attention matrix. On a tiny PyTorch 2.14.1 decoder in evaluation mode, compare packed logits with separate forwards using the same position IDs and a declared tolerance; changing the first example must not change the second example's logits.",
       "traps": [
-        "TODO"
+        "Passing already shifted TensorTonic labels into a causal-LM loss that shifts labels internally. Choose source-aligned or token-aligned labels, then shift exactly once.",
+        "Treating a public packing test as a leakage oracle. Matching token and label fixtures says nothing about which examples attend to one another.",
+        "Masking every token equal to the padding ID when padding and EOS share an ID. Use position validity so real assistant stop tokens remain supervised."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Can a masked user token still influence an assistant prediction?",
+          "a": "Yes. Loss masking removes its prediction from the objective, not its use as context. Attention permissions govern influence."
+        },
+        {
+          "q": "Why can averaging two microbatch mean losses misweight SFT?",
+          "a": "Different valid-target counts give each token a different weight. Sum the token losses and divide by the total valid-target count across the accumulation window."
+        },
+        {
+          "q": "What must match between packed and separate forwards besides the labels?",
+          "a": "Token IDs, causal and example visibility, position IDs and model state. Disable dropout and compare with a stated numeric tolerance. Labels alone cannot make logits equivalent."
+        },
+        {
+          "q": "Why inspect the effective TRL template after enabling assistant-only loss?",
+          "a": "The trainer can replace a template lacking generation markers. That may change serialized tokens as well as mask ownership, so rerun the train-serve and stop-token fixtures."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Build an Assistant-Only SFT Loss Mask",
+          "url": "https://www.tensortonic.com/problems/cs336-l15-assistant-only-sft-mask",
+          "locator": "Implement `assistant_only_sft_mask(input_ids, role_ids, attention_mask, assistant_role)`",
+          "note": "The three public cases cover one, no and two assistant targets. They consume role IDs, not text, and do not check gradients or packing. The section mini-project supplies real-template, truncation, denominator and packed-attention oracles."
+        },
+        {
+          "name": "CS336 Assignment 5 Supplement: `data_loading`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_data.py",
+          "locator": "`test_packed_sft_dataset` and `test_iterate_batches`",
+          "note": "CPU tests compare packed input and label IDs, exercise shuffling, and check batch count, shapes and integer dtypes. Keep the stream baseline distinct from the isolated SFT implementation."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The public cases pass, your real-tokenizer label oracle catches a seeded one-token shift, and the packed-versus-separate and cross-example perturbation tests pass within your declared tolerance.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "The role-ID drill and course fixtures give bounded practice; versioned TRL behavior and mini-project oracles close their real-template and attention-isolation gaps."
       }
     },
     {
