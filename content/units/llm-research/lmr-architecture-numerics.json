@@ -990,47 +990,94 @@
         "weight-transfer-differential-tests"
       ],
       "outcomes": [
-        "TODO"
+        "List the parameter settings at which two architecture variants compute the same function, and load one set of weights into both to test it.",
+        "Write exact differential tests for grouped-query against multi-head attention, a mixture of experts against a dense feed-forward network, latent against multi-head attention, and scaled against unscaled RoPE.",
+        "Say which conversions are lossy, test what they must preserve instead, and set tolerances from the precision of the least precise operation in the path."
       ],
-      "why": "TODO",
+      "why": "A variant you add to your decoder can be wrong in ways its own training loss will not show. When a variant contains the baseline as a special case, loading the same weights into both gives you an oracle that costs nothing to run and localizes the first mismatch.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/fair-architecture-comparison",
+          "note": "Use the tested variant in a matched-budget comparison."
+        },
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/lm-checkpoint-state-publication",
+          "note": "Apply the same load-and-compare discipline to checkpoints."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gqa-mqa-lmr2",
+          "title": "GQA (arXiv:2305.13245v3)",
+          "url": "https://arxiv.org/abs/2305.13245v3",
+          "locator": "Section 2.1 (checkpoint conversion by mean pooling), Section 2.2 (GQA-1 is MQA, GQA-H is MHA) and Figure 4 (mean pool, first head, random)"
+        },
+        {
+          "resource": "raschka-llm-architecture-lmr2",
+          "title": "Build a Large Language Model (From Scratch), companion bonus code",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/tree/ec0bac5e1d854306a8ea6c308da49aae22479bd1/ch04/04_gqa",
+          "locator": "`ch04/04_gqa/gpt_with_kv_mha.py` against `gpt_with_kv_gqa.py`, and `ch04/07_moe/gpt_with_kv_ffn.py` against `gpt_with_kv_moe.py`: diff each pair and list what changes",
+          "depth": "The pairs are written to compare memory, not to share weights. Writing the weight mapping is the exercise."
+        },
+        {
+          "resource": "deepseek-mla-lmr2",
+          "title": "DeepSeek-V2 (arXiv:2405.04434)",
+          "url": "https://arxiv.org/abs/2405.04434",
+          "locator": "Section 2.1.1 and 2.1.2 (Equations 1 to 11) and Appendix C (full formulas of MLA), read for the mapping from multi-head weights to latent weights"
+        },
+        {
+          "resource": "decoder-stack-lmr2",
+          "title": "Roadmap-Final project: Decoder-Only Transformer Stack",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/decoder-only-transformer-stack.md",
+          "locator": "Architecture constraints (every component has an independent reference configuration) and Milestone C (match full and cached logits across MHA, GQA and MQA)"
         }
       ],
       "focus": [
-        "TODO"
+        "A special-case table is the unit of work. GQA with \\(n_{kv} = n_h\\) is MHA, and with \\(n_{kv} = 1\\) is MQA. Copying each group's key and value weights to all its query heads turns GQA into an MHA that computes exactly the same function. An MoE whose experts are all copies of one dense feed-forward network equals it when the gate weights sum to 1 and nothing is dropped. MLA with a latent of width \\(2 n_h d_h\\) (no compression, no RoPE) equals MHA. RoPE scaling at \\(s = 1\\) equals the baseline. A gated scan with gate 1 equals causal linear attention.",
+        "Load the same weights, not the same seed. Write one function per pair that maps the baseline state dictionary to the variant state dictionary, then compare logits and gradients. The first mismatch is usually a layout error: `repeat` against `repeat_interleave` gives the same shapes and a different function.",
+        "Test the lossy direction by what it must preserve. Mean pooling heads into groups changes the function, so do not assert equality with the original. Assert instead that the converted model equals an MHA whose heads inside each group are all set to the group mean.",
+        "The tolerance belongs to the weakest link. A router that computes its softmax in float32 makes an otherwise float64 MoE-versus-dense test agree only to about 1e-8. Gates that you renormalize must sum to 1 to the precision of that softmax."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Write the state-dictionary maps and run these checks in float64 on a tiny model (width 32, 4 heads, FFN width 48, 6 experts, PyTorch 2.14.1 on CPU). Labeled example: GQA with 2 KV heads against the replicated 4-head MHA, difference 0.0; the same copy with `repeat` in place of `repeat_interleave`, difference 2.32; MHA against mean-pooled GQA, 1.44 (not equal, as expected); NTK-aware base and position interpolation at \\(s = 1\\), 0.0, with the YaRN temperature factor exactly 1; MHA against MLA with latent width \\(2 n_h d_h = 64\\) and the up-projections set to the two halves of the identity, 0.0; the gated scan with gate 1 against causal linear attention, 1.8e-15. For the MoE with 6 identical experts and renormalized top-2 and top-3 gates, the difference to the dense network was 1.4e-8 and 1.9e-8, limited by the float32 router; with top-1 and the raw probability as gate, the output was the dense output times the selected probability (ratio 0.18 to 0.22).",
       "traps": [
-        "TODO"
+        "Comparing two models built from the same seed instead of the same weights. Different module layouts consume random numbers in a different order, and the test fails or, worse, passes by luck of a symmetric initialization. Always build the variant by mapping the baseline's state dictionary.",
+        "Demanding exactness where the variant is lossy or the gate does not sum to 1. Top-1 routing with a raw probability gate gives \\(p\\) times the dense output by design, and mean-pooled heads are not the original heads. Write the expected relation, not the identity you wish held.",
+        "Passing a shape check and calling the transfer done. Equal shapes hide wrong head order, wrong axis in the pooled mean and a missing scale. Compare logits and at least one gradient on inputs with nonzero positions and a causal mask."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which conversion between MHA and GQA is exact, and how do you build it?",
+          "a": "GQA to MHA. Copy each group's key and value projection rows to every query head in the group, in contiguous order, and keep the query and output projections. The MHA then computes the same attention as the GQA model. The other direction needs mean pooling plus training."
+        },
+        {
+          "q": "An MoE layer has 8 identical experts and top-2 routing with softmax over all experts followed by renormalization over the two selected. When does it equal the dense layer with the same weights?",
+          "a": "When no token is dropped, because then each token's output is the sum of two weights that add to 1 times the same dense output. With capacity pressure a dropped assignment removes part of the sum, and with unnormalized gates the output is the sum of the selected probabilities times the dense output."
+        },
+        {
+          "q": "What latent width makes MLA without RoPE reproduce an MHA layer, and what are the up-projections?",
+          "a": "\\(2 n_h d_h\\), the full width of the keys and values together. The down-projection stacks the key and value projections of the MHA, and the key and value up-projections select the first and second half. Any narrower latent compresses and cannot reproduce arbitrary MHA weights."
+        },
+        {
+          "q": "Why is it wrong to test MHA against a mean-pooled GQA for equality, and what can you assert?",
+          "a": "Averaging heads changes the keys and values each query sees, so the function changes. Assert that the converted GQA equals an MHA whose heads in each group are replaced by the group mean, and that shapes, parameter counts and KV bytes are what the formulas say."
+        },
+        {
+          "q": "Your float64 MoE-versus-dense test agrees to 1e-8 and not 1e-14. Where do you look first?",
+          "a": "For operations inside the path that run in float32, such as a router computed in float32 for stability. The gate weights then sum to 1 only to about 1e-8. Either make the router dtype-aware for the test or set the tolerance to the router's precision."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Differential tests for your chosen variant",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/adapters.py",
+          "locator": "Use the adapter pattern of `tests/adapters.py` (`run_multihead_self_attention_with_rope` and `run_transformer_lm` load a weights dictionary into your module) as the template for the baseline-to-variant weight map",
+          "note": "Write the special-case tests for your variant from the list above, one seeded defect per test (`repeat` for `repeat_interleave`, a missing renormalization, the wrong pooling axis). Report the tolerance you used for each and why. The section mini-project builds on this: it asks for one tested variant on your decoder."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "For your variant you have a state-dictionary map from the baseline, an exact test in float64 at its special case, a stated expectation for the lossy case, and each test fails on its seeded defect.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The GQA paper, the Raschka MHA and GQA code pairs, DeepSeek-V2 Appendix C and the Roadmap project give the special cases; none gives the tests, so the card does, and every number was run. The A1 adapter pattern serves as the practice template."
       }
     },
     {
