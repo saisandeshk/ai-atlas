@@ -883,47 +883,100 @@
         "shape-position-property-tests"
       ],
       "outcomes": [
-        "TODO"
+        "Log per-layer activation norms, gradient norms and maximum attention logits in a decoder without retaining graphs, and summarize them with OLMo 2's growth exponent.",
+        "Write a property-test battery for a decoder variant (shape, causal prefix, position offset, padding, batch independence, dtype and finite-difference gradients) and show that each test fails on a seeded defect.",
+        "Choose a test tolerance from the dtype and the position offset instead of one fixed constant."
       ],
-      "why": "TODO",
+      "why": "Every architecture variant in this section can fail silently: a flipped mask, a position offset that drifts in float32, a norm that upcasts and spoils a gradient check. The tests and scale logs are what let you say a measured difference comes from the mechanism and not from a bug.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/variant-weight-transfer-tests",
+          "note": "Add transfer and differential tests between overlapping variants."
+        },
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/loss-spikes-training-instrumentation",
+          "note": "Take the same logging into long runs, with update-to-weight ratios."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "olmo2-architecture-lmr2",
+          "title": "2 OLMo 2 Furious (arXiv:2501.00656v3)",
+          "url": "https://arxiv.org/abs/2501.00656v3",
+          "locator": "Section 3.2, the paragraphs Gradient and activation growth (the growth exponent, Figure 5), Hyperparameter transfer across width (Figure 6) and Spike score (page 14)"
+        },
+        {
+          "resource": "wortsman-proxies-lmr2",
+          "title": "Small-Scale Proxies for Large-Scale Transformer Training Instabilities (arXiv:2309.14322v2)",
+          "url": "https://arxiv.org/abs/2309.14322v2",
+          "locator": "Figures 2 and 4 as instrumentation designs (maximum attention logit per layer, output logit mean); the Figure 9 caption and Section 3.3 on predicting attention logit growth from scale",
+          "depth": "You read Section 3.1 for the mechanisms. Here read only what each figure logs and how often. Their transfer to a specific large run is argued, not shown."
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Assignment 1 handout",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 7.2.3 (debugging tips: overfit one minibatch, monitor activation, weight and gradient norms; p. 40) and the model tests in `tests/test_model.py`"
+        },
+        {
+          "resource": "decoder-stack-lmr2",
+          "title": "Roadmap-Final project: Decoder-Only Transformer Stack",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-2/decoder-only-transformer-stack.md",
+          "locator": "Milestone A (future-token intervention), Milestone D (the defect-injection list) and Failure-injection requirements"
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 3 slides",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_03.pdf",
+          "locator": "Slides 52 to 56 (what the stability tricks protect)"
         }
       ],
       "focus": [
-        "TODO"
+        "Log from hooks on detached tensors, every few steps, and keep the numbers as Python floats. Per layer: the root mean square of the residual stream, the gradient norm of one weight per sublayer, and the maximum attention logit. Per run: the mean of \\(\\log Z\\) over output logits. A hook that keeps a tensor with its graph leaks memory, and one that calls `.item()` every layer every step adds synchronizations.",
+        "OLMo 2 summarizes growth with \\(\\lambda = \\frac{1}{n_{\\text{layers}}} \\log\\left(\\|v'\\| / \\|v\\|\\right)\\), where \\(v\\) and \\(v'\\) are the average activation (or gradient) vectors at the first and last layer. A constant per-layer gain \\(g\\) gives \\(\\lambda = \\log g\\), so ideal is 0. It averages over documents and positions, so also compute it at several sequence lengths and note that it hides a profile that rises then falls.",
+        "Choose the oracle per property. Prefix invariance is exact in the same shapes (0.0 in my run). Position-offset invariance is exact in real arithmetic but not in floating point, because the rotation angle is the product of the position and the frequency, so its error grows with the offset. Padding invariance needs an attention mask for left padding. Gradient checks need a float64 path with no hard-coded float32 inside.",
+        "A test that cannot fail proves nothing. For each property, seed one defect (flipped mask, ignored offset, angles in float32, wrong group mapping, norm over the wrong axis) and check the test goes red, then remove it. The A1 tests compare outputs with stored snapshots of the baseline model. They pin the baseline against regression and do not test causality or offsets directly."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On a tiny decoder (vocabulary 64, width 32, 2 layers, 4 query heads, 2 KV heads, FFN width 64, RoPE, RMSNorm, random weights), implement the battery and run it. Labeled example, not a target (PyTorch 2.14.1, CPU): changing the last 12 of 24 tokens left the first 12 logits identical (difference 0.0) in float32 and float64; flipping the mask made the same test fail with a difference of 2.02. Shifting all positions by 0, 1000, 4096 and 100000 changed float64 logits by 0, 7.6e-15, 2.4e-14 and 9.5e-13, and float32 logits differed from the float64 reference by 8.2e-7, 4.7e-6, 2.0e-5 and 5.2e-4. Computing the angles in float32 inside a float64 model reproduced that 5.2e-4 error at offset 100000 and the offset test caught it. Random content in right padding changed nothing (0.0); left padding with correct position ids but no attention mask changed the real tokens' logits by 1.87. Float64 finite-difference checks on entries of a key projection (step 1e-6, central differences) gave relative errors of 2.3e-9, 1.3e-8 and 1.6e-9. Your values will differ; the pattern to reproduce is exact zero, error that grows with the offset in float32, and every seeded defect going red.",
       "traps": [
-        "TODO"
+        "One tolerance for every test. In float32 the position-offset error is about 8e-7 at offset 0 and 5e-4 at offset 100000, so a fixed 1e-5 either fails a correct model at long offsets or is too loose to catch a defect at short ones. Set the tolerance from the offset and the dtype, and compare against a float64 reference.",
+        "A float64 gradient check through a stack that upcasts internally. In my toy, a norm and a softmax that cast to float32 gave relative errors of 0.07 to 1.0 on the same entries that gave 1e-9 after the casts were made dtype-aware. The check measured float32 noise, not the gradient. Promote to at least float32 (`torch.promote_types`), not to exactly float32.",
+        "Calling padding handled because right padding passes. A causal mask alone makes right padding harmless. Left padding changes which keys are visible, so it needs an attention mask as well as shifted position ids."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Per-layer activation norm grows by a factor of 1.05 each layer in a 48-layer model. What is the growth exponent and what is the ratio of last-layer to first-layer norm?",
+          "a": "\\(\\lambda = \\log 1.05 \\approx 0.049\\) and the ratio is \\(1.05^{48} \\approx 10.4\\). A small positive exponent compounds into an order of magnitude over depth."
+        },
+        {
+          "q": "Why can't a RoPE position-offset test demand exact equality in float32 at offset 100000, and what is the spacing of float32 numbers near that angle?",
+          "a": "The angle is position times frequency, about \\(10^5\\) for the fastest pair, and float32 numbers in \\([65536, 131072)\\) are spaced \\(2^{-7} \\approx 0.0078\\) apart. The angle is rounded, so cosine and sine change by up to a few thousandths. The offset-0 and offset-100000 logits cannot be equal, only close."
+        },
+        {
+          "q": "A batch is left-padded and the position ids are shifted to start at 0 on the first real token. Real-token logits still differ from the unpadded run. Why?",
+          "a": "The pad tokens are still valid keys for every later query, because the causal mask only hides the future. Without an attention mask that hides the pad keys, they change the attention weights. Right padding is safe because the pads come after every real token."
+        },
+        {
+          "q": "Name two properties that an MoE layer with dropped tokens will violate, and the settings under which they hold.",
+          "a": "Batch independence and causal prefix invariance can fail, because a token's output depends on the other tokens that share expert capacity. They hold when capacity is at least the token count so nothing is dropped, or when the dropping rule is fixed and causal."
+        },
+        {
+          "q": "You see a finite-difference relative error of 0.4 on a single weight entry. List two causes to rule out before you suspect the backward pass.",
+          "a": "Float32 operations inside the forward path (noise larger than the step times the gradient), and a step size or an entry whose gradient is near zero. Also check dropout and other randomness, and weight aliasing from expanded or shared tensors."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1 model tests as a baseline, then your own battery",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/tests/test_model.py",
+          "locator": "`test_transformer_lm`, `test_transformer_lm_truncated_input`, `test_rope`, `test_multihead_self_attention_with_rope` run through `tests/adapters.py`",
+          "note": "These compare outputs with stored snapshots at `atol` 1e-4 or 1e-5, so they guard the baseline path. Then write the battery above for your variant, with one seeded defect per test. The section mini-project covers this battery and the per-layer scale log on your variant."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Every property test passes on your baseline and variant, each goes red on its seeded defect, and you have a per-layer scale table (stream norm, gradient norm, maximum attention logit, growth exponent) for two depths or two sequence lengths.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "OLMo 2 Section 3.2, the Wortsman figures, the A1 tests and the Roadmap defect list cover implement and measure depth. No source gives property tests for position offsets or padding, so the card derives them and the numbers come from a labeled toy run."
       }
     },
     {
