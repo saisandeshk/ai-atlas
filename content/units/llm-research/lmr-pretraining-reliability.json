@@ -483,7 +483,7 @@
     {
       "id": "lm-checkpoint-state-publication",
       "title": "Complete language-model checkpoint state, atomic publication and corrupted-state handling",
-      "hours": 3,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -492,47 +492,77 @@
         "atomic-checkpoint-and-resume"
       ],
       "outcomes": [
-        "TODO"
+        "Map every mutable language-model training state to its owner and serialized representation.",
+        "Publish immutable local checkpoints with integrity metadata and an explicit reader acceptance rule.",
+        "Reject incomplete, corrupted or incompatible state before mutating the live training objects."
       ],
-      "why": "TODO",
+      "why": "Complete checkpoints and atomic writes are familiar. This unit audits a real trainer, extends a deliberately incomplete one, and proves that interruption and corruption cannot silently select an invalid continuation.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-pretraining-reliability/resume-equivalence-discontinuities",
+          "note": "Test that accepted state actually continues the same experiment."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: trainer state versus model and optimizer state",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/trainer.py",
+          "locator": "Trainer.state_dict, load_state_dict and load_checkpoint: counters, loader, callbacks and conditional RNG restoration",
+          "depth": "Do not mistake Trainer.state_dict alone for the full checkpoint; model and optimizer state belong to the train module."
+        },
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: local publication and discovery",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/checkpoint.py",
+          "locator": "Checkpointer.save, dir_is_checkpoint, find_checkpoints, latest_checkpoint, _save_metadata, _get_tmp_dir and _teardown_tmp_dir",
+          "depth": "Trace local storage only. Remote uploads do not inherit local atomic-rename semantics; sharding and fleet recovery stay outside this section."
+        },
+        {
+          "resource": "nanogpt-lmr3",
+          "title": "nanoGPT: the checkpoint to extend",
+          "url": "https://github.com/karpathy/nanoGPT/blob/3adf61e154c3fe3fca428ad6bc3818b27a3b8291/train.py",
+          "locator": "init_from == 'resume' branch; scaler creation; checkpoint dictionary and torch.save inside the evaluation branch; initial and prefetched X, Y batches"
+        },
+        {
+          "resource": "python-atomic-lmr3",
+          "title": "Local atomic replacement and synchronization",
+          "url": "https://docs.python.org/3/library/os.html#os.replace",
+          "locator": "os.replace and os.fsync entries, including the same-filesystem restriction and flush-before-fsync instruction (page read 2026-10-16)"
         }
       ],
       "focus": [
-        "TODO"
+        "Save at a completed-update boundary: model, moments and group mapping, schedule position, scaler, counters, CPU and device RNG, sampler/shuffle state, corpus/tokenizer/config hashes and callback state. Mid-accumulation saves additionally need partial gradients and window position.",
+        "nanoGPT does not save RNG, scaler or loader state. Its random-window sampler also prefetches the next batch before saving; either save that pending batch and its identity or move publication to a boundary with a fully specified next-batch recipe.",
+        "For local single-file checkpoints, write an immutable payload through a temporary sibling, flush and synchronize it, then atomically replace its final name. Publish a manifest last with size, digest, schema and run identity; readers require all checks before loading into fresh objects.",
+        "A successful rename gives atomic visibility, not guaranteed survival of power loss. Directory synchronization and filesystem behavior matter for durability. Keep the previous verified checkpoint until the new one has passed validation."
       ],
-      "reproduce": "TODO",
+      "reproduce": "In a CPU test, retain one verified checkpoint, start a separate writer for the next temporary payload, and terminate it after it signals that only part was written. Discovery must ignore that unpublished attempt. Next, alter one byte in a copied published payload without updating its recorded digest: validation must reject it before deserialization or live-state mutation. Keep both failure records and show explicit fallback to the older verified state.",
       "traps": [
-        "TODO"
+        "Calling successful deserialization an integrity check. Corrupted tensor bytes may still deserialize; validate the recorded digest and semantic identity too.",
+        "Using a filename or modification time as proof of completeness. Select the highest accepted step with its manifest, not merely the newest path.",
+        "Treating an in-memory state dictionary as an immutable snapshot. Its tensors can alias live state; serialize immediately or copy them before training continues."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "The model and optimizer reload correctly. Why might the next training batch still be wrong?",
+          "a": "The loader position, random stream or already-prefetched batch may be missing. A checkpoint must describe the next consumed batch, not only the last completed update."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "A checkpoint's checksum passes, but its tokenizer hash differs. May you resume it as the same run?",
+          "a": "No. Integrity proves the bytes match the manifest, not that the bytes belong to a compatible experiment. Reject the mismatch or declare an explicit new intervention."
+        },
+        {
+          "q": "Can an atomic rename alone guarantee a checkpoint survives sudden power loss?",
+          "a": "No. Visibility and durability are different guarantees. Buffered data and directory entries need appropriate synchronization, with filesystem-specific limits."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: extend the pinned nanoGPT checkpoint path in lmlab with complete state, immutable publication, a manifest, kill-during-save and corruption tests, and explicit last-good fallback.",
+      "stopWhen": "Interrupted publication, byte tampering and tokenizer/config mismatches are rejected without changing live state, and the previous verified checkpoint remains loadable.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for the local replace and synchronization API guarantees. Python's opened os reference fills that gap; OLMo-core and nanoGPT remain the state and extension case studies."
       }
     },
     {
