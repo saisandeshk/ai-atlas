@@ -601,47 +601,102 @@
         "modern-ssm-implementation"
       ],
       "outcomes": [
-        "TODO"
+        "State, for softmax attention, sliding-window attention, linear attention, a gated state-space (Mamba-2 style) layer and a delta-rule layer, the state size, the cost of training and of decoding one token, and what each cannot do.",
+        "Show that causal linear attention and a gated scalar state-space layer have identical parallel (masked-matrix) and recurrent forms, and implement a chunked version that matches the recurrence.",
+        "Explain why these mixers are different contracts, not drop-in replacements for attention, and what a fair hybrid comparison must hold fixed."
       ],
-      "why": "TODO",
+      "why": "Sub-quadratic mixers change the state the model carries, not just its cost. If you cannot say what the state can store, you cannot say what a hybrid gains or loses, and a speed claim hides the recall question.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/variant-weight-transfer-tests",
+          "note": "Use the exact parallel-versus-recurrent identity as a differential test."
+        },
+        {
+          "unit": "llm-research/lmr-architecture-numerics/fair-architecture-comparison",
+          "note": "Compare a mixer against softmax attention under a matched contract."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 4 slides (attention alternatives and mixtures of experts)",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_04.pdf",
+          "locator": "Slides 2 to 13: the local-plus-global toolkit, linear attention and its recurrent form, MiniMax M1, from linear attention to Mamba-2, Nemotron 3, gated delta net, Qwen next, hybrid performance and sparse adaptation (DSA)",
+          "depth": "Stop at slide 13; slide 14 starts mixture of experts. Slide 4 reorders \\(QK^\\top V = Q(K^\\top V)\\) without the causal mask, and slide 11 says there are few controlled ablations of hybrids."
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 3 slides",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_03.pdf",
+          "locator": "Slides 64 to 66 (sparse and sliding-window attention, interleaving full and local layers)"
+        },
+        {
+          "resource": "mamba2-lmr2",
+          "title": "Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality (arXiv:2405.21060)",
+          "url": "https://arxiv.org/abs/2405.21060",
+          "locator": "Section 1; Section 5.1 to 5.3 (scalar-identity SSMs, 1-semiseparable masked attention, the duality); Section 6 and Listing 1 (printed p. 21, the chunked SSD algorithm and `segsum`)",
+          "depth": "Skip Sections 3 and 4 (the structured-matrix and kernel-attention theory) and everything after Section 7.1. Listing 1 uses `rearrange` from einops."
+        },
+        {
+          "resource": "modern-notebook-architecture-lmr2",
+          "title": "Modern LLM Notebook: Efficient Attention",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/30-efficient-attention.ipynb",
+          "locator": "Sections 2.1 to 2.9 (linear attention, its sharpness cost, SSMs, selective SSM, Mamba-2, Lightning Attention, hybrids)",
+          "depth": "The code in 2.1 and Homework 2 is non-causal, and the 'fast' form in 2.1 reuses the quadratic normalizer. The Jamba row in 2.9 says '24 Mamba : 8 Attention' and 'one attention layer every 8 layers', which disagree."
         }
       ],
       "focus": [
-        "TODO"
+        "Write each mixer by its state. Softmax attention keeps the whole KV cache, which grows with length. Sliding-window attention keeps the last \\(w\\) keys and values. Linear attention keeps \\(S_t = S_{t-1} + k_t v_t^\\top\\), a \\(d_k \\times d_v\\) matrix, and reads \\(y_t = S_t^\\top q_t\\). A Mamba-2 style layer adds a scalar gate, \\(S_t = \\gamma_t S_{t-1} + k_t v_t^\\top\\). The delta rule \\(S_t = \\gamma_t (I - \\beta_t k_t k_t^\\top) S_{t-1} + \\beta_t k_t v_t^\\top\\) can erase what a key already holds.",
+        "The duality is exact for the scalar-gate case. The recurrent form and the masked-matrix form \\(Y = (L \\circ C B^\\top) X\\) with \\(L_{ts} = \\gamma_{s+1} \\cdots \\gamma_t\\) compute the same function, so you can train in the matrix or chunked form and decode with the recurrence. Section 5.1 states the result for a scalar times identity \\(A\\); it is not a statement about every selective SSM.",
+        "A fixed state stores a bounded number of associations. With \\(d_k\\) orthonormal keys the read returns each value exactly; a repeated key adds to the old value in linear attention (reading it returns the sum), while the delta rule overwrites it. Gates decide what is forgotten. Softmax attention can look up any earlier token, so recall is where hybrids keep a few full-attention layers.",
+        "The cost you quote must name the form. The reordering \\(Q(K^\\top V)\\) is valid without a causal mask. With the mask it becomes a scan, or chunks inside which you use the matrix form, as in Listing 1. FLOPs are linear in length for the scan, but the chunked algorithm is what makes it fast on matrix hardware."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, show that \\(\\sum_{s \\le t} (q_t \\cdot k_s) v_s\\) equals \\(q_t^\\top S_t\\) for \\(S_t = \\sum_{s \\le t} k_s v_s^\\top\\), and extend it to the gated form with \\(L_{ts}\\) above. Then run the chunked algorithm of Listing 1 against a plain recurrence in float64 for \\(B = 2\\), \\(T = 16\\), 3 heads, head size 5, state size 4, log-gates \\(A_t = -u\\) with \\(u\\) uniform in \\([0, 1)\\), chunk length 4. Outputs and final state should agree to about 1e-15 (1.8e-15 and 8.9e-16 in my run, PyTorch 2.14.1 on CPU), chunk lengths 4 and 8 should agree with each other, the masked-matrix form should agree with the recurrence, and splitting the sequence in two and passing the first final state as `initial_states` to the second call should reproduce the full run. Finally check the interference example: keys \\(e_1, e_2, e_1\\) with values \\(v_1, v_2, v_3\\) (the unit vectors of 3 dimensions). Reading \\(e_1\\) gives \\([1, 0, 1]\\) in linear attention and \\([0, 0, 1]\\) under the delta rule with \\(\\gamma = \\beta = 1\\).",
       "traps": [
-        "TODO"
+        "Using the unmasked reordering for a decoder. For random \\(Q, K, V\\) with 6 tokens, \\((QK^\\top \\text{ masked}) V\\) and \\(Q(K^\\top V)\\) differ in every row but the last. Test the causal identity row by row, and test that changing a future token leaves earlier outputs unchanged.",
+        "Reading 'Transformers are SSMs' as 'any SSM equals attention'. The duality needs the scalar-gate structure, and the result says nothing about quality. A model with a fixed state compared with softmax attention at equal parameters can still fail recall tasks. Test with an associative-recall or copy task, not only loss.",
+        "Treating a hybrid's gain as an architecture result without controls. Slide 11 of Lecture 4 says there are few controlled ablations; a published hybrid changes layer ratio, depth, width and data together. Hold parameters, tokens and sequence length fixed and vary one thing."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Per head, what is the decoding state of softmax attention, sliding-window attention with window \\(w\\), and linear attention, and how does the per-token decoding cost scale in each?",
+          "a": "Softmax attention: keys and values for all \\(T\\) past tokens, cost \\(O(T d)\\) per token. Sliding window: the last \\(w\\) keys and values, \\(O(w d)\\). Linear attention: one \\(d_k \\times d_v\\) matrix, \\(O(d_k d_v)\\), independent of \\(T\\)."
+        },
+        {
+          "q": "For the gated recurrence \\(S_t = \\gamma_t S_{t-1} + k_t v_t^\\top\\), write the matrix \\(M\\) with \\(Y = MX\\).",
+          "a": "\\(M_{ts} = (q_t \\cdot k_s) \\prod_{r=s+1}^{t} \\gamma_r\\) for \\(s \\le t\\) and 0 otherwise. The product of gates is the 1-semiseparable mask \\(L\\), and \\(M = L \\circ (C B^\\top)\\) in the paper's notation."
+        },
+        {
+          "q": "Why does the reordering of slide 4 not apply directly to a causal decoder?",
+          "a": "The causal mask zeroes the entries above the diagonal of \\(QK^\\top\\) before multiplying by \\(V\\). The matrix \\(K^\\top V\\) sums over all positions, including future ones, so \\(Q(K^\\top V)\\) leaks the future. The causal version is a running sum, either a scan or a chunked algorithm."
+        },
+        {
+          "q": "A layer with state \\(d_k \\times d_v\\) with \\(d_k = 2\\) has stored two associations with orthonormal keys. What does a third write with a new key do in linear attention and in the delta rule?",
+          "a": "The new key lies in the span of the two existing ones, so its value adds into the same state entries. Reads of the old keys are perturbed in linear attention. The delta rule first removes what the new key already retrieves, which changes the old reads as well. A fixed state cannot keep more independent associations than its key dimension."
+        },
+        {
+          "q": "Name three things a hybrid-versus-attention comparison must hold fixed.",
+          "a": "Parameters (or compute) counted from the actual models, training tokens and data order, and sequence length, plus the optimizer and learning-rate tuning budget for each arm. It also needs a recall-sensitive evaluation next to loss, and more than one seed."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Parallel and Recurrent Linear Attention",
+          "url": "https://www.tensortonic.com/problems/cs336-l04-linear-attention-duality",
+          "locator": "Free problem `cs336-l04-linear-attention-duality`, function `linear_attention_duality(q, k, v)`",
+          "note": "The three public cases check a scalar two-step sequence, orthogonal keys, and independent batches with unequal widths; the function returns both forms and the final state. There is no feature map or normalizer and no gate. They do not test the gated form. Extend your solution with a scalar gate and compare it with the Listing 1 oracle."
+        },
+        {
+          "name": "A bounded Mamba-2 style layer",
+          "url": "https://arxiv.org/abs/2405.21060",
+          "locator": "Listing 1 in Section 6; implement the chunked algorithm and a recurrent oracle, then wrap them in a layer with input projections to \\(X\\), \\(B\\), \\(C\\) and a per-head gate",
+          "note": "Keep it small: no convolution and no gated normalization. Tests to write: chunk-length invariance, recurrence equality in float64, split-sequence equality with carried state, and future-token invariance. Optional: swap in your layer for half the attention layers of your decoder and compare under a matched contract."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your chunked scan matches the recurrence, the masked-matrix form and the split-sequence run in float64, and you can fill in a table of state size, training cost, decoding cost and recall behaviour for five mixers.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 slides, Mamba-2 Sections 1, 5 and 6 with Listing 1, and TensorTonic cover explain and implement depth; the Listing 1 math was run against a recurrence. Two notebook slips are flagged. The pool offers one of two TensorTonic problems, and the card names the duality one."
       }
     },
     {
