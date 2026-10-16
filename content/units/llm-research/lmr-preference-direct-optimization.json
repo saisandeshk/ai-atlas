@@ -497,7 +497,7 @@
     {
       "id": "response-logprobs-reference-identity",
       "title": "Response-only log probabilities, masks and reference-checkpoint identity",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "implement"
       ],
@@ -506,47 +506,77 @@
         "reference-mismatch"
       ],
       "outcomes": [
-        "TODO"
+        "Compute shifted response-only log probabilities with explicit prompt, padding, EOS and truncation rules.",
+        "Bind reference scores to the exact checkpoint, tokenizer, template and scored token sequence.",
+        "Demonstrate that reference mismatch changes policy gradients even when the policy scores stay fixed."
       ],
-      "why": "TODO",
+      "why": "The four scalars in a DPO loss are meaningful only if they score the same conditional events. A stale reference cache or a shifted completion mask silently defines a different experiment.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-preference-direct-optimization/preference-audit-objective-tests",
+          "note": "Turn boundary and identity failures into preflight regressions."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "rlhf-code-preference-lmr7",
+          "title": "Shifted sequence-scoring reference",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/direct_alignment/loss.py",
+          "locator": "`compute_logprobs`: the logit, label and mask shifts; gathered token scores; `average_log_prob` branches",
+          "depth": "Pass a completion-and-padding mask, not merely the attention mask suggested by the helper's docstring. Its average branch is a different score convention, not ordinary summed DPO."
+        },
+        {
+          "resource": "cs336-dpo-lmr7",
+          "title": "CS336 Spring 2026 Assignment 5 supplement: model-to-loss contract",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_supplement_safety_rlhf.pdf",
+          "locator": "Section 6.3, Implementing the DPO Loss, Problem `dpo_loss`, printed p. 17: Alpaca template, appended EOS and `run_compute_per_instance_dpo_loss`",
+          "depth": "Use the public tiny-model test on CPU. Skip Section 6.4's two-device training recipe; the bounded comparison uses your own SFT checkpoint. Prompt cancellation requires the exact same tokenized prefix in both branches, not merely similar prompt text."
+        },
+        {
+          "resource": "trl-dpo-lmr7",
+          "title": "TRL 1.15.0: preprocessing and frozen-reference configuration",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/dpo_trainer",
+          "locator": "Expected dataset type and format; Preprocessing and tokenization; DPOTrainer `ref_model`; DPOConfig `precompute_ref_log_probs`, `sync_ref_model`, `disable_dropout` and loss types"
         }
       ],
       "focus": [
-        "TODO"
+        "Score each response token from its preceding context. Shift the labels and completion mask together with the causal prediction boundary. Prompt tokens condition the model but do not enter the response sum.",
+        "Keep attention and loss masks distinct. Include EOS under one declared rule, exclude padding, and reject or separately count pairs whose distinguishing response is lost to truncation.",
+        "Hash the frozen reference weights and adapter state, tokenizer revision, template, exact token IDs, masks, EOS/truncation rules and score convention into cache identity. A filename or model family is not sufficient.",
+        "TRL 1.15.0 defaults to `loss_type=[\"sigmoid\"]`, `beta=0.1` and summed completion scores. `sigmoid_norm` changes the aggregation. The trainer rejects a policy and reference that are the same object; keep reference synchronization off for this fixed-reference study."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1 and `torch.float64`, use zero logits of shape `(1, 5, 3)`, token IDs `[[0, 1, 2, 0, 1]]` and unshifted completion mask `[[0, 0, 1, 1, 0]]`. Derive score \\(-2\\log 3\\); only logit positions 1 and 2 receive score gradients. Match `compute_logprobs` within absolute tolerance \\(10^{-12}\\). Then hold the preceding unit's policy scores and coefficient fixed, changing only the reference chosen score from -4 to -2. Loss becomes 0.9130152523999526 and the chosen policy-input derivative becomes approximately -0.2394750640449808. The rejection score stays -5. Confirm the altered gradient and require the manifest to reject that cache mismatch.",
       "traps": [
-        "TODO"
+        "Tokenizing prompt and response independently without inspecting the join. Boundary tokenization can differ from tokenizing the formatted sequence; inspect actual IDs and the first scored token.",
+        "Assuming equal initial policy/reference values imply zero parameter gradient. The reference must be fixed independently, not connected to the policy's autograd graph.",
+        "Equating a mean token log probability with a sequence log probability. Changing sum to mean changes pair weighting and the objective, especially with unequal response lengths."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Which state changes invalidate a precomputed reference score?",
+          "a": "Anything changing the reference conditional event or its probability: weights/adapters, tokenizer, template, token IDs, masking, EOS, truncation or aggregation. Recompute rather than mixing identities."
+        },
+        {
+          "q": "Does this one-pair reference mismatch reverse the chosen-score derivative?",
+          "a": "No. With a positive coefficient its sign stays negative. The changed reference margin changes the gradient's weight; across shared model parameters and many pairs that can change the update direction."
+        },
+        {
+          "q": "How should you check a cached reference on a model batch?",
+          "a": "Reload the exact frozen checkpoint in deterministic evaluation mode and rescore the same IDs and masks. Compare within a dtype-specific tolerance and verify the full manifest before accepting the cache."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 5 supplement: `dpo_loss`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_dpo.py",
+          "locator": "Section 6.3; connect `run_compute_per_instance_dpo_loss` and run `uv run pytest -k test_per_instance_dpo_loss`",
+          "note": "The public test uses tiny policy/reference fixtures and a local word tokenizer, then compares one scalar loss to its expected value. It does not check gradients or every mask boundary. Add unequal response lengths, padding, prompt-boundary and stale-reference tests yourself. Use PyTorch 2.14.1 and Transformers 5.19.0 for your recorded implementation, and keep solutions private."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your scorer passes the public tiny-model scalar check and your independent mask and reference-mismatch gradient tests, while cached scores are accepted only under matching manifests.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The scoring helper, located assignment and versioned TRL contract cover response boundaries and reference identity; independent gradients cover what the public scalar test does not."
       }
     },
     {
