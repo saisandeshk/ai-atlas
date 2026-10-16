@@ -781,47 +781,85 @@
         "document-packing-and-masks"
       ],
       "outcomes": [
-        "TODO"
+        "Pack tokenized documents into fixed-length sequences with an end-of-document token, a stated truncation and tail rule, and a record of the document id and offsets of every span.",
+        "Build the intra-document causal mask and the loss mask from per-token document ids, and test that changing one document leaves another document's logits unchanged.",
+        "State what packing and masking change in the training signal, and what they cost, using the evidence in the packing paper and your own test."
       ],
-      "why": "TODO",
+      "why": "Packing is how short documents fill a fixed context. With a plain causal mask a later document can read an earlier, unrelated one, so the model trains on contexts that never occur at inference, and nothing in the loss tells you.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-data-tokenizer-systems/shard-restart-batch-lineage",
+          "note": "Use the span record you keep here to trace a batch back to its documents."
+        },
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/token-loss-denominators-batches",
+          "note": "The loss mask decides the denominator of the token-weighted loss."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "zhao-packing-lmr1",
+          "title": "Analysing the Impact of Sequence Composition on Language Model Pre-Training (Zhao et al., 2024)",
+          "url": "https://arxiv.org/abs/2402.13991",
+          "locator": "arXiv:2402.13991v1, Section 2.1 (packing: random, same-source and retrieval-based), Section 2.2 (causal versus intra-document causal masking), Table 1 (perplexity per packing and masking strategy) and Appendix A (the FlashAttention-2 implementation and its cost)",
+          "depth": "Stop after Table 1 and Appendix A. The downstream-task sections measure in-context learning and memorization, which this unit does not need."
+        },
+        {
+          "resource": "gopher-rules-lmr1",
+          "title": "Gopher, Appendix A (Rae et al., 2021)",
+          "url": "https://arxiv.org/abs/2112.11446",
+          "locator": "arXiv:2112.11446v2, Appendix A.1.2 'Constructing Token Sequences' (p. 42): cropping, BOS and EOS, concatenating crops, splitting at the sequence length, dropping the short final chunk"
+        },
+        {
+          "resource": "modern-notebook-data-lmr1",
+          "title": "Modern LLM Notebook: Data Engineering",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/15-data-engineering.ipynb",
+          "locator": "Section 8 'From Tokenize to Training Stream', 8.1 'Sequence Packing' (the first-fit-decreasing cell) and 8.2 'Block-Diagonal Attention Mask' (the mask cell)",
+          "depth": "Skip 8.3 on fill-in-the-middle. The notebook says position ids must restart for every document; with rotary positions they need not, as the reproduce step shows."
         }
       ],
       "focus": [
-        "TODO"
+        "Two masks, two jobs. The attention mask says which earlier tokens a position may read; the loss mask says which positions have a valid target. The position that holds an end-of-document token predicts the first token of the next document, which no model can know, so its loss is masked. Padding positions are masked too.",
+        "With a plain causal mask a token in the second document attends to the first. Zhao et al. train 1.3B models on the same 150B tokens with and without intra-document masking, and the masked model has the lowest average perplexity: 8.410 against 9.172 at 2K context and 8.079 against 9.065 at 8K (Table 1).",
+        "With rotary position embeddings the attention score depends only on the offset between two positions, so a document's logits are the same whether its positions start at 0 or at its offset in the sequence, up to floating-point error. Zhao et al. apply rotary embeddings before the variable-length attention call and do not reset positions. With learned absolute positions you must reset them.",
+        "Decide the tail and truncation rules and record them: Gopher drops the final short chunk, and a document longer than the context is split. A document continued in the next sequence has lost its beginning, so keep each span's `doc_id`, start and end offsets."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, build a 2-layer decoder with rotary positions (model width 32, 4 heads, a 50-token vocabulary, `torch.manual_seed(0)`) and pack document A (6 tokens), an end token, document B (5 tokens) and an end token. Build a plain causal mask and an intra-document mask from per-token document ids (the end token belongs to the document it closes). Show that replacing A changes B's logits under the causal mask (max absolute difference 0.40 in the run, `torch` 2.14.1 on CPU) and changes nothing under the intra-document mask (0.0). Then show that B's logits from the packed intra-document run match B run alone with `torch.allclose(a, b, atol=1e-5)`, while `torch.equal` is `False` (max absolute difference 3.6e-07), and that resetting positions per document changes them by at most about 2e-07.",
       "traps": [
-        "TODO"
+        "Testing equality with `==` or `torch.equal`. A packed batch and a single document run different matrix shapes, so the results differ in the last bits; assert closeness with a tolerance, and assert exact zero only for the case where one document's tokens are replaced inside the same packed run.",
+        "Building the attention mask and forgetting the loss mask, so that the position holding the end token is trained to predict an unrelated next document, or padding tokens count in the loss denominator.",
+        "Treating a continued document as a new one. When a long document is split across two sequences, the second part starts mid-document with no left context; mark it as a continuation in the span record so that later counts of documents and tokens stay correct."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Two documents are packed in one sequence with a plain causal mask. Does changing the first document's tokens change the loss on the second? Which mask removes the effect?",
+          "a": "Yes: every token of the second document can attend to the first, so its hidden states depend on it. A block-diagonal causal mask built from the document ids removes the dependence, which the swap test above checks."
+        },
+        {
+          "q": "Why is the loss at the position holding the end token usually masked in packed pretraining?",
+          "a": "Its target is the first token of the next document, which is unrelated to the current one and unpredictable from it. Training on it teaches nothing and adds noise. The model still learns to emit the end token, because that is the target at the previous position, whose loss is kept."
+        },
+        {
+          "q": "Why do the logits of a document not change when its rotary positions start at an offset instead of 0?",
+          "a": "The rotary score of a query and key depends only on the difference of their positions, which is unchanged by a common offset, so within one document the attention scores are the same up to rounding. A learned absolute embedding depends on the position itself, so there the offset matters."
+        },
+        {
+          "q": "Zhao et al. report intra-document masking lowers perplexity at both context lengths. What does that not show?",
+          "a": "It shows this effect for 1.3B models on 150B tokens of one corpus (SlimPajama), measured on documents scored one at a time. It does not show the size of the effect for other models or data, nor that the masking is free: they measured a 4% slowdown with FlashAttention-2, and much larger ones with an explicit mask."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 5 supplement: Problem (`data_loading`)",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_data.py",
+          "locator": "Supplement Section 4.2.1 (pp. 9 to 10); connect `get_packed_sft_dataset` and `run_iterate_batches` in `tests/adapters.py` and pass `test_packed_sft_dataset` and `test_iterate_batches` in `tests/test_data.py`",
+          "note": "The tests run on CPU with a tokenizer stored in the repository. They check the stored tokenization of a small file, the constant sequence length, the dropped tail chunk and the batch shapes. They do not test attention leakage, so add the swap test from the reproduce step beside your solution. The section mini-project covers the packed-batch test on your own corpus. Do not publish solutions."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your packing code passes the two data tests, the span record lets you read off the document and offsets of any token, and your swap test shows exact independence under the intra-document mask and dependence under the plain one.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Zhao et al. give the effect and the implementation, Gopher A.1.2 gives a stated packing rule, the notebook shows the mask, and the A5 supplement supplies tested packing practice. No pool resource tests leakage, so the reproduce step adds it."
       }
     },
     {
