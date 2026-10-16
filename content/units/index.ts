@@ -38,140 +38,159 @@ import unitFile35 from './deep-learning/representation-multimodal.json';
 import unitFile36 from './deep-learning/representation-multimodal.project.json';
 import unitFile37 from './deep-learning/training-dynamics.json';
 import unitFile38 from './deep-learning/training-dynamics.project.json';
-import unitFile39 from './distributed-training/_route.json';
-import unitFile40 from './distributed-training/checkpointing-fault-tolerance.json';
-import unitFile41 from './distributed-training/checkpointing-fault-tolerance.project.json';
-import unitFile42 from './distributed-training/data-parallelism-overlap.json';
-import unitFile43 from './distributed-training/data-parallelism-overlap.project.json';
-import unitFile44 from './distributed-training/expert-parallelism-moe.json';
-import unitFile45 from './distributed-training/expert-parallelism-moe.project.json';
-import unitFile46 from './distributed-training/multidimensional-parallel-planning.json';
-import unitFile47 from './distributed-training/multidimensional-parallel-planning.project.json';
-import unitFile48 from './distributed-training/performance-fleet-operation.json';
-import unitFile49 from './distributed-training/performance-fleet-operation.project.json';
-import unitFile50 from './distributed-training/pipeline-parallelism.json';
-import unitFile51 from './distributed-training/pipeline-parallelism.project.json';
-import unitFile52 from './distributed-training/ranks-collectives-topology.json';
-import unitFile53 from './distributed-training/ranks-collectives-topology.project.json';
-import unitFile54 from './distributed-training/tensor-sequence-context-parallelism.json';
-import unitFile55 from './distributed-training/tensor-sequence-context-parallelism.project.json';
-import unitFile56 from './distributed-training/training-pipeline-framework-internals.json';
-import unitFile57 from './distributed-training/training-pipeline-framework-internals.project.json';
-import unitFile58 from './distributed-training/zero-fully-sharded-training.json';
-import unitFile59 from './distributed-training/zero-fully-sharded-training.project.json';
-import unitFile60 from './gpu/_route.json';
-import unitFile61 from './gpu/gpu-attention-transformer-fusion.json';
-import unitFile62 from './gpu/gpu-attention-transformer-fusion.project.json';
-import unitFile63 from './gpu/gpu-cuda-primitives-async.json';
-import unitFile64 from './gpu/gpu-cuda-primitives-async.project.json';
-import unitFile65 from './gpu/gpu-execution-memory-codegen.json';
-import unitFile66 from './gpu/gpu-execution-memory-codegen.project.json';
-import unitFile67 from './gpu/gpu-gemm-tensor-low-precision.json';
-import unitFile68 from './gpu/gpu-gemm-tensor-low-precision.project.json';
-import unitFile69 from './gpu/gpu-kernel-inference-integration.json';
-import unitFile70 from './gpu/gpu-kernel-inference-integration.project.json';
-import unitFile71 from './gpu/gpu-measurement-profiling-correctness.json';
-import unitFile72 from './gpu/gpu-measurement-profiling-correctness.project.json';
-import unitFile73 from './gpu/gpu-multigpu-communication.json';
-import unitFile74 from './gpu/gpu-multigpu-communication.project.json';
-import unitFile75 from './gpu/gpu-portability-performance-research.json';
-import unitFile76 from './gpu/gpu-portability-performance-research.project.json';
-import unitFile77 from './gpu/gpu-triton-cute-compilers.json';
-import unitFile78 from './gpu/gpu-triton-cute-compilers.project.json';
-import unitFile79 from './gpu/gpu-workload-arithmetic-contracts.json';
-import unitFile80 from './gpu/gpu-workload-arithmetic-contracts.project.json';
-import unitFile81 from './inference/_route.json';
-import unitFile82 from './inference/batching-scheduling-admission.json';
-import unitFile83 from './inference/batching-scheduling-admission.project.json';
-import unitFile84 from './inference/capacity-economics-engine-extension.json';
-import unitFile85 from './inference/capacity-economics-engine-extension.project.json';
-import unitFile86 from './inference/distributed-disaggregated-inference.json';
-import unitFile87 from './inference/distributed-disaggregated-inference.project.json';
-import unitFile88 from './inference/inference-kernels-graph-execution.json';
-import unitFile89 from './inference/inference-kernels-graph-execution.project.json';
-import unitFile90 from './inference/kv-memory-prefix-reuse.json';
-import unitFile91 from './inference/kv-memory-prefix-reuse.project.json';
-import unitFile92 from './inference/model-workload-request-arithmetic.json';
-import unitFile93 from './inference/model-workload-request-arithmetic.project.json';
-import unitFile94 from './inference/prefill-decode-baseline-measurement.json';
-import unitFile95 from './inference/prefill-decode-baseline-measurement.project.json';
-import unitFile96 from './inference/production-serving-reliability.json';
-import unitFile97 from './inference/production-serving-reliability.project.json';
-import unitFile98 from './inference/quantization-speculative-decoding.json';
-import unitFile99 from './inference/quantization-speculative-decoding.project.json';
-import unitFile100 from './llm-foundations/_route.json';
-import unitFile101 from './llm-foundations/causal-training-generation.json';
-import unitFile102 from './llm-foundations/causal-training-generation.project.json';
-import unitFile103 from './llm-foundations/decoder-transformer-mechanics.json';
-import unitFile104 from './llm-foundations/decoder-transformer-mechanics.project.json';
-import unitFile105 from './llm-foundations/evaluation-model-arithmetic.json';
-import unitFile106 from './llm-foundations/evaluation-model-arithmetic.project.json';
-import unitFile107 from './llm-foundations/kv-cache-prefill-decode.json';
-import unitFile108 from './llm-foundations/kv-cache-prefill-decode.project.json';
-import unitFile109 from './llm-foundations/tokenization-corpus-data.json';
-import unitFile110 from './llm-foundations/tokenization-corpus-data.project.json';
-import unitFile111 from './math-foundations/_route.json';
-import unitFile112 from './math-foundations/calculus-autodiff.json';
-import unitFile113 from './math-foundations/calculus-autodiff.project.json';
-import unitFile114 from './math-foundations/linear-algebra-proof.json';
-import unitFile115 from './math-foundations/linear-algebra-proof.project.json';
-import unitFile116 from './math-foundations/optimization-numerics.json';
-import unitFile117 from './math-foundations/optimization-numerics.project.json';
-import unitFile118 from './math-foundations/probability-information-bayes.json';
-import unitFile119 from './math-foundations/probability-information-bayes.project.json';
-import unitFile120 from './math-foundations/statistics-experimentation-causality.json';
-import unitFile121 from './math-foundations/statistics-experimentation-causality.project.json';
-import unitFile122 from './programming/_route.json';
-import unitFile123 from './programming/concurrency-profiling-operations.json';
-import unitFile124 from './programming/concurrency-profiling-operations.project.json';
-import unitFile125 from './programming/interfaces-data-apis.json';
-import unitFile126 from './programming/interfaces-data-apis.project.json';
-import unitFile127 from './programming/native-systems-literacy.json';
-import unitFile128 from './programming/native-systems-literacy.project.json';
-import unitFile129 from './programming/python-execution-model.json';
-import unitFile130 from './programming/python-execution-model.project.json';
-import unitFile131 from './programming/testing-debugging-reproducibility.json';
-import unitFile132 from './programming/testing-debugging-reproducibility.project.json';
-import unitFile133 from './reinforcement-learning/_route.json';
-import unitFile134 from './reinforcement-learning/classical-mdps-bellman-planning.json';
-import unitFile135 from './reinforcement-learning/classical-mdps-bellman-planning.project.json';
-import unitFile136 from './reinforcement-learning/classical-sampling-td-control.json';
-import unitFile137 from './reinforcement-learning/classical-sampling-td-control.project.json';
-import unitFile138 from './reinforcement-learning/deep-exploration-empirical-method.json';
-import unitFile139 from './reinforcement-learning/deep-exploration-empirical-method.project.json';
-import unitFile140 from './reinforcement-learning/deep-function-approximation-stability.json';
-import unitFile141 from './reinforcement-learning/deep-function-approximation-stability.project.json';
-import unitFile142 from './reinforcement-learning/deep-imitation-offline-ope.json';
-import unitFile143 from './reinforcement-learning/deep-imitation-offline-ope.project.json';
-import unitFile144 from './reinforcement-learning/deep-model-based-world-models.json';
-import unitFile145 from './reinforcement-learning/deep-model-based-world-models.project.json';
-import unitFile146 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.json';
-import unitFile147 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.project.json';
-import unitFile148 from './reinforcement-learning/llm-direct-preference-optimization.json';
-import unitFile149 from './reinforcement-learning/llm-direct-preference-optimization.project.json';
-import unitFile150 from './reinforcement-learning/llm-online-policy-optimization.json';
-import unitFile151 from './reinforcement-learning/llm-online-policy-optimization.project.json';
-import unitFile152 from './reinforcement-learning/llm-policy-trajectory-contracts.json';
-import unitFile153 from './reinforcement-learning/llm-policy-trajectory-contracts.project.json';
-import unitFile154 from './reinforcement-learning/llm-preferences-rewards-verifiers.json';
-import unitFile155 from './reinforcement-learning/llm-preferences-rewards-verifiers.project.json';
-import unitFile156 from './reinforcement-learning/llm-reasoning-agents-systems-research.json';
-import unitFile157 from './reinforcement-learning/llm-reasoning-agents-systems-research.project.json';
-import unitFile158 from './systems/_route.json';
-import unitFile159 from './systems/concurrency-bounded-work.json';
-import unitFile160 from './systems/concurrency-bounded-work.project.json';
-import unitFile161 from './systems/databases-durable-storage.json';
-import unitFile162 from './systems/databases-durable-storage.project.json';
-import unitFile163 from './systems/distributed-state-streams.json';
-import unitFile164 from './systems/distributed-state-streams.project.json';
-import unitFile165 from './systems/machine-process-memory-io.json';
-import unitFile166 from './systems/machine-process-memory-io.project.json';
-import unitFile167 from './systems/networking-rpc.json';
-import unitFile168 from './systems/networking-rpc.project.json';
-import unitFile169 from './systems/observability-reliability-design.json';
-import unitFile170 from './systems/observability-reliability-design.project.json';
-import unitFile171 from './systems/security-privacy-evolution.json';
-import unitFile172 from './systems/security-privacy-evolution.project.json';
+import unitFile39 from './distributed-systems/_route.json';
+import unitFile40 from './distributed-systems/consensus-coordination.json';
+import unitFile41 from './distributed-systems/consensus-coordination.project.json';
+import unitFile42 from './distributed-systems/formal-validation-real-system-extension.json';
+import unitFile43 from './distributed-systems/formal-validation-real-system-extension.project.json';
+import unitFile44 from './distributed-systems/logs-queues-stream-processing.json';
+import unitFile45 from './distributed-systems/logs-queues-stream-processing.project.json';
+import unitFile46 from './distributed-systems/partitioning-transactions-workflows.json';
+import unitFile47 from './distributed-systems/partitioning-transactions-workflows.project.json';
+import unitFile48 from './distributed-systems/protocols-rpc.json';
+import unitFile49 from './distributed-systems/protocols-rpc.project.json';
+import unitFile50 from './distributed-systems/replication-consistency.json';
+import unitFile51 from './distributed-systems/replication-consistency.project.json';
+import unitFile52 from './distributed-systems/security-operations-evolution-data-governance.json';
+import unitFile53 from './distributed-systems/security-operations-evolution-data-governance.project.json';
+import unitFile54 from './distributed-systems/storage-engines-recovery.json';
+import unitFile55 from './distributed-systems/storage-engines-recovery.project.json';
+import unitFile56 from './distributed-systems/time-identity-membership-failure.json';
+import unitFile57 from './distributed-systems/time-identity-membership-failure.project.json';
+import unitFile58 from './distributed-training/_route.json';
+import unitFile59 from './distributed-training/checkpointing-fault-tolerance.json';
+import unitFile60 from './distributed-training/checkpointing-fault-tolerance.project.json';
+import unitFile61 from './distributed-training/data-parallelism-overlap.json';
+import unitFile62 from './distributed-training/data-parallelism-overlap.project.json';
+import unitFile63 from './distributed-training/expert-parallelism-moe.json';
+import unitFile64 from './distributed-training/expert-parallelism-moe.project.json';
+import unitFile65 from './distributed-training/multidimensional-parallel-planning.json';
+import unitFile66 from './distributed-training/multidimensional-parallel-planning.project.json';
+import unitFile67 from './distributed-training/performance-fleet-operation.json';
+import unitFile68 from './distributed-training/performance-fleet-operation.project.json';
+import unitFile69 from './distributed-training/pipeline-parallelism.json';
+import unitFile70 from './distributed-training/pipeline-parallelism.project.json';
+import unitFile71 from './distributed-training/ranks-collectives-topology.json';
+import unitFile72 from './distributed-training/ranks-collectives-topology.project.json';
+import unitFile73 from './distributed-training/tensor-sequence-context-parallelism.json';
+import unitFile74 from './distributed-training/tensor-sequence-context-parallelism.project.json';
+import unitFile75 from './distributed-training/training-pipeline-framework-internals.json';
+import unitFile76 from './distributed-training/training-pipeline-framework-internals.project.json';
+import unitFile77 from './distributed-training/zero-fully-sharded-training.json';
+import unitFile78 from './distributed-training/zero-fully-sharded-training.project.json';
+import unitFile79 from './gpu/_route.json';
+import unitFile80 from './gpu/gpu-attention-transformer-fusion.json';
+import unitFile81 from './gpu/gpu-attention-transformer-fusion.project.json';
+import unitFile82 from './gpu/gpu-cuda-primitives-async.json';
+import unitFile83 from './gpu/gpu-cuda-primitives-async.project.json';
+import unitFile84 from './gpu/gpu-execution-memory-codegen.json';
+import unitFile85 from './gpu/gpu-execution-memory-codegen.project.json';
+import unitFile86 from './gpu/gpu-gemm-tensor-low-precision.json';
+import unitFile87 from './gpu/gpu-gemm-tensor-low-precision.project.json';
+import unitFile88 from './gpu/gpu-kernel-inference-integration.json';
+import unitFile89 from './gpu/gpu-kernel-inference-integration.project.json';
+import unitFile90 from './gpu/gpu-measurement-profiling-correctness.json';
+import unitFile91 from './gpu/gpu-measurement-profiling-correctness.project.json';
+import unitFile92 from './gpu/gpu-multigpu-communication.json';
+import unitFile93 from './gpu/gpu-multigpu-communication.project.json';
+import unitFile94 from './gpu/gpu-portability-performance-research.json';
+import unitFile95 from './gpu/gpu-portability-performance-research.project.json';
+import unitFile96 from './gpu/gpu-triton-cute-compilers.json';
+import unitFile97 from './gpu/gpu-triton-cute-compilers.project.json';
+import unitFile98 from './gpu/gpu-workload-arithmetic-contracts.json';
+import unitFile99 from './gpu/gpu-workload-arithmetic-contracts.project.json';
+import unitFile100 from './inference/_route.json';
+import unitFile101 from './inference/batching-scheduling-admission.json';
+import unitFile102 from './inference/batching-scheduling-admission.project.json';
+import unitFile103 from './inference/capacity-economics-engine-extension.json';
+import unitFile104 from './inference/capacity-economics-engine-extension.project.json';
+import unitFile105 from './inference/distributed-disaggregated-inference.json';
+import unitFile106 from './inference/distributed-disaggregated-inference.project.json';
+import unitFile107 from './inference/inference-kernels-graph-execution.json';
+import unitFile108 from './inference/inference-kernels-graph-execution.project.json';
+import unitFile109 from './inference/kv-memory-prefix-reuse.json';
+import unitFile110 from './inference/kv-memory-prefix-reuse.project.json';
+import unitFile111 from './inference/model-workload-request-arithmetic.json';
+import unitFile112 from './inference/model-workload-request-arithmetic.project.json';
+import unitFile113 from './inference/prefill-decode-baseline-measurement.json';
+import unitFile114 from './inference/prefill-decode-baseline-measurement.project.json';
+import unitFile115 from './inference/production-serving-reliability.json';
+import unitFile116 from './inference/production-serving-reliability.project.json';
+import unitFile117 from './inference/quantization-speculative-decoding.json';
+import unitFile118 from './inference/quantization-speculative-decoding.project.json';
+import unitFile119 from './llm-foundations/_route.json';
+import unitFile120 from './llm-foundations/causal-training-generation.json';
+import unitFile121 from './llm-foundations/causal-training-generation.project.json';
+import unitFile122 from './llm-foundations/decoder-transformer-mechanics.json';
+import unitFile123 from './llm-foundations/decoder-transformer-mechanics.project.json';
+import unitFile124 from './llm-foundations/evaluation-model-arithmetic.json';
+import unitFile125 from './llm-foundations/evaluation-model-arithmetic.project.json';
+import unitFile126 from './llm-foundations/kv-cache-prefill-decode.json';
+import unitFile127 from './llm-foundations/kv-cache-prefill-decode.project.json';
+import unitFile128 from './llm-foundations/tokenization-corpus-data.json';
+import unitFile129 from './llm-foundations/tokenization-corpus-data.project.json';
+import unitFile130 from './math-foundations/_route.json';
+import unitFile131 from './math-foundations/calculus-autodiff.json';
+import unitFile132 from './math-foundations/calculus-autodiff.project.json';
+import unitFile133 from './math-foundations/linear-algebra-proof.json';
+import unitFile134 from './math-foundations/linear-algebra-proof.project.json';
+import unitFile135 from './math-foundations/optimization-numerics.json';
+import unitFile136 from './math-foundations/optimization-numerics.project.json';
+import unitFile137 from './math-foundations/probability-information-bayes.json';
+import unitFile138 from './math-foundations/probability-information-bayes.project.json';
+import unitFile139 from './math-foundations/statistics-experimentation-causality.json';
+import unitFile140 from './math-foundations/statistics-experimentation-causality.project.json';
+import unitFile141 from './programming/_route.json';
+import unitFile142 from './programming/concurrency-profiling-operations.json';
+import unitFile143 from './programming/concurrency-profiling-operations.project.json';
+import unitFile144 from './programming/interfaces-data-apis.json';
+import unitFile145 from './programming/interfaces-data-apis.project.json';
+import unitFile146 from './programming/native-systems-literacy.json';
+import unitFile147 from './programming/native-systems-literacy.project.json';
+import unitFile148 from './programming/python-execution-model.json';
+import unitFile149 from './programming/python-execution-model.project.json';
+import unitFile150 from './programming/testing-debugging-reproducibility.json';
+import unitFile151 from './programming/testing-debugging-reproducibility.project.json';
+import unitFile152 from './reinforcement-learning/_route.json';
+import unitFile153 from './reinforcement-learning/classical-mdps-bellman-planning.json';
+import unitFile154 from './reinforcement-learning/classical-mdps-bellman-planning.project.json';
+import unitFile155 from './reinforcement-learning/classical-sampling-td-control.json';
+import unitFile156 from './reinforcement-learning/classical-sampling-td-control.project.json';
+import unitFile157 from './reinforcement-learning/deep-exploration-empirical-method.json';
+import unitFile158 from './reinforcement-learning/deep-exploration-empirical-method.project.json';
+import unitFile159 from './reinforcement-learning/deep-function-approximation-stability.json';
+import unitFile160 from './reinforcement-learning/deep-function-approximation-stability.project.json';
+import unitFile161 from './reinforcement-learning/deep-imitation-offline-ope.json';
+import unitFile162 from './reinforcement-learning/deep-imitation-offline-ope.project.json';
+import unitFile163 from './reinforcement-learning/deep-model-based-world-models.json';
+import unitFile164 from './reinforcement-learning/deep-model-based-world-models.project.json';
+import unitFile165 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.json';
+import unitFile166 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.project.json';
+import unitFile167 from './reinforcement-learning/llm-direct-preference-optimization.json';
+import unitFile168 from './reinforcement-learning/llm-direct-preference-optimization.project.json';
+import unitFile169 from './reinforcement-learning/llm-online-policy-optimization.json';
+import unitFile170 from './reinforcement-learning/llm-online-policy-optimization.project.json';
+import unitFile171 from './reinforcement-learning/llm-policy-trajectory-contracts.json';
+import unitFile172 from './reinforcement-learning/llm-policy-trajectory-contracts.project.json';
+import unitFile173 from './reinforcement-learning/llm-preferences-rewards-verifiers.json';
+import unitFile174 from './reinforcement-learning/llm-preferences-rewards-verifiers.project.json';
+import unitFile175 from './reinforcement-learning/llm-reasoning-agents-systems-research.json';
+import unitFile176 from './reinforcement-learning/llm-reasoning-agents-systems-research.project.json';
+import unitFile177 from './systems/_route.json';
+import unitFile178 from './systems/concurrency-bounded-work.json';
+import unitFile179 from './systems/concurrency-bounded-work.project.json';
+import unitFile180 from './systems/databases-durable-storage.json';
+import unitFile181 from './systems/databases-durable-storage.project.json';
+import unitFile182 from './systems/distributed-state-streams.json';
+import unitFile183 from './systems/distributed-state-streams.project.json';
+import unitFile184 from './systems/machine-process-memory-io.json';
+import unitFile185 from './systems/machine-process-memory-io.project.json';
+import unitFile186 from './systems/networking-rpc.json';
+import unitFile187 from './systems/networking-rpc.project.json';
+import unitFile188 from './systems/observability-reliability-design.json';
+import unitFile189 from './systems/observability-reliability-design.project.json';
+import unitFile190 from './systems/security-privacy-evolution.json';
+import unitFile191 from './systems/security-privacy-evolution.project.json';
 
 export const unitFiles: Array<{ route: string; name: string; data: unknown }> = [
   { route: 'algorithms', name: '_route', data: unitFile0 },
@@ -213,138 +232,157 @@ export const unitFiles: Array<{ route: string; name: string; data: unknown }> = 
   { route: 'deep-learning', name: 'representation-multimodal.project', data: unitFile36 },
   { route: 'deep-learning', name: 'training-dynamics', data: unitFile37 },
   { route: 'deep-learning', name: 'training-dynamics.project', data: unitFile38 },
-  { route: 'distributed-training', name: '_route', data: unitFile39 },
-  { route: 'distributed-training', name: 'checkpointing-fault-tolerance', data: unitFile40 },
-  { route: 'distributed-training', name: 'checkpointing-fault-tolerance.project', data: unitFile41 },
-  { route: 'distributed-training', name: 'data-parallelism-overlap', data: unitFile42 },
-  { route: 'distributed-training', name: 'data-parallelism-overlap.project', data: unitFile43 },
-  { route: 'distributed-training', name: 'expert-parallelism-moe', data: unitFile44 },
-  { route: 'distributed-training', name: 'expert-parallelism-moe.project', data: unitFile45 },
-  { route: 'distributed-training', name: 'multidimensional-parallel-planning', data: unitFile46 },
-  { route: 'distributed-training', name: 'multidimensional-parallel-planning.project', data: unitFile47 },
-  { route: 'distributed-training', name: 'performance-fleet-operation', data: unitFile48 },
-  { route: 'distributed-training', name: 'performance-fleet-operation.project', data: unitFile49 },
-  { route: 'distributed-training', name: 'pipeline-parallelism', data: unitFile50 },
-  { route: 'distributed-training', name: 'pipeline-parallelism.project', data: unitFile51 },
-  { route: 'distributed-training', name: 'ranks-collectives-topology', data: unitFile52 },
-  { route: 'distributed-training', name: 'ranks-collectives-topology.project', data: unitFile53 },
-  { route: 'distributed-training', name: 'tensor-sequence-context-parallelism', data: unitFile54 },
-  { route: 'distributed-training', name: 'tensor-sequence-context-parallelism.project', data: unitFile55 },
-  { route: 'distributed-training', name: 'training-pipeline-framework-internals', data: unitFile56 },
-  { route: 'distributed-training', name: 'training-pipeline-framework-internals.project', data: unitFile57 },
-  { route: 'distributed-training', name: 'zero-fully-sharded-training', data: unitFile58 },
-  { route: 'distributed-training', name: 'zero-fully-sharded-training.project', data: unitFile59 },
-  { route: 'gpu', name: '_route', data: unitFile60 },
-  { route: 'gpu', name: 'gpu-attention-transformer-fusion', data: unitFile61 },
-  { route: 'gpu', name: 'gpu-attention-transformer-fusion.project', data: unitFile62 },
-  { route: 'gpu', name: 'gpu-cuda-primitives-async', data: unitFile63 },
-  { route: 'gpu', name: 'gpu-cuda-primitives-async.project', data: unitFile64 },
-  { route: 'gpu', name: 'gpu-execution-memory-codegen', data: unitFile65 },
-  { route: 'gpu', name: 'gpu-execution-memory-codegen.project', data: unitFile66 },
-  { route: 'gpu', name: 'gpu-gemm-tensor-low-precision', data: unitFile67 },
-  { route: 'gpu', name: 'gpu-gemm-tensor-low-precision.project', data: unitFile68 },
-  { route: 'gpu', name: 'gpu-kernel-inference-integration', data: unitFile69 },
-  { route: 'gpu', name: 'gpu-kernel-inference-integration.project', data: unitFile70 },
-  { route: 'gpu', name: 'gpu-measurement-profiling-correctness', data: unitFile71 },
-  { route: 'gpu', name: 'gpu-measurement-profiling-correctness.project', data: unitFile72 },
-  { route: 'gpu', name: 'gpu-multigpu-communication', data: unitFile73 },
-  { route: 'gpu', name: 'gpu-multigpu-communication.project', data: unitFile74 },
-  { route: 'gpu', name: 'gpu-portability-performance-research', data: unitFile75 },
-  { route: 'gpu', name: 'gpu-portability-performance-research.project', data: unitFile76 },
-  { route: 'gpu', name: 'gpu-triton-cute-compilers', data: unitFile77 },
-  { route: 'gpu', name: 'gpu-triton-cute-compilers.project', data: unitFile78 },
-  { route: 'gpu', name: 'gpu-workload-arithmetic-contracts', data: unitFile79 },
-  { route: 'gpu', name: 'gpu-workload-arithmetic-contracts.project', data: unitFile80 },
-  { route: 'inference', name: '_route', data: unitFile81 },
-  { route: 'inference', name: 'batching-scheduling-admission', data: unitFile82 },
-  { route: 'inference', name: 'batching-scheduling-admission.project', data: unitFile83 },
-  { route: 'inference', name: 'capacity-economics-engine-extension', data: unitFile84 },
-  { route: 'inference', name: 'capacity-economics-engine-extension.project', data: unitFile85 },
-  { route: 'inference', name: 'distributed-disaggregated-inference', data: unitFile86 },
-  { route: 'inference', name: 'distributed-disaggregated-inference.project', data: unitFile87 },
-  { route: 'inference', name: 'inference-kernels-graph-execution', data: unitFile88 },
-  { route: 'inference', name: 'inference-kernels-graph-execution.project', data: unitFile89 },
-  { route: 'inference', name: 'kv-memory-prefix-reuse', data: unitFile90 },
-  { route: 'inference', name: 'kv-memory-prefix-reuse.project', data: unitFile91 },
-  { route: 'inference', name: 'model-workload-request-arithmetic', data: unitFile92 },
-  { route: 'inference', name: 'model-workload-request-arithmetic.project', data: unitFile93 },
-  { route: 'inference', name: 'prefill-decode-baseline-measurement', data: unitFile94 },
-  { route: 'inference', name: 'prefill-decode-baseline-measurement.project', data: unitFile95 },
-  { route: 'inference', name: 'production-serving-reliability', data: unitFile96 },
-  { route: 'inference', name: 'production-serving-reliability.project', data: unitFile97 },
-  { route: 'inference', name: 'quantization-speculative-decoding', data: unitFile98 },
-  { route: 'inference', name: 'quantization-speculative-decoding.project', data: unitFile99 },
-  { route: 'llm-foundations', name: '_route', data: unitFile100 },
-  { route: 'llm-foundations', name: 'causal-training-generation', data: unitFile101 },
-  { route: 'llm-foundations', name: 'causal-training-generation.project', data: unitFile102 },
-  { route: 'llm-foundations', name: 'decoder-transformer-mechanics', data: unitFile103 },
-  { route: 'llm-foundations', name: 'decoder-transformer-mechanics.project', data: unitFile104 },
-  { route: 'llm-foundations', name: 'evaluation-model-arithmetic', data: unitFile105 },
-  { route: 'llm-foundations', name: 'evaluation-model-arithmetic.project', data: unitFile106 },
-  { route: 'llm-foundations', name: 'kv-cache-prefill-decode', data: unitFile107 },
-  { route: 'llm-foundations', name: 'kv-cache-prefill-decode.project', data: unitFile108 },
-  { route: 'llm-foundations', name: 'tokenization-corpus-data', data: unitFile109 },
-  { route: 'llm-foundations', name: 'tokenization-corpus-data.project', data: unitFile110 },
-  { route: 'math-foundations', name: '_route', data: unitFile111 },
-  { route: 'math-foundations', name: 'calculus-autodiff', data: unitFile112 },
-  { route: 'math-foundations', name: 'calculus-autodiff.project', data: unitFile113 },
-  { route: 'math-foundations', name: 'linear-algebra-proof', data: unitFile114 },
-  { route: 'math-foundations', name: 'linear-algebra-proof.project', data: unitFile115 },
-  { route: 'math-foundations', name: 'optimization-numerics', data: unitFile116 },
-  { route: 'math-foundations', name: 'optimization-numerics.project', data: unitFile117 },
-  { route: 'math-foundations', name: 'probability-information-bayes', data: unitFile118 },
-  { route: 'math-foundations', name: 'probability-information-bayes.project', data: unitFile119 },
-  { route: 'math-foundations', name: 'statistics-experimentation-causality', data: unitFile120 },
-  { route: 'math-foundations', name: 'statistics-experimentation-causality.project', data: unitFile121 },
-  { route: 'programming', name: '_route', data: unitFile122 },
-  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile123 },
-  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile124 },
-  { route: 'programming', name: 'interfaces-data-apis', data: unitFile125 },
-  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile126 },
-  { route: 'programming', name: 'native-systems-literacy', data: unitFile127 },
-  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile128 },
-  { route: 'programming', name: 'python-execution-model', data: unitFile129 },
-  { route: 'programming', name: 'python-execution-model.project', data: unitFile130 },
-  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile131 },
-  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile132 },
-  { route: 'reinforcement-learning', name: '_route', data: unitFile133 },
-  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning', data: unitFile134 },
-  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning.project', data: unitFile135 },
-  { route: 'reinforcement-learning', name: 'classical-sampling-td-control', data: unitFile136 },
-  { route: 'reinforcement-learning', name: 'classical-sampling-td-control.project', data: unitFile137 },
-  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method', data: unitFile138 },
-  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method.project', data: unitFile139 },
-  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability', data: unitFile140 },
-  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability.project', data: unitFile141 },
-  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope', data: unitFile142 },
-  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope.project', data: unitFile143 },
-  { route: 'reinforcement-learning', name: 'deep-model-based-world-models', data: unitFile144 },
-  { route: 'reinforcement-learning', name: 'deep-model-based-world-models.project', data: unitFile145 },
-  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo', data: unitFile146 },
-  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo.project', data: unitFile147 },
-  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization', data: unitFile148 },
-  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization.project', data: unitFile149 },
-  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization', data: unitFile150 },
-  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization.project', data: unitFile151 },
-  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts', data: unitFile152 },
-  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts.project', data: unitFile153 },
-  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers', data: unitFile154 },
-  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers.project', data: unitFile155 },
-  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research', data: unitFile156 },
-  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research.project', data: unitFile157 },
-  { route: 'systems', name: '_route', data: unitFile158 },
-  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile159 },
-  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile160 },
-  { route: 'systems', name: 'databases-durable-storage', data: unitFile161 },
-  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile162 },
-  { route: 'systems', name: 'distributed-state-streams', data: unitFile163 },
-  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile164 },
-  { route: 'systems', name: 'machine-process-memory-io', data: unitFile165 },
-  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile166 },
-  { route: 'systems', name: 'networking-rpc', data: unitFile167 },
-  { route: 'systems', name: 'networking-rpc.project', data: unitFile168 },
-  { route: 'systems', name: 'observability-reliability-design', data: unitFile169 },
-  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile170 },
-  { route: 'systems', name: 'security-privacy-evolution', data: unitFile171 },
-  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile172 },
+  { route: 'distributed-systems', name: '_route', data: unitFile39 },
+  { route: 'distributed-systems', name: 'consensus-coordination', data: unitFile40 },
+  { route: 'distributed-systems', name: 'consensus-coordination.project', data: unitFile41 },
+  { route: 'distributed-systems', name: 'formal-validation-real-system-extension', data: unitFile42 },
+  { route: 'distributed-systems', name: 'formal-validation-real-system-extension.project', data: unitFile43 },
+  { route: 'distributed-systems', name: 'logs-queues-stream-processing', data: unitFile44 },
+  { route: 'distributed-systems', name: 'logs-queues-stream-processing.project', data: unitFile45 },
+  { route: 'distributed-systems', name: 'partitioning-transactions-workflows', data: unitFile46 },
+  { route: 'distributed-systems', name: 'partitioning-transactions-workflows.project', data: unitFile47 },
+  { route: 'distributed-systems', name: 'protocols-rpc', data: unitFile48 },
+  { route: 'distributed-systems', name: 'protocols-rpc.project', data: unitFile49 },
+  { route: 'distributed-systems', name: 'replication-consistency', data: unitFile50 },
+  { route: 'distributed-systems', name: 'replication-consistency.project', data: unitFile51 },
+  { route: 'distributed-systems', name: 'security-operations-evolution-data-governance', data: unitFile52 },
+  { route: 'distributed-systems', name: 'security-operations-evolution-data-governance.project', data: unitFile53 },
+  { route: 'distributed-systems', name: 'storage-engines-recovery', data: unitFile54 },
+  { route: 'distributed-systems', name: 'storage-engines-recovery.project', data: unitFile55 },
+  { route: 'distributed-systems', name: 'time-identity-membership-failure', data: unitFile56 },
+  { route: 'distributed-systems', name: 'time-identity-membership-failure.project', data: unitFile57 },
+  { route: 'distributed-training', name: '_route', data: unitFile58 },
+  { route: 'distributed-training', name: 'checkpointing-fault-tolerance', data: unitFile59 },
+  { route: 'distributed-training', name: 'checkpointing-fault-tolerance.project', data: unitFile60 },
+  { route: 'distributed-training', name: 'data-parallelism-overlap', data: unitFile61 },
+  { route: 'distributed-training', name: 'data-parallelism-overlap.project', data: unitFile62 },
+  { route: 'distributed-training', name: 'expert-parallelism-moe', data: unitFile63 },
+  { route: 'distributed-training', name: 'expert-parallelism-moe.project', data: unitFile64 },
+  { route: 'distributed-training', name: 'multidimensional-parallel-planning', data: unitFile65 },
+  { route: 'distributed-training', name: 'multidimensional-parallel-planning.project', data: unitFile66 },
+  { route: 'distributed-training', name: 'performance-fleet-operation', data: unitFile67 },
+  { route: 'distributed-training', name: 'performance-fleet-operation.project', data: unitFile68 },
+  { route: 'distributed-training', name: 'pipeline-parallelism', data: unitFile69 },
+  { route: 'distributed-training', name: 'pipeline-parallelism.project', data: unitFile70 },
+  { route: 'distributed-training', name: 'ranks-collectives-topology', data: unitFile71 },
+  { route: 'distributed-training', name: 'ranks-collectives-topology.project', data: unitFile72 },
+  { route: 'distributed-training', name: 'tensor-sequence-context-parallelism', data: unitFile73 },
+  { route: 'distributed-training', name: 'tensor-sequence-context-parallelism.project', data: unitFile74 },
+  { route: 'distributed-training', name: 'training-pipeline-framework-internals', data: unitFile75 },
+  { route: 'distributed-training', name: 'training-pipeline-framework-internals.project', data: unitFile76 },
+  { route: 'distributed-training', name: 'zero-fully-sharded-training', data: unitFile77 },
+  { route: 'distributed-training', name: 'zero-fully-sharded-training.project', data: unitFile78 },
+  { route: 'gpu', name: '_route', data: unitFile79 },
+  { route: 'gpu', name: 'gpu-attention-transformer-fusion', data: unitFile80 },
+  { route: 'gpu', name: 'gpu-attention-transformer-fusion.project', data: unitFile81 },
+  { route: 'gpu', name: 'gpu-cuda-primitives-async', data: unitFile82 },
+  { route: 'gpu', name: 'gpu-cuda-primitives-async.project', data: unitFile83 },
+  { route: 'gpu', name: 'gpu-execution-memory-codegen', data: unitFile84 },
+  { route: 'gpu', name: 'gpu-execution-memory-codegen.project', data: unitFile85 },
+  { route: 'gpu', name: 'gpu-gemm-tensor-low-precision', data: unitFile86 },
+  { route: 'gpu', name: 'gpu-gemm-tensor-low-precision.project', data: unitFile87 },
+  { route: 'gpu', name: 'gpu-kernel-inference-integration', data: unitFile88 },
+  { route: 'gpu', name: 'gpu-kernel-inference-integration.project', data: unitFile89 },
+  { route: 'gpu', name: 'gpu-measurement-profiling-correctness', data: unitFile90 },
+  { route: 'gpu', name: 'gpu-measurement-profiling-correctness.project', data: unitFile91 },
+  { route: 'gpu', name: 'gpu-multigpu-communication', data: unitFile92 },
+  { route: 'gpu', name: 'gpu-multigpu-communication.project', data: unitFile93 },
+  { route: 'gpu', name: 'gpu-portability-performance-research', data: unitFile94 },
+  { route: 'gpu', name: 'gpu-portability-performance-research.project', data: unitFile95 },
+  { route: 'gpu', name: 'gpu-triton-cute-compilers', data: unitFile96 },
+  { route: 'gpu', name: 'gpu-triton-cute-compilers.project', data: unitFile97 },
+  { route: 'gpu', name: 'gpu-workload-arithmetic-contracts', data: unitFile98 },
+  { route: 'gpu', name: 'gpu-workload-arithmetic-contracts.project', data: unitFile99 },
+  { route: 'inference', name: '_route', data: unitFile100 },
+  { route: 'inference', name: 'batching-scheduling-admission', data: unitFile101 },
+  { route: 'inference', name: 'batching-scheduling-admission.project', data: unitFile102 },
+  { route: 'inference', name: 'capacity-economics-engine-extension', data: unitFile103 },
+  { route: 'inference', name: 'capacity-economics-engine-extension.project', data: unitFile104 },
+  { route: 'inference', name: 'distributed-disaggregated-inference', data: unitFile105 },
+  { route: 'inference', name: 'distributed-disaggregated-inference.project', data: unitFile106 },
+  { route: 'inference', name: 'inference-kernels-graph-execution', data: unitFile107 },
+  { route: 'inference', name: 'inference-kernels-graph-execution.project', data: unitFile108 },
+  { route: 'inference', name: 'kv-memory-prefix-reuse', data: unitFile109 },
+  { route: 'inference', name: 'kv-memory-prefix-reuse.project', data: unitFile110 },
+  { route: 'inference', name: 'model-workload-request-arithmetic', data: unitFile111 },
+  { route: 'inference', name: 'model-workload-request-arithmetic.project', data: unitFile112 },
+  { route: 'inference', name: 'prefill-decode-baseline-measurement', data: unitFile113 },
+  { route: 'inference', name: 'prefill-decode-baseline-measurement.project', data: unitFile114 },
+  { route: 'inference', name: 'production-serving-reliability', data: unitFile115 },
+  { route: 'inference', name: 'production-serving-reliability.project', data: unitFile116 },
+  { route: 'inference', name: 'quantization-speculative-decoding', data: unitFile117 },
+  { route: 'inference', name: 'quantization-speculative-decoding.project', data: unitFile118 },
+  { route: 'llm-foundations', name: '_route', data: unitFile119 },
+  { route: 'llm-foundations', name: 'causal-training-generation', data: unitFile120 },
+  { route: 'llm-foundations', name: 'causal-training-generation.project', data: unitFile121 },
+  { route: 'llm-foundations', name: 'decoder-transformer-mechanics', data: unitFile122 },
+  { route: 'llm-foundations', name: 'decoder-transformer-mechanics.project', data: unitFile123 },
+  { route: 'llm-foundations', name: 'evaluation-model-arithmetic', data: unitFile124 },
+  { route: 'llm-foundations', name: 'evaluation-model-arithmetic.project', data: unitFile125 },
+  { route: 'llm-foundations', name: 'kv-cache-prefill-decode', data: unitFile126 },
+  { route: 'llm-foundations', name: 'kv-cache-prefill-decode.project', data: unitFile127 },
+  { route: 'llm-foundations', name: 'tokenization-corpus-data', data: unitFile128 },
+  { route: 'llm-foundations', name: 'tokenization-corpus-data.project', data: unitFile129 },
+  { route: 'math-foundations', name: '_route', data: unitFile130 },
+  { route: 'math-foundations', name: 'calculus-autodiff', data: unitFile131 },
+  { route: 'math-foundations', name: 'calculus-autodiff.project', data: unitFile132 },
+  { route: 'math-foundations', name: 'linear-algebra-proof', data: unitFile133 },
+  { route: 'math-foundations', name: 'linear-algebra-proof.project', data: unitFile134 },
+  { route: 'math-foundations', name: 'optimization-numerics', data: unitFile135 },
+  { route: 'math-foundations', name: 'optimization-numerics.project', data: unitFile136 },
+  { route: 'math-foundations', name: 'probability-information-bayes', data: unitFile137 },
+  { route: 'math-foundations', name: 'probability-information-bayes.project', data: unitFile138 },
+  { route: 'math-foundations', name: 'statistics-experimentation-causality', data: unitFile139 },
+  { route: 'math-foundations', name: 'statistics-experimentation-causality.project', data: unitFile140 },
+  { route: 'programming', name: '_route', data: unitFile141 },
+  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile142 },
+  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile143 },
+  { route: 'programming', name: 'interfaces-data-apis', data: unitFile144 },
+  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile145 },
+  { route: 'programming', name: 'native-systems-literacy', data: unitFile146 },
+  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile147 },
+  { route: 'programming', name: 'python-execution-model', data: unitFile148 },
+  { route: 'programming', name: 'python-execution-model.project', data: unitFile149 },
+  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile150 },
+  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile151 },
+  { route: 'reinforcement-learning', name: '_route', data: unitFile152 },
+  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning', data: unitFile153 },
+  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning.project', data: unitFile154 },
+  { route: 'reinforcement-learning', name: 'classical-sampling-td-control', data: unitFile155 },
+  { route: 'reinforcement-learning', name: 'classical-sampling-td-control.project', data: unitFile156 },
+  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method', data: unitFile157 },
+  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method.project', data: unitFile158 },
+  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability', data: unitFile159 },
+  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability.project', data: unitFile160 },
+  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope', data: unitFile161 },
+  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope.project', data: unitFile162 },
+  { route: 'reinforcement-learning', name: 'deep-model-based-world-models', data: unitFile163 },
+  { route: 'reinforcement-learning', name: 'deep-model-based-world-models.project', data: unitFile164 },
+  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo', data: unitFile165 },
+  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo.project', data: unitFile166 },
+  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization', data: unitFile167 },
+  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization.project', data: unitFile168 },
+  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization', data: unitFile169 },
+  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization.project', data: unitFile170 },
+  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts', data: unitFile171 },
+  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts.project', data: unitFile172 },
+  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers', data: unitFile173 },
+  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers.project', data: unitFile174 },
+  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research', data: unitFile175 },
+  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research.project', data: unitFile176 },
+  { route: 'systems', name: '_route', data: unitFile177 },
+  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile178 },
+  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile179 },
+  { route: 'systems', name: 'databases-durable-storage', data: unitFile180 },
+  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile181 },
+  { route: 'systems', name: 'distributed-state-streams', data: unitFile182 },
+  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile183 },
+  { route: 'systems', name: 'machine-process-memory-io', data: unitFile184 },
+  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile185 },
+  { route: 'systems', name: 'networking-rpc', data: unitFile186 },
+  { route: 'systems', name: 'networking-rpc.project', data: unitFile187 },
+  { route: 'systems', name: 'observability-reliability-design', data: unitFile188 },
+  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile189 },
+  { route: 'systems', name: 'security-privacy-evolution', data: unitFile190 },
+  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile191 },
 ];
