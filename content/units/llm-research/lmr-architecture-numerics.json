@@ -357,47 +357,118 @@
         "mla"
       ],
       "outcomes": [
-        "TODO"
+        "Derive KV-cache elements per token for MHA, MQA, GQA and multi-head latent attention (MLA), and say which of them changes memory traffic, which changes FLOPs and which changes neither.",
+        "Implement MLA with decoupled RoPE two ways, with keys and values materialized and with the key and value up-projections absorbed, and show that they agree.",
+        "Explain why converting a multi-head checkpoint to GQA by mean pooling is not function-preserving, while the reverse conversion is exact, and what the GQA paper does about it."
       ],
-      "why": "TODO",
+      "why": "The head layout sets how many bytes each decoded token adds to the cache, so it sets the batch and context your serving budget allows. Your variant choice here also changes parameters, which makes it a common confound in architecture comparisons.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/variant-weight-transfer-tests",
+          "note": "Turn the exact and inexact conversions into weight-transfer and differential tests."
+        },
+        {
+          "unit": "llm-research/lmr-architecture-numerics/fair-architecture-comparison",
+          "note": "Compare head layouts under a matched-parameter contract without confounding depth."
+        },
+        {
+          "unit": "inference/kv-memory-prefix-reuse/kv-layouts-cache-variants",
+          "note": "Follow the KV bytes into cache layouts and serving cost."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "gqa-mqa-lmr2",
+          "title": "Fast Transformer Decoding: One Write-Head is All You Need (arXiv:1911.02150v1)",
+          "url": "https://arxiv.org/abs/1911.02150v1",
+          "locator": "Section 2.4.1 (performance analysis of incremental multi-head attention), Section 3 and 3.1 (multi-query attention and its memory-to-compute ratio), Sections 4.2 and 4.3 (quality and speed)",
+          "depth": "The experiments are 2019 translation and language modelling. Read them for the size of the quality gap, not as a result for modern decoders."
+        },
+        {
+          "resource": "gqa-mqa-lmr2",
+          "title": "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints (arXiv:2305.13245v3)",
+          "url": "https://arxiv.org/abs/2305.13245v3",
+          "locator": "Section 2.1 (uptraining by mean pooling) and 2.2 (grouped heads), Section 3.3 (ablations: Figures 4 to 6), Table 1"
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lectures 3 and 4 slides",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_04.pdf",
+          "locator": "Lecture 3 slides 57 to 63 (arithmetic intensity of incremental decoding, MQA, GQA, quality); Lecture 4 slides 57 to 58 (MLA and the RoPE conflict)"
+        },
+        {
+          "resource": "deepseek-mla-lmr2",
+          "title": "DeepSeek-V2 (arXiv:2405.04434)",
+          "url": "https://arxiv.org/abs/2405.04434",
+          "locator": "Sections 2.1.1 to 2.1.4 (Equations 1 to 19, Table 1) and Appendices D.1 and D.2 (their attention ablations)",
+          "depth": "Skip Section 2.2 onward. Appendix D.1 aligns the MHA, GQA and MQA models at about 7B parameters by changing the number of layers, so depth differs between the arms."
+        },
+        {
+          "resource": "raschka-llm-architecture-lmr2",
+          "title": "Build a Large Language Model (From Scratch), companion bonus code",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/tree/ec0bac5e1d854306a8ea6c308da49aae22479bd1/ch04/04_gqa",
+          "locator": "`ch04/04_gqa`: README and `memory_estimator_gqa.py`; `ch04/05_mla`: README and `gpt_with_kv_mla.py`",
+          "depth": "The MLA code caches the latent and up-projects it at every step, with no decoupled RoPE and no absorption. It shows the cache saving, not the compute path."
+        },
+        {
+          "resource": "modern-notebook-architecture-lmr2",
+          "title": "Modern LLM Notebook: KV Cache and Its Architectural Evolution",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/11-mla-kv-cache.ipynb",
+          "locator": "Sections 1 to 5 and the exercises. Do not use Section 6's cache count (see the traps)"
         }
       ],
       "focus": [
-        "TODO"
+        "KV elements per token per layer: MHA \\(2 n_h d_h\\), GQA with \\(n_g\\) groups \\(2 n_g d_h\\), MQA \\(2 d_h\\), MLA \\(d_c + d_h^R\\). For DeepSeek-V2 (128 heads, \\(d_h = 128\\), \\(d_c = 512\\), \\(d_h^R = 64\\), 60 layers) that is 1,966,080 against 34,560 elements per token, a ratio of 56.9, equal to GQA with 2.25 groups (Table 1).",
+        "MQA and GQA reduce the bytes loaded per decoded token. The attention multiply-adds are unchanged, because every query head still attends over every cached position. Shazeer's ratio of memory access to arithmetic drops from \\(\\Theta(n/d + 1/b)\\) to \\(\\Theta(1/d + n/(dh) + 1/b)\\), and only the \\(n/d\\) term shrinks, by a factor \\(h\\).",
+        "RoPE sits between the query projection and the key up-projection, so \\(W^{UK}\\) cannot be absorbed into the query projection. DeepSeek-V2 carries position in extra query heads and one shared rotated key of size \\(d_h^R\\) that is also cached. That shared key is why the cache is \\(d_c + d_h^R\\), not \\(d_c\\).",
+        "Conversion direction matters. Replicating each GQA key and value head into a full MHA gives an identical model. Mean pooling the heads of an MHA checkpoint into groups does not, which is why the GQA paper uptrains (5% of the original compute for T5 XXL) and finds mean pooling beats taking the first head or random initialization (Figure 4)."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the four cache formulas and the DeepSeek-V2 numbers above. Then implement MLA with decoupled RoPE in float64 for \\(B = 2\\), \\(T = 9\\), width 48, 4 heads, \\(d_h = 12\\), \\(d_c = 16\\), \\(d_h^R = 8\\). Path 1 materializes the keys and values from the latent. Path 2 absorbs \\(W^{UK}\\) into the query and \\(W^{UV}\\) into the output projection, so attention touches only the latent and the shared rotated key. Both paths apply a causal mask and must agree: the maximum absolute difference was 1.3e-15 in my run (PyTorch 2.14.1, CPU), and anything under 1e-10 passes. Cache elements per token per layer for these shapes: 24 for MLA, 96 for MHA. Also check that expanding GQA key and value weights into an MHA gives a difference of exactly 0.0, and that mean pooling a random MHA does not.",
       "traps": [
-        "TODO"
+        "The Modern LLM Notebook (Section 6, commit 979eecf) counts the decoupled RoPE key as \\(\\text{num\\_heads} \\times d_r = 8192\\) elements per token per layer and prints MLA as 8704 elements (3.8 times smaller than MHA), while saying the RoPE side path is 'only a small portion'. DeepSeek-V2 Equation 15 defines one key shared by all heads, so the cache is \\(512 + 64 = 576\\) elements.",
+        "Trusting a shape-only exercise. Notebook Exercise 3 passes if the output has the right shape and is finite, and its `SimpleMLA` has no causal mask. Add the absorbed-path equality test and a future-token test before you call the layer correct.",
+        "Reading the quality results as portable. MQA reports a small loss in 2019 translation and language modelling. GQA reports T5 encoder-decoder summarization, translation and question answering. DeepSeek-V2's Appendix D.1 matches parameters by changing depth, and its claim that MLA beats MHA comes from the authors' own models. None is a decoder ablation at your scale."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A decoder has 32 layers, 8 KV heads of size 128 and bfloat16 caches. How many bytes does each token add, and what would 32 KV heads cost? What is the cache of one 4096-token sequence in each case?",
+          "a": "\\(2 \\cdot 8 \\cdot 128 \\cdot 2 \\cdot 32 = 131{,}072\\) bytes per token with 8 KV heads and 524,288 with 32. For 4096 tokens that is 512 MiB and 2 GiB."
+        },
+        {
+          "q": "Does GQA reduce attention FLOPs during decoding? What does it reduce?",
+          "a": "No. Each query head still computes scores against every cached position, so the multiply-adds are unchanged. It reduces the keys and values stored and loaded per step, which shrinks the \\(n/d\\) memory-to-compute term in decoding."
+        },
+        {
+          "q": "Which conversion is exact: GQA to MHA by copying each group's key and value weights to all its query heads, or MHA to GQA by averaging the heads in a group? Why does the other one need training?",
+          "a": "Copying is exact, because attention with replicated keys and values is what GQA computes. Averaging keys and values changes every head's attention scores and values, so the converted model computes a different function. Uptraining lets the model adapt."
+        },
+        {
+          "q": "Why does MLA cache \\(d_c + d_h^R\\) rather than \\(d_c\\)?",
+          "a": "Applying RoPE to the up-projected keys would put a position-dependent rotation between the query projection and \\(W^{UK}\\), blocking the absorption and forcing recomputation of all prefix keys. DeepSeek-V2 therefore uses extra query heads and one shared rotated key of size \\(d_h^R\\) for position, and that key must be cached as well."
+        },
+        {
+          "q": "In absorbed MLA decoding with \\(d_c = 4 d_h\\), roughly how does the number of multiply-adds per head per cached position compare with materialized keys and values, ignoring the RoPE part?",
+          "a": "About four times larger: scores and the weighted sum run in the latent dimension \\(d_c = 4 d_h\\) instead of \\(d_h\\). MLA trades extra arithmetic for a much smaller cache, so it moves decoding toward compute-bound."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Causal Grouped-Query Attention",
+          "url": "https://www.tensortonic.com/problems/cs336-l03-causal-grouped-query-attention",
+          "locator": "Free problem `cs336-l03-causal-grouped-query-attention`, function `causal_gqa(q, k, v)`, without repeating key or value heads",
+          "note": "The three public cases check single-head causal attention, multi-query attention with two query heads, and two key-value heads with four query heads, on tiny tensors. They do not check gradients, odd group sizes or float16. Add your own test against a version that repeats the heads."
+        },
+        {
+          "name": "Modern LLM Notebook 11: Exercises 1 to 3, then your own MLA test",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/11-mla-kv-cache.ipynb",
+          "locator": "Exercises 1 to 3 at the end of the notebook; then extend `SimpleMLA` with a causal mask, decoupled RoPE and the absorbed path, and test both paths against each other",
+          "note": "Exercises 1 and 2 are cache arithmetic; Exercise 3 fills in three lines. The absorbed-path test is the part that checks your understanding. Use a float64 tolerance."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your two MLA paths agree to float64 tolerance under a causal mask and nonzero positions, and you can state the cache elements per token for all four layouts for a configuration you choose.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The MQA and GQA papers, the CS336 slides, DeepSeek-V2 Section 2.1 and the Raschka and notebook code cover derive and implement depth. One notebook count was wrong and is called out; no replacement was needed."
       }
     },
     {
@@ -413,47 +484,108 @@
         "long-context-interpolation"
       ],
       "outcomes": [
-        "TODO"
+        "Derive the relative-position property of RoPE with explicit position offsets, and explain why neither it nor the long-term decay bound guarantees behaviour beyond the trained length.",
+        "Implement position interpolation, NTK-aware base scaling, NTK-by-parts and the YaRN attention temperature as maps on positions and frequencies, and predict which dimension pairs each one changes.",
+        "Measure loss against evaluation length on a small trained model for direct extrapolation and each scaling method, and state what the measurement does not show."
       ],
-      "why": "TODO",
+      "why": "Long context fails in a specific way: some rotation angles at long range were never seen in training. Knowing which dimension pairs carry that risk lets you choose a scaling method for a stated length and know what fine-tuning it still needs.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/scale-diagnostics-property-tests",
+          "note": "Add position-offset and long-context property tests to your decoder."
+        },
+        {
+          "unit": "llm-research/lmr-multimodal-models/modality-tokens-multimodal-rope",
+          "note": "See how rotary coordinates extend to several axes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "roformer-lmr2",
+          "title": "RoFormer: Enhanced Transformer with Rotary Position Embedding (arXiv:2104.09864v5)",
+          "url": "https://arxiv.org/abs/2104.09864v5",
+          "locator": "Section 3.1 (Equation 11, the relative-position requirement), Sections 3.2.1 and 3.2.2 (2D case and general form), Section 3.3 (properties) and Section 3.4.3 with Figure 2 (long-term decay)",
+          "depth": "Skip Sections 4 and 5, the Chinese and BERT-style experiments."
+        },
+        {
+          "resource": "pi-yarn-lmr2",
+          "title": "Extending Context Window of Large Language Models via Position Interpolation (arXiv:2306.15595v2)",
+          "url": "https://arxiv.org/abs/2306.15595v2",
+          "locator": "Section 2.2 (direct extrapolation and Figure 2), Section 2.3 (the method and Theorem 2.1), Section 3.2 (Table 1), Section 3.3 (passkey retrieval, Table 4)"
+        },
+        {
+          "resource": "pi-yarn-lmr2",
+          "title": "YaRN: Efficient Context Window Extension of Large Language Models (arXiv:2309.00071v3)",
+          "url": "https://arxiv.org/abs/2309.00071v3",
+          "locator": "Sections 2.2 and 3.1 to 3.4 (Equations 10 to 15), Appendix A.1 to A.3 (Equations 16 to 23)",
+          "depth": "Stop before Section 4. Use Appendix A.1 (Equation 16) for the direction of position interpolation; see the traps."
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 3 slides",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_03.pdf",
+          "locator": "Slides 30 to 35 (position embeddings, RoPE, the actual RoPE math, implementation)"
+        },
+        {
+          "resource": "modern-notebook-architecture-lmr2",
+          "title": "Modern LLM Notebook: Long Context Extrapolation",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/27-long-context.ipynb",
+          "locator": "Sections 4 to 9 (RoPE, why extrapolation fails, position interpolation, NTK-aware) and Section 12 (how to validate long context)",
+          "depth": "Do not use Section 10 or the `yarn` branch of `ExtrapolatableRoPE` as a description of YaRN (see the traps)."
         }
       ],
       "focus": [
-        "TODO"
+        "RoPE rotates each pair \\(2i, 2i+1\\) of a query or key by the angle \\(p\\,\\theta_i\\) with \\(\\theta_i = b^{-2i/d}\\), so \\(\\langle R_m q, R_n k\\rangle\\) depends on \\(m - n\\) only. With explicit position IDs this also holds for any common offset, which is what a KV cache and a packed batch rely on.",
+        "Relative encoding does not make extrapolation safe. The PI paper shows a fitted attention-score function that stays within \\([-1, 1]\\) on the trained range and reaches values above 8000 outside it (Figure 2), and calls the RoFormer decay bound too loose to rule that out. YaRN's account: pairs whose wavelength \\(\\lambda_i = 2\\pi b^{2i/d}\\) exceeds the trained length \\(L\\) never complete a rotation in training, so long-range angles are new to the model.",
+        "The four maps, with \\(s = L'/L\\). PI divides positions by \\(s\\). NTK-aware sets the base to \\(b' = b\\, s^{d/(d-2)}\\), which leaves the first pair unchanged and divides the last pair's frequency by exactly \\(s\\). NTK-by-parts leaves pairs with \\(L/\\lambda_i > \\beta\\) alone, divides pairs with \\(L/\\lambda_i < \\alpha\\) by \\(s\\) and ramps between (\\(\\alpha = 1\\), \\(\\beta = 32\\) for Llama). YaRN adds one scalar on the attention logits, \\(1/t = (0.1 \\ln s + 1)^2\\), applied by scaling both queries and keys by \\(\\sqrt{1/t}\\).",
+        "Fine-tuning needs differ. PI needs a short fine-tune and is worse than the other maps without one in the small run of the reproduce step. NTK-aware works better than PI without fine-tuning, but the YaRN paper reports that fine-tuning with it gives inferior results to PI. With dynamic scaling the scale follows the current length, so cache keys before applying RoPE."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive \\(\\langle R_m q, R_n k\\rangle = \\langle R_{m-n}\\, q, k\\rangle\\) pair by pair, then compute for head size 128, \\(b = 10000\\), \\(L = 4096\\), \\(\\alpha = 1\\), \\(\\beta = 32\\) the number of pairs with \\(L/\\lambda_i < 1\\), with \\(L/\\lambda_i > 32\\) and in the ramp (18, 21 and 25 of the 64 pairs). Compute the NTK-aware base for \\(s = 8\\) (82,684.6) and check that the last pair's frequency ratio is 0.125 exactly. Implement RoPE with explicit position IDs and check in float64 that for random \\(q, k\\) the score at positions (2, 5) equals the score at (12, 15), and that with PI at \\(s = 4\\) the score at (40, 100) equals the unscaled score at (10, 25), so distance 60 looks like distance 15. Then measure: labeled example, not a target, from a 4-layer pre-norm decoder (width 128, 4 heads, head size 32, base 10000, byte-level text, 2500 steps at length 128, cosine schedule, one seed, PyTorch 2.14.1 on CPU, no fine-tuning at the longer lengths). Mean held-out next-byte loss in nats at length 128 was 1.119. At lengths 256, 512, 1024 and 2048 (\\(s = 2, 4, 8, 16\\)) direct extrapolation gave 2.008, 2.979, 3.657 and 4.241, PI 2.985, 3.802, 4.152 and 4.619, NTK-aware 1.437, 2.058, 2.789 and 3.580, NTK-by-parts 1.807, 2.568, 3.041 and 3.606, and YaRN 1.825, 2.613, 3.083 and 3.644. Your numbers will differ; expect the same ordering of direct against NTK-aware, and PI without fine-tuning no better than direct.",
       "traps": [
-        "TODO"
+        "Applying position interpolation in the wrong direction. YaRN v3 Equation 9 writes \\(g(m) = s \\cdot m\\) with \\(s = L'/L\\), which would stretch positions; its own Appendix A.1 Equation 16 and the PI paper use \\(m L / L' = m / s\\). Divide by \\(s\\).",
+        "Taking the Modern LLM Notebook's Section 10 as YaRN. It describes NTK base change plus a per-dimension temperature, while YaRN's temperature is one scalar on all logits and the per-dimension step is the frequency ramp of NTK-by-parts. The notebook's `ExtrapolatableRoPE` implements the `yarn` strategy as NTK-aware only and marks it as simplified.",
+        "Calling a method 'extended' from one perplexity number or one passkey test. In the small run in the reproduce step, YaRN's temperature did not help (its loss was slightly above NTK-by-parts at every length), and a 16-pair model is not a Llama. Compare methods at several lengths and seeds, and report whether any fine-tuning happened."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Show that the RoPE score depends only on \\(m - n\\).",
+          "a": "Per pair, \\(R_{m\\theta}^\\top R_{n\\theta} = R_{(n-m)\\theta}\\), because rotations are orthogonal and compose by adding angles. So \\(\\langle R_m q, R_n k\\rangle\\) is a function of \\(q\\), \\(k\\) and \\(n - m\\) for every pair, hence of the position difference only."
+        },
+        {
+          "q": "For head size 128 and base 10000, what base does NTK-aware scaling use for \\(s = 8\\), and what happens to the first and last pairs' frequencies?",
+          "a": "\\(b' = 10000 \\cdot 8^{128/126} \\approx 82{,}684.6\\). The first pair has \\(\\theta_0 = 1\\) either way and is unchanged. The last pair's frequency is multiplied by exactly \\(1/8\\), as in position interpolation."
+        },
+        {
+          "q": "With PI at \\(s = 4\\), what does the model see for two tokens that are 60 positions apart, and what is the cost?",
+          "a": "They look 15 positions apart, because positions are divided by 4. The model never sees angles beyond the trained range, but all neighbouring tokens are 4 times closer in angle, so local resolution drops. That is the reason a short fine-tune is needed."
+        },
+        {
+          "q": "For \\(s = 8\\), what multiplier does YaRN apply to the attention logits, and how is it implemented without changing the attention code?",
+          "a": "\\(1/t = (0.1 \\ln 8 + 1)^2 \\approx 1.459\\) (so \\(\\sqrt{1/t} \\approx 1.208\\)). Scale both the queries and the keys by \\(\\sqrt{1/t}\\), for example by scaling the cached rotary cosine and sine tables."
+        },
+        {
+          "q": "A model passes a passkey test at 4 times its trained length with a scaled RoPE and no fine-tuning. What else do you need before you say it handles that length?",
+          "a": "Loss or perplexity against length on held-out long documents, tasks that need information spread across the context, the same tests at the trained length (scaling can hurt there), and more than one seed or document set. A single retrieval test shows that one capability exists at that length."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Rotary Query and Key Embeddings",
+          "url": "https://www.tensortonic.com/problems/cs336-l03-rotary-query-key-embeddings",
+          "locator": "Free problem `cs336-l03-rotary-query-key-embeddings`, function `rotary_embed(q, k, positions, inv_freq)`",
+          "note": "The three public cases check zero and one positions, a fractional angle from position 50 with `inv_freq=[0.01]`, and batch-specific position offsets of shape (B, S). The caller supplies the frequencies, so this is the place to plug in the PI, NTK-aware and NTK-by-parts maps. They do not test gradients or dtype. Add your own relative-offset and float16 tests."
+        },
+        {
+          "name": "Loss against length for four scaling methods on your own decoder",
+          "url": "https://arxiv.org/abs/2309.00071v3",
+          "locator": "YaRN Section 3 and Appendix A.2; write one function per map that returns inverse frequencies and a logit multiplier, test it against the exact numbers in the reproduce step, then repeat the measurement above",
+          "note": "Use your own small decoder trained at a short length. Evaluate at 2, 4, 8 and 16 times that length without fine-tuning, with three seeds if your budget allows, and report which methods needed fine-tuning in the papers."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your RoPE passes the offset and PI-equivalence tests in float64, your four maps reproduce 18, 21, 25 and 82,684.6, and you have a loss-against-length table for your own model with the fine-tuning status stated.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "RoFormer, PI and YaRN give the derivations and the CS336 slides and TensorTonic give the implementation hook. Two source slips are flagged (YaRN Equation 9, notebook Section 10). No replacement material was needed."
       }
     },
     {
