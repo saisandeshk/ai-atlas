@@ -1,6 +1,27 @@
 {
   "section": "lmr-pretraining-reliability",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "pytorch-reliability-lmr3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch 2.14 - AMP Examples and Profiler",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "AMP examples: Gradient clipping and Gradient accumulation, including effective-batch scale updates and skipped optimizer steps. Profiler reference: record_function, schedule and memory capture. Use with PyTorch 2.14.1.",
+      "url": "https://docs.pytorch.org/docs/2.14/notes/amp_examples.html"
+    },
+    {
+      "id": "python-atomic-lmr3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Python - Atomic Replacement and File Synchronization",
+      "provider": "Python Software Foundation",
+      "access": "Free",
+      "use": "Read os.replace and os.fsync for the local single-file publication extension. Atomic visibility is not a power-loss durability guarantee. Page read 2026-10-16.",
+      "url": "https://docs.python.org/3/library/os.html#os.replace"
+    }
+  ],
   "units": [
     {
       "id": "token-loss-denominators-batches",
@@ -15,47 +36,64 @@
         "batch-tokens-and-steps"
       ],
       "outcomes": [
-        "TODO"
+        "Derive one token-weighted objective across uneven microbatches and a partial accumulation window.",
+        "Separate input tokens, valid loss tokens, attempted steps and successful optimizer updates.",
+        "Test a real trainer's denominator against a concatenated-batch gradient oracle."
       ],
-      "why": "TODO",
+      "why": "The next-token objective is already familiar. Here the risk is a trainer that silently changes its weighting when masks, sequence lengths or accumulation change.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-pretraining-reliability/adamw-state-update-ratios",
+          "note": "Apply exactly one optimizer update to the accumulated gradient."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: the effective-batch loss contract",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/train_module/transformer/train_module.py",
+          "locator": "TransformerTrainModule.train_batch: label generation, batch_num_tokens_for_loss, instance_mask handling, microbatch splitting, summed loss and backward",
+          "depth": "Read this single-device path, not pipeline parallelism. The instance-filter path deliberately includes excluded instances in the denominator; do not use that reported loss as the valid-token mean."
         }
       ],
       "focus": [
-        "TODO"
+        "Reuse The next-token objective: shifts, masks and perplexity. For this run, define the valid-token mask after shifting and packing, not from the raw input length.",
+        "For microbatch loss sums \(S_i\) and valid counts \(n_i\), backpropagate \(S_i/\sum_j n_j\). Averaging microbatch means is correct only when their valid counts are equal.",
+        "Log processed input tokens, valid targets and per-source exposure separately. A skipped optimizer update still consumed data and compute; it must not disappear from the ledger.",
+        "A zero-valid-token window has no mean objective. Reject or skip it explicitly before division, and record the decision."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the loss for two microbatches with loss sums 4 and 6 and valid counts 2 and 6: the token mean is 1.25, not the mean-of-means 1.5. Then use PyTorch 2.14.1 on CPU to compare summed-loss accumulation with concatenated-batch gradients on fixed logits with unequal masks. Disable dropout and use explicit floating-point tolerances.",
       "traps": [
-        "TODO"
+        "Dividing every microbatch by the configured accumulation length when the final window is shorter. Normalize by the actual valid count in that window.",
+        "Calling nanoGPT's last-microbatch training loss the effective-batch loss. Accumulate detached loss sums and counts for logging too.",
+        "Assuming input tokens equal supervised targets. Padding, ignored labels and boundary policies can make those counts different."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does doubling a short microbatch's padding change a mean-of-means trainer but not the intended objective?",
+          "a": "Its microbatch mean receives the same weight despite having fewer valid targets. Summing valid losses and dividing once by the total count preserves token weighting."
+        },
+        {
+          "q": "One device processes two sequences of length 64 per microbatch, with four microbatches per update. What can you count without inspecting labels?",
+          "a": "512 input-token positions per attempted update. The valid-target count needs the shifted-label mask, and the successful-update count needs the optimizer outcome."
+        },
+        {
+          "q": "When should full-batch and accumulated gradients agree?",
+          "a": "When they evaluate the same additive objective at the same weights with the same data and stochastic choices, without batch-dependent operations or intermediate updates. Floating-point reduction order still permits small differences."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Gradient Accumulation Equivalence",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-gradient-accumulation-step",
+          "locator": "Implement gradient_accumulation_step; public cases Uneven microbatches, Two equal microbatches and Zero loss",
+          "note": "The free problem weights linear-model squared error by examples, not language-model tokens. Transfer its denominator argument to valid targets in lmlab and add a partial-window test; the public cases do not test masking or autograd gradients."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The public cases pass, and your masked accumulated gradient matches the concatenated oracle within a stated tolerance, including an uneven final window and explicit empty-window handling.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: OLMo-core exposes the denominator and microbatch path; the free named drill plus lmlab's masked oracle supplies the research-depth check."
       }
     },
     {
