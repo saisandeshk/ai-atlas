@@ -572,7 +572,7 @@
     {
       "id": "logit-feature-distillation",
       "title": "Logit distillation, temperature and KL direction, and feature distillation",
-      "hours": 4,
+      "hours": 5,
       "target": [
         "derive",
         "implement"
@@ -582,47 +582,75 @@
         "feature-distillation"
       ],
       "outcomes": [
-        "TODO"
+        "Derive masked soft-target distillation with temperature, hard-label mixing and an explicit KL direction.",
+        "Implement a stable loss whose values and gradients match an independent finite-vocabulary reference.",
+        "Define a feature-distillation alignment contract for teacher layers, token positions, widths and gradient ownership."
       ],
-      "why": "TODO",
+      "why": "Entropy, cross-entropy, KL divergence and mutual information established the identities. Here the teacher signal, temperature and token alignment decide which objective the student actually learns.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-adaptation-distillation/sequence-onpolicy-distillation",
+          "note": "Change where prefixes come from without confusing that choice with KL direction."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "hinton-distillation-lmr6",
+          "title": "Distilling the Knowledge in a Neural Network",
+          "url": "https://arxiv.org/abs/1503.02531v1",
+          "locator": "Sections 1 and 2, especially Equation 1, hard/soft objective mixing, and Section 2.1, Equations 2 to 4",
+          "depth": "Stop before Section 3's MNIST experiments. The high-temperature centered-logit argument is an approximation, not an identity at finite temperature."
+        },
+        {
+          "resource": "modern-notebook-adaptation-lmr6",
+          "title": "Modern LLM Notebook 17: logit and feature signals",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/17-distillation.ipynb",
+          "locator": "Section 2, Method 1: Logit Distillation; Section 4, Method 3: Feature Distillation; Exercises 1 and 2",
+          "depth": "Skip the API and 7B training recipe in Section 5. Section 4's GPT-4 layer diagram is illustrative, not verified access to that model's hidden states."
         }
       ],
       "focus": [
-        "TODO"
+        "For teacher logits \\(v\\) and student logits \\(z\\), define \\(p_T=\\operatorname{softmax}(v/T)\\), \\(q_T=\\operatorname{softmax}(z/T)\\). Use the valid-token mean of \\((1-\\lambda)\\operatorname{CE}(y,q_1)+\\lambda T^2\\operatorname{KL}(p_T\\|q_T)\\). State the hard-label source, mask, temperature and mixture weight.",
+        "The teacher is frozen and detached. In PyTorch 2.14.1, `torch.nn.functional.kl_div` takes student log probabilities as its input and teacher probabilities as its target for teacher-to-student KL. Use `reduction='none'`, sum over vocabulary, then apply the valid-token mask and denominator.",
+        "The scaled soft-loss gradient with respect to student logits is \\(T(q_T-p_T)\\). The \\(T^2\\) multiplier compensates the high-temperature gradient shrinkage approximately; it does not make all temperatures equivalent.",
+        "Feature matching requires accessible teacher activations, declared layer pairs, aligned token positions and a learned projection when widths differ. Mask invalid positions before reducing. Matching hidden coordinates is an extra constraint, not implied by matching output probabilities; different tokenizers need an alignment method or a text-level route."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1 float64 and natural logarithms, take teacher probabilities \\(p=(0.7,0.2,0.1)\\) and student probabilities \\(q=(0.5,0.3,0.2)\\). Recover \\(\\operatorname{KL}(p\\|q)=0.0851228259572216\\) and \\(\\operatorname{KL}(q\\|p)=0.0920328502338319\\), within 1e-12. Implement temperature-scaled forward KL and check its student-logit gradient against \\(T(q_T-p_T)\\) and `torch.autograd.gradcheck`. Add a tokenwise linear projection from width 4 to width 6 and verify that a masked feature-loss position has zero direct feature-loss gradient with respect to its student hidden state.",
       "traps": [
-        "TODO"
+        "Using a batch mean that also divides by sequence length or vocabulary size. Specify the vocabulary sum and valid-token mean explicitly.",
+        "Equating low teacher probability with factual wrongness. Soft targets encode the teacher's beliefs and errors; held-out task quality remains a separate outcome.",
+        "Matching vocabulary indices across different tokenizers. Equal vector lengths are not enough; each coordinate must refer to the same event at an aligned prefix."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why do soft-target cross-entropy and forward KL have the same student gradient with a fixed teacher?",
+          "a": "They differ by teacher entropy, which is independent of student parameters at the fixed prefix. Detach the teacher and keep the same temperature and reduction."
+        },
+        {
+          "q": "Is the reverse-KL student-logit gradient also student probability minus teacher probability?",
+          "a": "No. At temperature 1 and a fixed prefix it is \\(q_i[\\log(q_i/p_i)-\\operatorname{KL}(q\\|p)]\\). The familiar \\(q_i-p_i\\) belongs to forward KL with a fixed teacher."
+        },
+        {
+          "q": "What does increasing temperature do to a fixed finite-logit distribution?",
+          "a": "It makes it softer, approaching uniform as temperature grows. The scaled loss can still retain centered-logit differences in its high-temperature limit; a flatter probability vector does not prove the scaled learning signal vanishes."
+        },
+        {
+          "q": "Does masking one hidden-state position mean its input token can have no gradient?",
+          "a": "No. It removes that position's direct feature-loss term. The token may still influence other supervised positions through attention and receive an indirect gradient."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Modern LLM Notebook 17: temperature and hand-KL exercises",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/17-distillation.ipynb",
+          "locator": "Exercise 1, Effect of temperature on soft labels; Exercise 2, KL divergence by hand",
+          "note": "Use the supplied three-logit and three-probability inputs. Add your own reverse-direction, gradient, masking and zero-valid-target tests; the exercise cells do not establish those properties. The section mini-project covers the projected-feature oracle and a no-distillation control."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both KL values and the gradient checks pass, temperature and token reductions are explicit, and your feature-loss test distinguishes a masked direct term from indirect attention gradients.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Hinton supplies the temperature derivation; notebook 17 supplies feature boundaries and named hand exercises, extended by independent gradient and alignment checks."
       }
     },
     {
