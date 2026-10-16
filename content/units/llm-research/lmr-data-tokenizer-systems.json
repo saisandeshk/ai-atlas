@@ -40,6 +40,16 @@
       "access": "Free",
       "use": "Read Section 3.1 (Equation 5, the effective-data term for repeated tokens), Section 6 with Figure 1 (return on compute when repeating data) and the fitted constants in the appendix. Use it to convert epochs into effective tokens and to see how far that fit reaches: models up to 9B parameters on C4 subsets.",
       "url": "https://arxiv.org/abs/2305.16264"
+    },
+    {
+      "id": "hf-datasets-streaming-lmr1",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Hugging Face Datasets: Stream",
+      "provider": "Hugging Face",
+      "access": "Free",
+      "use": "Read Shard, Shuffle, Interleave, and Save a dataset checkpoint and resume iteration, including the tip that shuffle-buffer contents are lost when resuming. Use tiny local data and check resume by comparing document ids with an uninterrupted run; do not stream a web-scale corpus or upload to the Hub.",
+      "url": "https://huggingface.co/docs/datasets/stream"
     }
   ],
   "units": [
@@ -986,47 +996,91 @@
         "document-to-batch-lineage"
       ],
       "outcomes": [
-        "TODO"
+        "Implement shard assignment and batch order as pure functions of the dataset version, seed, epoch and step, with a manifest that lists every shard and its checksum, so that any batch can be regenerated without replaying earlier steps.",
+        "Resume from a saved position and show that the remaining batches, and the documents in them, equal those of an uninterrupted run; find the omitted or repeated documents when a framework loses part of the state.",
+        "Keep a lineage index from batch to sequence to document spans to raw record ids, and use it to answer which documents were in step \\(k\\) and which steps saw document \\(d\\)."
       ],
-      "why": "TODO",
+      "why": "A run that cannot be resumed exactly, or a batch that cannot be traced to its documents, turns every later question (a loss spike, a deletion request, a contamination finding) into guesswork. Deterministic data order is also what lets a second person reproduce your result.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-data-tokenizer-systems/dataset-versions-data-cards",
+          "note": "Name the dataset version that every batch id refers to, and link it to checkpoints."
+        },
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/resume-equivalence-discontinuities",
+          "note": "Test exact and statistical resume equivalence of the whole training state, using this data position."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "tokenizer-pipeline-lmr1",
+          "title": "Project: Tokenizer and Corpus Pipeline",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-1/tokenizer-corpus-pipeline.md",
+          "locator": "'Core requirements' and 'Architecture constraints' (a manifest, never directory-order discovery), Milestone C, the failure injections of Milestone D, and 'Correctness requirements' (complete, nonoverlapping, checksummed, atomically published shards)",
+          "depth": "Take the sharding, resume and lineage requirements only; the tokenizer parts belong to earlier units."
+        },
+        {
+          "resource": "hf-datasets-streaming-lmr1",
+          "title": "Hugging Face Datasets: Stream",
+          "url": "https://huggingface.co/docs/datasets/stream",
+          "locator": "Sections 'Shard', 'Shuffle', 'Interleave', and 'Save a dataset checkpoint and resume iteration', including its tip on shuffle buffers (page read 2026-10-17, behaviour re-run with datasets 5.1.0)",
+          "depth": "Use a tiny local dataset. Do not stream a web-scale corpus or push anything to the Hub."
+        },
+        {
+          "resource": "dolma-lmr1",
+          "title": "Dolma Toolkit: data format",
+          "url": "https://github.com/allenai/dolma/blob/669f534823b08d266a8fff01f8a1c916a5a56576/docs/data-format.md",
+          "locator": "'Dolma Document Format' (the `source` and `id` pair) and 'Dolma Toolkit Attributes Format' (attribute files that line up row for row with the documents); and in https://github.com/allenai/dolma/blob/669f534823b08d266a8fff01f8a1c916a5a56576/docs/taggers.md the `random_number_v1` tagger for split assignment"
+        },
+        {
+          "resource": "gopher-rules-lmr1",
+          "title": "Gopher, Appendix A (Rae et al., 2021)",
+          "url": "https://arxiv.org/abs/2112.11446",
+          "locator": "arXiv:2112.11446v2, Appendix A.1.2 'Constructing Token Sequences' (p. 42), steps 1 to 7 from drawing a document to shuffling and batching"
         }
       ],
       "focus": [
-        "TODO"
+        "Make position a value, not a hidden state. If the order of epoch \\(e\\) is a function of the seed and \\(e\\) alone, for example `np.random.Generator(np.random.PCG64([seed, epoch])).permutation(n)`, then batch \\(k\\) is the slice \\([kB, (k+1)B)\\) of it and a resume needs only the epoch and step. A single random generator shared across epochs needs replaying to reach epoch 2.",
+        "Shard by a stable hash of the document id and list the result in the manifest. Python's built-in `hash` of a string differs between processes, and changing the shard count moves most documents, so a shard is a manifest entry and not a directory listing.",
+        "Resume has to give each record exactly once. The documented tip says that with `.shuffle()` the examples in the shuffle buffer are lost on resume; the reproduce step measures how many.",
+        "Lineage is a join. Keep one record per packed sequence with its `(doc_id, start, end)` spans, join on the stable `source` and `id` pair, and build the inverse index from document to steps so that a deletion or contamination finding can name the batches and checkpoints affected."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write `batch(version, seed, epoch, step)` that returns the `(doc_id, start, end)` spans of that batch, taking the order of sequences from `np.random.Generator(np.random.PCG64([seed, epoch])).permutation(n_sequences)`. Show that a run resumed at step 61 reproduces steps 61 onward of an uninterrupted run exactly (1,003 sequences, batch size 8, 125 steps, 3 sequences unused per epoch). Assign documents `doc-000000` to `doc-019999` to shards with the first eight bytes of a SHA-256 digest modulo \\(K\\), and show that only 20.0% keep their shard when \\(K\\) goes from 4 to 5. Then break it twice: use the built-in `hash` and see the assignment change between fresh processes (in one run `hash('doc-000001') % 4` gave 3, 0, 1, 3, 0, 3 over six processes), and resume a shuffled Hugging Face `IterableDataset`.",
       "traps": [
-        "TODO"
+        "Losing records on resume while the loss looks fine. With datasets 5.1.0, a dataset of 40 rows in 4 shards, `shuffle(seed=7, buffer_size=8)` and an interruption after 13 rows, the resumed run skipped 5 rows and repeated 1. Only a comparison of document ids with an uninterrupted run shows it.",
+        "Letting worker count change the data. If every worker shuffles its own shards, the content of batch \\(k\\) depends on the number of workers and a rerun on other hardware gives different batches. Define batch content globally and let workers only fetch.",
+        "Forgetting the unused tail. A partial last batch that is dropped means some sequences are not seen in that epoch, and with a new permutation each epoch it is a different set each time. Write the dropped sequence ids into the lineage record, or you cannot say that every document was seen."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does computing the epoch order from `(seed, epoch)` make resuming cheap, while one generator shared across epochs does not?",
+          "a": "The permutation of any epoch can be recomputed directly, so a resume needs only the epoch and step. With one shared generator, the state at epoch 2 exists only after the earlier permutations have consumed it, so you must either store the generator state or replay the epochs, and a fresh generator gives a different permutation."
+        },
+        {
+          "q": "Documents are assigned to shards by a hash modulo \\(K\\). You change \\(K\\) from 4 to 5. What happens, and what does it mean for lineage?",
+          "a": "About four in five documents move to another shard (20.0% stayed in the run above). Any record that names a shard becomes wrong, so lineage should refer to document ids and the manifest version, and a change of shard count must create a new dataset version."
+        },
+        {
+          "q": "The loss jumps after a resume. Name three data-side causes you can check from lineage.",
+          "a": "The shuffle buffer or other loader state was lost, so records are missing or repeated; the epoch, seed or worker count differs, so the order changed; or the dataset version or tail handling differs. Compare the document ids of steps \\(k\\) to \\(k+m\\) of the resumed run with those of an uninterrupted run."
+        },
+        {
+          "q": "A document must be removed. How do you find which batches and checkpoints are affected?",
+          "a": "Invert the lineage: document id to the sequences that contain its spans, to the (epoch, step) of each such sequence, to the first checkpoint saved after the earliest of those steps. The index must keep the dropped-tail sequences too, or you will miss documents that were never trained on."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Hugging Face Datasets: checkpoint and resume an iterable dataset",
+          "url": "https://huggingface.co/docs/datasets/stream",
+          "locator": "'Save a dataset checkpoint and resume iteration': reproduce the documented example, then repeat it after `.shuffle(seed=7, buffer_size=8)` on 40 rows in 4 shards",
+          "note": "Count the rows missing and repeated against an uninterrupted run, then replace the shuffle with the order function from the reproduce step and show the counts go to zero. The section mini-project covers the batch-lineage index and the regenerate-any-batch test on your own corpus."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Given a dataset version, seed, epoch and step, your code regenerates the same batch of token ids in two separate processes and after a simulated interruption, and your lineage index answers both the batch-to-documents and document-to-batches questions.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The Roadmap project and Dolma format give the requirements and the id and attribute join, but nothing in the pool shows how a framework resumes or loses state. Added the Hugging Face streaming page; the Dolma toolkit does not by itself prove replay equivalence."
       }
     },
     {
