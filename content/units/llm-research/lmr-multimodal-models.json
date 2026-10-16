@@ -439,47 +439,71 @@
         "retrieval-vs-generation"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a frozen-encoder, trainable-projector path into a causal decoder with answer-only likelihood.",
+        "Verify the gradient and optimizer boundaries of projector warmup and bounded decoder fine-tuning.",
+        "Evaluate retrieval and generation as distinct objectives without inferring grounding from either training loss."
       ],
-      "why": "TODO",
+      "why": "A correct forward shape is not a generative model. The important transition is from disconnected components to causal answer training whose gradients, frozen state and held-out behavior can be audited.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/missing-modalities-grounding",
+          "note": "Intervene on the image to test whether the trained decoder uses it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-multimodal-lmr9",
+          "title": "CS336 Spring 2026 Lecture 17: multimodal models",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_17",
+          "locator": "The `clip` Ablation block and `llava` Training block"
+        },
+        {
+          "resource": "llava-lmr9",
+          "title": "Visual Instruction Tuning, arXiv:2304.08485v1: training",
+          "url": "https://arxiv.org/abs/2304.08485v1",
+          "locator": "Sections 4.1 and 4.2, Table 2 and Equation 3: architecture, assistant prediction targets and the two training stages",
+          "depth": "Use the freeze schedule and objective, not the Vicuna-scale run. Reuse your saved small `lmlab` decoder and the vision encoder from Paired modalities; pin both checkpoint hashes and preprocessing in the run manifest."
+        },
+        {
+          "resource": "modern-notebook-vlm-lmr9",
+          "title": "Modern LLM Notebook 29: freeze schedule and minimal pipeline",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/29-vlm.ipynb",
+          "locator": "Sections 8 to 10 and Exercise 3: Calculate Two-Stage Training Ratios",
+          "depth": "Section 10 is a shape demo: its `TransformerEncoder` call has no causal mask or positional encoding. Do not use its loss as autoregressive evidence. Insert the visual prefix into your tested causal decoder, retaining its positions and loss shift."
         }
       ],
       "focus": [
-        "TODO"
+        "Warm up only the projector with the encoder and decoder parameters frozen. The decoder still needs autograd through its operations to the projected inputs; do not wrap that forward pass in `torch.no_grad()`.",
+        "For the local route, reuse the paired encoder's frozen grid features and a roughly 10M-parameter decoder from your earlier work. Cache detached vision features with preprocessing and checkpoint hashes. PyTorch 2.14.1 is the reference; CPU and shorter sequences suffice for the same correctness tests.",
+        "In stage two, unfreeze a declared decoder subset and rebuild or update optimizer groups deliberately. Match image ids, answer-token exposure, update budget and evaluation settings against a no-warmup branch initialized from the same saved state; report any compute difference.",
+        "Retrieval ranks candidates in a shared feature space; generative training predicts answer tokens conditioned on image and prompt. Keep a frozen retrieval baseline, a text-only decoder baseline and independent answer evaluation. Neither low contrastive loss nor low answer loss proves grounding."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write one answer-only training step through a trainable projector and a frozen causal decoder. Snapshot frozen tensors before the step: they must remain unchanged while the projector receives a finite nonzero gradient on a nondegenerate batch. With shifted labels, check that only assistant targets enter the denominator, not visual or prompt positions. Save and reload the projector plus assembly metadata; in evaluation mode require the same logits within `rtol=1e-5, atol=1e-6` on the same fixed CPU batch.",
       "traps": [
-        "TODO"
+        "Equating `eval()` with freezing. It changes behavior such as dropout, not parameter trainability; `requires_grad=False` does not itself select evaluation behavior.",
+        "Detaching projector outputs or disabling decoder autograd during warmup. The projector then cannot learn through the frozen decoder.",
+        "Selecting a training stage on the final test images. Keep a development split and preserve the final split for the frozen comparison."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can a frozen decoder still train a projector?",
+          "a": "Its operations remain differentiable with respect to the input embeddings. Frozen weights need no gradients, but gradients to projected visual inputs can still flow."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a smaller count of trainable parameters imply proportionally smaller total training memory?",
+          "a": "No. Frozen weights remain resident and decoder activations may still be needed for the projector's backward path. Optimizer state, activations and total memory must be accounted for separately."
+        },
+        {
+          "q": "A model ranks the correct caption first but cannot answer a counting question. Is that inconsistent?",
+          "a": "No. Ranking a finite candidate set and generating an accurate count are different tasks. The contrastive representation may not preserve or expose the required count."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: one small frozen-encoder plus projector-to-decoder path, projector warmup and a bounded decoder update, gradient and serialization tests, and held-out retrieval and answer evaluation against fixed baselines.",
+      "stopWhen": "Your warmup step changes only permitted state, reload preserves fixed-batch logits within tolerance, and you can state separate retrieval and generation evaluation contracts before training longer.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: LLaVA defines the staged objective, the notebook supplies bounded component demonstrations and the mini-project supplies the missing connected generative path with explicit causal and held-out checks."
       }
     },
     {
