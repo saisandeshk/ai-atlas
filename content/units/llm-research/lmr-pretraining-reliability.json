@@ -727,7 +727,7 @@
     {
       "id": "step-timeline-throughput-memory",
       "title": "Step timelines, tokens per second and memory and operation accounting",
-      "hours": 4,
+      "hours": 6,
       "target": [
         "measure"
       ],
@@ -736,47 +736,84 @@
         "throughput-memory-accounting"
       ],
       "outcomes": [
-        "TODO"
+        "Attribute a training timeline to input wait, transfer, forward, backward, optimizer, evaluation and checkpoint work.",
+        "Reconcile predicted tensor-state bytes and operation counts with measured runs and named residual costs.",
+        "Diagnose a seeded throughput regression without changing the model's token exposure or update semantics."
       ],
-      "why": "TODO",
+      "why": "Parameter and FLOP arithmetic is already familiar. The new task is reconciling those estimates with a real run, including evaluation, publication and failed attempts rather than timing only convenient kernels.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-research-scale-integration/prediction-residuals-evidence-labels",
+          "note": "Carry measured residuals and local-evidence limits into the integrated research study."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: throughput numerator and interval",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/callbacks/speed_monitor.py",
+          "locator": "SpeedMonitorCallback.pre_load_batch, pre_step and post_step; get_device_peak_flops_per_second",
+          "depth": "Do not use the fallback peak FLOP rate for an unrecognized GPU: the implementation assumes a different device. Supply verified specifications for your GPU or omit MFU."
+        },
+        {
+          "resource": "pytorch-reliability-lmr3",
+          "title": "PyTorch 2.14: bounded profile capture",
+          "url": "https://docs.pytorch.org/docs/2.14/profiler.html",
+          "locator": "Overview and API Reference: profile activities, schedule, profile_memory, record_shapes, with_flops, key_averages and export_chrome_trace",
+          "depth": "Use a short capture on your machine, with CPU-only activities as the fallback. The FLOP option estimates selected operators; it is not a complete hardware instruction counter."
+        },
+        {
+          "resource": "modern-notebook-training-lmr3",
+          "title": "Appendix B: inspect the accounting assumptions",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb",
+          "locator": "Sections 2 Activation Memory, 3 FLOPs, 4 Backpropagation and 6 Training Memory",
+          "depth": "Do not copy Section 4's extra factor of 2: forward plus backward is approximately three times forward for the stated dense-matmul model, not six. Section 6's listed FP32 weights, gradients and two moments total 16 bytes per parameter before its listed BF16 copy, which would add 2 more. Treat activation formulas as implementation-dependent estimates, not exact peaks."
         }
       ],
       "focus": [
-        "TODO"
+        "Use processed input tokens per elapsed second for execution throughput and report valid-target throughput separately. Give both warmed-up training-only time and end-to-end time including evaluation, checkpoint publication and restarts.",
+        "Annotate phase boundaries before collecting traces. CUDA launches are asynchronous: use synchronized interval boundaries or device events on your GPU, and read overlapping work as a timeline rather than summing nested operator totals.",
+        "Build a dtype-specific ledger of unique parameter storage, gradients and moments after state initialization, then add saved activations, temporary copies, workspaces and inputs. Report allocated and reserved memory separately; allocator reserve is not live tensor storage.",
+        "Under the declared multiply-add convention, a matmul costs approximately \(2mkn\) FLOPs. Backward is approximately twice forward when both operand gradients are needed; embeddings, frozen inputs, recomputation, loss and optimizer operations require their own accounting."
       ],
-      "reproduce": "TODO",
+      "reproduce": "First derive the free drills' small examples: parameter shapes `[4, 3]` and `[3]`, 2-byte parameters, 4-byte gradients and Adam moments, plus a `[2, 4]` 2-byte activation give 226 bytes without a master copy. A forward matmul `[2, 4, 4]` plus 32 attention FLOPs gives forward 96, backward 192 and total 288 FLOPs under the drill's convention. Then capture an annotated step of your PyTorch 2.14.1 decoder, seed an input-wait delay, and show that its trace localizes the added wait without changing batch hashes or final updates. Reconcile one state-memory prediction and one forward/backward operation prediction with your capture; timings are observations, never targets.",
       "traps": [
-        "TODO"
+        "Calling profiler operator FLOPs a complete count, or dividing them by an unrelated peak precision to claim MFU. State included operations and the device precision first.",
+        "Adding every per-operator memory allocation to estimate peak live memory. Tensors are freed and storage can be reused; peak is simultaneous liveness, not cumulative allocations.",
+        "Claiming an optimization from a profiled run alone. Measure a separate clean timing run, then rerun loss, gradient and resume controls."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why can two runs have equal training-only tokens per second but different study cost?",
+          "a": "They may differ in evaluation, checkpoint, startup, retry and failed-run overhead. End-to-end elapsed time and total attempts expose those costs."
+        },
+        {
+          "q": "Does switching FP32-parameter AdamW to autocast halve persistent optimizer memory?",
+          "a": "No. Stored parameters, gradients and moments can remain FP32. Most savings then come from lower-precision intermediates, with any cast-copy cost counted separately."
+        },
+        {
+          "q": "The trace shows long input wait while GPU kernels are short. What is the next controlled change?",
+          "a": "Change only the input path, for example by replaying the same preloaded batches. Keep batch order and updates fixed, and verify end-to-end time separately."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Mixed-Precision Training Memory Accountant",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant",
+          "locator": "Implement memory_accountant; public examples cover BF16 parameters with FP32 Adam gradients/state, FP32 SGD without activations and BF16 AdaGrad",
+          "note": "This free problem excludes master copies and allocator overhead. Add those only if your measured implementation actually has them. The section mini-project supplies the measured reconciliation."
+        },
+        {
+          "name": "TensorTonic: Transformer Training FLOP Estimator",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator",
+          "locator": "Implement flop_estimator; public examples cover one matmul plus attention, two matmuls and a zero-batch matmul",
+          "note": "The free tests exercise the supplied shape arithmetic, not a decoder's full operation graph. Extend your existing foundation solution with an included/excluded-operation ledger rather than treating it as a hardware oracle."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both drills pass, one memory and one operation estimate have measured reconciliations, and the input-delay regression is localized while the unchanged batch/update controls pass.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "The notebook's arithmetic needs explicit corrections and its estimates do not supply a measurement API contract. The opened versioned PyTorch profiler reference fills that depth gap; OLMo-core and the free drills remain."
       }
     },
     {
