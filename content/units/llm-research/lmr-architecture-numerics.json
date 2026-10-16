@@ -712,47 +712,107 @@
         "expert-parallel-implications"
       ],
       "outcomes": [
-        "TODO"
+        "Derive router probabilities, top-k selection, expert capacity, dispatch counts and dropped tokens for a small example by hand, and reproduce them in code.",
+        "Implement a sparse expert layer with dispatch, capacity, combine and dropped-token handling, and test it against a per-token loop.",
+        "Derive the per-layer all-to-all payload of expert parallelism from the token count, \\(k\\), the capacity factor and the model width, without implementing the distributed runtime."
       ],
-      "why": "TODO",
+      "why": "A sparse layer separates parameters from compute, but it also makes each token's output depend on the other tokens in its batch, because capacity is shared. You need the dispatch rule before you can write an honest test for causality, determinism or an equal-compute comparison.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/moe-load-balance-collapse",
+          "note": "Add the balancing losses and measure when routing collapses."
+        },
+        {
+          "unit": "llm-research/lmr-architecture-numerics/variant-weight-transfer-tests",
+          "note": "Turn the dense-equivalence special case into a differential test."
+        },
+        {
+          "unit": "distributed-training",
+          "note": "Take the all-to-all derivation into real expert-parallel runtimes."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 4 slides (mixtures of experts)",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_04.pdf",
+          "locator": "Slides 14 to 35 (what an MoE is, routing types, top-k routing in detail, shared and fine-grained experts, the expert-setup table) and slides 44 to 47 (systems side, MegaBlocks, communication, the stochasticity of token dropping)",
+          "depth": "Stop at slide 47. Slides 36 to 43 (training the router and balancing losses) belong to the next unit, and slides 54 to 59 are a DeepSeek case study."
+        },
+        {
+          "resource": "switch-transformers-lmr2",
+          "title": "Switch Transformers (arXiv:2101.03961v3, JMLR version)",
+          "url": "https://arxiv.org/abs/2101.03961v3",
+          "locator": "Section 2.1 (Equations 1 and 2, why a gate value keeps the router differentiable), Section 2.2 (Equation 3, expert capacity, dropped tokens) and Figure 3 (capacity factors), Section 5.4 (expert and data parallelism); Appendix F as a pseudocode reference for dispatch and combine tensors",
+          "depth": "Appendix F is a reference to read once; do not port it."
+        },
+        {
+          "resource": "raschka-llm-architecture-lmr2",
+          "title": "Build a Large Language Model (From Scratch), companion bonus code",
+          "url": "https://github.com/rasbt/LLMs-from-scratch/tree/ec0bac5e1d854306a8ea6c308da49aae22479bd1/ch04/07_moe",
+          "locator": "`ch04/07_moe`: README and `MoEFeedForward` in `gpt_with_kv_moe.py`",
+          "depth": "It groups tokens by expert but has no capacity limit, so nothing is ever dropped. It also has no balancing loss."
+        },
+        {
+          "resource": "modern-notebook-architecture-lmr2",
+          "title": "Modern LLM Notebook: From Dense to MoE Architectures",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/13-moe.ipynb",
+          "locator": "Sections 1 to 3 and Section 5 (the parameter-versus-compute argument and the inference-memory consequence)",
+          "depth": "Its `MoELayer` loops over tokens in Python and has no capacity; use it for the routing rule, not for dispatch. Sections 4 onward are for the next unit."
         }
       ],
       "focus": [
-        "TODO"
+        "Two router conventions. Switch and DeepSeek's first models take a softmax over all \\(E\\) experts, then the top-\\(k\\) probabilities as gate values. Mixtral-style routers take the top-\\(k\\) logits, then a softmax over just those. They agree for \\(k \\ge 2\\) only up to a renormalization, and they differ in an important way at \\(k = 1\\): a softmax over one logit is the constant 1, so the router gets no gradient from the language-model loss.",
+        "Capacity is a per-expert, per-batch limit: \\(C = \\lceil \\text{cf} \\cdot k\\,T / E \\rceil\\) for \\(T\\) tokens in the group that shares the buffer. Switch's Equation 3 is the \\(k = 1\\) case; with top-\\(k\\) there are \\(kT\\) assignments to spread over \\(E\\) experts. A token that arrives after an expert is full is not computed for that expert, and passes on through the residual connection. Which tokens lose a slot is a rule you must choose and test, for example token order within the group.",
+        "A drop is silent. The loss still goes down, so track the dropped fraction per layer and per batch. Switch reports under 1% with its balancing loss. Because capacity is shared across the batch, a token's output can depend on its neighbours; Lecture 4 slide 47 points out that other requests can drop your token.",
+        "Expert parallelism sends tokens to the device that holds their expert and brings the results back, so each MoE layer does two all-to-alls in the forward pass and two in the backward pass. With fixed-size capacity buffers the payload is set by the capacity, not by the actual routing, and only the fraction \\((P-1)/P\\) leaves the device."
       ],
-      "reproduce": "TODO",
+      "reproduce": "By hand, route 8 tokens to 4 experts with top-1 assignments \\([0, 0, 0, 0, 0, 1, 2, 3]\\), counts \\([5, 1, 1, 1]\\). With capacity factor 1.0 the capacity is 2, tokens 2, 3 and 4 are dropped, and the dropped fraction is 0.375. With 1.25 the capacity is \\(\\lceil 2.5 \\rceil = 3\\) and tokens 3 and 4 are dropped (0.25). With 2.5 the capacity is 5 and nothing is dropped. Then derive the payload for 8192 tokens per device, width 4096, bfloat16, \\(k = 2\\), capacity factor 1.25 and 8 expert-parallel devices: \\(1.25 \\cdot 2 \\cdot 8192 \\cdot 4096 \\cdot 2 \\cdot \\tfrac{7}{8} = 146{,}800{,}640\\) bytes, exactly 140 MiB, per all-to-all per device. Finally implement dispatch (position in expert from a cumulative sum of the assignment mask), expert computation on the gathered tokens, and combine with gate weights, and check it against a per-token loop with the capacity set high enough that nothing drops. In float32 on random inputs the two should agree to about 1e-6.",
       "traps": [
-        "TODO"
+        "Using a softmax over the selected logits when \\(k = 1\\). In a 6-token, 8-wide toy router (PyTorch 2.14.1), the gate values were exactly 1.0 and the summed absolute gradient of the router weights was 0.0, against 46.2 when the softmax was taken over all experts before the top-1. TensorTonic's router returns weight 1 for \\(k = 1\\) because it renormalizes over the selected experts, which is correct for its statement and has this consequence.",
+        "Testing an MoE layer for causality or batch independence with capacity pressure on. A dropped token makes a layer's output depend on which other tokens share the buffer, and a priority by router score can let a later token take an earlier token's slot. Turn drops off (capacity at least \\(T\\)) for equivalence tests, and test the drop path separately with a fixed priority rule.",
+        "Counting capacity from tokens rather than assignments for \\(k > 1\\), or forgetting that two assignments of one token go to different experts. Check that a token's \\(k\\) experts are distinct, and that the sum of the dispatched counts equals \\(kT\\) minus the drops."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "A group has 4096 tokens, 64 experts, \\(k = 2\\) and a capacity factor of 1.25. What is the expert capacity?",
+          "a": "\\(\\lceil 1.25 \\cdot 2 \\cdot 4096 / 64 \\rceil = 160\\) tokens per expert. The ideal load is 128 assignments per expert, and the factor adds a 25% buffer."
+        },
+        {
+          "q": "Eight tokens are assigned to experts \\([0, 0, 0, 0, 0, 1, 2, 3]\\) with capacity 3 and token order as priority. Which tokens are dropped and what is the dropped fraction?",
+          "a": "Tokens 3 and 4, the fourth and fifth arrivals at expert 0, so the fraction is 2/8 = 0.25. The other tokens fit, since experts 1 to 3 hold one token each."
+        },
+        {
+          "q": "Why does a top-1 router with a softmax over the selected logit never learn from the language-model loss, and what fixes it?",
+          "a": "The gate value is \\(\\operatorname{softmax}\\) of one number, which is always 1, so the output has no dependence on the router logits except through the discrete choice, which has no gradient. Take the softmax over all experts first and multiply the expert output by the selected probability, as Switch does, or use a balancing loss as the only router signal (which is not enough by itself)."
+        },
+        {
+          "q": "Give the all-to-all payload per device for 4096 tokens, width 2048, bfloat16, \\(k = 1\\), capacity factor 1.0 and 4 devices. Does a more balanced router change it with fixed buffers?",
+          "a": "\\(1.0 \\cdot 1 \\cdot 4096 \\cdot 2048 \\cdot 2 \\cdot \\tfrac{3}{4} = 12{,}582{,}912\\) bytes (12 MiB) per all-to-all. With fixed-size buffers, no: the payload is set by the capacity. Balance changes how many slots hold real tokens and how many are padding."
+        },
+        {
+          "q": "Why must a causal-prefix test of an MoE layer run with drops disabled?",
+          "a": "With drops, a token's output depends on the other tokens competing for the same expert buffer. Under a rule that lets a later token take a slot from an earlier one, a future token can change a past token's output, which breaks prefix invariance by design of the dispatch rule, not by a mask bug. With capacity at least the token count nothing is dropped, and the layer is a function of each token alone."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Top-k MoE Router with Load Statistics",
+          "url": "https://www.tensortonic.com/problems/cs336-l04-topk-moe-router",
+          "locator": "Free problem `cs336-l04-topk-moe-router`, function `topk_moe_router(x, w_router, expert_outputs, shared_output, k)`",
+          "note": "The three public cases check top-2 routing with a tie broken toward the lower expert index, a single selected expert, and a case where every expert ties, and they return the selected experts, their weights, the dispatched fraction \\(f_e\\) and the mean router probability \\(m_e\\). Expert outputs are given in advance. There is no capacity, no dropping and no gradient check. Add your own tests for capacity and dropped tokens (the hand example above), distinct experts per token, and a gradient test of the router."
+        },
+        {
+          "name": "Capacity and dispatch on top of your own router",
+          "url": "https://arxiv.org/abs/2101.03961v3",
+          "locator": "Section 2.2 and Appendix F; build dispatch and combine with a fixed priority rule and a switch that turns drops off",
+          "note": "Tests to write: equal to the per-token loop with no drops, the hand example above, the sum of dispatched counts equals \\(kT\\) minus the drops, dropped tokens leave only the residual, and the router weights receive a nonzero gradient. The section mini-project reuses this layer."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your dispatch matches the per-token loop with drops off, reproduces the 0.375, 0.25 and 0 dropped fractions of the hand example, and you can derive the all-to-all payload for a configuration you choose.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "CS336 Lecture 4, Switch Sections 2.1, 2.2 and 5.4, the Raschka bonus and TensorTonic cover derive and implement. TensorTonic lacks capacity and drops, so the card adds those tests. The dispatch math and payload number were run."
       }
     },
     {
