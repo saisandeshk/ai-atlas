@@ -15,47 +15,95 @@
         "initialization-and-residual-scaling"
       ],
       "outcomes": [
-        "TODO"
+        "Explain why a pre-norm block leaves an unnormalized residual stream, and what that does to the stream scale and the last-layer gradient as depth grows.",
+        "Derive the variance of the stream after \\(N\\) independent residual branches and the \\(1/\\sqrt{N}\\) branch scaling that holds it constant.",
+        "Compare two initializations by measuring activation and gradient norm growth across layers, and say which claims the measurement cannot support."
       ],
-      "why": "TODO",
+      "why": "A variant that changes norms, depth or initialization is judged against a baseline whose stream scale already depends on depth. You need the scale argument before you can tell a real architectural effect from a scale effect.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-architecture-numerics/norms-logit-scale-softmax-precision",
+          "note": "Move from where the norm sits to what it computes and where it loses precision."
+        },
+        {
+          "unit": "llm-research/lmr-architecture-numerics/scale-diagnostics-property-tests",
+          "note": "Turn the per-layer scale measurement into a reusable diagnostic."
+        },
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/initialization-transfer-mup",
+          "note": "Ask which initialization rules transfer across width."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Spring 2026, Lecture 3 slides (architectures and hyperparameters)",
+          "url": "https://github.com/stanford-cs336/lectures/blob/main/lecture_03.pdf",
+          "locator": "Slides 10 to 13: pre-versus-post norm, the data, the two explanations (gradient attenuation, gradient spikes) and the double-norm layouts",
+          "depth": "Stop at slide 13. The rest of the deck belongs to later units. The lecture has no initialization content; that comes from the OLMo 2 report below."
+        },
+        {
+          "resource": "xiong-preln-lmr2",
+          "title": "On Layer Normalization in the Transformer Architecture (arXiv:2002.04745v2)",
+          "url": "https://arxiv.org/abs/2002.04745v2",
+          "locator": "Figure 1; Section 3.3 (Lemma 2 and Theorem 1, with the setting they assume); Section 3.4 and Figure 3 (empirical check)",
+          "depth": "Skip Section 4. It is translation and BERT with a warmup comparison, not decoder language models."
+        },
+        {
+          "resource": "olmo2-architecture-lmr2",
+          "title": "2 OLMo 2 Furious (arXiv:2501.00656v3)",
+          "url": "https://arxiv.org/abs/2501.00656v3",
+          "locator": "Table 1 (page 5); Section 3.2 Model Initialization, including the growth exponent and Figures 4 to 6; Section 3.3.2 Reordered norm and QK-norm, Figure 7"
+        },
+        {
+          "resource": "cs336-architecture-lmr2",
+          "title": "CS336 Assignment 1 handout (Spring 2026 repository)",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 3.3.1 Parameter Initialization (p. 17) and the opening of Section 3.4 (p. 19); then Section 7.3, Ablation 1 and the problem (`pre_norm_ablation`) (pp. 42 to 43)"
         }
       ],
       "focus": [
-        "TODO"
+        "A pre-norm sublayer reads a normalized copy of the stream but writes into the unnormalized stream. The stream is the embedding plus every earlier branch output, so its scale can grow with depth. A post-norm model renormalizes after every addition. Xiong Lemma 2 states exactly this for their setting: the expected squared norm is flat in depth for Post-LN and grows linearly for Pre-LN.",
+        "Theorem 1 bounds one thing: the gradient of the last FFN layer. It is independent of \\(L\\) for Post-LN and shrinks like \\(1/\\sqrt{L}\\) for Pre-LN. Lemma 3 gives the mechanism: the Jacobian of a normalization scales like \\(1/\\|x\\|\\), and \\(\\|x\\|\\) is what differs. Read the assumptions before you trust the picture: initialization only, uniform attention (query and key weights zero), one head, square weight matrices and Gaussian inputs.",
+        "Two ways to hold the stream scale: scale each residual output projection by \\(1/\\sqrt{2L}\\) (two branches per block), or keep a fixed small standard deviation and rely on normalization. OLMo 2 dropped a depth-dependent scheme for a flat standard deviation of 0.02 and reports growth exponents closer to 0 for activations and gradients. That is one report on its own models with its own measurement, and it compares against OLMo-0424's layer-index scheme, not against uniform \\(1/\\sqrt{2L}\\).",
+        "OLMo 2 changed several things as a package (reordered norm, QK-norm, z-loss, initialization). Section 3.3.2 says reordered norm and QK-norm 'in isolation' do not give good results, so the report cannot attribute the gain to any one of them."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive the mean square of the stream after \\(N\\) residual branches whose outputs are independent, zero-mean and each of variance \\(v\\), on an input of variance \\(\\sigma_0^2\\): \\(\\sigma_0^2 + Nv\\). Scaling each branch by \\(1/\\sqrt{N}\\) gives \\(\\sigma_0^2 + v\\) for every \\(N\\). Then, on your own pre-norm decoder with random token IDs and no training, record the stream mean square after every block for \\(L = 4, 16, 64\\), with and without scaling the attention output projection and FFN down projection by \\(1/\\sqrt{2L}\\). Labeled example, not a target: with a toy decoder (width 128, 4 heads, FFN width 344, RMSNorm, normal initialization with variance \\(2/(\\text{fan-in} + \\text{fan-out})\\), 4 sequences of 64 random tokens, mean of 3 seeds, PyTorch 2.14.1 on CPU) the final mean square was 2.38, 10.6 and 56.7 for \\(L = 4, 16, 64\\) unscaled, and 1.14, 1.15 and 1.15 scaled. Growth in the unscaled runs was faster than linear in \\(L\\) (the increment per sublayer rose from 0.17 to 0.30 to 0.43), so the independence assumption does not hold exactly. Expect the scaled values to stay flat and the unscaled ones to grow.",
       "traps": [
-        "TODO"
+        "Reading Theorem 1 as a layer profile. It bounds the last layer only. In the same toy at \\(L = 64\\) with post-norm, the FFN down-projection gradient norm was 0.160 at the last block and 7.4 at the first, the opposite order to 'gradients are large near the output', while the last-layer value stayed near 0.15 to 0.16 for \\(L = 4, 16, 64\\) as the theorem says. Pre-norm gave 0.108, 0.049 and 0.022 at the last block. Measure the whole profile in your own model.",
+        "Treating the OLMo 2 stability result as evidence for one component. Its Table 1 and Section 3.3.2 describe a package, and Equation 2 in Section 2.1 writes \\(\\operatorname{MLP}(x)\\) where Table 1 and the Section 3.3.2 table use the intermediate state \\(h\\). Follow the table.",
+        "Calling a flat curve of stream norm 'stable'. The stream scale at initialization says nothing about training, and the final norm hides a growing stream from the output head. Compare the stream scale at several points in training before you claim a depth effect."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does a pre-norm model need a final norm before the output head?",
+          "a": "The stream is unnormalized and its scale depends on depth and position in training. Without a final norm the logits would carry that scale. The final norm restores a fixed scale before the head."
+        },
+        {
+          "q": "\\(N\\) branch outputs are independent, zero-mean, each of variance \\(v\\), and are added to a stream of variance 1. What is the variance after the additions, and after scaling each branch by \\(1/\\sqrt{N}\\)? What changes if the outputs are perfectly correlated?",
+          "a": "\\(1 + Nv\\), and \\(1 + v\\) after scaling. If the \\(N\\) outputs are perfectly correlated, the sum has variance \\(N^2 v\\), so growth is quadratic in \\(N\\) and \\(1/\\sqrt{N}\\) scaling no longer holds the scale."
+        },
+        {
+          "q": "Why does Theorem 1 give a last-layer gradient that falls like one over the square root of depth for Pre-LN but is flat for Post-LN?",
+          "a": "The Jacobian of the final normalization scales like \\(1/\\|x\\|\\). In Pre-LN the squared norm of the stream grows linearly with \\(L\\), so the gradient shrinks like \\(1/\\sqrt{L}\\). In Post-LN the input to the normalization has a depth-independent norm."
+        },
+        {
+          "q": "A colleague says the OLMo 2 report shows depth-scaled initialization is worse than a flat standard deviation. What does the report actually compare?",
+          "a": "A flat standard deviation of 0.02 against OLMo-0424's scheme, which scaled output projections by a factor that depends on the layer index. It measured growth exponents and spike scores in its own setup, alongside other changes. It does not test uniform scaling by one over the square root of twice the layer count."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "CS336 Assignment 1: `pre_norm_ablation`",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/main/cs336_assignment1_basics.pdf",
+          "locator": "Section 7.3, problem (`pre_norm_ablation`) (p. 43). The handout asks for a post-norm variant of your own block and a learning curve against pre-norm",
+          "note": "The handout budgets 0.5 B200 hours and gives no tests. Substitute the handout's TinyStories setup (4 layers, 16 heads, width 512, FFN width 1344) at its low-resource 40,000,000-token budget, or a smaller model on your own decoder. Keep tokens, data order, warmup and learning rate identical, use three seeds, and also record the highest learning rate at which each variant still trains. Add the per-layer stream and gradient norm profile at initialization for two depths. The section mini-project reuses that profile."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You can derive the stream variance with and without \\(1/\\sqrt{N}\\) scaling, and your own per-layer stream and gradient norms at initialization, for two depths and both norm placements, either agree with Theorem 1's last-layer claim or contradict it for a reason you can state.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "The CS336 slides, Xiong, the OLMo 2 sections and the A1 ablation cover both topics at explain and derive depth. No source states the one-over-root-N scaling, so the card derives it; the numbers come from a labeled toy run."
       }
     },
     {
