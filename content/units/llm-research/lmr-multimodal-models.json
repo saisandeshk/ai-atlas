@@ -176,7 +176,7 @@
     {
       "id": "clip-siglip-objectives",
       "title": "The symmetric CLIP contrastive loss, the SigLIP pairwise sigmoid loss and batch-size behavior",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -186,47 +186,88 @@
         "siglip-objective"
       ],
       "outcomes": [
-        "TODO"
+        "Derive CLIP and SigLIP losses and their logit gradients with explicit reductions.",
+        "Differential-test both losses and gradients against OpenCLIP 3.3.0 on one device.",
+        "Separate batch-size effects on negatives, reduction scale and optimization budget."
       ],
-      "why": "TODO",
+      "why": "The prerequisite Paired modalities unit already implemented symmetric CLIP. Here the new work is an independent loss oracle, gradient checks and the reduction and negative-sampling contracts needed for a controlled objective comparison.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/staged-vlm-training-objectives",
+          "note": "Keep retrieval alignment distinct from decoder answer likelihood."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "openai-clip-lmr9",
+          "title": "CLIP, ICML 2021 PMLR edition",
+          "url": "https://proceedings.mlr.press/v139/radford21a/radford21a.pdf",
+          "locator": "Section 2.2 and Figure 3: normalized embeddings, learned logit multiplier and the two cross-entropies",
+          "depth": "Use this edition's numbering, not the earlier prerequisite card's section labels. Reconstruct the gradient rather than repeating the first-pass implementation."
+        },
+        {
+          "resource": "siglip-lmr9",
+          "title": "Sigmoid Loss for Language Image Pre-Training, arXiv:2303.15343v1",
+          "url": "https://arxiv.org/abs/2303.15343v1",
+          "locator": "Sections 3.1 and 3.2 and Algorithm 1; Figure 2 and Sections 4.1 and 4.2 for batch-size experiments",
+          "depth": "Do not reproduce the large-scale training. Interpret each curve under its own model, data and seen-example budget."
+        },
+        {
+          "resource": "openclip-lmr9",
+          "title": "OpenCLIP release 3.3.0 loss definitions",
+          "url": "https://github.com/mlfoundations/open_clip/blob/v3.3.0/src/open_clip/loss.py",
+          "locator": "`ClipLoss.get_logits`, `ClipLoss.forward`, `SigLipLoss.get_ground_truth` and `SigLipLoss._loss`",
+          "depth": "Use `world_size=1`. Pass normalized features and the multiplier itself; these loss classes do not normalize features or exponentiate the supplied multiplier."
         }
       ],
       "focus": [
-        "TODO"
+        "For batch size \(B\), normalized features and logits \(S\), CLIP averages row and column cross-entropy: \(L=-\frac{1}{2B}\sum_i[\log\operatorname{softmax}(S_{i,:})_i+\log\operatorname{softmax}(S_{:,i})_i]\). A shared scalar bias cancels from both softmaxes.",
+        "SigLIP uses \(L=\frac{1}{B}\sum_{i,j}\log(1+\exp(-z_{ij}S_{ij}))\), with diagonal labels 1 and off-diagonal labels -1. For this reduction, \(\partial L/\partial S_{ij}=-z_{ij}\sigma(-z_{ij}S_{ij})/B\). Use a stable softplus or log-sigmoid implementation.",
+        "TensorTonic divides the SigLIP sum by \(B^2\); OpenCLIP divides by \(B\). Multiply the exercise loss and gradients by \(B\) before comparison, keeping logits identical.",
+        "SigLIP removes the softmax normalization across candidates, not the need for negative pairs. Batch size changes negative coverage and class imbalance; accumulating isolated microbatch losses does not create the cross-microbatch negatives of a full batch."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1 and `open_clip_torch==3.3.0`, use two orthogonal unit vectors as both image and text features in `float64`. CLIP with multiplier 1 gives 0.3132616875. SigLIP with multiplier 2 and bias -1 gives 0.6265233750 in OpenCLIP and 0.3132616875 as an all-pairs mean. Derive the factor of two, then compare your losses and feature, multiplier and bias gradients against OpenCLIP on seeded nonzero random features, using `torch.manual_seed(42)` and `torch.testing.assert_close` with `rtol=1e-7, atol=1e-9`.",
       "traps": [
-        "TODO"
+        "Passing a stored logarithmic scale where the API expects its exponential. TensorTonic and the OpenCLIP loss call both take the multiplier.",
+        "Using a one-pair CLIP batch as a learning test. Its loss and gradient are zero because there are no competing candidates; SigLIP still trains its positive term.",
+        "Treating every off-diagonal pair as truly negative. Duplicate images or equivalent captions can make the diagonal-only supervision contradictory."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is a learned scalar bias useful for SigLIP but ineffective for CLIP's softmax loss?",
+          "a": "SigLIP's bias moves all binary decision logits to reflect the positive-negative imbalance. In CLIP a common additive bias cancels inside each softmax."
+        },
+        {
+          "q": "What happens to the SigLIP reduction factor for a batch of eight pairs?",
+          "a": "OpenCLIP's sum divided by eight is eight times the all-64-pairs mean, for identical logits and labels. Gradients differ by the same factor."
+        },
+        {
+          "q": "Does a lower raw SigLIP loss than CLIP loss prove a better encoder?",
+          "a": "No. Their objectives and reductions differ. Compare held-out retrieval on the same candidates and account for data exposure, optimization and compute."
+        },
+        {
+          "q": "If two captions describe the same image, is diagonal-only retrieval accuracy a complete evaluation?",
+          "a": "No. A different valid caption may be counted as wrong. Keep relevance groups and specify whether any valid caption counts as a retrieval hit."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Implement Symmetric CLIP Contrastive Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-symmetric-clip-loss",
+          "locator": "`symmetric_clip_loss`: public cases Orthogonal matched pairs, Single normalized pair and One ambiguous image",
+          "note": "Reuse your prerequisite implementation. The cases check normalized logits, loss and directional accuracies including an argmax tie; they do not check gradients. Add the OpenCLIP differential tests instead of treating this as a new first-pass exercise."
+        },
+        {
+          "name": "TensorTonic: Implement the SigLIP Pairwise Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-siglip-pairwise-loss",
+          "locator": "`siglip_pairwise_loss`: public cases Aligned orthogonal pairs, Single confident pair and Swapped pairs",
+          "note": "Follow its all-pairs-mean contract for the exercise, then convert the reduction for your OpenCLIP oracle. Add large-magnitude finite-logit tests and a gradient check on nonzero features; the public cases do not validate gradients."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both exercise contracts pass, both converted objectives and gradients agree with OpenCLIP within the stated tolerance, and you explain why microbatch accumulation does not reproduce full-batch negatives.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the two papers establish the objectives and batch ablations; free named problems and the versioned OpenCLIP oracle supply implementation and gradient-level practice."
       }
     },
     {
