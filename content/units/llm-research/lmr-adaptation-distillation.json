@@ -256,47 +256,65 @@
         "trainable-vs-activation-memory"
       ],
       "outcomes": [
-        "TODO"
+        "Derive persistent state bytes for full and partially frozen fine-tuning from actual parameter, gradient and optimizer dtypes.",
+        "Reconcile persistent-state savings with activation, workspace and measured peak memory.",
+        "Run a bounded full-SFT control with correct target weighting and resumable training state."
       ],
-      "why": "TODO",
+      "why": "GPU memory accounting taught the counters. Here the question is whether freezing parameters changes the memory term that actually limits adaptation, while keeping a credible full-update control.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-adaptation-distillation/lora-factorization-merge",
+          "note": "Replace a chosen dense update with counted low-rank state."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-sft-lmr6",
+          "title": "CS336 Spring 2026 Assignment 5 Supplement: SFT loop",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_supplement_safety_rlhf.pdf",
+          "locator": "Section 4.2.2, Training Script, and Problem `sft_script`, pp. 10 to 12",
+          "depth": "Use your tested masks and a roughly 10M-parameter `lmlab` decoder, batch one and context 128 on CPU or your GPU. Run at most 100 updates on a fixed training subset. Skip the Llama 8B hardware recipe and leaderboard-scale run; do not publish solutions."
+        },
+        {
+          "resource": "lora-paper-lmr6",
+          "title": "LoRA: where the state savings come from",
+          "url": "https://arxiv.org/abs/2106.09685v2",
+          "locator": "Section 4.2, Practical Benefits and Limitations",
+          "depth": "Read the frozen-state and deployment arguments only. The reported memory and throughput gains belong to the paper's GPT-3 setup, not your training loop."
         }
       ],
       "focus": [
-        "TODO"
+        "Count unique parameter storage, not duplicated names for tied weights. Full fine-tuning needs weights, gradients and optimizer state; checkpoints also bind schedule, data order and RNG state from Checkpoints that really resume.",
+        "For plain float32 AdamW without AMSGrad or master copies, weights and gradients cost 4 bytes each per scalar and the two moments cost 8. A frozen scalar retains its weight storage. Count scalar step counters separately after the first optimizer update.",
+        "Frozen weights can still participate in input-gradient computation when earlier trainable modules need gradients. Freezing them does not justify putting the whole forward under `torch.no_grad()`.",
+        "Measure forward, backward and optimizer peaks separately, then vary context length at fixed batch. Use the preceding unit's valid-token denominator when accumulation windows or response lengths differ. On CPU keep a tensor-storage ledger rather than pretending CUDA counters measure host RAM."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, derive float32 AdamW state for 12 million total parameters with no master copy: full updates need 192 MB; training only 250,000 of those parameters needs 51 MB. These totals include weights, gradients and two moments, not activations or scalar counters. On CPU with PyTorch 2.14.1 and `foreach=False`, allocate the corresponding trainable and frozen tensors, perform one update and sum their tensor bytes to check both totals. Then explain why neither total is a peak-memory prediction.",
       "traps": [
-        "TODO"
+        "Measuring optimizer state before the first update. AdamW allocates its moments lazily, so the initial ledger understates steady training state.",
+        "Importing a 16-byte or mixed-precision rule without naming tensor dtypes and master-copy behavior. Inspect the optimizer state your loop actually creates.",
+        "Averaging microbatch means without their valid-target counts. The course's simple accumulation sketch is not a token-weighting oracle for unequal masked lengths or a partial last window."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Where do the 51 MB in Reproduce come from?",
+          "a": "48 MB of weights, 1 MB of gradients and 2 MB of moment tensors. The frozen parameters save gradients and moments, not their own weight storage. MB here means decimal megabytes."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why might adapter training still save activations in a frozen layer?",
+          "a": "The backward pass may need that layer's input derivative to update an earlier adapter. No weight gradient does not mean no backward computation."
+        },
+        {
+          "q": "Is reserved CUDA memory a count of live model tensors?",
+          "a": "No. It includes allocator-held segments, including unused space. Compare live tensor storage, allocated peak and reserved peak with outside-allocator memory kept separate."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a bounded full-SFT control, post-update state census, context-length memory sweep and explanation of the peak-versus-ledger residual.",
+      "stopWhen": "Your post-update census matches both analytical totals with exclusions stated, and your small full-SFT control retains resumable state and held-out outputs without exceeding your machine's budget.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "The bounded course loop and LoRA state discussion extend the prerequisite memory work; the mini-project supplies the measured full-update control."
       }
     },
     {
