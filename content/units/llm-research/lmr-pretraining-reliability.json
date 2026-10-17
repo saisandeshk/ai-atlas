@@ -1,0 +1,900 @@
+{
+  "section": "lmr-pretraining-reliability",
+  "addedResources": [
+    {
+      "id": "pytorch-reliability-lmr3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "PyTorch 2.14 - AMP Examples and Profiler",
+      "provider": "PyTorch",
+      "access": "Free",
+      "use": "AMP examples: Gradient clipping and Gradient accumulation, including effective-batch scale updates and skipped optimizer steps. Profiler reference: `record_function`, `schedule` and memory capture. Use with PyTorch 2.14.1.",
+      "url": "https://docs.pytorch.org/docs/2.14/notes/amp_examples.html"
+    },
+    {
+      "id": "python-atomic-lmr3",
+      "role": "reference",
+      "priority": "reference",
+      "name": "Python - Atomic Replacement and File Synchronization",
+      "provider": "Python Software Foundation",
+      "access": "Free",
+      "use": "Read `os.replace` and `os.fsync` for the local single-file publication extension. Atomic visibility is not a power-loss durability guarantee. Page read 2026-10-16.",
+      "url": "https://docs.python.org/3/library/os.html#os.replace"
+    }
+  ],
+  "units": [
+    {
+      "id": "token-loss-denominators-batches",
+      "title": "Token-weighted loss denominators, microbatches, accumulation and seen-token counts",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "token-weighted-causal-loss",
+        "batch-tokens-and-steps"
+      ],
+      "outcomes": [
+        "Derive one token-weighted objective across uneven microbatches and a partial accumulation window.",
+        "Separate input tokens, valid loss tokens, attempted steps and successful optimizer updates.",
+        "Test a real trainer's denominator against a concatenated-batch gradient oracle."
+      ],
+      "why": "The next-token objective is already familiar. Here the risk is a trainer that silently changes its weighting when masks, sequence lengths or accumulation change.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/adamw-state-update-ratios",
+          "note": "Apply exactly one optimizer update to the accumulated gradient."
+        }
+      ],
+      "study": [
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: the effective-batch loss contract",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/train_module/transformer/train_module.py",
+          "locator": "`TransformerTrainModule.train_batch`: label generation, `batch_num_tokens_for_loss`, `instance_mask` handling, microbatch splitting, summed loss and backward",
+          "depth": "Read this single-device path, not pipeline parallelism. The instance-filter path deliberately includes excluded instances in the denominator; do not use that reported loss as the valid-token mean."
+        }
+      ],
+      "focus": [
+        "The LLM Foundations unit on the next-token objective covers shifts and masks. For this run, define the valid-token mask after shifting and packing, not from the raw input length.",
+        "For microbatch loss sums \\(S_i\\) and valid counts \\(n_i\\), backpropagate \\(S_i/\\sum_j n_j\\). Averaging microbatch means is correct only when their valid counts are equal.",
+        "Log processed input tokens, valid targets and per-source exposure separately. A skipped optimizer update still consumed data and compute; it must not disappear from the ledger.",
+        "A zero-valid-token window has no mean objective. Reject or skip it explicitly before division, and record the decision."
+      ],
+      "reproduce": "Closed-book, derive the loss for two microbatches with loss sums 4 and 6 and valid counts 2 and 6: the token mean is 1.25, not the mean-of-means 1.5. Then use PyTorch 2.14.1 on CPU to compare summed-loss accumulation with concatenated-batch gradients on fixed logits with unequal masks. Disable dropout and use explicit floating-point tolerances.",
+      "traps": [
+        "Dividing every microbatch by the configured accumulation length when the final window is shorter. Normalize by the actual valid count in that window.",
+        "Calling nanoGPT's last-microbatch training loss the effective-batch loss. Accumulate detached loss sums and counts for logging too.",
+        "Assuming input tokens equal supervised targets. Padding, ignored labels and boundary policies can make those counts different."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can repartitioning the same valid targets into uneven microbatches change a mean-of-means gradient?",
+          "a": "Each microbatch mean receives equal weight despite different valid counts, changing the per-token weights. Summing valid losses and dividing once by the total count preserves the additive objective. Adding only ignored padding does not itself change either masked mean."
+        },
+        {
+          "q": "One device processes two sequences of length 64 per microbatch, with four microbatches per update. What can you count without inspecting labels?",
+          "a": "512 input-token positions per attempted update. The valid-target count needs the shifted-label mask, and the successful-update count needs the optimizer outcome."
+        },
+        {
+          "q": "When should full-batch and accumulated gradients agree?",
+          "a": "When they evaluate the same additive objective at the same weights with the same data and stochastic choices, without batch-dependent operations or intermediate updates. Floating-point reduction order still permits small differences."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Gradient Accumulation Equivalence",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-gradient-accumulation-step",
+          "locator": "Implement `gradient_accumulation_step`; public cases Uneven microbatches, Two equal microbatches and Zero loss",
+          "note": "The free problem weights linear-model squared error by examples, not language-model tokens. Transfer its denominator argument to valid targets in lmlab and add a partial-window test; the public cases do not test masking or autograd gradients."
+        }
+      ],
+      "stopWhen": "The public cases pass, and your masked accumulated gradient matches the concatenated oracle within a stated tolerance, including an uneven final window and explicit empty-window handling.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: OLMo-core exposes the denominator and microbatch path; the free named drill plus lmlab's masked oracle supplies the research-depth check."
+      }
+    },
+    {
+      "id": "adamw-state-update-ratios",
+      "title": "AdamW state, parameter groups, weight decay and update-to-weight ratios",
+      "hours": 3,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "optimizer-state"
+      ],
+      "outcomes": [
+        "Audit parameter groups for missing, duplicate and unintentionally decayed parameters, including tied weights.",
+        "Explain an observed update using moments, bias correction, decay and the learning-rate history.",
+        "Measure update-to-weight ratios without mistaking gradient norms for parameter changes."
+      ],
+      "why": "The LLM Foundations unit on AdamW and schedules supplied the update equations. Research comparisons now need evidence that every named parameter received the intended update and retained the right state.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/wsd-schedules-gradient-noise",
+          "note": "Keep the update ledger when changing schedule or batch size."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-training-lmr3",
+          "title": "CS336 Spring 2026 Assignment 1: inspect your existing AdamW",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/a158843b20107949f1a8d7df1b05cd33b9166712/cs336_assignment1_basics.pdf",
+          "locator": "Version 26.0.3, Section 4.3: Algorithm 1 and problems `adamw` and `adamw_accounting`",
+          "depth": "Do not rebuild the foundation optimizer. Use the equations to audit the implementation and state you will actually train with."
+        },
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: stateful and skipped AdamW updates",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/optim/adamw.py",
+          "locator": "`adamw_step` and `SkipStepAdamW._step`: `step_factor`, `exp_avg`, `exp_avg_sq`, bias correction and `step_increment_bugfix`",
+          "depth": "Follow the scalar path; skip `foreach_adamw_step`. The skip-step policy is a case study, not a requirement to adopt it."
+        }
+      ],
+      "focus": [
+        "Keep a table of parameter names, tensor identities, shapes, decay settings and learning rates. A tied embedding and output head share one parameter, not two optimizer entries.",
+        "Compare \\(\\|\\theta_{t+1}-\\theta_t\\|_2/\\|\\theta_t\\|_2\\) per group or layer. Mark a zero denominator as undefined and log the absolute update instead.",
+        "Measure the actual before-and-after parameter change. Adam's preconditioning, decay and clipping make the gradient norm an inadequate proxy.",
+        "Distinguish a missing gradient from a zero gradient. With PyTorch 2.14.1 AdamW, a parameter with `grad=None` is skipped; a zero tensor can still produce decay and momentum-driven updates."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1, take one float64 AdamW step from weight 2 and gradient 3, with learning rate 0.1, betas `(0.9, 0.99)`, \\(\\epsilon = 10^{-8}\\) and weight decay 0.1. Derive first moment 0.3, second moment 0.09 and new weight about 1.8800000003. The total update-to-weight ratio is about 0.06. Compare a second step with and without the saved moments, using the same next gradient.",
+      "traps": [
+        "Calling decoupled weight decay an extra loss gradient. It acts outside Adam's adaptive denominator.",
+        "Loading optimizer state into a differently ordered parameter-group layout. Matching shapes alone does not prove the moments belong to the same parameter.",
+        "Treating one update-ratio threshold as universal across embeddings, norms and hidden matrices. Keep layerwise baselines and investigate changes."
+      ],
+      "selfTest": [
+        {
+          "q": "A parameter has zero current gradient but moves. Is that necessarily a bug?",
+          "a": "No. Stored momentum and decoupled decay can both move it. Inspect the moments, decay and actual gradient representation before diagnosing it."
+        },
+        {
+          "q": "Two layers have equal gradient norms. Must their update-to-weight ratios match?",
+          "a": "No. Their moment histories, weight norms, group learning rates and decay can differ."
+        },
+        {
+          "q": "Why is a weights-only restart not the same AdamW experiment?",
+          "a": "It resets the moments and step counters, hence the adaptive direction and bias corrections. Even identical next data and learning rate do not recover the original update."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 1: adamw regression audit",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/a158843b20107949f1a8d7df1b05cd33b9166712/tests/test_optimizer.py",
+          "locator": "`test_adamw` and its `_optimize` helper; connect your optimizer through `get_adamw_cls`",
+          "note": "The public test compares the final linear-model weights after 1000 updates against PyTorch or a snapshot with tolerance; it does not audit parameter groups or resume. Add those checks in lmlab. The handout and tests are public study material; never publish assignment solutions."
+        }
+      ],
+      "stopWhen": "The scalar update and public regression agree within declared tolerances, and every trainable tensor appears once in a named group with a recorded actual update ratio.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: CS336 anchors the update oracle and public regression; OLMo-core exposes the state and skipped-update mechanism for the lmlab audit."
+      }
+    },
+    {
+      "id": "wsd-schedules-gradient-noise",
+      "title": "Warmup-stable-decay schedules, gradient noise and the critical batch",
+      "hours": 6,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "warmup-stable-decay",
+        "gradient-noise-and-critical-batch"
+      ],
+      "outcomes": [
+        "Specify warmup, stable and decay phases with unambiguous step and token boundaries.",
+        "Explain the critical batch as an optimization trade-off, not a memory-capacity limit.",
+        "Compare schedule and batch interventions under fixed tokens, held-out evaluation and recorded seed variation."
+      ],
+      "why": "A stable-phase checkpoint can support several cooldown experiments, but those branches still cost tokens and compute. This unit makes that reuse explicit instead of treating a paper's schedule as a universal recipe.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-scaling-mixtures/batch-lr-width-transfer",
+          "note": "Study how batch and learning-rate transfer limits confound scaling comparisons."
+        }
+      ],
+      "study": [
+        {
+          "resource": "wsd-schedules-lmr3",
+          "title": "Constant learning rate plus cooldown",
+          "url": "https://arxiv.org/abs/2405.18392v3",
+          "locator": "Sections 2 and 3, especially 3.1 The Advantages and 3.2 Experimental Comparison, Figures 3 to 6",
+          "depth": "Stop before stochastic weight averaging. Treat the 210M SlimPajama comparisons as the authors' evidence, not a target for your decoder."
+        },
+        {
+          "resource": "wsd-schedules-lmr3",
+          "title": "MiniCPM: the WSD contract",
+          "url": "https://arxiv.org/abs/2404.06395v3",
+          "locator": "Section 4.2 WSD LRS, Equation 1; Section 4.3 and its decay-stage experiments",
+          "depth": "Read the schedule and branch-reuse argument only. Do not reproduce MiniCPM's model-scale runs."
+        },
+        {
+          "resource": "critical-batch-lmr3",
+          "title": "Noise scale and the useful-batch frontier",
+          "url": "https://arxiv.org/abs/1812.06162v1",
+          "locator": "Figure 1; Sections 2.1 to 2.3, especially Equations 2.2, 2.8 and 2.12",
+          "depth": "Stop after the steps-versus-examples trade-off. Full noise-scale estimation and large-batch theory are depth, not the exit gate."
+        }
+      ],
+      "focus": [
+        "Write which learning rate is used by each attempted update and whether the schedule advances on attempted or successful updates. Record both counters and the consumed-token position.",
+        "WSD names phases, not one decay function. The TensorTonic drill uses endpoint-inclusive cosine decay; MiniCPM permits a decreasing decay function and Hagele studies linear and square-root cooldowns.",
+        "The paper's inverse-batch covariance law assumes independent samples. Adjacent language-model tokens are correlated; report your batch unit and do not call a token count an independent-sample count.",
+        "At fixed tokens, a larger batch gives fewer updates. Retune learning rate with the same small search budget, and compare held-out loss after cooldown, not an unannealed branch against an annealed one."
+      ],
+      "reproduce": "Derive the free WSD drill's six rates for total steps 6, warmup steps 2, stable steps 2, peak rate 1 and final ratio 0: `[0.5, 1, 1, 1, 1, 0]`. Explain why its one-step decay uses the final rate immediately. In lmlab, fork one saved stable-phase state into constant and cooldown branches with identical next tokens and held-out evaluation; keep both outcomes rather than requiring cooldown to win.",
+      "traps": [
+        "Counting a reused prefix once in every branch's independent-run cost, or counting all cooldown branches as free. Report shared cost, marginal branch cost and total study cost separately.",
+        "Calling the largest batch that fits memory the critical batch. One is a system limit; the other concerns diminishing optimization returns.",
+        "Transferring a source's decay fraction without checking your budget, data and optimizer. Tiny-scale evidence supports only the tested regime."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can a stable-phase checkpoint be more useful for continued training than its cooled-down descendant?",
+          "a": "It preserves the high-rate trajectory. Continuing the cooled-down state at a high rate introduces a rewarming intervention whose stability and forgetting need separate testing."
+        },
+        {
+          "q": "Why can doubling batch size reduce steps without reducing total tokens to a given loss?",
+          "a": "Larger-batch gradients are less noisy but have diminishing per-step benefit. The step saving may be smaller than the doubled examples per step."
+        },
+        {
+          "q": "If the token batch doubles at a fixed token budget, what happens to the number of optimizer opportunities?",
+          "a": "It roughly halves, with rounding and the final partial batch handled explicitly. This changes the optimization horizon even before considering skipped steps."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Generate a Warmup-Stable-Decay Schedule",
+          "url": "https://www.tensortonic.com/problems/cs336-l11-wsd-learning-rate",
+          "locator": "Implement `wsd_learning_rate`; public cases Warmup stable and two-step decay, No warmup and One-step decay",
+          "note": "The free cases check specific rate vectors, not learning quality. The section mini-project adds a fixed-token schedule fork and a small batch-size comparison on your decoder, using three paired seeds and a fixed held-out slice. On CPU, shorten context and the common token budget for every arm equally."
+        }
+      ],
+      "stopWhen": "The boundary cases pass, and your branch ledger accounts for all consumed tokens, successful updates and shared versus marginal cost, with held-out outcomes and seed spread for the small comparisons.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the two schedule papers supply the method, McCandlish supplies the critical-batch assumptions, and the free drill plus bounded lmlab comparisons fit the gate."
+      }
+    },
+    {
+      "id": "mixed-precision-scaling-clipping",
+      "title": "Mixed precision, loss scaling, nonfinite handling and gradient-clipping placement",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "mixed-precision-and-scaling",
+        "gradient-clipping"
+      ],
+      "outcomes": [
+        "Integrate autocast, token-normalized accumulation, unscaling and clipping at effective-batch boundaries.",
+        "Reject nonfinite updates while retaining the offending batch and precision-state evidence.",
+        "Record the actual parameter, gradient, moment and accumulation dtypes rather than assuming them from the precision label."
+      ],
+      "why": "Mixed precision, autocast and gradient scaling are prerequisites. The new contract is their interaction with uneven accumulation, skipped updates, schedule position and recoverable language-model state.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/loss-spikes-training-instrumentation",
+          "note": "Capture the first numerical event before it becomes a loss spike."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mixed-precision-lmr3",
+          "title": "Mixed Precision Training: the three numerical safeguards",
+          "url": "https://arxiv.org/abs/1710.03740v3",
+          "locator": "Sections 3.1 FP32 Master Copy of Weights, 3.2 Loss Scaling and 3.3 Arithmetic Precision, plus Figure 1",
+          "depth": "Stop before the benchmark results. This is the FP16 rationale, not a claim that every current BF16 implementation uses the same storage layout."
+        },
+        {
+          "resource": "pytorch-reliability-lmr3",
+          "title": "PyTorch 2.14 AMP: clipping and accumulation",
+          "url": "https://docs.pytorch.org/docs/2.14/notes/amp_examples.html#gradient-accumulation",
+          "locator": "Typical Mixed Precision Training; Working with Unscaled Gradients - Gradient clipping; Working with Scaled Gradients - Gradient accumulation",
+          "depth": "Use the single-optimizer path. Replace division by the configured accumulation length with the actual valid-token denominator from the first unit."
+        }
+      ],
+      "focus": [
+        "With PyTorch 2.14.1, keep the scaler's scale fixed throughout an accumulation window. Unscale once after its last backward, inspect finiteness, record the unclipped norm, clip, then perform the conditional step and scale update.",
+        "FP32 parameters under autocast retain FP32 leaf gradients and normally FP32 AdamW moments. Autocast does not itself convert the stored parameters to BF16 or create an extra persistent master copy.",
+        "BF16's exponent range usually removes the need for scaling, not the need for finiteness checks. Use FP32 on CPU if BF16 operations are unsupported; a CPU `torch.amp.GradScaler('cpu')` can test skip semantics without requiring FP16 kernels.",
+        "Keep consumed-token counters even when the optimizer skips. Log scale, pre-clip norm, skip decision and schedule position so a resume preserves the chosen policy."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1, give an SGD parameter gradient `[3.0, 4.0]` through a loss scaled by 8. Unscale, record norm 5, then clip with maximum norm 1; the result is approximately `[0.6, 0.8]` within `1e-6`. Repeat with one infinite gradient using `torch.amp.GradScaler('cpu', init_scale=8.0)`: the parameter must not change and the default scale update reduces the scale to 4. Do not clip the invalid gradient before recording it.",
+      "traps": [
+        "Unscaling each microbatch separately. Later scaled gradients then accumulate into unscaled buffers and cannot be interpreted with one scale.",
+        "Using the return value of `scaler.step(optimizer)` as a universal success flag. Most optimizer steps return `None` even on success; instrument the actual step decision.",
+        "Clipping each microbatch instead of the accumulated gradient. Clipping is nonlinear, so that trains a different update."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is clipping before unscaling wrong?",
+          "a": "The threshold is applied to the scaled norm. After unscaling, the effective clipping threshold is smaller by the scale factor."
+        },
+        {
+          "q": "A scaler skipped an update. Should you replay the batch automatically?",
+          "a": "Not silently. Replaying changes data exposure and cost. Follow the run's declared skip or replay policy, and record the consumed tokens and every attempt either way."
+        },
+        {
+          "q": "Does enabling BF16 autocast guarantee that accumulation uses BF16?",
+          "a": "No. FP32 leaf parameters normally accumulate FP32 gradients. Inspect actual buffers and optimizer state; operation precision and stored-state precision are different choices."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the mixed-precision accumulation path, one seeded nonfinite event, a refused update and a precision-state resume regression in lmlab.",
+      "stopWhen": "Your finite accumulated update matches an FP32 control within a declared tolerance, and an injected nonfinite gradient leaves parameters and optimizer moments unchanged while the event and counters remain recorded.",
+      "fit": {
+        "verdict": "added",
+        "note": "Currency and coverage failed for effective-batch scaling and current skip semantics. The opened PyTorch 2.14 AMP examples fill that gap beside the original precision paper."
+      }
+    },
+    {
+      "id": "initialization-transfer-mup",
+      "title": "Initialization transfer and muP width-scaling rules",
+      "hours": 3,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "initialization-and-mup"
+      ],
+      "outcomes": [
+        "Derive width multipliers for input, hidden and output weights under one stated muP convention.",
+        "Distinguish transferable optimization hyperparameters from regularization choices that need new evidence.",
+        "Specify a width-transfer control that keeps architecture, depth, data and optimization budget comparable."
+      ],
+      "why": "Initialization at one width is not a scaling rule. A research program needs a family of parameterizations whose learning-rate transfer can be tested, not a copied learning rate from a smaller model.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-scaling-mixtures/batch-lr-width-transfer",
+          "note": "Test the limits of width transfer before using it to allocate a scaling budget."
+        }
+      ],
+      "study": [
+        {
+          "resource": "mup-lmr3",
+          "title": "Tensor Programs V: muTransfer and explicit width rules",
+          "url": "https://arxiv.org/abs/2203.03466v2",
+          "locator": "Algorithm 1 and Table 1; Section 4, Table 3 and Equations 3 and 4 for the MLP; Figure 1 for Transformer learning-rate transfer; Section 6.1 for caveats",
+          "depth": "Use the Table 3 convention for the derivation. Stop before the derivation in Appendix J. A decoder with tied embeddings needs the compatible convention in Table 8, not a direct copy of the untied MLP rules."
+        }
+      ],
+      "focus": [
+        "Table 3 states initialization variances, not standard deviations. A hidden-weight variance proportional to \\(1/n\\) gives standard deviation proportional to \\(1/\\sqrt{n}\\); the output-weight variance there scales as \\(1/n^2\\).",
+        "Separate the tuned base learning rate from width-dependent group multipliers. Input, hidden and output matrices do not all receive one identical Adam learning rate under Table 3.",
+        "muP is a joint initialization, parameterization and update-scaling contract. Changing only initialization is not muTransfer; Transformer attention and tied weights introduce further rules.",
+        "Table 1 does not promise transfer of dropout or weight decay. Keep fixed-depth, fixed-data width tests separate from claims about depth, sequence length or a new optimizer."
+      ],
+      "reproduce": "Closed-book, widen the equal-hidden-width MLP in Equation 4 from its base width by a factor of 4, keeping input and output dimensions fixed. Hidden-weight initialization standard deviation halves and output-weight standard deviation quarters. Under its SGD convention, input-weight and hidden-bias learning rates multiply by 4, hidden-weight learning rate stays fixed and output-weight learning rate divides by 4. Then read Table 3's Adam row: input weights and biases keep their rates, while hidden and output weight rates divide by 4. State the convention before each comparison.",
+      "traps": [
+        "Applying a variance multiplier directly to the initialization standard deviation. Take the square root first.",
+        "Using the Table 3 output-weight rule with a separately scaled readout from another convention. Equivalent parameterizations require consistent forward and optimizer transformations.",
+        "Calling stable activation magnitudes proof that the best learning rate transfers. A coordinate-scale check and a held-out optimization comparison answer different questions."
+      ],
+      "selfTest": [
+        {
+          "q": "Why are width-independent initial activations insufficient to establish useful width transfer?",
+          "a": "They constrain the initial forward pass, not the sizes and effects of learned updates. The optimizer and parameterization must also scale appropriately."
+        },
+        {
+          "q": "Can a transferred base learning rate imply different actual learning rates for two matrix groups?",
+          "a": "Yes. The base hyperparameter can stay fixed while prescribed width multipliers change each group's rate."
+        },
+        {
+          "q": "A learning rate transferred across two widths. Does the result establish transfer to a deeper decoder or a new tokenizer?",
+          "a": "No. Those changes alter the tested family or data representation. They need separate controlled evidence."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a width-rule worksheet for the chosen decoder and a bounded initialization-transfer check, with actual parameter-group multipliers and activation scales saved alongside the run contract.",
+      "stopWhen": "You derive the fourfold-width multipliers without the table, identify your decoder's tied-weight and attention conventions, and separate a scale check from evidence of optimal-hyperparameter transfer.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: Algorithm 1, Tables 1 and 3 and Equation 4 supply transfer vocabulary and explicit derive-level rules; the lmlab worksheet prevents an unsupported decoder-wide substitution."
+      }
+    },
+    {
+      "id": "run-contract-smoke-stop-rules",
+      "title": "Versioned run contracts, deterministic smoke tests, overfit checks and stop rules",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "training-smoke-and-overfit",
+        "run-contract-and-stop-rules"
+      ],
+      "outcomes": [
+        "Implement a versioned run contract binding corpus, tokenizer, model, objective, optimizer, precision and evaluator identity.",
+        "Gate launches on deterministic smoke tests and a separate overfit-one-batch diagnostic.",
+        "Declare budgets, validation cadence, stop triggers and rollback ownership before comparing configurations."
+      ],
+      "why": "The lmlab run is now an experiment, not just a training script. A frozen contract makes later changes to data, schedule, resume and evaluation visible rather than silently redefining the baseline.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/lm-checkpoint-state-publication",
+          "note": "Make the run contract enforceable at save and load boundaries."
+        }
+      ],
+      "study": [
+        {
+          "resource": "tuning-playbook-lmr3",
+          "title": "Specify the comparison before launching it",
+          "url": "https://github.com/google-research/tuning_playbook/tree/7554a51f5d3002ba90308d39701b586f5a9b962e#identifying-scientific-nuisance-and-fixed-hyperparameters",
+          "locator": "Identifying scientific, nuisance, and fixed hyperparameters; Determining the number of steps for each training run; Saving checkpoints and retrospectively selecting the best checkpoint; Setting up experiment tracking",
+          "depth": "Skip batch-normalization guidance. Here compute-limited means budget-limited training, not evidence that GPU kernels are compute-bound."
+        },
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: a bounded CPU integration configuration",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/integration_tests/test_train_small_model.py",
+          "locator": "`build_config` and `test_train_small_model_cpu`: `olmo3_30M`, sequence length 64, five steps and model-merge/load checks",
+          "depth": "Read as the reference contract. Running the OLMo test is optional: it needs extra dependencies and external data. Do not launch the official large-model scripts."
+        },
+        {
+          "resource": "cs336-training-lmr3",
+          "title": "CS336 Spring 2026 Assignment 1: launch and overfit checks",
+          "url": "https://github.com/stanford-cs336/assignment1-basics/blob/a158843b20107949f1a8d7df1b05cd33b9166712/cs336_assignment1_basics.pdf",
+          "locator": "Version 26.0.3, Section 5.3 Training loop and Section 7.2.3 Tips and tricks for debugging model architectures",
+          "depth": "Use your existing decoder on a small versioned corpus slice. Replace the assignment's full training and leaderboard budgets with minutes-long smoke runs; do not adopt its score targets or publish solutions."
+        }
+      ],
+      "focus": [
+        "The Deep Learning unit on objective checks covers tiny-set overfitting and shuffled-label controls. A smoke run checks finite state and reproducible execution; overfitting one batch tests whether the implementation can learn its targets, not generalization.",
+        "Record code revision, dependency versions, data and tokenizer hashes, model shape, masks, groups, schedule units, RNG streams, checkpoint policy and the fixed held-out evaluation slice. Pin this training path to PyTorch 2.14.1.",
+        "Use your decoder from the Architecture and Numerics section, at around 10M parameters, for the small study. If it does not fit your GPU, use shorter context and smaller microbatches; a two-layer, width-64 decoder with a small vocabulary on CPU suffices for contract and failure tests.",
+        "Predeclare token and wall-time budgets, nonfinite refusal, identity-mismatch refusal, validation selection and rollback rules. A changed contract starts a named branch with a parent checkpoint, not an invisible continuation."
+      ],
+      "reproduce": "From the same initial state, run five updates twice on an immutable small token fixture with fixed batches and a deterministic CPU path. Compare the batch identities, losses, optimizer counters and final tensors. Separately repeat one fixed batch with dropout and decay disabled until its loss falls substantially; save the curve as a diagnostic, and evaluate the actual study only on held-out documents. A constant-sequence fixture is acceptable for this test, not for a quality claim.",
+      "traps": [
+        "Expecting every overfit-one-batch run to reach zero loss. Conflicting targets for identical available contexts can impose a nonzero optimum; choose a learnable diagnostic fixture.",
+        "Selecting checkpoints on the final test set. Use a development slice for selection and reserve an untouched evaluation slice for the frozen result.",
+        "Trusting nanoGPT's `max_iters` as an update count. At the pinned revision its loop executes `max_iters + 1` updates; test and fix your stop boundary."
+      ],
+      "selfTest": [
+        {
+          "q": "The batch overfit check passes. What has not been established?",
+          "a": "Generalization, correct data order over a full run, resume equivalence and fairness of later comparisons. A model can memorize a flawed diagnostic batch."
+        },
+        {
+          "q": "Why distinguish a budget stop from a numerical stop?",
+          "a": "The first completes the planned exposure; the second is a failed or interrupted attempt. Combining them hides instability and makes completed-run averages misleading."
+        },
+        {
+          "q": "You double the batch while leaving maximum steps fixed. Is that the same token-budget experiment?",
+          "a": "No. It roughly doubles data exposure. Recompute steps or explicitly change the comparison contract."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: lmlab's frozen baseline manifest, deterministic launch gate, learnable single-batch overfit check, fixed held-out evaluation and tested stop/rollback policy.",
+      "stopWhen": "A clean invocation reproduces the smoke trace at the declared equivalence level, the separate learnable fixture overfits, and an exceeded budget or identity mismatch triggers the declared stop with evidence retained.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the Playbook defines comparison discipline, CS336 defines the small-loop controls, and OLMo-core supplies a real integration configuration without making its dependency stack mandatory."
+      }
+    },
+    {
+      "id": "lm-checkpoint-state-publication",
+      "title": "Complete language-model checkpoint state, atomic publication and corrupted-state handling",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "complete-checkpoint-state",
+        "atomic-checkpoint-and-resume"
+      ],
+      "outcomes": [
+        "Map every mutable language-model training state to its owner and serialized representation.",
+        "Publish immutable local checkpoints with integrity metadata and an explicit reader acceptance rule.",
+        "Reject incomplete, corrupted or incompatible state before mutating the live training objects."
+      ],
+      "why": "Complete checkpoints and atomic writes are familiar. This unit audits a real trainer, extends a deliberately incomplete one, and proves that interruption and corruption cannot silently select an invalid continuation.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/resume-equivalence-discontinuities",
+          "note": "Test that accepted state actually continues the same experiment."
+        }
+      ],
+      "study": [
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: trainer state versus model and optimizer state",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/trainer.py",
+          "locator": "`Trainer.state_dict`, `load_state_dict` and `load_checkpoint`: counters, loader, callbacks and conditional RNG restoration",
+          "depth": "Do not mistake `Trainer.state_dict` alone for the full checkpoint; model and optimizer state belong to the train module."
+        },
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: local publication and discovery",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/checkpoint.py",
+          "locator": "`Checkpointer.save`, `dir_is_checkpoint`, `find_checkpoints`, `latest_checkpoint`, `_save_metadata`, `_get_tmp_dir` and `_teardown_tmp_dir`",
+          "depth": "Trace local storage only. Remote uploads do not inherit local atomic-rename semantics; sharding and fleet recovery stay outside this section."
+        },
+        {
+          "resource": "nanogpt-lmr3",
+          "title": "nanoGPT: the checkpoint to extend",
+          "url": "https://github.com/karpathy/nanoGPT/blob/3adf61e154c3fe3fca428ad6bc3818b27a3b8291/train.py",
+          "locator": "`init_from == 'resume'` branch; scaler creation; checkpoint dictionary and `torch.save` inside the evaluation branch; initial and prefetched `X`, `Y` batches"
+        },
+        {
+          "resource": "python-atomic-lmr3",
+          "title": "Local atomic replacement and synchronization",
+          "url": "https://docs.python.org/3/library/os.html#os.replace",
+          "locator": "`os.replace` and `os.fsync` entries, including the same-filesystem restriction and flush-before-fsync instruction (page read 2026-10-16)"
+        }
+      ],
+      "focus": [
+        "Save at a completed-update boundary: model, moments and group mapping, schedule position, scaler, counters, CPU and device RNG, sampler/shuffle state, corpus/tokenizer/config hashes and callback state. Mid-accumulation saves additionally need partial gradients and window position.",
+        "nanoGPT does not save RNG, scaler or loader state. Its random-window sampler also prefetches the next batch before saving; either save that pending batch and its identity or move publication to a boundary with a fully specified next-batch recipe.",
+        "For local single-file checkpoints, write an immutable payload through a temporary sibling, flush and synchronize it, then atomically replace its final name. Publish a manifest last with size, digest, schema and run identity; readers require all checks before loading into fresh objects.",
+        "A successful rename gives atomic visibility, not guaranteed survival of power loss. Directory synchronization and filesystem behavior matter for durability. Keep the previous verified checkpoint until the new one has passed validation."
+      ],
+      "reproduce": "In a CPU test, retain one verified checkpoint, start a separate writer for the next temporary payload, and terminate it after it signals that only part was written. Discovery must ignore that unpublished attempt. Next, alter one byte in a copied published payload without updating its recorded digest: validation must reject it before deserialization or live-state mutation. Keep both failure records and show explicit fallback to the older verified state.",
+      "traps": [
+        "Calling successful deserialization an integrity check. Corrupted tensor bytes may still deserialize; validate the recorded digest and semantic identity too.",
+        "Using a filename or modification time as proof of completeness. Select the highest accepted step with its manifest, not merely the newest path.",
+        "Treating an in-memory state dictionary as an immutable snapshot. Its tensors can alias live state; serialize immediately or copy them before training continues."
+      ],
+      "selfTest": [
+        {
+          "q": "The model and optimizer reload correctly. Why might the next training batch still be wrong?",
+          "a": "The loader position, random stream or already-prefetched batch may be missing. A checkpoint must describe the next consumed batch, not only the last completed update."
+        },
+        {
+          "q": "A checkpoint's checksum passes, but its tokenizer hash differs. May you resume it as the same run?",
+          "a": "No. Integrity proves the bytes match the manifest, not that the bytes belong to a compatible experiment. Reject the mismatch or declare an explicit new intervention."
+        },
+        {
+          "q": "Can an atomic rename alone guarantee a checkpoint survives sudden power loss?",
+          "a": "No. Visibility and durability are different guarantees. Buffered data and directory entries need appropriate synchronization, with filesystem-specific limits."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: extend the pinned nanoGPT checkpoint path in lmlab with complete state, immutable publication, a manifest, kill-during-save and corruption tests, and explicit last-good fallback.",
+      "stopWhen": "Interrupted publication, byte tampering and tokenizer/config mismatches are rejected without changing live state, and the previous verified checkpoint remains loadable.",
+      "fit": {
+        "verdict": "added",
+        "note": "Coverage failed for the local replace and synchronization API guarantees. Python's opened os reference fills that gap; OLMo-core and nanoGPT remain the state and extension case studies."
+      }
+    },
+    {
+      "id": "resume-equivalence-discontinuities",
+      "title": "Exact and statistical resume equivalence, and data discontinuity diagnostics",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "resume-equivalence",
+        "data-discontinuity-diagnostics"
+      ],
+      "outcomes": [
+        "Specify exact, tolerance-based and statistical continuation criteria before running a restart test.",
+        "Compare next-batch identities, RNG-dependent computation, optimizer state and held-out loss across a process restart.",
+        "Localize a data discontinuity to corpus, shard, tokenizer, mixture, sequence-length or sampler-state changes."
+      ],
+      "why": "A smooth loss curve is weak evidence of correct resume. Token exposure can repeat or skip without a conspicuous spike, so continuation must be checked against an uninterrupted trace at the same logical position.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/loss-spikes-training-instrumentation",
+          "note": "Use batch and state alignment to distinguish a resume defect from optimization failure."
+        }
+      ],
+      "study": [
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: loader fingerprint and consumed position",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/data/data_loader.py",
+          "locator": "`NumpyDataLoaderBase.state_dict` and `load_state_dict`: `dataset_fingerprint_version`, `dataset_fingerprint`, `batches_processed`, `tokens_processed`, `seed` and `epoch`",
+          "depth": "Notice that a fingerprint-version mismatch only warns, while a same-version fingerprint mismatch normally raises. Make lmlab's strict acceptance policy explicit rather than assuming both cases fail closed."
+        },
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: RNG restoration boundary",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/trainer.py",
+          "locator": "`Trainer.load_state_dict`: loader restoration, callback state, matching-world-size RNG restore and library-version warning"
+        },
+        {
+          "resource": "stas-instabilities-lmr3",
+          "title": "Recognize resume and repetition patterns",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/instabilities/training-loss-patterns.md#resume-related-spikes",
+          "locator": "Resume-related spikes: DataSampler related issues and Impacts of repeat data",
+          "depth": "Treat the historical framework anecdotes as cases, not current universal defaults. Use batch lineage to test your loader directly."
+        }
+      ],
+      "focus": [
+        "Compare the resumed run with the uninterrupted suffix, including the first consumed batch, valid-target count, learning rate, scaler, moments and parameter tensors. Evaluation must not perturb the training RNG stream unnoticed.",
+        "Exact equivalence means bitwise state and trace agreement within a frozen deterministic environment. Tolerance-based numerical agreement is a different claim; cross-release or cross-device identity is not promised by PyTorch.",
+        "For an explicitly nondeterministic path, compare paired multi-seed held-out results and diagnostics against a prespecified practical margin. An insignificant difference or one similar curve is not proof of statistical equivalence.",
+        "Log source, shard, token offsets, tokenizer hash, packing version, sequence length and batch digest. A corpus fingerprint alone does not certify every tokenizer or packing choice."
+      ],
+      "reproduce": "Using PyTorch 2.14.1 on CPU, run your tiny decoder with nonzero dropout and fixed data order. Save after three completed updates, continue two more as the reference, then terminate and resume fresh objects in a new process for those same two updates. Restore RNG only after object construction and loader setup. Require exact batch identities and bitwise tensor agreement on this deterministic path. Repeat with RNG restoration omitted and with the sampler reset; your checks must identify the earliest differing stream, not merely the final loss.",
+      "traps": [
+        "Treating statistical equivalence as permission for repeated or missing documents. Logical data identity remains testable even when kernels are nondeterministic.",
+        "Restoring RNG before constructing the model. Initialization consumes draws and shifts the resumed stochastic stream.",
+        "Ignoring a fingerprint mismatch because the validation curve seems healthy. That turns a continuation into an undocumented data intervention."
+      ],
+      "selfTest": [
+        {
+          "q": "Batch hashes match after resume, but dropout outputs differ immediately. What do you inspect first?",
+          "a": "The relevant RNG state and restoration order, train/eval mode and deterministic execution settings. Matching data does not imply matching stochastic computation."
+        },
+        {
+          "q": "Why can a reset sampler initially improve the training loss?",
+          "a": "It can replay already-learned examples. Lower replay loss is not evidence of better generalization or correct exposure."
+        },
+        {
+          "q": "Three seeds show no statistically significant loss difference. Have you proved equivalence?",
+          "a": "No. Failure to detect a difference can reflect low power. Specify a meaningful equivalence margin and report the uncertainty relative to it, while checking deterministic state and lineage directly."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: an uninterrupted-versus-killed-process continuation test with dropout, missing-RNG and repeated-shard negative controls, plus strict data/tokenizer/config fingerprint failures.",
+      "stopWhen": "A real restart passes the declared equivalence contract, and the omitted-RNG, reset-sampler and changed-identity controls fail at the expected boundary with the earliest differing evidence preserved.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: OLMo-core exposes restoration and fingerprint limits; Stas supplies discontinuity cases, while the lmlab restart campaign supplies the missing executable equivalence test."
+      }
+    },
+    {
+      "id": "loss-spikes-training-instrumentation",
+      "title": "Loss spikes, divergence and delayed failure, with activation, gradient and update instrumentation",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "loss-spike-and-divergence",
+        "activation-gradient-instrumentation"
+      ],
+      "outcomes": [
+        "Build a diagnostic decision tree linking loss events to data, activations, gradients, updates and precision state.",
+        "Capture the earliest nonfinite value and the preceding batch/state history, rather than only the eventual loss failure.",
+        "Diagnose a seeded numerical or data failure from stored evidence and verify a single-mechanism repair."
+      ],
+      "why": "A spike is an observation, not a cause. The research task is to distinguish a hard batch from a changed data stream, an unstable update or a delayed numerical failure without discarding the failed trajectory.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-pretraining-reliability/failed-run-triage-hardware-signatures",
+          "note": "Turn numerical evidence into an all-attempt incident record and a defensible diagnosis."
+        }
+      ],
+      "study": [
+        {
+          "resource": "stas-instabilities-lmr3",
+          "title": "Loss-pattern taxonomy, not a causal classifier",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/instabilities/training-loss-patterns.md#main-types-of-loss-spikes",
+          "locator": "Main types of loss spikes: Fast recovering spikes, Slow recovering spikes, Not fully recovering spikes, Non-spike diverging and Multiple datasets spikes",
+          "depth": "Skip the earlier grokking anecdote: a training-loss drop alone does not establish held-out generalization or grokking."
+        },
+        {
+          "resource": "stas-instabilities-lmr3",
+          "title": "Forward-frame evidence for the first invalid value",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/debug/pytorch.md#underflow-and-overflow-detection",
+          "locator": "Underflow and Overflow Detection: `DebugUnderflowOverflow` hooks and the last-forward-frames report; Specific batch absolute min and max value tracing",
+          "depth": "Transfer the hook and rolling-history idea to your decoder; do not download the demonstration's T5 model. The old `underflow_overflow.md` page redirects here."
+        },
+        {
+          "resource": "tuning-playbook-lmr3",
+          "title": "Separate early instability from delayed failure",
+          "url": "https://github.com/google-research/tuning_playbook/tree/7554a51f5d3002ba90308d39701b586f5a9b962e#how-can-optimization-failures-be-debugged-and-mitigated",
+          "locator": "Identifying unstable workloads and Potential fixes for common instability patterns",
+          "depth": "Use the hypothesis-and-control method; do not copy the source's learning-rate sweep multipliers or vision-era batch-normalization interventions."
+        }
+      ],
+      "focus": [
+        "Keep per-source loss sums and denominators, batch lineage, sequence lengths, learning rates, unclipped gradient norms, clipping frequency, scaler events and actual update ratios. Aggregate loss can hide a source-specific regression.",
+        "Sample residual, attention-logit and output-logit scales by layer. Store norms and extrema without retaining the autograd graph; capture full tensors only for a bounded diagnostic replay.",
+        "Seed one known fault in a copy of the baseline: insert a nonfinite intermediate at a named step and module, or reset the data cursor. Store the parent state and preceding window so another reader can infer the cause without your injection note.",
+        "Replay the suspect batch at the pre-event state, then change only the suspected cause. A replay that fails only after several preceding updates points to state-history dependence, not proof that the last document is bad."
+      ],
+      "reproduce": "With the small PyTorch 2.14.1 CPU decoder, place finite-value checks at block outputs and before the optimizer step. At a recorded step, deliberately set one chosen block-output element to infinity. Save the input batch identity, the last finite state, the first failing module and the refused-update event. Replay from that state with the injection disabled and confirm finite execution on the same batch. Keep both traces; a successful replay is a control for this injected fault, not a general stability guarantee.",
+      "traps": [
+        "Calling fast recovery proof that a spike was harmless. Check held-out slices and post-event state; the aggregate curve alone cannot establish that.",
+        "Attaching diagnostics that save graph-bearing tensors at every step. The resulting memory leak and synchronization overhead can become a second failure.",
+        "Assuming anomaly detection catches every invalid forward value. Check forward finiteness explicitly; backward anomaly reporting has a narrower contract."
+      ],
+      "selfTest": [
+        {
+          "q": "Why preserve the pre-spike history rather than only the batch with the largest loss?",
+          "a": "Earlier updates may have grown activations or corrupted optimizer state. The final batch can merely expose an already developing failure."
+        },
+        {
+          "q": "Aggregate loss jumps while each source's held-out loss is unchanged. What alternative explanation should you test?",
+          "a": "Changed mixture weights, valid-token denominators or sequence composition. A weighted average can move even when its conditional source losses do not."
+        },
+        {
+          "q": "A smaller learning rate prevents the spike. Does that prove the data are correct?",
+          "a": "No. It may only reduce sensitivity to a data or objective defect. Check batch lineage, masks and targets independently before attributing the repair."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: one seeded numerical or data incident, stored pre-event history, first-invalid or first-discontinuity localization, a matched replay and a regression that catches the original fault.",
+      "stopWhen": "Your stored evidence identifies the earliest affected component, a one-cause replay explains the seeded event, and the original failed run remains available beside the passing regression.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: Stas supplies the taxonomy and bounded hook method, and the Playbook supplies diagnostic controls; lmlab turns their descriptive guidance into a retained failure experiment."
+      }
+    },
+    {
+      "id": "step-timeline-throughput-memory",
+      "title": "Step timelines, tokens per second and memory and operation accounting",
+      "hours": 6,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "step-timeline",
+        "throughput-memory-accounting"
+      ],
+      "outcomes": [
+        "Attribute a training timeline to input wait, transfer, forward, backward, optimizer, evaluation and checkpoint work.",
+        "Reconcile predicted tensor-state bytes and operation counts with measured runs and named residual costs.",
+        "Diagnose a seeded throughput regression without changing the model's token exposure or update semantics."
+      ],
+      "why": "Parameter and FLOP arithmetic is already familiar. The new task is reconciling those estimates with a real run, including evaluation, publication and failed attempts rather than timing only convenient kernels.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-research-scale-integration/prediction-residuals-evidence-labels",
+          "note": "Carry measured residuals and local-evidence limits into the integrated research study."
+        }
+      ],
+      "study": [
+        {
+          "resource": "olmo-core-lmr3",
+          "title": "OLMo-core: throughput numerator and interval",
+          "url": "https://github.com/allenai/OLMo-core/blob/5f6f58a133e7ef577d596295f2c8db4651c27857/src/olmo_core/train/callbacks/speed_monitor.py",
+          "locator": "`SpeedMonitorCallback.pre_load_batch`, `pre_step` and `post_step`; `get_device_peak_flops_per_second`",
+          "depth": "Do not use the fallback peak FLOP rate for an unrecognized GPU: the implementation assumes a different device. Supply verified specifications for your GPU or omit MFU."
+        },
+        {
+          "resource": "pytorch-reliability-lmr3",
+          "title": "PyTorch 2.14: bounded profile capture",
+          "url": "https://docs.pytorch.org/docs/2.14/profiler.html",
+          "locator": "Overview and API Reference: `profile` activities, `schedule`, `profile_memory`, `record_shapes`, `with_flops`, `key_averages` and `export_chrome_trace`",
+          "depth": "Use a short capture on your machine, with CPU-only activities as the fallback. The FLOP option estimates selected operators; it is not a complete hardware instruction counter."
+        },
+        {
+          "resource": "modern-notebook-training-lmr3",
+          "title": "Appendix B: inspect the accounting assumptions",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/appendix-advanced/B-flops-memory-accounting.ipynb",
+          "locator": "Sections 2 Activation Memory, 3 FLOPs, 4 Backpropagation and 6 Training Memory",
+          "depth": "Recompute Section 2's FFN subtotal: \\(2 + 16/3 = 22/3 \\approx 7.33\\), not 6.33. Do not copy Section 4's extra factor of 2: forward plus backward is approximately three times forward for the stated dense-matmul model, not six. Section 6's listed FP32 weights, gradients and two moments total 16 bytes per parameter before its listed BF16 copy, which would add 2 more. Treat activation formulas as implementation-dependent estimates, not exact peaks."
+        }
+      ],
+      "focus": [
+        "Use processed input tokens per elapsed second for execution throughput and report valid-target throughput separately. Give both warmed-up training-only time and end-to-end time including evaluation, checkpoint publication and restarts.",
+        "Annotate phase boundaries before collecting traces. CUDA launches are asynchronous: use synchronized interval boundaries or device events on your GPU, and read overlapping work as a timeline rather than summing nested operator totals.",
+        "Build a dtype-specific ledger of unique parameter storage, gradients and moments after state initialization, then add saved activations, temporary copies, workspaces and inputs. Report allocated and reserved memory separately; allocator reserve is not live tensor storage.",
+        "Under the declared multiply-add convention, a matmul costs approximately \\(2\\,m\\,k\\,n\\) FLOPs. Backward is approximately twice forward when both operand gradients are needed; embeddings, frozen inputs, recomputation, loss and optimizer operations require their own accounting."
+      ],
+      "reproduce": "First derive the free drills' small examples: parameter shapes `[4, 3]` and `[3]`, 2-byte parameters, 4-byte gradients and Adam moments, plus a `[2, 4]` 2-byte activation give 226 bytes without a master copy. A forward matmul `[2, 4, 4]` plus 32 attention FLOPs gives forward 96, backward 192 and total 288 FLOPs under the drill's convention. Then capture an annotated step of your PyTorch 2.14.1 decoder, seed an input-wait delay, and show that its trace localizes the added wait without changing batch hashes or final updates. Reconcile one state-memory prediction and one forward/backward operation prediction with your capture; timings are observations, never targets.",
+      "traps": [
+        "Calling profiler operator FLOPs a complete count, or dividing them by an unrelated peak precision to claim MFU. State included operations and the device precision first.",
+        "Adding every per-operator memory allocation to estimate peak live memory. Tensors are freed and storage can be reused; peak is simultaneous liveness, not cumulative allocations.",
+        "Claiming an optimization from a profiled run alone. Measure a separate clean timing run, then rerun loss, gradient and resume controls."
+      ],
+      "selfTest": [
+        {
+          "q": "Why can two runs have equal training-only tokens per second but different study cost?",
+          "a": "They may differ in evaluation, checkpoint, startup, retry and failed-run overhead. End-to-end elapsed time and total attempts expose those costs."
+        },
+        {
+          "q": "Does switching FP32-parameter AdamW to autocast halve persistent optimizer memory?",
+          "a": "No. Stored parameters, gradients and moments can remain FP32. Most savings then come from lower-precision intermediates, with any cast-copy cost counted separately."
+        },
+        {
+          "q": "The trace shows long input wait while GPU kernels are short. What is the next controlled change?",
+          "a": "Change only the input path, for example by replaying the same preloaded batches. Keep batch order and updates fixed, and verify end-to-end time separately."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Mixed-Precision Training Memory Accountant",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-memory-accountant",
+          "locator": "Implement `memory_accountant`; public examples cover BF16 parameters with FP32 Adam gradients/state, FP32 SGD without activations and BF16 AdaGrad",
+          "note": "This free problem excludes master copies and allocator overhead. Add those only if your measured implementation actually has them. The section mini-project supplies the measured reconciliation."
+        },
+        {
+          "name": "TensorTonic: Transformer Training FLOP Estimator",
+          "url": "https://www.tensortonic.com/problems/cs336-l02-training-flop-estimator",
+          "locator": "Implement `flop_estimator`; public examples cover one matmul plus attention, two matmuls and a zero-batch matmul",
+          "note": "The free tests exercise the supplied shape arithmetic, not a decoder's full operation graph. Extend your existing foundation solution with an included/excluded-operation ledger rather than treating it as a hardware oracle."
+        }
+      ],
+      "stopWhen": "Both drills pass, one memory and one operation estimate have measured reconciliations, and the input-delay regression is localized while the unchanged batch/update controls pass.",
+      "fit": {
+        "verdict": "added",
+        "note": "The notebook's arithmetic needs explicit corrections and its estimates do not supply a measurement API contract. The opened versioned PyTorch profiler reference fills that depth gap; OLMo-core and the free drills remain."
+      }
+    },
+    {
+      "id": "failed-run-triage-hardware-signatures",
+      "title": "Failed-run triage, all-attempt retention and hardware failure signatures",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "failed-run-retention",
+        "hardware-failure-signatures"
+      ],
+      "outcomes": [
+        "Explain why failed, stopped and retried attempts belong in the study's evidence and cost ledger.",
+        "Distinguish numerical, data, capacity and storage failures from evidence suggesting a device fault.",
+        "Explain a seeded incident using retained traces, a controlled repair and explicit limits on local evidence."
+      ],
+      "why": "Successful runs alone hide instability and wasted budget. A defensible research result retains the attempts that did not finish and separates an observed signature from a proven cause.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-research-scale-integration/prediction-residuals-evidence-labels",
+          "note": "Carry the all-attempt ledger and local-evidence limits into the integrated research report."
+        }
+      ],
+      "study": [
+        {
+          "resource": "opt-logbook-lmr3",
+          "title": "OPT: retain the interrupted training history",
+          "url": "https://arxiv.org/abs/2205.01068v4",
+          "locator": "Section 2.5 Training Processes: Hardware Failures, Loss Divergences and Other Mid-flight Changes; Figures 1 and 2",
+          "depth": "Read the incident narrative, not the model-scale recipe. The reported restarts and combined interventions do not isolate a universal repair or predict your GPU's failure rate."
+        },
+        {
+          "resource": "stas-instabilities-lmr3",
+          "title": "Recovery policy without blind retries",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/training/fault-tolerance/README.md",
+          "locator": "Queue up multiple training jobs; Frequent checkpoint saving; Kill switch; Save switch; Is-job-hanging watchdog and Low disk space alerts",
+          "depth": "Extract the stop, evidence and last-good recovery ideas. Skip SLURM commands, spare-node provisioning and multi-replica recovery; no cluster or watchdog service is required."
+        },
+        {
+          "resource": "stas-instabilities-lmr3",
+          "title": "Hardware signatures are evidence, not verdicts",
+          "url": "https://github.com/stas00/ml-engineering/blob/139708e52cb06f9191cf1d9959def9187b205c58/compute/accelerator/nvidia/debug.md#errors-and-diagnostics",
+          "locator": "Errors and diagnostics: Xid Errors and uncorrectable ECC error encountered; How to detect if you get the same broken node again and again",
+          "depth": "Read only. Do not run stress tests, reset hardware or request administrator access. Skip the page's categorical claims that every uncorrectable error crashes the application and every correctable error has no impact; behavior depends on device and containment policy. ECC telemetry can be unavailable on consumer GPUs."
+        }
+      ],
+      "focus": [
+        "Give every launch an attempt ID and parent checkpoint. Retain contract, seed, batch lineage, logs, exit status, stop reason, consumed tokens, elapsed time and last verified state, even for failed or cancelled attempts.",
+        "An out-of-memory error indicates a capacity or allocation problem, not proof of broken hardware. An invalid token index, nonfinite activation, full disk and stalled input path require different controls before any hardware hypothesis.",
+        "If available, preserve timestamped driver messages, Xid codes, ECC counters, GPU identity, temperature and software versions. These can support escalation, but a generic CUDA error or loss spike alone cannot establish a defective device.",
+        "Keep observation, hypothesis, intervention and outcome separate. State retry limits and who can authorize recovery. A CPU or one-GPU injection validates local detection and recovery only, not fleet reliability or real hardware failure rates."
+      ],
+      "reproduce": "Closed-book, reconstruct the seeded block-output failure from the instrumentation unit using only its retained evidence. Explain the first invalid module, the refused update, the last-good checkpoint and the successful same-batch control with injection disabled. Give the failed attempt and replay separate IDs and costs. List the missing evidence that prevents calling this a hardware fault; do not inject real device faults or fabricate driver logs.",
+      "traps": [
+        "Deleting failed seeds before averaging completed runs. Report completion counts and all-attempt cost alongside held-out outcomes; do not invent a final loss for an unfinished run.",
+        "Restarting repeatedly without changing a persistent cause such as a full filesystem. Bound retries, retain each attempt and stop for diagnosis.",
+        "Treating a passing replay as proof the original hardware is healthy. Intermittent faults and changed software state need separate evidence."
+      ],
+      "selfTest": [
+        {
+          "q": "OPT reports at least 35 manual restarts. Is that its total restart count?",
+          "a": "No. Section 2.5 also estimates over 70 automatic restarts due to hardware failures. Manual restarts alone undercount the interrupted history."
+        },
+        {
+          "q": "A run fails with a nonfinite loss and no available ECC telemetry. What can you conclude?",
+          "a": "Only that numerical failure was observed and hardware telemetry is unavailable. Inspect data, precision, activations and update history; absent telemetry is neither proof of hardware health nor evidence of a fault."
+        },
+        {
+          "q": "A repair succeeds after both lowering the learning rate and replacing the input shard. Which cause is established?",
+          "a": "Neither individually. Both changed. Preserve the combined outcome, then use controlled replays if safe to isolate the responsible mechanism."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: an all-attempt incident index, the seeded failure and matched replay, retained original evidence, bounded recovery policy and a local-only claims statement.",
+      "stopWhen": "You can explain the seeded incident from its evidence, account for the failed and repaired attempts, and distinguish supported numerical findings from untested hardware and fleet hypotheses.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: OPT supplies the interrupted-run narrative and Stas supplies recovery and hardware signatures. Reading-only hardware scope and the existing local injection satisfy the explain target without cluster work."
+      }
+    }
+  ]
+}

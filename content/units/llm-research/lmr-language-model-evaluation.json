@@ -1,0 +1,848 @@
+{
+  "section": "lmr-language-model-evaluation",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "eval-construct-validity-contracts",
+      "title": "Construct validity and likelihood, multiple-choice and generation evaluation contracts",
+      "hours": 4,
+      "target": [
+        "explain",
+        "implement"
+      ],
+      "topics": [
+        "task-construct-validity",
+        "likelihood-generation-evals"
+      ],
+      "outcomes": [
+        "Turn an intended research decision into a task contract with a target population, observable behavior and explicit exclusions.",
+        "Implement response-only likelihood, multiple-choice likelihood and generation scoring without changing the question being measured.",
+        "Explain why capability, truthfulness, robustness, privacy and harmlessness need separate evidence."
+      ],
+      "why": "The LLM Foundations unit on likelihood and perplexity taught the arithmetic. Here you make that arithmetic an instrument whose score supports a specific decision, rather than a general claim about intelligence.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-language-model-evaluation/prompt-versioning-answer-parsing",
+          "note": "Freeze the rendering and scoring contract before comparing checkpoints."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-eval-lmr5",
+          "title": "CS336 Spring 2026 Lecture 12: evaluation",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_12",
+          "locator": "Trace functions `what_is_good`, `perplexity`, `exam_benchmarks`, `realism` and `how_to_think_about_evaluation`",
+          "depth": "Skip leaderboard browsing. Correct two slips in `perplexity`: conditional perplexity is the reciprocal geometric mean probability, and minimum population perplexity is exponentiated entropy, not entropy."
+        },
+        {
+          "resource": "helm-lmr5",
+          "title": "HELM: scenarios, adaptation and metric dimensions",
+          "url": "https://arxiv.org/abs/2211.09110v1",
+          "locator": "Sections 2 to 4: Preliminaries, Core scenarios and General metrics; Section 7, Adaptation",
+          "depth": "Read the taxonomy and metric definitions; skim individual dataset descriptions. Do not run another evaluation framework."
+        },
+        {
+          "resource": "lm-eval-lmr5",
+          "title": "Harness task contracts",
+          "url": "https://github.com/EleutherAI/lm-evaluation-harness/blob/ddd67220430a2470529f25fd5c05a576ca1057a0/docs/new_task_guide.md",
+          "locator": "Using Local Datasets; Writing a Prompt Template, including Multiple choice format; inspect `output_type` in the linked Task Configuration guide",
+          "depth": "Use local JSON with lm-eval 0.4.13, not a custom dataset loading script. Build one tiny task, not a benchmark sweep."
+        }
+      ],
+      "focus": [
+        "Write down the population, item unit, allowed inputs, answer space, scoring rule and intended decision before selecting a benchmark. A multiple-choice knowledge test is not a privacy or safety test.",
+        "For a nonempty response, conditional perplexity is \\(\\exp[-\\sum_t \\log p(y_t\\mid x,y_{<t})/T]\\), where \\(T\\) counts response tokens. Corpus aggregation weights tokens, not sequences. Compare only under the same tokenizer and context policy.",
+        "Summed continuation log likelihood and length-normalized scores define different choice rules. Generating a letter is a third protocol; do not silently substitute it for scoring continuations.",
+        "TensorTonic supplies aligned logits. A causal model pipeline must align next-token predictions separately and exclude prompt and padding targets. Its empty-mask return is a programming convention, not evidence of perfect prediction."
+      ],
+      "reproduce": "Closed-book, implement the two TensorTonic functions, then attach the same three scoring interfaces to a local JSON task in `lmlab`. For the uniform two-token public perplexity case, selected count is 2, NLL is \\(\\log 2\\) and perplexity is 2. Add an empty-mask status so an undefined evaluation cannot enter an aggregate as perplexity 1. Use fixed logits for CPU checks; model scores are not targets.",
+      "traps": [
+        "Averaging per-item perplexities. Exponentiate the token-weighted aggregate NLL instead.",
+        "Allowing an empty continuation to compete with nonempty choices. Its summed log likelihood is zero; reject empty choices in the task contract even though the component drill defines them.",
+        "Calling a higher preference score a correctness gain without a correctness measure."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is conditional perplexity useful but insufficient for a generation task?",
+          "a": "It scores reference response tokens given the prompt. It does not test the sampled answer, stopping behavior or semantic correctness of alternative valid answers."
+        },
+        {
+          "q": "With natural-log entropy, what is minimum population perplexity?",
+          "a": "\\(\\exp H(P)\\). Cross-entropy equals entropy plus KL divergence when defined; its minimum occurs when the model matches the target distribution on its support. This population result is not a finite-sample guarantee."
+        },
+        {
+          "q": "Does identical text make token perplexity comparable across tokenizers?",
+          "a": "No. Token counts and probability factorizations differ. Fix the tokenizer or define and justify a common scoring unit and boundary policy."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Compute Conditional Perplexity",
+          "url": "https://www.tensortonic.com/problems/cs336-l12-conditional-perplexity",
+          "locator": "Implement `conditional_perplexity(logits, target_ids, response_mask)`; public cases Uniform selected tokens, One confident selected token and Empty response mask",
+          "note": "Use PyTorch 2.14.1 on CPU. These cases exercise selected-token reduction and the stated empty convention, not causal alignment or gradients."
+        },
+        {
+          "name": "TensorTonic: Score Multiple-Choice Continuations",
+          "url": "https://www.tensortonic.com/problems/cs336-l12-multiple-choice-likelihood",
+          "locator": "Implement `multiple_choice_likelihood(logits, token_ids, continuation_mask)`; public cases One-token choice ranking, Variable continuation lengths and Empty continuations tie",
+          "note": "Keep summed likelihood and lowest-index tie breaking. The section mini-project extends these components into likelihood and generation contracts with raw item records."
+        }
+      ],
+      "stopWhen": "Both component drills pass their public cases, your local task exposes all three scoring contracts, and each metric has a written decision it can and cannot support.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Lecture 12 and HELM define the constructs; harness configuration and the two free component drills reach implementation depth."
+      }
+    },
+    {
+      "id": "prompt-versioning-answer-parsing",
+      "title": "Prompt, few-shot and chat-template versioning, answer extraction and denominator policy",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "prompt-chat-template-versioning",
+        "answer-parsing-and-denominator"
+      ],
+      "outcomes": [
+        "Version system instructions, few-shot identities and order, chat rendering, decoding and answer extraction as one evaluation contract.",
+        "Diagnose a score gain caused only by parsing or selective item removal.",
+        "Replay scoring on unchanged raw outputs while retaining invalid responses in the declared denominator."
+      ],
+      "why": "The LLM Foundations unit on stopping rules and reproducible generation established local controls. Research comparisons need those controls bound to every item, so a parser change cannot pass for a better checkpoint.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-language-model-evaluation/verifier-false-acceptance-tests",
+          "note": "Test whether extracted answers deserve acceptance."
+        }
+      ],
+      "study": [
+        {
+          "resource": "trenches-lmr5",
+          "title": "Lessons from the Trenches: implementation is part of the experiment",
+          "url": "https://arxiv.org/abs/2405.14782v2",
+          "locator": "Sections 2.3.1 to 2.3.3, Section 3 best practices and Section 5.2, Difficulties in Comparing Scores Across Evaluation Setups"
+        },
+        {
+          "resource": "lm-eval-lmr5",
+          "title": "Prompt and filter configuration",
+          "url": "https://github.com/EleutherAI/lm-evaluation-harness/blob/ddd67220430a2470529f25fd5c05a576ca1057a0/docs/task_guide.md",
+          "locator": "Parameters: Prompting / in-context formatting options and Scoring details; Filters and Multiple Filter Pipelines",
+          "depth": "Use lm-eval 0.4.13. Inspect the self-consistency example as a filter pipeline; do not generate its 64 samples here."
+        },
+        {
+          "resource": "raschka-verifier-lmr5",
+          "title": "Raschka: final-answer extraction",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 3, Section 3.4, Extracting the final answer box, pp. 66 to 70; Listings 3.4 and 3.5",
+          "depth": "Use fixed strings, not model generation. Treat the last-number fallback as a policy to audit, not a universal answer parser."
+        }
+      ],
+      "focus": [
+        "Save rendered prompt text and token IDs, not just template names. Include system instructions, few-shot item IDs and order, tokenizer revision, special tokens and whether an assistant prefix was added.",
+        "Keep parser version separate from generation version. Rescoring saved outputs isolates an evaluator change; regenerating does not.",
+        "Predeclare normalization, multiple-answer handling, truncation, abstention and timeout policies. Keep all scheduled items visible with status and coverage; unresolved infrastructure errors block a complete-run claim.",
+        "For the primary task-success rate, invalid model outputs remain failures. A valid-only score may be secondary, with its smaller denominator and validity rate shown."
+      ],
+      "reproduce": "Closed-book, build a replay table with gold answers `['A', 'B', 'C', 'A']` and raw outputs `['A', 'B', 'unknown', '']`. An exact letter parser gives 2 correct of 4, or 50%. Silently dropping the last two gives 100% on 2 valid outputs without any model change. Write a regression that preserves four scheduled IDs, raw strings, parser version and the invalid-output rate under both reports.",
+      "traps": [
+        "Accepting the last number in a refusal or an unfinished calculation as the final answer.",
+        "Changing the system prompt or few-shot order while claiming only the checkpoint changed.",
+        "Treating a human-readable prompt in a paper as an exact serialization, including whitespace and special tokens."
+      ],
+      "selfTest": [
+        {
+          "q": "A lenient parser improves scores on unchanged generations. What improved?",
+          "a": "The scoring policy changed. It may repair false rejections or add false acceptances; check both against independently labeled examples before calling it a better instrument."
+        },
+        {
+          "q": "Why keep the empty output in the four-item replay?",
+          "a": "It is a model outcome under the fixed item contract. Removing it changes the estimand from task success to success conditional on validity."
+        },
+        {
+          "q": "Must different chat models use identical special-token strings?",
+          "a": "Not necessarily. Native templates may be necessary. Declare the model-plus-template comparison, preserve both renderings, and do not describe it as a weights-only intervention."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the versioned local JSON task, prompt snapshots, strict-versus-lenient parser replay and denominator regression in lmlab.",
+      "stopWhen": "You reproduce the denominator-only gain, rescore without regenerating, and trace every changed score to a parser version or a preserved raw response.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The harness guide and Trenches cover versioned rendering and scoring; Raschka supplies a concrete parser to audit in the mini-project."
+      }
+    },
+    {
+      "id": "verifier-false-acceptance-tests",
+      "title": "Exact, executable and structured verifiers with false-acceptance tests",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "deterministic-verifiers"
+      ],
+      "outcomes": [
+        "Implement separate extraction, schema validation and semantic verification stages with explicit failure statuses.",
+        "Construct accepted wrong answers and rejected correct answers, then retain both as verifier regressions.",
+        "Explain why passing executable tests is evidence about those tests, not a proof of correctness."
+      ],
+      "why": "A deterministic evaluator can be consistently wrong. Before it becomes a reward or a release gate, attack its acceptance boundary rather than testing only ordinary correct answers.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/verifiable-rewards-hacking-tests",
+          "note": "Carry the false-acceptance regressions into verifiable rewards."
+        }
+      ],
+      "study": [
+        {
+          "resource": "raschka-verifier-lmr5",
+          "title": "Raschka: normalization, equivalence and grading",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 3, Sections 3.5 to 3.7, pp. 71 to 80; Listings 3.6 to 3.11",
+          "depth": "Read the general symbolic parser, but do not run it on untrusted output. Use a restricted rational-number grammar for your implementation. Percent-sign deletion is not semantic normalization: preserve or reject percentages rather than treating them as plain numbers."
+        },
+        {
+          "resource": "inspect-ai-eval-lmr5",
+          "title": "Inspect: explicit scorer interfaces",
+          "url": "https://inspect.aisi.org.uk/custom-scorers.html",
+          "locator": "Overview, Example, Score and Example: Includes (page read 2026-10-16)",
+          "depth": "Use the `Score` interface in Inspect 0.3.281. Audit rather than adopt the example's last-number extraction. Do not require newer unscored-result APIs from the live page."
+        },
+        {
+          "resource": "pass-at-k-lmr5",
+          "title": "Functional correctness and finite tests",
+          "url": "https://arxiv.org/abs/2107.03374v2",
+          "locator": "Sections 2.1, Functional Correctness, and 2.2, HumanEval: Hand-Written Evaluation Set",
+          "depth": "Study the executable-test contract. Do not execute generated programs on your host; use an isolated execution environment with no network or secrets for any optional code task."
+        }
+      ],
+      "focus": [
+        "Separate formatting acceptance from correctness. A valid JSON object may contain a wrong answer; an equivalent value may still violate a deliberately strict output contract.",
+        "False acceptance is acceptance conditional on an independently known wrong answer. False rejection conditions on known correct answers. Build both sets before adjusting the verifier.",
+        "Choose semantic domains deliberately: ordered tuples are not sets, percentages are not plain numbers, and algebraic simplification may discard domain restrictions.",
+        "Executable checks need adversarial inputs, resource limits and tests hidden from the candidate. A constant-return program can pass an underspecified public example while failing the intended task."
+      ],
+      "reproduce": "Closed-book, write a structured verifier for JSON objects with exactly one `answer` field whose value is a string containing an integer or integer fraction. Reject duplicate keys, extra keys, zero denominators, empty strings and trailing prose before comparing exact rational values with `fractions.Fraction`. Against reference `'1/2'`, accept `'2/4'`, reject `'2/3'`, and reject `'50%'` as unsupported rather than stripping its sign. Add a constant-return counterexample to a small handwritten executable test contract, then an input that exposes it.",
+      "traps": [
+        "Using `eval` or a general expression parser as a security boundary. Exception handling and a string-length cap do not make model-controlled code safe.",
+        "Matching an answer substring inside a negation, quotation or list of guesses.",
+        "Measuring only agreement on mostly correct answers. A verifier can appear accurate while accepting most deliberately wrong attacks."
+      ],
+      "selfTest": [
+        {
+          "q": "Should an ordered pair and its reversal receive the same score?",
+          "a": "Not unless the task defines an unordered object. Sorting every answer to increase matches silently changes the task."
+        },
+        {
+          "q": "Does symbolic equality of simplified expressions prove equality on every input?",
+          "a": "No. For example, canceling a factor can remove a point where the original expression was undefined. State the domain and preserve exclusions."
+        },
+        {
+          "q": "A program passes every supplied example. What remains unestablished?",
+          "a": "Correctness on unsupplied inputs, resource behavior and safety. Add boundary, adversarial and independently generated checks; even then finite tests are not a proof."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the exact, structured and executable verifier adapters, an independently labeled false-acceptance set, and regression tests for each repaired loophole in lmlab.",
+      "stopWhen": "Your verifier rejects seeded wrong and malformed answers, accepts supported equivalent answers, and a saved counterexample shows why the original executable test contract was insufficient.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Raschka supplies the breakable verifier, Inspect supplies the scorer boundary, and Chen et al. supply executable-test semantics; the mini-project provides adversarial practice."
+      }
+    },
+    {
+      "id": "judge-rubrics-bias-calibration",
+      "title": "Model-judge rubrics and calibration, and position, length, style and self-preference bias",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "model-judges",
+        "judge-biases"
+      ],
+      "outcomes": [
+        "Write an anchored judge rubric and compare its decisions with a hand-labeled subset not used to revise the rubric.",
+        "Implement controlled position, length, style, identity-cue and self-preference probes on fixed answer pairs.",
+        "Separate length-adjusted preference from correctness and report residual disagreement and invalid judge outputs."
+      ],
+      "why": "Model judges make open-ended evaluation cheap enough to iterate, but their shortcuts can become the optimization target. This unit extends the LLM Foundations unit on model judges and human review from warning about bias to measuring it in your own instrument.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-language-model-evaluation/output-lineage-evaluator-agreement",
+          "note": "Bind judge calibration evidence to the scored outputs."
+        }
+      ],
+      "study": [
+        {
+          "resource": "llm-judge-lmr5",
+          "title": "MT-Bench: judge biases and human agreement",
+          "url": "https://arxiv.org/abs/2306.05685v4",
+          "locator": "Sections 3.1 to 3.5, especially 3.3 Limitations and 3.4 Addressing limitations; Section 4.2, High agreement between GPT-4 and humans",
+          "depth": "Study the rubric and counterexamples. The paper's hosted judges and agreement figures are not the learner's implementation or expected results."
+        },
+        {
+          "resource": "lc-alpacaeval-lmr5",
+          "title": "Length control is a fitted counterfactual",
+          "url": "https://arxiv.org/abs/2404.04475v1",
+          "locator": "Section 3, Length-Controlled AlpacaEval: Length control via regression, The regression model and Obtaining length corrected (LC) win-rate; Other biases discussion",
+          "depth": "Do not run the paid annotation pipeline. Contrast its instruction and transformed-length terms with TensorTonic's simpler linear-length drill; they are not the same estimator."
+        },
+        {
+          "resource": "inspect-ai-eval-lmr5",
+          "title": "Inspect: explicit rubric and grader selection",
+          "url": "https://inspect.aisi.org.uk/model-graded.html",
+          "locator": "Overview, Template Variables and Reproducible Grading (page read 2026-10-16)",
+          "depth": "Use Inspect 0.3.281 with an explicitly selected local grader. For its Hugging Face backend set `do_sample=False` in model arguments, not `temperature=0`. Skip hosted-provider examples."
+        }
+      ],
+      "focus": [
+        "Label 20 short answer pairs by hand against explicit correctness and usefulness anchors. Split by question into rubric-development and held-out audit halves before inspecting judge errors. Record uncertainty in your own labels.",
+        "Swap order while preserving candidate identity. Add controlled verbosity, formatting and claimed-author changes with content checked by hand. Identity cues test attribution bias; actual judge-authored versus other-authored answers test self-preference but also confound answer quality.",
+        "Use Qwen/Qwen3-0.6B at revision c1899de289a04d12100db370d81485cdf75e47ca for a local grader, with model and tokenizer from that revision, PyTorch 2.14.1 and transformers 5.19. Disable thinking and cap judge output at 128 tokens. Run short pairs serially on your GPU or CPU; a weak judge is an audit result, not a reason to buy an API.",
+        "Calibration here means checking and revising the instrument against trusted labels, then auditing held-out agreement. It is not proof that rubric scores are calibrated probabilities. Separate raw preference, length-adjusted preference, correctness and invalid-verdict coverage."
+      ],
+      "reproduce": "Derive one full-batch gradient step for TensorTonic's Balanced identities with length bias case. Start utilities and length coefficient at zero, use mean binary cross-entropy and learning rate 0.1. Utilities stay zero, the length coefficient becomes 0.1, and equal-length probabilities remain 0.5. Then run the specified 20 steps for the public case and audit whether padding a known wrong answer changes your local judge's preference; no direction of change is guaranteed.",
+      "traps": [
+        "Calling order-swap consistency accuracy. A judge can be consistently wrong in both orders.",
+        "Dividing a score by answer length and calling it Length-Controlled AlpacaEval. The paper fits a regression and evaluates it at equal length.",
+        "Tuning rubric and acceptance thresholds on the same subset used to report agreement, or dropping unparsable grades from coverage counts."
+      ],
+      "selfTest": [
+        {
+          "q": "Can longer answers legitimately be better?",
+          "a": "Yes. Extra content can supply needed evidence. A controlled length probe preserves relevant content; an observational length coefficient alone does not prove causal bias."
+        },
+        {
+          "q": "Why does changing only the claimed author not isolate actual self-preference?",
+          "a": "It isolates sensitivity to the identity cue. Genuine self-preference involves answer provenance; comparing naturally different outputs also needs quality controls."
+        },
+        {
+          "q": "A small local judge disagrees with trusted labels. Should it decide release?",
+          "a": "Not without a justified error budget. Retain the failure, use deterministic or manual scoring for the decision, and limit any model-judge claim to the audited task and slices."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Remove Response-Length Bias from Judge Scores",
+          "url": "https://www.tensortonic.com/problems/cs336-l12-judge-length-debiasing",
+          "locator": "Implement `judge_length_debiasing`; public cases Balanced identities with length bias, Neutral reciprocal ties and Unseen third model",
+          "note": "Use PyTorch 2.14.1 on CPU. The public inputs exercise the supplied finite-step fitting rule and neutral unseen-model convention, not causal identification or grader correctness. The section mini-project covers rubric calibration and the controlled local judge probes."
+        }
+      ],
+      "stopWhen": "The drill passes its public cases, and your held-out judge audit reports raw decisions, swapped-order consistency, coverage and residual errors for each controlled probe.",
+      "fit": {
+        "verdict": "kept",
+        "note": "MT-Bench and Length-Controlled AlpacaEval supply bias methodology; Inspect and the free fitting drill support a bounded local calibration campaign."
+      }
+    },
+    {
+      "id": "human-pairwise-rating-models",
+      "title": "Human pairwise evaluation, disagreement and Bradley-Terry and Elo summaries",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "human-evaluation",
+        "pairwise-models-and-elo"
+      ],
+      "outcomes": [
+        "Derive Bradley-Terry likelihoods, their additive non-identifiability and their conversion to an Elo-style scale.",
+        "Design blinded pairwise review with ties, disagreement records and adjudication that preserves original labels.",
+        "Recognize disconnected comparison graphs, separation and uncertain rankings before interpreting fitted scores."
+      ],
+      "why": "Human preference gives a reference for open-ended answers, not an infallible total order. You need both the vote protocol and the statistical model to know what a rating summarizes.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-preference-direct-optimization/bradley-terry-reward-identifiability",
+          "note": "Reuse the pairwise likelihood and identifiability result in preference learning."
+        }
+      ],
+      "study": [
+        {
+          "resource": "chatbot-arena-lmr5",
+          "title": "Chatbot Arena: votes, coefficients and uncertainty",
+          "url": "https://arxiv.org/abs/2403.04132v1",
+          "locator": "Section 3, Human Preference Data Collection; Section 4, From Pairwise Comparisons to Rankings; Section 5 through Estimating the BT scores; Appendix A, Confidence Interval Simulation Study",
+          "depth": "Skip anomalous-user detection and adaptive sampling implementation. Use fixed local answer pairs, not live Arena voting."
+        },
+        {
+          "resource": "llm-judge-lmr5",
+          "title": "Human labels and agreement protocols",
+          "url": "https://arxiv.org/abs/2306.05685v4",
+          "locator": "Sections 4.1 and 4.2; Table 5's distinction between agreement with and without ties",
+          "depth": "Read the labeling and agreement conventions, not the benchmark scores as targets."
+        }
+      ],
+      "focus": [
+        "For binary votes, \\(P(A\\succ B)=\\sigma(s_A-s_B)\\). Maximize summed vote log likelihood after fixing one score or centering all scores. State any regularizer and tie convention separately.",
+        "An undirected connected graph permits comparison across all models, but does not guarantee a finite unregularized optimum. A model that only wins can drive a score difference without bound.",
+        "Blind identities and randomize display order. Retain tie, both-bad and unsure labels separately even if a fitting convention maps some to half a win. Review correctness separately from stylistic preference.",
+        "On the hand-labeled pairs, do a delayed blinded second pass and record changes before adjudicating. With only one reviewer, this measures intra-rater stability, not inter-rater agreement or population consensus."
+      ],
+      "reproduce": "Closed-book, fit the two-model vote table in which A wins three times and B wins once, with no ties or regularizer. The fitted A-win probability is 0.75 and the natural-log score difference is \\(\\log 3\\). On the base-10 Elo-style scale the gap is \\(400\\log_{10}3\\), approximately 190.8485 points. Derive this from the likelihood, then compare with a numerical optimum. Explain why a finite-step TensorTonic fit need not reach that optimum.",
+      "traps": [
+        "Treating full-batch maximum-likelihood fitting as the same algorithm as online Elo updates. They can share a probability link while producing different estimates.",
+        "Ranking disconnected components by their arbitrary fitted offsets.",
+        "Treating overlapping marginal intervals as a total ordering or as a paired test of the rating difference."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does adding the same constant to every BT coefficient change nothing?",
+          "a": "All modeled probabilities depend only on differences. Fixing an offset chooses a representation, not additional preference evidence."
+        },
+        {
+          "q": "A connected graph has one model that wins every comparison. Does centering guarantee convergence?",
+          "a": "No. Centering removes an additive degree of freedom, not separation. The unregularized likelihood can approach its supremum while score differences diverge."
+        },
+        {
+          "q": "Why not discard ties before reporting human agreement?",
+          "a": "That conditions on decisive items and can inflate agreement. Report the full label policy, tie rate and denominators; a non-tie analysis is a separately labeled subset."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Fit Elo Ratings from Pairwise Votes",
+          "url": "https://www.tensortonic.com/problems/cs336-l12-pairwise-elo-fit",
+          "locator": "Implement `pairwise_elo_fit`; public cases Single decisive comparison, Connected tie cycle and Two disconnected components",
+          "note": "Use PyTorch 2.14.1 on CPU. Implement exactly the finite-step simultaneous update rule, not a converged optimizer. Public cases exercise those vote graphs; add your own separation diagnostic. The section mini-project covers blinded review, delayed relabeling and disagreement records."
+        }
+      ],
+      "stopWhen": "You derive the fixed vote-table optimum, pass the finite-step drill, and explain which model comparisons your graph and reviewer evidence leave unidentified or uncertain.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Arena supplies the likelihood, human protocol and interval method; MT-Bench clarifies agreement denominators, and TensorTonic supplies bounded fitting practice."
+      }
+    },
+    {
+      "id": "pass-at-k-compute-matched-evals",
+      "title": "Pass-at-k, self-consistency and compute-normalized comparison",
+      "hours": 4,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "pass-at-k-and-sampling",
+        "compute-normalized-evaluation"
+      ],
+      "outcomes": [
+        "Derive and implement the unbiased per-problem pass-at-k estimator and distinguish it from majority-vote accuracy.",
+        "Construct an inference-budget ledger for greedy, repeated sampling, self-consistency and verifier-based selection.",
+        "Compare checkpoints on a declared budget axis while disclosing unmatched prefill, verification and latency costs."
+      ],
+      "why": "More attempts can improve success without changing the weights. An evaluation must say whether it measures a single answer, an oracle over candidates or an implementable selection policy.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/selection-search-test-time-curves",
+          "note": "Extend the fixed-budget ledger into test-time selection and search curves."
+        }
+      ],
+      "study": [
+        {
+          "resource": "pass-at-k-lmr5",
+          "title": "Chen et al.: unbiased pass-at-k",
+          "url": "https://arxiv.org/abs/2107.03374v2",
+          "locator": "Section 2.1, Equation 1 and Figure 3; Appendix A, Estimating pass-at-k"
+        },
+        {
+          "resource": "lm-eval-lmr5",
+          "title": "Self-consistency on the same saved samples",
+          "url": "https://github.com/EleutherAI/lm-evaluation-harness/blob/ddd67220430a2470529f25fd5c05a576ca1057a0/docs/task_guide.md",
+          "locator": "Filters: Multiple Filter Pipelines, the `score-first`, `maj@64` and `maj@8` examples",
+          "depth": "Use lm-eval 0.4.13. Reduce the example to five saved candidates per question; do not generate 64 answers."
+        },
+        {
+          "resource": "helm-lmr5",
+          "title": "Efficiency is a separate measurement axis",
+          "url": "https://arxiv.org/abs/2211.09110v1",
+          "locator": "Section 4.9, Efficiency",
+          "depth": "Use the cost distinctions for your ledger. Historical provider timings are not local performance targets."
+        }
+      ],
+      "focus": [
+        "With \\(n\\) independent samples from one fixed policy and \\(c\\) passing candidates, estimate success among \\(k\\) draws by \\(1-\\binom{n-c}{k}/\\binom{n}{k}\\), for \\(1\\leq k\\leq n\\). Average per problem, not after pooling candidates across problems.",
+        "Pass-at-k asks whether any candidate passes the verifier. It assumes an oracle selection event, not that your deployed selector can find that candidate. Self-consistency selects by normalized-answer frequency and may select a common wrong answer.",
+        "Fix sampling, stopping, parser and tie policies. Preserve invalid candidates as failed attempts. Repeated greedy decoding does not supply independent stochastic draws with new diversity.",
+        "Record input and output tokens, actual sample counts, tool and verifier calls, elapsed time and a stated compute model. Equal output-token caps are not equal FLOPs: prompt prefill, context lengths, model sizes and evaluator work also matter."
+      ],
+      "reproduce": "Closed-book, enumerate every two-candidate subset of five saved binary outcomes `[1, 1, 0, 0, 0]`. Seven of ten subsets contain a success, so the pass-at-2 estimate is 0.7; the plug-in expression \\(1-(1-c/n)^k\\) instead gives 0.64. Implement the stable estimator, including zero-success and all-success cases and rejection when \\(k>n\\). Add majority voting on five answer strings and a ledger that distinguishes one 128-token cap from four 32-token caps with repeated prompt prefill.",
+      "traps": [
+        "Using gold labels to choose the delivered answer, then reporting the result as a real selector's accuracy.",
+        "Pooling all successful candidates before computing pass-at-k. This changes equal problem weighting and the target quantity.",
+        "Crediting training for a gain that used more samples, longer responses, extra verifier calls or a changed stopping rule."
+      ],
+      "selfTest": [
+        {
+          "q": "What does the unbiased estimator return at one sample?",
+          "a": "For \\(k=1\\), it is \\(c/n\\). At \\(k=n\\), it is one if any candidate succeeds and zero otherwise."
+        },
+        {
+          "q": "Two of five candidates are correct. Must majority voting succeed?",
+          "a": "No. Three wrong candidates can agree on one wrong answer. Pass-at-k and voting measure different events."
+        },
+        {
+          "q": "Does matching total generated tokens make two different models compute-matched?",
+          "a": "No. Per-token costs differ by model and context, and prefill and selection have costs. State the matched axis, measure the others and avoid a stronger compute-equivalence claim."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: per-problem pass-at-k and self-consistency from saved samples, invalid-candidate handling, and matched-budget checkpoint comparisons with a complete inference ledger in lmlab.",
+      "stopWhen": "Your estimator matches subset enumeration, your delivered-answer policy never consults gold labels, and each comparison names both its matched budget axis and its remaining cost differences.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chen et al. supply the estimator and proof, harness filters supply self-consistency, and HELM supplies efficiency distinctions; the mini-project joins them in a budgeted comparison."
+      }
+    },
+    {
+      "id": "contamination-saturation-elicitation",
+      "title": "Contamination and memorization, benchmark saturation and capability versus elicitation",
+      "hours": 4,
+      "target": [
+        "explain",
+        "measure"
+      ],
+      "topics": [
+        "contamination-and-memorization",
+        "benchmark-saturation",
+        "capability-vs-elicitation"
+      ],
+      "outcomes": [
+        "Audit accessible training text for exact and near-overlap with evaluation items, preserving matched evidence and search limitations.",
+        "Distinguish exposure, memorization, benchmark selection pressure and saturated measurement.",
+        "Separate checkpoint changes from prompting and search gains with frozen evaluation and inference budgets."
+      ],
+      "why": "The LLM Foundations unit on contamination and memorization taught the risk. Here the evidence is a real search over a named corpus plus controls, not a harness flag or a score drop interpreted as proof of leakage.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-language-model-evaluation/release-gates-agentic-evaluation",
+          "note": "Make overlap findings and selection history part of the release decision."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-eval-lmr5",
+          "title": "CS336 Spring 2026 Lecture 12: saturation and validity",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_12",
+          "locator": "Trace functions `exam_benchmarks`, `validity` and `how_to_think_about_evaluation`",
+          "depth": "Use the harder-benchmark and overlap examples as motivations, not evidence that a high score identifies memorization or that private tests stay private forever."
+        },
+        {
+          "resource": "contamination-test-lmr5",
+          "title": "Oren et al.: what an ordering test detects",
+          "url": "https://arxiv.org/abs/2310.17623v2",
+          "locator": "Section 2, Problem Setting; Sections 3.1 and 3.2, permutation and sharded likelihood tests; Section 6, Limitations",
+          "depth": "Explain the null and assumptions. Do not reproduce contaminated pretraining or require a black-box audit for a model without log-probability access."
+        },
+        {
+          "resource": "tulu3-eval-lmr5",
+          "title": "Tulu 3: overlap evidence and development versus unseen evaluation",
+          "url": "https://arxiv.org/html/2411.15124v5#S3.SS2",
+          "locator": "Section 3.2, Prompt Decontamination; Sections 7.1 to 7.4, evaluation framework and development versus unseen suites",
+          "depth": "Read the matching rule and suite separation. Skim task inventories; do not reproduce the large-model benchmark matrix."
+        }
+      ],
+      "focus": [
+        "Record corpus revision, normalization, tokenization, window size, matching threshold and searched fields. Search prompts and available reference answers; report them separately. Preserve train-document and eval-item IDs plus matched spans.",
+        "Tulu 3 flags a test prompt when more than half of its tokens have 8-gram matches in one training instance, not when a single 8-gram is shared. A smaller local any-8-word-match audit is a different, explicitly labeled screening rule and needs manual review for boilerplate false positives.",
+        "No matches means no matches under this rule in this corpus. It does not cover inaccessible pretraining data, paraphrases, translations, later training stages or evaluator exposure. `should_decontaminate` alone searches none of these.",
+        "Saturation reduces room to distinguish systems; it does not prove general capability. An unchanged checkpoint with better prompts or more search shows elicitation gains, not learning. Repeated hidden-test feedback can still guide selection."
+      ],
+      "reproduce": "Closed-book, implement a lowercased whitespace-word 8-gram index over your versioned training corpus. Plant one exact evaluation sentence, one punctuation-only variant and one unrelated control in a separate audit fixture, then search both the fixture and the real corpus. Show which cases exact raw matching and your declared 8-gram rule detect. Keep source spans, full-versus-flagged-versus-unflagged results and coverage limits; any score difference is descriptive because flagged items can differ in difficulty.",
+      "traps": [
+        "Calling a full-versus-clean score difference the causal benefit of contamination. Item difficulty and selection also change.",
+        "Treating a nonsignificant ordering test as a clean-training certificate. It may have low power or fail to detect partial or reordered exposure.",
+        "Claiming a capability ceiling from failure under one prompt, or claiming a training gain after changing elicitation."
+      ],
+      "selfTest": [
+        {
+          "q": "When is a canonical-versus-shuffled ordering test justified?",
+          "a": "When examples are exchangeable under the stated null and sequence log probabilities are available. Sorting, duplicate structure or serialization effects can invalidate the intended inference."
+        },
+        {
+          "q": "Does a matching training passage prove the model memorized its answer?",
+          "a": "No. It establishes accessible-corpus exposure under the matching rule. Demonstrating memorization or attributing a score gain needs additional evidence and controls."
+        },
+        {
+          "q": "Why can a hidden test still become a development set?",
+          "a": "Repeated scores, pass/fail decisions or error feedback can influence prompt and checkpoint selection even when item text is never disclosed. Record access and selection history."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the actual corpus overlap search with planted positive and negative controls, matched-span evidence, separate development and held-out items, and a capability-versus-elicitation comparison in lmlab.",
+      "stopWhen": "You retrieve the planted overlap, report the real search boundary and false-positive review, and qualify both non-detection and elicitation gains without asserting unseen training data is clean.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Lecture 12, Oren et al. and Tulu 3 cover saturation, indirect detection limits and direct decontamination; the mini-project supplies an actual corpus search."
+      }
+    },
+    {
+      "id": "robustness-slices-paired-uncertainty",
+      "title": "Prompt perturbations and failure slices, paired uncertainty and multiple comparisons",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "robustness-and-slices",
+        "uncertainty-and-comparison"
+      ],
+      "outcomes": [
+        "Measure a predeclared prompt-format and failure-slice sweep with shared item identities and fixed generation settings.",
+        "Compute paired standard errors at the question level and account for shared-source or translated-item clusters.",
+        "Report practical effect thresholds, comparison families and selection history without turning exploratory slices into confirmatory findings."
+      ],
+      "why": "The Classical ML unit on paired bootstrap, permutation tests and multiplicity supplied the statistical tools. Language-model evaluations add repeated generations, translated questions and prompt searches that can quietly change the sampling unit.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-language-model-evaluation/release-gates-agentic-evaluation",
+          "note": "Use uncertainty and slice regressions in a predeclared gate."
+        }
+      ],
+      "study": [
+        {
+          "resource": "prompt-sensitivity-lmr5",
+          "title": "Sclar et al.: meaning-preserving format perturbations",
+          "url": "https://arxiv.org/abs/2310.11324v1",
+          "locator": "Sections 3.1, Grammar of Plausible Prompt Formats; 3.2, Measuring Sensitivity; and 4.2, prompt-format performance spread",
+          "depth": "Run three declared formats on your existing small item set. Do not implement the large bandit search or treat the paper's spread as a local target."
+        },
+        {
+          "resource": "error-bars-lmr5",
+          "title": "Miller: question units, pairing and power",
+          "url": "https://arxiv.org/abs/2411.00640v1",
+          "locator": "Sections 2.1 and 2.2, independent and clustered questions; Section 4, especially Equation 7 for paired differences and Equation 8 for clusters; Section 5, Power analysis",
+          "depth": "Use the equations, not the arithmetic in Section 4.2's uniform-score example: with both variances 1/12 and covariance 1/24, the difference variance is 1/12, not 1/9. The relative reduction from 1/6 is one half."
+        },
+        {
+          "resource": "chatbot-arena-lmr5",
+          "title": "Pointwise versus multiplicity-corrected intervals",
+          "url": "https://arxiv.org/abs/2403.04132v1",
+          "locator": "Appendix A, Confidence Interval Simulation Study, especially Figure 13's multiplicity-corrected intervals",
+          "depth": "Connect this to the Math Foundations unit on bootstrap, permutation tests and multiple comparisons. Do not repeat the full ranking simulation."
+        }
+      ],
+      "focus": [
+        "Declare format variants, slices, primary contrast and minimum useful effect before the final run. Check that paraphrases, option permutations and translated items preserve the task and gold mapping.",
+        "For independent question-level differences \\(d_i\\), use \\(\\operatorname{SE}(\\bar d)=\\sqrt{\\sum_i(d_i-\\bar d)^2/[n(n-1)]}\\). Average repeated generations within question first; translated variants and shared passages may need cluster-level uncertainty.",
+        "Pairing preserves covariance; it narrows uncertainty when covariance is positive, not universally. Keep pairs together in the bootstrap and keep source clusters together when resampling clusters.",
+        "Show slice support, invalid counts, paired effect and uncertainty. Apply the earlier Holm procedure to the predeclared confirmatory family; label discovered slices exploratory and require fresh confirmation. More sampled answers do not replace more independent questions."
+      ],
+      "reproduce": "Closed-book, compute paired uncertainty for fixed synthetic correctness vectors A `[1, 1, 1, 0, 0]` and B `[0, 1, 1, 0, 0]`. The mean A-minus-B difference is 0.2 and its sample-standard-deviation-over-square-root-count SE is 0.2. Treating the two vectors as independent gives approximately 0.346410. Verify both in NumPy `float64` with `ddof=1`. This five-item calculation checks arithmetic, not normal-interval coverage. Then run the predeclared three-format sweep and retain the complete item-by-format table.",
+      "traps": [
+        "Counting every generation, translation and format variant as an independent question.",
+        "Selecting the best prompt or worst slice on final items and reporting an unadjusted interval as confirmatory evidence.",
+        "Reading a wide interval that includes zero as proof of equivalence. Compare its bounds with the predeclared practical margin."
+      ],
+      "selfTest": [
+        {
+          "q": "Can pairing increase the standard error?",
+          "a": "Yes. The difference variance subtracts twice the covariance. Negative covariance increases it relative to an independent calculation; positive covariance reduces it."
+        },
+        {
+          "q": "Do item-level error bars include checkpoint-training seed variation?",
+          "a": "No. They describe the stated question or cluster sampling process and possibly generation randomness. Training-run variation needs independently trained runs and a separate analysis."
+        },
+        {
+          "q": "What does a slice with only three questions establish?",
+          "a": "It can supply concrete failure examples but usually weak population-rate evidence. Report the count and uncertainty, and confirm a general claim with more independent items."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a predeclared format and slice sweep, question-paired and source-cluster uncertainty, and a comparison-family record with practical margins in lmlab.",
+      "stopWhen": "You reproduce the fixed-vector SEs, preserve pairing and cluster membership, and report every format and slice with its support, selection status and practical effect threshold.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Sclar supplies controlled perturbations, Miller supplies paired and clustered uncertainty, and Arena makes multiplicity explicit; prior statistical tools are applied rather than retaught."
+      }
+    },
+    {
+      "id": "output-lineage-evaluator-agreement",
+      "title": "Item-level output lineage and evaluator agreement against a trusted subset",
+      "hours": 4,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "raw-output-lineage",
+        "evaluator-disagreement"
+      ],
+      "outcomes": [
+        "Reconstruct aggregate metrics from immutable item-level inputs, raw outputs, evaluator versions and statuses without rerunning generation.",
+        "Measure evaluator agreement, false acceptance and false rejection against an independently labeled held-out subset.",
+        "Diagnose disagreements by extraction, reference, rubric, judge and model failure while preserving original evidence."
+      ],
+      "why": "An aggregate score cannot explain an instrument failure. A complete output ledger lets another reader replay the score and locate the exact item that changed the conclusion.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-research-scale-integration/experiment-lineage-codebase-tracing",
+          "note": "Join evaluator records to training and checkpoint lineage."
+        }
+      ],
+      "study": [
+        {
+          "resource": "trenches-lmr5",
+          "title": "Share outputs, not just headline scores",
+          "url": "https://arxiv.org/abs/2405.14782v2",
+          "locator": "Section 3, Always share your exact prompts and code, Always provide model outputs, Perform qualitative analyses and Measure and Report Uncertainty"
+        },
+        {
+          "resource": "lm-eval-lmr5",
+          "title": "Harness sample logging",
+          "url": "https://github.com/EleutherAI/lm-evaluation-harness/blob/ddd67220430a2470529f25fd5c05a576ca1057a0/docs/interface.md",
+          "locator": "Data and Output: `--output_path`, `--log_samples` and `--samples`; Advanced Options: `--seed`",
+          "depth": "Use lm-eval 0.4.13 and its `lm-eval run` CLI. Save samples from the local task already built; do not add a benchmark sweep."
+        },
+        {
+          "resource": "inspect-ai-eval-lmr5",
+          "title": "Inspect native logs and stable sample identities",
+          "url": "https://inspect.aisi.org.uk/eval-logs.html",
+          "locator": "Log Format; Log File API, especially EvalLog and Functions; Eval Retries and Sample Preservation (page read 2026-10-16)",
+          "depth": "Use Inspect 0.3.281 and `read_eval_log` for `.eval` records. Skip cloud storage and log-editing APIs; retain immutable originals and write rescoring as a separate artifact."
+        },
+        {
+          "resource": "llm-judge-lmr5",
+          "title": "Agreement needs its denominator",
+          "url": "https://arxiv.org/abs/2306.05685v4",
+          "locator": "Section 4.2 and Tables 5 and 6, human-judge agreement with explicit tie conventions"
+        }
+      ],
+      "focus": [
+        "Join by stable item ID and attempt ID, not row position. Keep dataset and checkpoint revisions, rendered prompt, raw output, extracted answer, score, status, generation controls, parser and judge versions, plus token and verifier-call counts.",
+        "Framework logs are evidence containers, not complete experiment manifests. Add any missing model/tokenizer revision, corpus boundary, human-label provenance and run configuration yourself.",
+        "Reuse the question-disjoint trusted audit half from the judge unit. Report the full confusion table and invalid-grade coverage, with slice counts and question-level uncertainty; do not relabel it to agree with the judge.",
+        "Keep original labels, uncertainty notes, adjudication reasons and scorer outputs. Classify disagreements before assigning blame: reference error, unsupported equivalence, parser failure, rubric ambiguity, judge shortcut or actual model error."
+      ],
+      "reproduce": "Closed-book, join six fixed synthetic trusted labels `[1, 1, 0, 0, 0, 1]` to judge labels `[1, 0, 1, 0, 0, 1]` by item ID, where 1 means correct. Agreement is four of six, false acceptance is one of three trusted-wrong items, and false rejection is one of three trusted-correct items. Shuffle record order and verify the same results. Delete one ID and duplicate another to make your join fail rather than silently scoring a different set. Then rebuild one real aggregate from saved harness or Inspect outputs.",
+      "traps": [
+        "Replacing raw outputs with extracted answers, which makes parser bugs impossible to replay.",
+        "Reporting high overall agreement when the trusted subset contains almost no wrong answers.",
+        "Overwriting scores or labels during adjudication and losing which evaluator originally accepted the wrong answer."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is a hash insufficient to replay a result?",
+          "a": "It can verify the identity of bytes you still have, but cannot recover missing prompts, outputs or code. Keep the artifacts and their hashes together."
+        },
+        {
+          "q": "What is the denominator of verifier false acceptance?",
+          "a": "The independently known wrong items under the declared task contract, not every item and not only accepted items. Accepted-wrong among accepted is a different quantity."
+        },
+        {
+          "q": "Does model-judge agreement validate a whole evaluator stack?",
+          "a": "Only on the audited population, labels and versions, within uncertainty. Unreviewed slices, shared reference mistakes and later grader changes remain outside that evidence."
+        }
+      ],
+      "practice": [
+        {
+          "name": "ARENA 3.3: Extract data from log files",
+          "url": "https://learn.arena.education/chapter3_llm_evals/03_running_evals/3-writing-tasks-and-evaluating/",
+          "locator": "Intro to Inspect's EvalLogs; Exercise (optional) - Extract data from log files",
+          "note": "Do this named extraction exercise on your local task logs, not the paid-model sweep. It has no supplied solution or public correctness tests. Add join, duplicate-ID and denominator tests yourself. The section mini-project covers the trusted-subset comparison and failure taxonomy."
+        }
+      ],
+      "stopWhen": "A fresh scoring process rebuilds the aggregate and confusion table from preserved records, rejects missing or duplicate identities, and traces each disputed grade to raw output and label provenance.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Trenches defines output-sharing evidence, harness and Inspect expose per-item records, and the named ARENA extraction exercise supports replay; manual labels supply the trusted subset."
+      }
+    },
+    {
+      "id": "release-gates-agentic-evaluation",
+      "title": "Release and regression gates, and tool-use and long-horizon agentic evaluation",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "release-and-regression-gates",
+        "agentic-evaluation"
+      ],
+      "outcomes": [
+        "Explain a release gate with a primary effect threshold, separate guardrails, completeness checks, manual review and rollback ownership.",
+        "Defend a checkpoint decision using paired evidence and at least three diagnosed evaluator failures with mitigation evidence.",
+        "Describe how optional agent evaluation changes the object from model outputs to scaffold, tools, environment state and trajectories."
+      ],
+      "why": "Evaluation should end in a bounded decision, not a larger leaderboard. A release record says which evidence was sufficient, what blocked the change and which future observation would trigger rollback.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/adaptation-interventions-baselines",
+          "note": "Keep the evaluator fixed while changing the adaptation intervention."
+        },
+        {
+          "unit": "llm-research/lmr-alignment-safety-release/release-thresholds-rollback-risk",
+          "note": "Extend this research gate into a safety release record."
+        }
+      ],
+      "study": [
+        {
+          "resource": "arena-evals-lmr5",
+          "title": "ARENA 3.1: connect measured properties to decisions",
+          "url": "https://learn.arena.education/chapter3_llm_evals/01_intro_evals/3-threat-modeling-specification-design/",
+          "locator": "What are evals trying to achieve?; Threat-Modeling; Specification; Exercise - Design a specification",
+          "depth": "Use the framework for one bounded research decision. Write assumptions by hand; skip API calls and any restricted dangerous-capability testing."
+        },
+        {
+          "resource": "llm-checkpoint-lmr5",
+          "title": "Post-training laboratory: external outcomes and failure gates",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Architecture constraints; Milestone D - Failure handling; Milestone F - Final evaluation; Correctness requirements; Measurement requirements",
+          "depth": "Use its evidence and rollback requirements, not the full project's training scope. Reuse your small local evaluator suite."
+        },
+        {
+          "resource": "llm-checkpoint-lmr5",
+          "title": "Closed-note evidence audit",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/checkpoints/llm-research-training-posttraining.md",
+          "locator": "Implement and test: external evaluation; Debug and measure: matched baselines and retained negative results; Pass condition",
+          "depth": "Audit only the evaluation evidence here. This unit does not certify the whole track checkpoint."
+        },
+        {
+          "resource": "cs336-eval-lmr5",
+          "title": "Optional: agent evaluation changes the system under test",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_12",
+          "locator": "Spring 2026 Lecture 12 trace: `agentic_benchmarks` and `validity`, Dataset quality",
+          "depth": "Optional reading only. Do not run SWE-Bench, Terminal-Bench or a long-horizon agent suite for this exit gate."
+        }
+      ],
+      "focus": [
+        "Freeze the comparison's item set, prompts, decoding, output and inference budgets, evaluator versions and selection history before final scoring. Name one primary metric and a minimum useful effect; define per-slice non-regression margins and how uncertainty affects each gate.",
+        "A primary gain cannot compensate for a breached privacy, safety or correctness guardrail. Missing items, unresolved evaluator failures or unsupported contamination claims trigger hold and review, not automatic success.",
+        "Keep a release record with baseline and candidate identities, evidence links, decision, reviewer, unresolved risks, monitoring signals, rollback trigger, known-good checkpoint and responsible owner. A research-scale pass is not safety certification.",
+        "Optional agent scope: version tool schemas, scaffold, environment snapshot, state reset, retry policy and horizon. Score final environment success as well as intermediate violations, tool-call failures and total budget; a fluent final answer need not mean the task succeeded."
+      ],
+      "reproduce": "Closed-book, reconstruct a release decision from three fixed audit cases: primary passes but a guardrail fails; all metric gates pass but item lineage is incomplete; all gates pass with complete evidence and no unresolved blockers. The first two must hold; only the third is eligible for approval under this rule. Apply the same decision table to your matched checkpoint comparison, linking three evaluator counterexamples to before-and-after mitigation evidence and retaining any negative result.",
+      "traps": [
+        "Choosing thresholds after seeing the candidate's final scores, then presenting the rule as predeclared.",
+        "Releasing because a primary interval includes an improvement. The rule needs a supported effect relative to its practical margin and separate guardrails.",
+        "Comparing agents with different tool permissions, retries or horizons as though only the language-model weights changed."
+      ],
+      "selfTest": [
+        {
+          "q": "A candidate gains on the primary task but breaches a mandatory guardrail. Release?",
+          "a": "No under a conjunctive gate. Hold, diagnose and repair, or revise the policy transparently before a new independent evaluation. Do not average the breach away."
+        },
+        {
+          "q": "What does a rollback condition add beyond a failed pre-release test?",
+          "a": "It defines what post-release observation requires reverting, who owns that action and which known-good version to restore. It covers failures that appear after the initial evaluation."
+        },
+        {
+          "q": "Why can an agent's final text be a misleading success metric?",
+          "a": "The agent may claim success without the required state change, exceed its budget or violate tool constraints along the way. Inspect the environment state and full trajectory under a resettable contract."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the predeclared release and regression decision, matched checkpoint evidence, three evaluator-failure mitigations, manual review and rollback record in lmlab. Agentic execution is optional and not required for this gate.",
+      "stopWhen": "You defend a release or hold decision from complete item-level evidence, three evaluator failures and their mitigations, paired uncertainty, contamination limits and an owned rollback condition; optional agent execution is not needed.",
+      "fit": {
+        "verdict": "kept",
+        "note": "ARENA connects measurements to decisions, Roadmap supplies the evidence and rollback standard, and Lecture 12 covers optional agent scope without adding a large benchmark run."
+      }
+    }
+  ]
+}

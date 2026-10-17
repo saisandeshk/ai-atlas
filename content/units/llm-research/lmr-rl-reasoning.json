@@ -1,0 +1,883 @@
+{
+  "section": "lmr-rl-reasoning",
+  "addedResources": [],
+  "units": [
+    {
+      "id": "generation-decision-process-rewards",
+      "title": "Language generation as a decision process, and sequence, token, outcome and process rewards",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "language-generation-mdp",
+        "sequence-token-rewards"
+      ],
+      "outcomes": [
+        "Specify the prompt distribution, token actions, prefix transitions and stopping events for a verifiable language task.",
+        "Distinguish reward timing from reward meaning, and record what the verifier actually observes."
+      ],
+      "why": "An RL result is about a particular task and trajectory contract. Changing answer extraction or the stopping rule can change the measured gain without changing the model.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/language-policy-gradient-baselines",
+          "note": "Derive the update for this trajectory contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: language trajectories",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Sections 4.1.1 to 4.1.3, Language models as policies, Trajectories, and Rewards and return"
+        },
+        {
+          "resource": "rlhf-book-rl-lmr8",
+          "title": "RLHF Book Chapter 6: Reinforcement Learning",
+          "url": "https://rlhfbook.com/c/06-policy-gradients#related-mdp-vs.-bandit-framing",
+          "locator": "Implementation, Related: MDP vs. Bandit Framing"
+        },
+        {
+          "resource": "rlhf-book-rl-lmr8",
+          "title": "RLHF Book Chapter 7: Reasoning and Inference-Time Scaling",
+          "url": "https://rlhfbook.com/c/07-reasoning#the-role-of-rlvr",
+          "locator": "The Role of RLVR: math-answer extraction, code-test rewards and the verifier loop"
+        }
+      ],
+      "focus": [
+        "The Reinforcement Learning unit on trajectory objectives and the likelihood-ratio identity supplies the estimator. For a single-turn task, the prompt is sampled externally; appending a generated token is the deterministic transition.",
+        "Sequence versus token describes where reward attaches. Outcome versus process describes what it judges. A step reward can attach to the last token of a multi-token step.",
+        "Record EOS, a stop string and a token-limit stop separately. A token limit does not imply a sampled EOS, and a multi-token stop string is not necessarily one action.",
+        "Use one small task in `lmlab`, such as reversing short strings. Freeze train, validation and test prompt identities, the accepted output grammar and the independent exact-answer evaluator before collecting data."
+      ],
+      "reproduce": "Closed-book, write the trajectory contract for reversing `ab` to `ba`, with one character per token and a sampled EOS. List the three sampled actions and their prefixes. Put reward 1 only on the correct terminal answer and use \\(\\gamma=1\\): each action's reward-to-go is 1. Then place an additional process reward after the first character and show which returns change.",
+      "traps": [
+        "Calling deterministic prefix transitions a deterministic policy. The next token is still sampled.",
+        "Treating a correct final answer as proof that every intermediate step is correct. The verifier may inspect only the answer.",
+        "Dropping malformed or truncated outputs. Keep their outcome classes and costs even when the declared loss excludes them."
+      ],
+      "selfTest": [
+        {
+          "q": "Does broadcasting a terminal reward to every token create process supervision?",
+          "a": "No. It assigns outcome credit through the estimator; no intermediate step has been checked."
+        },
+        {
+          "q": "When do the bandit and token views describe the same expected reward?",
+          "a": "When they induce the same distribution over completed responses and use the same terminal reward and stopping contract, without changing length weighting or discounting."
+        },
+        {
+          "q": "What belongs in the state for a token action?",
+          "a": "The prompt and all preceding generated tokens, plus any task state needed for the declared environment. The completed answer must not leak into an earlier prefix."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the versioned task, split, output grammar, terminal-event and reward-placement contract for the tiny RL study.",
+      "stopWhen": "Your task contract assigns a state, action mask, stopping reason and reward to a correct, incorrect, malformed and truncated response without ambiguity.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the assignment defines trajectories and terminal rewards; the book supplies the bandit and process-feedback distinctions. The mini-project applies them to one versioned task."
+      }
+    },
+    {
+      "id": "language-policy-gradient-baselines",
+      "title": "The score-function gradient for language trajectories, baselines and variance",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "policy-gradient",
+        "baselines-and-variance"
+      ],
+      "outcomes": [
+        "Derive the completion-only score-function gradient for a fixed prompt distribution and parameter-independent reward.",
+        "Check baseline bias and variance by exact enumeration before trusting a language-model learning curve.",
+        "Translate the estimator into a detached-reward loss with independently checked token masks."
+      ],
+      "why": "The earlier REINFORCE derivation becomes a research tool here: it supplies an oracle for the language loss, and exposes normalization changes that no longer estimate the raw-reward gradient.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/group-advantages-length-normalization",
+          "note": "Identify what group centering and scaling change."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: gradient and baseline audit",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Sections 4.1.4 and 4.1.5, including `baseline_calcs`; Section 4.2.3, `compute_policy_gradient_loss_on_policy`",
+          "depth": "Use the earlier policy-gradient units for prerequisite repair only. Spend this pass on the language loss and the baseline counterexample."
+        },
+        {
+          "resource": "rlhf-book-rl-lmr8",
+          "title": "RLHF Book Chapter 6: Reinforcement Learning",
+          "url": "https://rlhfbook.com/c/06-policy-gradients#deriving-the-policy-gradient",
+          "locator": "Deriving the Policy Gradient through REINFORCE Leave One Out (RLOO)"
+        }
+      ],
+      "focus": [
+        "For fixed prompts and rewards, \\(\\nabla_\\theta J=\\mathbb{E}[R(x,y)\\sum_t\\nabla_\\theta\\log\\pi_\\theta(y_t\\mid x,y_{<t})]\\). Sum only sampled completion actions, including sampled EOS.",
+        "Hold sampled IDs, rewards and baselines fixed during differentiation. Current selected log probabilities carry gradients; generated text need not be differentiable.",
+        "An action-independent baseline preserves the expected score-function gradient, but need not reduce variance. The reward mean is not generally the variance-minimizing baseline.",
+        "An inclusive group mean depends on the current completion. With independent siblings and no standard-deviation scaling, it shrinks the expected raw-reward gradient by \\((G-1)/G\\)."
+      ],
+      "reproduce": "Derive `baseline_calcs` symbolically first, then check your expressions by enumeration on CPU. For a Bernoulli action with success probability \\(p=0.8=\\sigma(\\theta)\\), reward equal to the action and logit score \\(a-p\\), the single-sample estimator has mean 0.16. Its variance is 0.0064 with baseline 0, 0.0576 with baseline 0.8, and zero with baseline 0.2. Recover these values in `float64`; divide variance by the number of independent samples for a sample mean.",
+      "traps": [
+        "Differentiating the sample-average reward directly. A detached discrete reward has no path through the sampled tokens; use the score-function loss.",
+        "Replacing the sum of token log probabilities with a response mean. Variable lengths then change the estimator, not just its numerical scale.",
+        "Calling all centering unbiased. Sibling dependence, inclusive means and random standard-deviation division require separate analysis."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does subtracting a fixed prompt-only baseline preserve the expected gradient?",
+          "a": "Conditioned on the prompt, the expected policy score is zero, since the derivative of total probability 1 is zero."
+        },
+        {
+          "q": "Does a lower variance of raw rewards guarantee a lower variance of the gradient?",
+          "a": "No. Gradient variance also depends on policy scores and their correlation with rewards. The reproduce example gives a counterexample to using the mean-reward baseline."
+        },
+        {
+          "q": "What changes if the reward itself depends differentiably on policy parameters?",
+          "a": "The derivative also has an expected reward-derivative term. The fixed-verifier derivation assumes that term is absent."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 5: `baseline_calcs` and `compute_policy_gradient_loss_on_policy`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_grpo.py",
+          "locator": "Section 4.1.5, `baseline_calcs` parts (a) to (c); Section 4.2.3 with `test_compute_policy_gradient_loss_on_policy`",
+          "note": "The public test compares loss values with a snapshot; add your own selected-log-probability gradient and padding-invariance tests. Use public handouts and tests privately as study material; do not publish assignment solutions."
+        }
+      ],
+      "stopWhen": "Your baseline variance derivation agrees with exact enumeration, the on-policy loss snapshot passes, and your own test detects an included prompt token or a differentiated baseline.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the assignment supplies a precise variance problem and loss test; the book connects the derivation to completion masks and leave-one-out baselines."
+      }
+    },
+    {
+      "id": "value-gae-ppo-language",
+      "title": "Value functions, GAE and PPO clipping for language models",
+      "hours": 4,
+      "target": [
+        "derive"
+      ],
+      "topics": [
+        "value-and-gae",
+        "ppo-clipped-surrogate"
+      ],
+      "outcomes": [
+        "Derive prefix-value targets and GAE for a completed language trajectory with explicit terminal masks.",
+        "Check both signs of the clipped surrogate and explain why clipping does not enforce a hard policy-distance bound.",
+        "Separate actor advantages, critic targets and old-policy scores in a fixed-rollout audit."
+      ],
+      "why": "PPO adds a learned credit model and reuses trajectories. This unit audits those extra dependencies before deciding whether a critic is worth its cost for the small study.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/rollout-metadata-policy-lag",
+          "note": "Bind the denominator to the checkpoint that collected the trajectory."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rlhf-book-rl-lmr8",
+          "title": "RLHF Book Chapter 6: Reinforcement Learning",
+          "url": "https://rlhfbook.com/c/06-policy-gradients#proximal-policy-optimization-ppo",
+          "locator": "Proximal Policy Optimization (PPO), Understanding the PPO Objective, Value Functions and PPO; Auxiliary Topics, Generalized Advantage Estimation (GAE)",
+          "depth": "Read the token and prefix interpretation, not another general RL first pass. The prose calls clipping a bound on drift; it is only a clipped surrogate, not a hard bound on ratios or KL."
+        },
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: token clipping",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Section 6.2.2, Clipping, and `compute_policy_gradient_loss_off_policy`"
+        }
+      ],
+      "focus": [
+        "The Reinforcement Learning unit on n-step advantages and Generalized Advantage Estimation derived the estimator; here it runs over token prefixes. A prefix value predicts future reward before the next sampled token, not correctness after reading the answer.",
+        "Use \\(\\delta_t=r_t+\\gamma(1-d_t)V_{t+1}-V_t\\) and \\(\\hat A_t=\\delta_t+\\gamma\\lambda(1-d_t)\\hat A_{t+1}\\). Set terminal bootstrap to zero; decide separately whether a length-limit stop is terminal or censored.",
+        "Freeze rollout-time values and advantages during reuse. Actor advantage normalization must not replace the unnormalized critic return target.",
+        "The surrogate plateaus for positive advantages above the upper ratio limit and negative advantages below the lower limit. Other samples and shared parameters can still move those probabilities."
+      ],
+      "reproduce": "On CPU in PyTorch 2.14.1 `float64`, use a completed two-action response with rewards `[0., 1.]`, prefix values `[0.2, 0.6]`, zero terminal bootstrap, \\(\\gamma=1\\) and \\(\\lambda=0.5\\). Recover TD residuals `[0.4, 0.4]` and GAE `[0.6, 0.4]`. Separately use ratios `[0.7, 1.3, 0.7, 1.3]`, advantages `[1., 1., -1., -1.]` and clip width 0.2. The negative mean clipped surrogate is 0.05; its current-log-probability gradients are `[-0.175, 0., 0., 0.325]`, within floating-point tolerance.",
+      "traps": [
+        "Clipping the ratio and multiplying without the pessimistic minimum. That loses the sign-dependent branches.",
+        "Using final-answer information as the prefix baseline. It can depend on the action whose score it weights.",
+        "Assuming GAE is needed for GRPO. Group estimators remove the learned critic; TRL 1.15.0 has no `PPOTrainer`."
+      ],
+      "selfTest": [
+        {
+          "q": "What happens to GAE at the final terminal action?",
+          "a": "No future value or advantage is bootstrapped. The advantage is the terminal reward minus the prefix value."
+        },
+        {
+          "q": "A negative-advantage token has ratio 1.3 and clip width 0.2. Is its surrogate gradient zero?",
+          "a": "No. The unclipped negative term is smaller, so it remains active and pushes the probability down."
+        },
+        {
+          "q": "Can every sampled token be on a flat branch while KL continues to grow?",
+          "a": "Yes. The clipped objective does not impose a hard trust region. Other losses, shared parameters and optimizer state can still change the policy."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 5: `compute_policy_gradient_loss_off_policy`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_grpo.py",
+          "locator": "Section 6.2.2; `test_compute_policy_gradient_loss_off_policy` compares unclipped and clipped per-token loss snapshots",
+          "note": "Add your own GAE boundary fixture and finite-difference checks away from clipping kinks. No critic training run is required; the mini-project can use the simpler group estimator. Do not publish solutions."
+        }
+      ],
+      "stopWhen": "The public clipping snapshot and your GAE boundary and sign-branch gradient tests pass, and you can explain a policy change beyond the clipping interval without calling it a contradiction.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the book covers language values and GAE, while the assignment supplies token-clipping practice. A depth note corrects the book's hard-bound wording."
+      }
+    },
+    {
+      "id": "group-advantages-length-normalization",
+      "title": "Group-normalized advantages, zero-variance groups and sequence versus token normalization",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "grpo-group-advantages",
+        "sequence-token-normalization"
+      ],
+      "outcomes": [
+        "Implement group advantages with a declared standard-deviation convention and finite all-equal-group behavior.",
+        "Derive how sequence, token and constant denominators weight unequal-length responses.",
+        "Specify the exact GRPO variant used in the study and isolate one normalization ablation."
+      ],
+      "why": "Two runs called GRPO can optimize different weighted objectives. Fixed-rollout comparisons separate this mechanism from changes in sampled answers or verifier quality.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/kl-entropy-policy-roles",
+          "note": "Add reference and exploration diagnostics to the declared objective."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: normalization choices",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Sections 4.1.6 and 4.1.7; Section 4.2.3 group normalization and aggregation problems; Section 5.1, Dr. GRPO"
+        },
+        {
+          "resource": "deepseekmath-grpo-lmr8",
+          "title": "DeepSeekMath: original GRPO objective",
+          "url": "https://arxiv.org/abs/2402.03300v3",
+          "locator": "arXiv:2402.03300v3, Sections 4.1.1 and 4.1.2, Equations 3 and 4 and outcome advantages",
+          "depth": "Read the objective, not the large-model training recipe. Its KL estimator is nonnegative, not strictly positive: it is zero when the sampled probability ratio is 1."
+        },
+        {
+          "resource": "trl-grpo-lmr8",
+          "title": "TRL 1.15.0: explicit objective configuration",
+          "url": "https://github.com/huggingface/trl/blob/v1.15.0/trl/trainer/grpo_config.py",
+          "locator": "`GRPOConfig`: `scale_rewards`, `loss_type`, `beta` and `use_bias_correction_kl` field documentation"
+        }
+      ],
+      "focus": [
+        "The assignment uses sample standard deviation via `torch.std`; a population-standard-deviation implementation has different finite-group weights. Specify the stabilizer and reject singleton sample-standard-deviation groups.",
+        "All-equal rewards yield zero outcome advantages with a finite denominator. They do not imply identical texts or zero KL gradient. Log all-correct and all-wrong groups separately.",
+        "Original GRPO averages token losses within each response, then responses. Dr. GRPO removes response-length division and group-standard-deviation division. DAPO keeps group scaling and uses an active-token denominator; these choices are not interchangeable.",
+        "TRL 1.15.0 defaults to `loss_type=\"dapo\"`, `scale_rewards=\"group\"` and `beta=0.0`. Set every relevant choice explicitly. Choosing `loss_type=\"grpo\"` alone does not reproduce every paper detail or KL gradient."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1 in `torch.float64`, normalize rewards `[2., 2., 0., 0.]` by centered reward divided by standard deviation plus `1e-6`. Sample-standard-deviation magnitudes are approximately 0.86602465; population magnitudes are approximately 0.99999900. Next reduce two response loss lists `[2.]` and `[0., 0., 0.]`: the sequence mean is 1, the active-token mean is 0.5, and total sum divided by a fixed constant 8 is 0.25. Verify gradients and padding invariance as well as values.",
+      "traps": [
+        "Calling group scaling an unbiased raw-reward gradient. Its random denominator changes prompt weighting.",
+        "Averaging microbatch token means equally when active token counts differ. Accumulate sums against one shared denominator to match the full-batch token mean.",
+        "Filtering equal-reward groups without counting generation attempts. Filtering changes prompt exposure and still consumes the rollout budget."
+      ],
+      "selfTest": [
+        {
+          "q": "Does zero scalar loss prove there is no policy gradient?",
+          "a": "No. Centered contributions can cancel in value but have different derivatives. Test gradients explicitly."
+        },
+        {
+          "q": "Why can padding change a token-mean implementation accidentally?",
+          "a": "Including padded positions in the denominator dilutes active gradients. Both numerator and denominator must use the action mask."
+        },
+        {
+          "q": "Is changing only the loss denominator a complete Dr. GRPO ablation?",
+          "a": "No. Dr. GRPO also removes group-standard-deviation scaling. Isolate each change before combining them."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 5: GRPO and Dr. GRPO normalization components",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_grpo.py",
+          "locator": "`test_compute_group_normalized_rewards_grpo`, `test_compute_group_normalized_rewards_drgrpo`, `test_aggregate_loss_across_microbatch_sequence` and `test_aggregate_loss_across_microbatch_constant`",
+          "note": "These compare outputs against snapshots. Add equal groups, singleton rejection, unequal lengths and gradient tests yourself. The mini-project reuses the components in one live normalization ablation. Do not publish solutions."
+        }
+      ],
+      "stopWhen": "All four normalization snapshots and your edge-case and gradient tests pass, and a written objective states the mean, scale, mask, denominator and KL choices without relying on the name GRPO.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the assignment provides tested components, DeepSeekMath defines the original objective, and pinned TRL source resolves current defaults."
+      }
+    },
+    {
+      "id": "kl-entropy-policy-roles",
+      "title": "Reference KL, entropy and collapse diagnostics, and actor, reference, reward and verifier roles",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "kl-and-entropy",
+        "actor-reference-reward-verifier"
+      ],
+      "outcomes": [
+        "Separate current actor, rollout policy, frozen reference, reward model, verifier and critic responsibilities.",
+        "Measure reference KL, token entropy, answer diversity and zero-signal groups without treating any one trace as a diagnosis.",
+        "Check sampled KL estimates against an exact categorical oracle."
+      ],
+      "why": "Reward can rise while exploration disappears or the policy drifts toward a verifier shortcut. Role identities and independent diagnostics make those explanations testable.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/verifiable-rewards-hacking-tests",
+          "note": "Test whether rising reward reflects a loophole."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rlhf-book-rl-lmr8",
+          "title": "RLHF Book Chapters 6 and 15: roles and regularization",
+          "url": "https://rlhfbook.com/c/15-regularization#kl-divergence-in-rl-optimization",
+          "locator": "Chapter 15, KL Divergence in RL Optimization through Implementation Example; Chapter 6, The Role of Reinforcement Learning in RLHF",
+          "depth": "Stop before Other Tools to Control Optimization. In the Implementation Example, `F.kl_div` receives log targets without `log_target=True`; do not copy that call. Use the exact oracle below instead."
+        },
+        {
+          "resource": "raschka-grpo-lmr8",
+          "title": "Build a Reasoning Model: entropy diagnostics",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 7, Section 7.3.2, Entropy tracking, printed pp. 236 to 240",
+          "depth": "Use the calculation, not the illustrative entropy bands as universal collapse thresholds. Entropy depends on vocabulary, prefixes and sampling policy."
+        },
+        {
+          "resource": "trl-grpo-lmr8",
+          "title": "TRL 1.15.0: reference loading and KL estimator",
+          "url": "https://github.com/huggingface/trl/blob/v1.15.0/trl/trainer/grpo_trainer.py",
+          "locator": "Reference-model initialization at `self.beta == 0.0`; loss computation of `per_token_kl` and `use_bias_correction_kl`"
+        }
+      ],
+      "focus": [
+        "The actor learns; the rollout snapshot generated the data; the reference defines drift. A learned reward model and a rule-based verifier are alternative feedback sources, not interchangeable evidence of correctness. A critic predicts future return.",
+        "The Math Foundations unit on entropy and KL divergence supplies the definitions. State the direction as \\(D_{\\mathrm{KL}}(\\pi_\\theta\\|\\pi_{\\text{ref}})\\). Token means and sequence sums have different length weighting.",
+        "For current-policy samples with common support, let \\(d=\\log\\pi_\\theta-\\log\\pi_{\\text{ref}}\\). Both \\(d\\) and \\(\\exp(-d)+d-1\\) have the KL expectation. The latter is nonnegative per sample in exact arithmetic; an old-policy sample average is not automatically that expectation.",
+        "Keep fixed diagnostic prefixes as well as rollout averages. Read entropy beside duplicate answers, length, invalid outputs, advantage spread and held-out correctness. A zero-variance reward group is not proof of entropy collapse."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1, let `policy = torch.tensor([0.6, 0.4], dtype=torch.float64)` and `reference = torch.tensor([0.5, 0.5], dtype=torch.float64)`. Compute exact policy-to-reference KL, the policy-weighted log ratio and the policy-weighted k3 expression. All give approximately 0.02013551 nats. Policy entropy is approximately 0.67301167 nats. Cross-check with `torch.nn.functional.kl_div(reference.log(), policy.log(), reduction=\"sum\", log_target=True)` within `1e-12` absolute tolerance.",
+      "traps": [
+        "Using the reference in the PPO ratio denominator. Old-policy drift and reference drift are different quantities.",
+        "Calling estimator-value agreement a proof of gradient agreement. Differentiating a fixed-old-sample KL surrogate requires its own check; TRL's ratio correction changes the gradient even at a ratio value of 1.",
+        "Reading low KL as guaranteed safety or generalization. It only measures the declared distributions on the declared support and prefixes."
+      ],
+      "selfTest": [
+        {
+          "q": "Can a sampled log-ratio KL estimate be negative?",
+          "a": "Yes. Individual log ratios and finite-sample means can be negative even though the population KL is nonnegative."
+        },
+        {
+          "q": "Does setting TRL's KL coefficient to zero mean no reference needs recording?",
+          "a": "The trainer need not load a reference for optimization, but the study still records the starting reference identity and can score it separately for diagnostics."
+        },
+        {
+          "q": "All rewards are equal but completions differ. What has disappeared?",
+          "a": "The centered outcome signal, not necessarily exploration. A separate KL or entropy term may still produce gradients."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: role-bound reference scoring and KL, entropy, diversity, length and signal-coverage traces for the live study and preserved failure.",
+      "stopWhen": "Your categorical oracle agrees across all three KL calculations, and your study dashboard distinguishes reference drift, old-policy drift and loss of outcome signal.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the book supplies definitions and entropy tracking; pinned TRL source supplies current implementation behavior. The card corrects the book's log-target API call."
+      }
+    },
+    {
+      "id": "rollout-metadata-policy-lag",
+      "title": "Immutable rollout metadata, policy freshness, lag and off-policy importance weights",
+      "hours": 5,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rollout-metadata",
+        "policy-freshness",
+        "offpolicy-importance-weights"
+      ],
+      "outcomes": [
+        "Collect immutable language rollouts bound to prompt, sampler, policy, reference, verifier and RNG identities.",
+        "Implement a bounded rollout-update-evaluation cycle and detect overwritten old log probabilities.",
+        "Derive trajectory importance weights and explain what token clipping cannot correct."
+      ],
+      "why": "A loss can pass its arithmetic tests while training on the wrong distribution. The research artifact must preserve which policy actually produced each action, including failed and filtered work.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/learned-vs-sampled-gains-distillation",
+          "note": "Evaluate the resulting checkpoint against no-update controls."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: live step and stale data",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Section 4.2.4, `grpo_train_step_standard_on_policy`; Sections 6.1 and 6.2.1, importance reweighting and token-level surrogates",
+          "depth": "Do not run the two-GPU vLLM recipe. Use the small synchronous substitute described below; read asynchronous execution as a source of lag, not infrastructure to build."
+        },
+        {
+          "resource": "rlhf-code-rl-lmr8",
+          "title": "RLHF Book code: rollout ownership",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/policy_gradients/rollout.py",
+          "locator": "`RolloutEngine._generate_experience`: generation configuration, action mask, rewards, `log_probs_old`, `log_probs_ref` and `Experience` construction",
+          "depth": "Trace the data flow only. Add immutable version and outcome records yourself; the example's tensor buffer is not a complete experiment manifest."
+        },
+        {
+          "resource": "posttraining-lab-rl-lmr8",
+          "title": "LLM Post-Training Laboratory: identity contract",
+          "url": "https://github.com/saisandeshk/Roadmap-Final/blob/main/projects/tier-3/llm-post-training-laboratory.md",
+          "locator": "Architecture constraints; Milestone C; Milestone D stale-log-probability, ratio-direction and policy-lag injections"
+        }
+      ],
+      "focus": [
+        "Bind token IDs, prompt split and template, policy and reference hashes, verifier version, sampling settings, RNG state, action masks, raw reward components and stopping reasons. Stored old scores must survive later parameter changes unchanged.",
+        "Start the live study on your existing roughly 10M-parameter decoder and short string-reversal task, on CPU or your GPU. Use PyTorch 2.14.1, a character tokenizer, a small SFT initialization, groups of 4, at most 8 generated tokens and an initial 10-update budget. Keep the model config and starting checkpoint hash.",
+        "Choose the assignment's one-update on-policy variant explicitly: inclusive group mean, sample standard deviation plus `1e-6`, response-mean loss, no KL optimization term. Keep a frozen reference for diagnostics. Use temperature 1 without probability truncation, disable dropout, and regenerate after each update.",
+        "Collect, verify, update and externally evaluate fresh held-out outputs. Count prompts, attempts, generated and training tokens, verifier calls and failures separately. Later minibatches become stale after an optimizer step; asynchronous version lag is another mismatch."
+      ],
+      "reproduce": "Enumerate a two-token binary completion with independent tokens: behavior probabilities `[0.5, 0.5]`, current probabilities `[0.75, 0.25]` at both positions. For sequences `'00'`, `'01'`, `'10'`, `'11'`, trajectory weights are `[2.25, 0.75, 0.75, 0.25]`. Weighting the behavior probabilities by these recovers the current joint distribution. Implement this oracle, then inject an old-score overwrite into a collected batch and require the identity check to fail before an update.",
+      "traps": [
+        "Recording raw-model scores after sampling through temperature or truncation. The actual behavior distribution includes those transformations; removed support cannot be restored by importance weights.",
+        "Calling a token ratio exact trajectory correction. It leaves old prefix visitation in place; the full trajectory weight is a product of token ratios.",
+        "Overwriting sampler scores with learner scores from a newer checkpoint. If scoring backends differ, retain both sets at the same old checkpoint under separate names."
+      ],
+      "selfTest": [
+        {
+          "q": "Do importance weights recover actions given zero behavior probability?",
+          "a": "No. Exact correction requires behavior support wherever the target distribution contributes."
+        },
+        {
+          "q": "Why are first-update ratios near 1 rather than necessarily bit-identical to 1?",
+          "a": "Matching weights and distributions imply equality mathematically, but different kernels, precision or dropout can change computed scores. Test under a declared tolerance and fixed scoring mode."
+        },
+        {
+          "q": "Does clipping a huge importance weight preserve unbiasedness?",
+          "a": "Generally no. It trades bias for reduced influence of extreme weights, and does not repair missing support or wrong metadata."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 5: `grpo_train_step_standard_on_policy`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_grpo.py",
+          "locator": "`test_grpo_train_step_standard_on_policy`: loss and updated-parameter snapshot with two accumulation microbatches and a final cleared-gradient assertion",
+          "note": "Use the public fixture on CPU and keep solutions private. It tests a supplied-response update, not on-policy collection or generalization. The mini-project supplies the actual small rollout-update-evaluation cycle and immutable manifest."
+        }
+      ],
+      "stopWhen": "The train-step snapshot passes, the old-score overwrite is rejected, and one bounded live run records fresh rollouts, updates, reference diagnostics and independent held-out evaluation without losing failed attempts.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: assignment tests plus rollout source cover update mechanics, and the laboratory contract supplies missing manifest and live-cycle practice at reduced scale."
+      }
+    },
+    {
+      "id": "verifiable-rewards-hacking-tests",
+      "title": "Verifiable rewards, false acceptance and reward hacking",
+      "hours": 5,
+      "target": [
+        "implement",
+        "measure"
+      ],
+      "topics": [
+        "verifiable-rewards",
+        "reward-hacking"
+      ],
+      "outcomes": [
+        "Implement a versioned verifier contract with malformed-output and false-acceptance tests.",
+        "Construct a deliberate reward exploit and measure proxy reward against an independent evaluator.",
+        "Preserve the hacked or unstable run and a regression that distinguishes the failure from a genuine task gain."
+      ],
+      "why": "A deterministic verifier can be consistently wrong. Optimizing it makes a small parsing loophole into a competing explanation for the entire RL result.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-alignment-safety-release/evaluator-gaming-safety-contamination",
+          "note": "Extend evaluator-gaming tests beyond this small verifiable task."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: grading contract",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Section 3.3, Grading function; Section 4.2.3, `compute_rollout_rewards`"
+        },
+        {
+          "resource": "rlhf-book-rl-lmr8",
+          "title": "RLHF Book Chapter 14: Over-Optimization",
+          "url": "https://rlhfbook.com/c/14-over-optimization#managing-proxy-objectives",
+          "locator": "Opening reward-overoptimization distinction and Qualitative Over-Optimization, Managing Proxy Objectives"
+        },
+        {
+          "resource": "deepseek-r1-lmr8",
+          "title": "DeepSeek-R1: rule-based feedback",
+          "url": "https://arxiv.org/abs/2501.12948v2",
+          "locator": "arXiv:2501.12948v2, Section 2.2, Reward Design",
+          "depth": "Read the accuracy and format reward split. Rule-based feedback avoids a learned scorer but does not prove immunity to parser errors or test exploitation."
+        }
+      ],
+      "focus": [
+        "The Language Model Evaluation unit on verifiers and false-acceptance tests supplies the test design. Separate parsing, format compliance and semantic correctness; freeze the training verifier and independent evaluator before optimization.",
+        "Test empty output, duplicated answer delimiters, extra trailing content, embedded target strings, invalid syntax and overlong responses. State whether ambiguity fails closed rather than silently choosing a favorable answer.",
+        "For the reversal study, contrast strict whole-answer equality with a deliberately weak substring reward. Keep both verdicts on the same outputs, including correct-answer lists embedded in wrong text.",
+        "Run the weak-reward ablation under the same starting checkpoint and generation budget. Preserve outputs and policy identities even if exploitation does not emerge naturally; a planted accepted exploit is still a verifier regression, not evidence that training discovered it."
+      ],
+      "reproduce": "On CPU, define the toy arithmetic target as the string `\"4\"`. The deliberately flawed check `\"4\" in response` accepts `\"14\"`, while strict whole-string equality rejects it. Reproduce that disagreement and its string-reversal analogue. Add a correct output, an empty output and an output containing several candidate answers. Keep the flawed verdicts as evidence, then require the strict evaluator to reject the planted false acceptance.",
+      "traps": [
+        "Using the same parser implementation for training reward and independent evaluation. Shared bugs can make the two metrics agree falsely.",
+        "Treating a verifier timeout as a wrong answer without recording the error. Missing evidence, invalid syntax and semantic failure need distinct outcomes.",
+        "Repairing the verifier and deleting the old run. Preserve its version and outputs; rescoring is a separate analysis, not the original reward trace."
+      ],
+      "selfTest": [
+        {
+          "q": "Can held-out prompts expose a parser bug shared by training and evaluation?",
+          "a": "Not reliably. The same bug may accept the same exploit on unseen prompts. Use an independent evaluator and adversarial outputs."
+        },
+        {
+          "q": "What would support a claim that RL learned to exploit the verifier?",
+          "a": "Fresh policy outputs increasingly receive flawed reward while failing independent checks, with fixed scoring versions, budgets and a matched starting-policy control. A hand-written exploit alone does not show learned exploitation."
+        },
+        {
+          "q": "Does passing public code tests prove program correctness?",
+          "a": "No. It establishes behavior only on those cases. Hidden tests and specification-based checks can reveal hardcoded or incomplete solutions."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 5: `compute_rollout_rewards`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_grpo.py",
+          "locator": "`test_compute_rollout_rewards` compares the returned raw-reward tensor against a snapshot",
+          "note": "This is not a verifier-soundness test and does not validate your metadata. The mini-project adds the strict-versus-substring exploit campaign, component verdicts and preserved weak-reward run. Do not publish assignment solutions."
+        }
+      ],
+      "stopWhen": "A planted false acceptance is reproduced and rejected by an independent evaluator, and the preserved ablation records whether the policy exploited it, failed to learn or became unstable.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: grading and overoptimization readings support the contract; the mini-project supplies the deliberate exploit missing from the external exercises."
+      }
+    },
+    {
+      "id": "reasoning-traces-step-feedback",
+      "title": "Reasoning traces, outcome and process feedback and process reward models",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "reasoning-traces",
+        "process-reward-models"
+      ],
+      "outcomes": [
+        "Distinguish outcome labels, step labels and token likelihoods as supervision signals.",
+        "Specify step boundaries, ambiguity handling and first-error supervision for a process verifier.",
+        "Explain why better process-based selection does not establish improved generator weights or faithful reasoning."
+      ],
+      "why": "A correct final answer can hide an invalid intermediate step. Process supervision offers a different measurement, but its labels and aggregation introduce new assumptions.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/selection-search-test-time-curves",
+          "note": "Use process scores for selection without confusing selection with training."
+        }
+      ],
+      "study": [
+        {
+          "resource": "process-supervision-lmr8",
+          "title": "Let's Verify Step by Step: what is supervised",
+          "url": "https://arxiv.org/abs/2305.20050v1",
+          "locator": "Sections 2.1 and 2.3 to 2.6: Scope, Generator, Data Collection, outcome-supervised and process-supervised reward models; Figure 2",
+          "depth": "Stop before the large-scale experiments. Section 2.1 fixes the generator and evaluates best-of-N selection, not generator RL. No PRM training run is required."
+        }
+      ],
+      "focus": [
+        "Separate the generator from the reward model. Outcome supervision labels a completed solution; process supervision labels steps under an explicit segmentation rule. Neither automatically reveals the generator's internal computation.",
+        "The paper uses newline-delimited steps with positive, negative and neutral labels. It supervises only through the first incorrect step. Missing labels after that point are not negative labels.",
+        "The paper multiplies step correctness probabilities to rank solutions. This is a scoring rule, not proof that independently calibrated step events yield a calibrated probability of whole-solution correctness.",
+        "Reuse the reversal study's held-out outputs for a small prefix audit: mark the first character inconsistent with the target and keep segmentation fixed. This deterministic audit illustrates process feedback, not a learned PRM or human reasoning judgment."
+      ],
+      "reproduce": "On CPU with Python 3.13, compare two synthetic process-score lists, `[0.9, 0.9]` and `[0.8]`. Their products are 0.81 and 0.8, so the first ranks higher. Split its second step into two steps each scored 0.9; its product becomes 0.729 and the ranking reverses. Reproduce the same products using sums of logarithms, then explain why a changed segmentation invalidates a direct score comparison.",
+      "traps": [
+        "Calling a convincing trace faithful. A trace can be useful for verification without reporting the mechanism that produced the answer.",
+        "Comparing outcome and process models with different label budgets and claiming the entire gap comes from supervision type. The paper itself distinguishes its large-scale and controlled small-scale regimes.",
+        "Assuming more steps always help a product score. Additional factors below 1 reduce the product, so verbosity and segmentation can change rankings."
+      ],
+      "selfTest": [
+        {
+          "q": "Does a correct final answer imply all steps are valid?",
+          "a": "No. Errors can cancel, or a correct answer can be appended to an invalid derivation."
+        },
+        {
+          "q": "What changes in the paper's best-of-N evaluation?",
+          "a": "The selected response changes with the reward model. The generator used to sample candidates stays fixed."
+        },
+        {
+          "q": "What must accompany a neutral step label?",
+          "a": "A declared ambiguity policy for training and scoring. Neutral is not silently equivalent to correct or incorrect."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: audit first-error positions on a small fixed set of reversal outputs and keep a segmentation-sensitive process-score fixture beside outcome verdicts. No learned PRM is required.",
+      "stopWhen": "Your audit separates final correctness from first-error position, and you can reproduce the segmentation-induced ranking reversal without claiming a generator improvement.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the primary process-supervision paper defines labels, scope and aggregation precisely; a CPU audit replaces full reward-model training."
+      }
+    },
+    {
+      "id": "selection-search-test-time-curves",
+      "title": "Best-of-N, self-consistency, search and test-time compute curves",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "best-of-n-self-consistency",
+        "search-and-test-time-compute"
+      ],
+      "outcomes": [
+        "Separate oracle coverage, verifier-selected accuracy and answer-vote accuracy.",
+        "Compare parallel sampling, revision and process-guided search under declared generation and scoring budgets.",
+        "Produce a no-update sampling curve with explicit extraction, tie and invalid-output rules."
+      ],
+      "why": "More attempts can improve reported accuracy with no weight update. Selection quality and compute accounting decide whether that improvement is usable.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/learned-vs-sampled-gains-distillation",
+          "note": "Use the frozen-policy curve as the control for learned gains."
+        }
+      ],
+      "study": [
+        {
+          "resource": "self-consistency-lmr8",
+          "title": "Self-Consistency: aggregate answers, not traces",
+          "url": "https://arxiv.org/abs/2203.11171v4",
+          "locator": "Section 2, Self-Consistency over Diverse Reasoning Paths; Figure 1 and Table 1",
+          "depth": "Use the unweighted answer vote for the study. Do not add probability-weighted voting or reproduce the benchmark suite."
+        },
+        {
+          "resource": "test-time-compute-lmr8",
+          "title": "Test-time compute: proposer, verifier and allocation",
+          "url": "https://arxiv.org/abs/2408.03314v1",
+          "locator": "Sections 2, 3.1 and 3.2; Section 5.2, Search Methods Against a PRM; Figure 2",
+          "depth": "Read search and revision conceptually. The live study only needs short independent samples. Section 3.2 omits difficulty-estimation cost from its reported accounting; disclose and count any such cost in your own curves."
+        },
+        {
+          "resource": "rl-capacity-lmr8",
+          "title": "Reasoning coverage: pass-at-k estimator",
+          "url": "https://arxiv.org/abs/2504.13837v5",
+          "locator": "Section 2.2, Metrics for LLM Reasoning Capacity Boundary; Appendix A.2, Low-Variance pass@k Estimation"
+        }
+      ],
+      "focus": [
+        "Best-of-N ranks candidates with an available scorer. Self-consistency votes over extracted answers. Oracle pass-at-k asks whether any candidate is correct; it does not supply a deployable way to choose that candidate.",
+        "For independent identically distributed samples, estimate pass-at-k from the total sample count and correct count using the combinatorial estimator in Appendix A.2. Do not apply it to correlated tree nodes or sequential revisions as if they were independent completions.",
+        "Reuse each frozen candidate pool for random choice, answer voting and verifier selection. Declare tie breaking and whether invalid outputs abstain or fail. Record candidate coverage beside selected correctness.",
+        "Plot budgets of 1, 2 and 4 short samples on the same held-out prompts. Count all generated tokens, scoring calls, revision context and any difficulty estimation; matching sample counts alone does not match compute."
+      ],
+      "reproduce": "On CPU with Python 3.13, enumerate all pairs of indices from 8 candidate outputs, exactly 2 of which are correct. Thirteen of the 28 pairs contain a correct output, giving pass-at-2 of approximately 0.46428571. Check this against `1 - math.comb(6, 2) / math.comb(8, 2)`. Then give a scorer that ranks both correct outputs below an incorrect output: oracle coverage stays unchanged while top-ranked accuracy can be zero.",
+      "traps": [
+        "Voting over full text instead of normalized answers. Different valid traces may support the same answer.",
+        "Using the held-out correct answer to choose a candidate and calling it best-of-N deployment accuracy. That is oracle coverage.",
+        "Tuning compute allocation on the evaluation answers. Select the strategy on validation data and freeze it before the final comparison."
+      ],
+      "selfTest": [
+        {
+          "q": "Can adding candidates hurt best-of-N selected accuracy?",
+          "a": "Yes. A flawed scorer can prefer a new incorrect candidate even though oracle coverage cannot decrease for a nested candidate set."
+        },
+        {
+          "q": "Is the most common answer necessarily correct?",
+          "a": "No. Samples can share the same systematic error. Voting measures agreement, not independent verification."
+        },
+        {
+          "q": "Why can two four-sample runs have different costs?",
+          "a": "Lengths, scoring models, search expansions and reused context can differ. Report token and scoring budgets as well as sample counts."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a frozen-policy reversal sampling curve with random, answer-vote and verifier-selected outputs, oracle coverage and complete token and verifier-call accounting.",
+      "stopWhen": "The enumeration matches the estimator, and your no-update curve reports selected accuracy separately from oracle coverage at each declared budget.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: self-consistency defines voting, the compute paper defines allocation and search, and the coverage paper supplies the estimator. Full search infrastructure is excluded."
+      }
+    },
+    {
+      "id": "learned-vs-sampled-gains-distillation",
+      "title": "Learned capability versus sampling gains, and distilling search into the policy",
+      "hours": 4,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "capability-vs-sampling",
+        "onpolicy-distillation"
+      ],
+      "outcomes": [
+        "Compare updated and frozen policies at matched decoding, prompt and evaluation budgets.",
+        "Distinguish evidence of changed sampling efficiency from claims about new reasoning capability.",
+        "Specify offline search distillation and student-prefix distillation with explicit teacher, prefix and loss identities."
+      ],
+      "why": "A higher single-sample score can reflect useful weight changes without proving new reasoning support. Distillation adds another source of learning signal that must be separated from extra search.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/rejection-finetuning-rloo-estimators",
+          "note": "Build the filtered-SFT control and compare estimator choices."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rl-capacity-lmr8",
+          "title": "Reasoning capacity: control matrix and limits",
+          "url": "https://arxiv.org/abs/2504.13837v5",
+          "locator": "Section 2.2; Section 3 opening Evaluation Protocol and Section 3.1, RLVR for Mathematical Reasoning",
+          "depth": "Use the matched-model comparisons as an experimental question, not the paper's broad capacity conclusion as a theorem. Finite sampling cannot establish absent support."
+        },
+        {
+          "resource": "deepseek-r1-lmr8",
+          "title": "DeepSeek-R1: distillation after reasoning training",
+          "url": "https://arxiv.org/abs/2501.12948v2",
+          "locator": "Appendix F, DeepSeek-R1 Distillation, opening paragraphs; Appendix B.4.3, Hyper-Parameters of Distillation",
+          "depth": "Distinguish training on teacher-generated responses from student-prefix distribution matching. No large teacher run is required."
+        },
+        {
+          "resource": "modern-notebook-reasoning-lmr8",
+          "title": "On-policy distillation: prefix source and teacher signal",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/31-opd.ipynb",
+          "locator": "Headings 2, Comparing Four Training Methods; 4, OPD's Solution; 7, Three Signal Granularity Levels; 8, KL Estimators; 9, Complete OPD Training Loop",
+          "depth": "Read as a simulation, not a working trainer: `simulate_opd_training` reports losses without updating a model. Skip Exercises 1 to 3: their feedback conflates prompts with generated prefixes, overstates mode behavior and treats negative KL estimates as automatic penalty failure. Prefix source does not determine KL direction."
+        }
+      ],
+      "focus": [
+        "Compare the same SFT starting checkpoint with its RL descendant, the frozen no-update sampler and filtered SFT. Hold prompt templates, tokenizer, answer extraction, temperature and length limits fixed; tune only on validation data.",
+        "Report single-sample correctness, selected correctness and pass-at-k curves under sample-matched and token-budget-matched views. Keep training, teacher scoring and inference cost separate. Prompt-level paired uncertainty matters more than a tiny point difference.",
+        "A finite-sample zero is not zero probability. Better held-out single-sample accuracy supports a changed useful distribution, not proof of a new algorithm, faithful trace or a universal capacity ceiling.",
+        "Offline search distillation fits selected teacher trajectories. Student-prefix distillation queries a frozen teacher at prefixes the student actually generated. Declare KL direction, support, temperature, masks and regeneration schedule independently of prefix source; truncated teacher probabilities define a different target."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1 and float64, use trainable student logits `[0.0, 0.0]` and frozen teacher probabilities `[0.8, 0.2]` at one fixed student-generated prefix. Compute teacher-to-student full-vocabulary KL. Its value is approximately 0.19274476 nats and its gradient with respect to the student logits is `[-0.3, 0.3]`. Cross-check the gradient against teacher cross-entropy and a central finite difference. This is a fixed-prefix local update, not the total derivative through a sampled trajectory distribution.",
+      "traps": [
+        "Giving RL more evaluation samples and attributing the entire gain to learning. Evaluate both checkpoints under the same decoder and budgets.",
+        "Calling a forward KL on student prefixes impossible. Prefix visitation and next-token divergence are separate design choices.",
+        "Treating a printed simulated loss as learning. Require trainable parameters, a checked gradient, an optimizer update and fresh evaluation to claim a trained student."
+      ],
+      "selfTest": [
+        {
+          "q": "RL improves single-sample accuracy but lowers large-budget coverage. Is that contradictory?",
+          "a": "No. Probability can concentrate on more reliably correct outputs while reducing observed diversity across solvable prompts. Report both measurements."
+        },
+        {
+          "q": "Must student-prefix distillation use reverse KL?",
+          "a": "No. The prefix source and the token-distribution loss are independent choices. Full-vocabulary teacher-to-student KL is valid at a student-generated prefix."
+        },
+        {
+          "q": "What would show search has been usefully distilled?",
+          "a": "The updated student improves fresh held-out performance without the search at inference, against the same initial student and a matched-data control. Include the search and training cost rather than claiming a free gain."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: compare frozen SFT, RL and filtered-SFT reversal checkpoints with the same evaluator and sampling curves; keep the full-vocabulary distillation gradient fixture as the teacher-signal audit, not a required extra teacher-training run.",
+      "stopWhen": "Your gradient oracle passes, and your comparison separates weight updates from selection, discloses training and inference budgets, and states what the small study cannot establish.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: the coverage paper supplies controls, R1 supplies offline distillation, and the pinned notebook supplies prefix vocabulary with explicit corrections and a real gradient oracle."
+      }
+    },
+    {
+      "id": "rejection-finetuning-rloo-estimators",
+      "title": "Rejection fine-tuning, RLOO and neighboring estimators",
+      "hours": 3,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "rft-rloo-variants"
+      ],
+      "outcomes": [
+        "Implement leave-one-out advantages and verify their relation to inclusive group centering.",
+        "Build a filtered-SFT control with explicit acceptance, retention and normalization rules.",
+        "Compare estimator assumptions without treating every newer named loss as a required experiment."
+      ],
+      "why": "Simple controls can explain a result attributed to a complex RL recipe. Baseline dependence and data reuse matter more than the estimator's name.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-rl-reasoning/learned-vs-sampled-gains-distillation",
+          "note": "Return the filtered-SFT checkpoint and retention counts to the matched evaluation."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-a5-rlvr-lmr8",
+          "title": "CS336 Spring 2026 Assignment 5: rejection fine-tuning",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Section 5.2, Rejection fine tuning; Equations 34 to 36 and `think_about_rft`",
+          "depth": "Stop before Section 5.3, MaxRL. Compare gradient estimators with detached samples; do not assume the inclusive group baseline has the same expectation as raw REINFORCE."
+        },
+        {
+          "resource": "rlhf-code-rl-lmr8",
+          "title": "RLHF Book code: leave-one-out implementation",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/policy_gradients/utils.py",
+          "locator": "`compute_loo_advantages` and `compute_nonstandardized_advantages`",
+          "depth": "The first tensor axis is the rollout group. Add an explicit error for groups smaller than 2; the source formula alone does not guard that case."
+        },
+        {
+          "resource": "rlhf-code-rl-lmr8",
+          "title": "RLHF Book code: selection controls",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/rejection_sampling/selection.py",
+          "locator": "`select_top_per_prompt`, `select_random_per_prompt` and `_chapter_worked_example`",
+          "depth": "Read the matched per-prompt selection controls. Top-ranked is not necessarily correct; add a strict correctness threshold for binary-reward RFT. Do not launch the default large reward model."
+        }
+      ],
+      "focus": [
+        "For independent same-prompt samples, use \\(A_i=R_i-\\frac{1}{G-1}\\sum_{j\\ne i}R_j=\\frac{G}{G-1}(R_i-\\bar R)\\). Detach rewards and baselines. The leave-one-out baseline is independent of the current sampled action conditional on the prompt; the inclusive mean is not.",
+        "With identical sequence-sum scores, fixed normalization and no extra scaling, inclusive group centering has expected gradient \\((G-1)/G\\) times raw REINFORCE. Leave-one-out removes that factor. Reward standardization, response-length weighting and clipping break this simple equivalence.",
+        "Fresh on-policy binary reward weighting with fixed normalization is a REINFORCE estimator. Repeated likelihood training on a fixed retained set is filtered SFT, not a fresh on-policy update. Normalizing by a random accepted count changes the estimator.",
+        "For the tiny reversal control, reuse a versioned starting-policy candidate pool, retain strict-correct outputs and fit with response-only cross-entropy. Record empty groups, retained counts, duplicates, training tokens and optimizer steps. Compare a matched-size random-per-prompt refit where data permit; disclose prompt or token imbalance."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1 and float64, rewards `[0, 0, 3]` have inclusive centered values `[-1, -1, 2]` and leave-one-out values `[-1.5, -1.5, 3]`. Verify the explicit other-sample means against the scaled centered formula, then test equal rewards and reject a singleton group. Enumerate two independent Bernoulli actions with success probability 0.5 and reward equal to the action: raw REINFORCE and leave-one-out have expected logit gradient 0.25, while inclusive centering gives 0.125, using the same group-mean reduction.",
+      "traps": [
+        "Dividing by group standard deviation and still calling it the unscaled leave-one-out estimator. That changes prompt weighting.",
+        "Keeping one top-ranked output even when all candidates fail. That is ranking-based self-training, not correct-only RFT.",
+        "Calling accepted-data count the rollout budget. Rejected generations and scoring work still cost compute and can expose different task coverage."
+      ],
+      "selfTest": [
+        {
+          "q": "Why does leave-one-out need at least two samples?",
+          "a": "There is no other-sample reward mean for a singleton group, and the formula divides by zero."
+        },
+        {
+          "q": "Can a correct-only refit improve when every collected output is wrong?",
+          "a": "Not from that pool. It has no retained training examples. Preserve the empty-pool result rather than inventing successful data."
+        },
+        {
+          "q": "Does an action-independent baseline always reduce variance?",
+          "a": "No. It preserves the expected score-function gradient under the stated assumptions, but its variance effect depends on the baseline and reward distribution."
+        }
+      ],
+      "practice": [
+        {
+          "name": "CS336 Assignment 5: Think about RFT",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_alignment.pdf",
+          "locator": "Section 5.2, `think_about_rft`, 2 points",
+          "note": "Write the comparison privately and check it with the two-action enumeration. This is a discussion exercise, not an autograded guarantee of unbiasedness. The mini-project supplies the small retained-data refit and matched evaluation."
+        }
+      ],
+      "stopWhen": "The leave-one-out fixtures and expected-gradient enumeration pass, and the filtered-SFT control retains its acceptance rule, data lineage and full cost ledger even if no outputs pass.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Kept: assignment reasoning practice and pinned estimator and selection code support CPU verification and a tiny filtered-SFT control without another large training stack."
+      }
+    }
+  ]
+}

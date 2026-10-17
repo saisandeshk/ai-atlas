@@ -1,0 +1,818 @@
+{
+  "section": "lmr-adaptation-distillation",
+  "addedResources": [
+    {
+      "id": "peft-soft-prompts-lmr6",
+      "role": "documentation",
+      "priority": "reference",
+      "name": "PEFT conceptual guide: Soft prompts",
+      "provider": "Hugging Face",
+      "access": "Free",
+      "use": "Read Prompt tuning and Prefix tuning only (page read 2026-10-16). These supply the optional soft-prompt mechanisms missing from the section pool; no extra training run is required.",
+      "url": "https://huggingface.co/docs/peft/main/en/conceptual_guides/prompting"
+    }
+  ],
+  "units": [
+    {
+      "id": "adaptation-interventions-baselines",
+      "title": "Continued pretraining, mid-training and SFT as distinct interventions, against no-training baselines",
+      "hours": 4,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "continued-pretraining-vs-sft",
+        "adaptation-baselines"
+      ],
+      "outcomes": [
+        "Choose continued pretraining, mid-training or SFT from the data and behavior gap, rather than from a method name.",
+        "Design a comparison against unchanged, prompted and smaller instruction-tuned models with a fixed evaluator and inference budget.",
+        "Separate gains from training from gains due to templates, demonstrations or answer parsing."
+      ],
+      "why": "A training run is not the baseline. First establish what the frozen model can do, then choose the intervention whose data and objective address the observed failure.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/instruction-data-chat-templates",
+          "note": "Turn the chosen intervention into a versioned data and serialization contract."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rlhf-book-adaptation-lmr6",
+          "title": "RLHF Book, Chapters 3 and 4: recipes and instruction tuning",
+          "url": "https://rlhfbook.com/c/03-training-overview#canonical-training-recipes",
+          "locator": "Chapter 3, Canonical Training Recipes: InstructGPT and Tulu 3; Chapter 4, Instruction Fine-Tuning, opening discussion before Chat Templates and the Structure of Instructions",
+          "depth": "Open Chapter 4 at https://rlhfbook.com/c/04-instruction-tuning. Stop before its chat-template section; defer preference and RL implementations."
+        },
+        {
+          "resource": "dapt-lmr6",
+          "title": "Don't Stop Pretraining: domain versus task adaptation",
+          "url": "https://arxiv.org/abs/2004.10964v3",
+          "locator": "Sections 3, Domain-Adaptive Pretraining, and 4, Task-Adaptive Pretraining, including the supervised baseline in Section 3.2",
+          "depth": "Read the data and comparison design, not the full experiment tables. These are masked-LM RoBERTa classification experiments, not causal-decoder SFT results."
+        }
+      ],
+      "focus": [
+        "Continued pretraining uses unlabeled domain or task text with a language-model objective. SFT uses demonstrations of desired responses. Both change weights; prompting does not.",
+        "Mid-training names a stage or recipe, often a targeted mixture and annealing phase. It is not a unique loss, nor a synonym for instruction tuning.",
+        "Freeze item IDs, splits, parsing, output-token cap, decoding and template versions before comparing. Different checkpoints may need their own native templates; record that difference rather than forcing a malformed common template.",
+        "Match training input tokens and report supervised target tokens separately. Equal optimizer steps do not match exposure when lengths or response masks differ."
+      ],
+      "reproduce": "Closed-book, write a comparison table for domain-text adaptation versus response-format adaptation. Include unchanged and prompted versions of the same base, an existing smaller instruct model, continued pretraining and SFT. For each row name the data, predicted tokens, changed state, inference budget and held-out target and retention measures. Explain which comparisons isolate training and which compare complete products.",
+      "traps": [
+        "Changing the prompt after training and attributing the full gain to weight updates. Re-evaluate the frozen checkpoint with the new prompt too.",
+        "Using a held-out set to tune both the adaptation and its prompt. Keep development and final evaluation separate, with duplicate-group separation.",
+        "Treating lower domain language-model loss as proof of better instruction following. Measure the behavior the intervention was meant to change."
+      ],
+      "selfTest": [
+        {
+          "q": "Does training on unlabeled task inputs become SFT because the inputs came from a supervised dataset?",
+          "a": "No. Without the labels or demonstrated responses it is task-adaptive continued pretraining. The objective and target construction, not the dataset's origin, determine the intervention."
+        },
+        {
+          "q": "A new chat prompt improves the adapted model. What control is missing?",
+          "a": "The unchanged checkpoint under that same valid prompt and decoding budget. Otherwise prompt elicitation and learning are confounded."
+        },
+        {
+          "q": "Why retain a smaller instruct model even though it cannot isolate the adaptation mechanism?",
+          "a": "It tests whether training is worth doing at all under the deployment constraints. It is a product alternative, not a same-initialization causal control."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the frozen, prompted and smaller-model baseline ledger and the prespecified adaptation comparison in `lmlab`.",
+      "stopWhen": "Your comparison table names a measurable behavior gap, a no-training alternative, controlled budgets and a held-out decision rule that could reject training.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The book supplies the recipe map, DAPT supplies the domain/task distinction, and the mini-project supplies the matched baseline decision."
+      }
+    },
+    {
+      "id": "instruction-data-chat-templates",
+      "title": "Instruction data contracts, chat templates, roles and special tokens",
+      "hours": 4,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "instruction-data-contract",
+        "chat-template-special-tokens"
+      ],
+      "outcomes": [
+        "Validate instruction-response and multi-turn records before tokenization, with source and split ownership preserved.",
+        "Serialize training and generation inputs with the checkpoint's pinned chat template and special-token policy.",
+        "Diagnose a train-serve template mismatch by comparing token IDs rather than rendered appearance."
+      ],
+      "why": "The LLM Foundations unit on tokenizer design choices established token identity. Here that identity must survive a real conversation pipeline, including roles, hidden defaults and the generation header.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/assistant-masks-packed-sft",
+          "note": "Attach target ownership and packing boundaries to the serialized tokens."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rlhf-book-adaptation-lmr6",
+          "title": "RLHF Book, Chapter 4: Instruction Fine-Tuning",
+          "url": "https://rlhfbook.com/c/04-instruction-tuning#chat-templates-and-the-structure-of-instructions",
+          "locator": "Chat Templates and the Structure of Instructions; Implementation Details, especially the two multi-turn masking choices",
+          "depth": "Read template examples as illustrations, not portable validators. Validate the actual checkpoint template instead of copying the illustrative Jinja."
+        },
+        {
+          "resource": "hf-sft-lora-lmr6",
+          "title": "Transformers 5.19.0: Chat templates",
+          "url": "https://huggingface.co/docs/transformers/v5.19.0/en/chat_templating",
+          "locator": "Using `apply_chat_template`, `add_generation_prompt`, `continue_final_message` and Model training",
+          "depth": "Use only text conversations. Skip tool and multimodal extensions."
+        }
+      ],
+      "focus": [
+        "A data contract specifies supported roles, message ordering, empty-content policy, truncation, source, rights and split IDs. Role validity is template-dependent; reject unsupported records before training.",
+        "Pin PyTorch 2.14.1 and Transformers 5.19.0 for the token fixtures. Use `Qwen/Qwen3-0.6B` tokenizer revision `c1899de289a04d12100db370d81485cdf75e47ca`, with `enable_thinking=False`; tokenizer checks need no model weights or GPU.",
+        "Completed training conversations use `add_generation_prompt=False`. For generation from a final user message, append the checkpoint's assistant header; a prefilled assistant message instead needs continuation semantics.",
+        "Direct template tokenization and rendering followed by tokenization with `add_special_tokens=False` should produce the same IDs for the tested record. Save template text and token fixtures with the model artifact."
+      ],
+      "reproduce": "Using the pinned Qwen tokenizer, serialize five messages: system `Be brief.`, user `Hi.`, assistant `Hello.`, user `Again.`, assistant `Hello again.`. Compare the `input_ids` from direct template tokenization with rendering then tokenizing using `add_special_tokens=False`. Require exact ID equality. Remove the final assistant message and inspect generation with and without `add_generation_prompt=True`; explain every added control token, including the non-thinking prefix.",
+      "traps": [
+        "Searching decoded text for the word assistant to assign roles. Message content can contain that word or delimiter-like text; ownership must come from structured serialization.",
+        "Adding BOS or EOS again after the template already emitted them. Inspect IDs, not just readable text.",
+        "Assuming every template supports a system message, strict alternation or assistant masks. Test each capability instead of inferring it from the model family."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is a byte-for-byte rendered string check weaker than a token-ID check?",
+          "a": "Different tokenizer settings can add special tokens or map control strings differently. The model consumes IDs, so rendered equality alone does not prove equal inputs."
+        },
+        {
+          "q": "Should a completed training answer get an extra generation header?",
+          "a": "No. It would ask for another assistant turn after the demonstration. The generation header belongs at the inference boundary where a new answer should begin."
+        },
+        {
+          "q": "Can instruction and input fields simply be concatenated without a separator?",
+          "a": "Not safely. Their boundary can become ambiguous. Define a deterministic conversion into message content, including the empty-input case, and bind that conversion to the dataset version."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `lmlab` conversation schema, tokenizer/template manifest and train-serve token fixtures, including malformed roles and truncation.",
+      "stopWhen": "Your serializer has exact token fixtures for single-turn, multi-turn, empty-content and truncated records, and a template change fails the train-serve regression test.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Chapter 4 supplies the conversation contract and the Hugging Face resource family supplies versioned serialization behavior; the mini-project checks the real tokenizer."
+      }
+    },
+    {
+      "id": "assistant-masks-packed-sft",
+      "title": "Assistant-only loss masks and packed SFT boundaries",
+      "hours": 6,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "assistant-only-loss-mask",
+        "packed-sft-boundaries"
+      ],
+      "outcomes": [
+        "Implement assistant-only targets with an explicit shift convention and valid-target denominator.",
+        "Check real chat-template spans against an independently marked token table, including multiple assistant turns and truncation.",
+        "Prove packed examples are attention-isolated and label-isolated under the declared packing policy."
+      ],
+      "why": "The LLM Foundations unit on packing and loss masks established the two-mask distinction. Now prove it on a real instruction pipeline, where role headers, assistant endings and library label shifting can silently change the objective.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/full-finetuning-memory-budget",
+          "note": "Budget training only after the actual target counts are known."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-sft-lmr6",
+          "title": "CS336 Spring 2026 Assignment 5 Supplement, Version 26.0.0",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_supplement_safety_rlhf.pdf",
+          "locator": "Section 4.2.1, Data Loader, Problem `data_loading`, pp. 9 to 10; `get_packed_sft_dataset` and `run_iterate_batches`",
+          "depth": "Implement its concatenated-stream contract separately from your isolated assistant-only path. The assignment's token fixtures do not prove assistant masks or attention isolation. Do not publish assignment solutions."
+        },
+        {
+          "resource": "hf-sft-lora-lmr6",
+          "title": "TRL 1.15.0: SFT masking and packing",
+          "url": "https://huggingface.co/docs/trl/v1.15.0/en/sft_trainer",
+          "locator": "Train on assistant messages only; Train on completion only; `SFTConfig` entries for `packing`, `packing_strategy`, `padding_free`, `completion_only_loss` and `assistant_only_loss`"
+        },
+        {
+          "resource": "rlhf-code-adaptation-lmr6",
+          "title": "RLHF Book code: final-turn-only labels",
+          "url": "https://github.com/natolambert/rlhf-book/blob/1042143366d73ff654727e4d18a1d3a21209c3a3/code/instruction_tuning/utils.py",
+          "locator": "`_encode_batch`, `compute_loss` and `_collate`",
+          "depth": "Trace one multi-turn record. This is final-assistant-turn-only supervision, not all-assistant-turn supervision; do not reuse prefix lengths without checking prefix ID equality."
+        }
+      ],
+      "focus": [
+        "For logits indexed by source position, supervise the next token only if it belongs to an eligible assistant span in the same example. Decide whether assistant endings are targets; include the stop token in this route. Mask padding and cross-example transitions.",
+        "Compute summed negative log likelihood divided by the number of valid shifted targets, not padded length. Reject or explicitly skip zero-target batches. Accumulated microbatches need one combined valid-token denominator.",
+        "With conversational language-modeling records, TRL 1.15.0 defaults to full-sequence loss. Prompt-completion records default to completion-only loss. `assistant_only_loss=True` is separate; the template must expose generation spans. TRL can substitute a bundled Qwen3 training template, so inspect the effective template and token IDs too.",
+        "EOS does not isolate attention. For isolated packing allow only causal, same-example visibility and reset positions as in separate forwards. On CPU use a small decoder with an explicit dense mask, or train unpacked; TRL's default `bfd` packing enables padding-free execution with a FlashAttention backend requirement."
+      ],
+      "reproduce": "Closed-book, recover TensorTonic's first public case: `input_ids=[[10,11,20,21,2]]`, `role_ids=[[-1,0,-1,1,-1]]`, all positions attended and `assistant_role=1` give source-aligned labels `[[-100,-100,21,-100,-100]]`. Then pack two conversations from the preceding unit with the real tokenizer. Independently mark target owners and the block-causal attention matrix. On a tiny PyTorch 2.14.1 decoder in evaluation mode, compare packed logits with separate forwards using the same position IDs and a declared tolerance; changing the first example must not change the second example's logits.",
+      "traps": [
+        "Passing already shifted TensorTonic labels into a causal-LM loss that shifts labels internally. Choose source-aligned or token-aligned labels, then shift exactly once.",
+        "Treating a public packing test as a leakage oracle. Matching token and label fixtures says nothing about which examples attend to one another.",
+        "Masking every token equal to the padding ID when padding and EOS share an ID. Use position validity so real assistant stop tokens remain supervised."
+      ],
+      "selfTest": [
+        {
+          "q": "Can a masked user token still influence an assistant prediction?",
+          "a": "Yes. Loss masking removes its prediction from the objective, not its use as context. Attention permissions govern influence."
+        },
+        {
+          "q": "Why can averaging two microbatch mean losses misweight SFT?",
+          "a": "Different valid-target counts give each token a different weight. Sum the token losses and divide by the total valid-target count across the accumulation window."
+        },
+        {
+          "q": "What must match between packed and separate forwards besides the labels?",
+          "a": "Token IDs, causal and example visibility, position IDs and model state. Disable dropout and compare with a stated numeric tolerance. Labels alone cannot make logits equivalent."
+        },
+        {
+          "q": "Why inspect the effective TRL template after enabling assistant-only loss?",
+          "a": "The trainer can replace a template lacking generation markers. That may change serialized tokens as well as mask ownership, so rerun the train-serve and stop-token fixtures."
+        }
+      ],
+      "practice": [
+        {
+          "name": "TensorTonic: Build an Assistant-Only SFT Loss Mask",
+          "url": "https://www.tensortonic.com/problems/cs336-l15-assistant-only-sft-mask",
+          "locator": "Implement `assistant_only_sft_mask(input_ids, role_ids, attention_mask, assistant_role)`",
+          "note": "The three public cases cover one, no and two assistant targets. They consume role IDs, not text, and do not check gradients or packing. The section mini-project supplies real-template, truncation, denominator and packed-attention oracles."
+        },
+        {
+          "name": "CS336 Assignment 5 Supplement: `data_loading`",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/tests/test_data.py",
+          "locator": "`test_packed_sft_dataset` and `test_iterate_batches`",
+          "note": "CPU tests compare packed input and label IDs, exercise shuffling, and check batch count, shapes and integer dtypes. Keep the stream baseline distinct from the isolated SFT implementation."
+        }
+      ],
+      "stopWhen": "The public cases pass, your real-tokenizer label oracle catches a seeded one-token shift, and the packed-versus-separate and cross-example perturbation tests pass within your declared tolerance.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The role-ID drill and course fixtures give bounded practice; versioned TRL behavior and mini-project oracles close their real-template and attention-isolation gaps."
+      }
+    },
+    {
+      "id": "full-finetuning-memory-budget",
+      "title": "Full fine-tuning state, and trainable versus activation and total training memory",
+      "hours": 3,
+      "target": [
+        "derive",
+        "measure"
+      ],
+      "topics": [
+        "full-finetuning",
+        "trainable-vs-activation-memory"
+      ],
+      "outcomes": [
+        "Derive persistent state bytes for full and partially frozen fine-tuning from actual parameter, gradient and optimizer dtypes.",
+        "Reconcile persistent-state savings with activation, workspace and measured peak memory.",
+        "Run a bounded full-SFT control with correct target weighting and resumable training state."
+      ],
+      "why": "The Deep Learning unit on GPU memory taught the counters. Here the question is whether freezing parameters changes the memory term that actually limits adaptation, while keeping a credible full-update control.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/lora-factorization-merge",
+          "note": "Replace a chosen dense update with counted low-rank state."
+        }
+      ],
+      "study": [
+        {
+          "resource": "cs336-sft-lmr6",
+          "title": "CS336 Spring 2026 Assignment 5 Supplement: SFT loop",
+          "url": "https://github.com/stanford-cs336/assignment5-alignment/blob/c2734a26308710949fe13226960a1e8cece94b7e/cs336_spring2026_assignment5_supplement_safety_rlhf.pdf",
+          "locator": "Section 4.2.2, Training Script, and Problem `sft_script`, pp. 10 to 11",
+          "depth": "Use your tested masks and a roughly 10M-parameter `lmlab` decoder, batch one and context 128 on CPU or your GPU. Run at most 100 updates on a fixed training subset. Skip the Llama 8B hardware recipe and leaderboard-scale run; do not publish solutions."
+        },
+        {
+          "resource": "lora-paper-lmr6",
+          "title": "LoRA: where the state savings come from",
+          "url": "https://arxiv.org/abs/2106.09685v2",
+          "locator": "Section 4.2, Applying LoRA to Transformer: the Practical Benefits and Limitations paragraph",
+          "depth": "Read the frozen-state and deployment arguments only. The reported memory and throughput gains belong to the paper's GPT-3 setup, not your training loop."
+        }
+      ],
+      "focus": [
+        "Count unique parameter storage, not duplicated names for tied weights. Full fine-tuning needs weights, gradients and optimizer state; checkpoints also bind schedule, data order and RNG state, as in the LLM Foundations unit on resumable checkpoints.",
+        "For plain float32 AdamW without AMSGrad or master copies, weights and gradients cost 4 bytes each per scalar and the two moments cost 8. A frozen scalar retains its weight storage. Count scalar step counters separately after the first optimizer update.",
+        "Frozen weights can still participate in input-gradient computation when earlier trainable modules need gradients. Freezing them does not justify putting the whole forward under `torch.no_grad()`.",
+        "Measure forward, backward and optimizer peaks separately, then vary context length at fixed batch. Use the preceding unit's valid-token denominator when accumulation windows or response lengths differ. On CPU keep a tensor-storage ledger rather than pretending CUDA counters measure host RAM."
+      ],
+      "reproduce": "Closed-book, derive float32 AdamW state for 12 million total parameters with no master copy: full updates need 192 MB; training only 250,000 of those parameters needs 51 MB. These totals include weights, gradients and two moments, not activations or scalar counters. On CPU with PyTorch 2.14.1 and `foreach=False`, allocate the corresponding trainable and frozen tensors, perform one update and sum their tensor bytes to check both totals. Then explain why neither total is a peak-memory prediction.",
+      "traps": [
+        "Measuring optimizer state before the first update. AdamW allocates its moments lazily, so the initial ledger understates steady training state.",
+        "Importing a 16-byte or mixed-precision rule without naming tensor dtypes and master-copy behavior. Inspect the optimizer state your loop actually creates.",
+        "Averaging microbatch means without their valid-target counts. The course's simple accumulation sketch is not a token-weighting oracle for unequal masked lengths or a partial last window."
+      ],
+      "selfTest": [
+        {
+          "q": "Where do the 51 MB in Reproduce come from?",
+          "a": "48 MB of weights, 1 MB of gradients and 2 MB of moment tensors. The frozen parameters save gradients and moments, not their own weight storage. MB here means decimal megabytes."
+        },
+        {
+          "q": "Why might adapter training still save activations in a frozen layer?",
+          "a": "The backward pass may need that layer's input derivative to update an earlier adapter. No weight gradient does not mean no backward computation."
+        },
+        {
+          "q": "Is reserved CUDA memory a count of live model tensors?",
+          "a": "No. It includes allocator-held segments, including unused space. Compare live tensor storage, allocated peak and reserved peak with outside-allocator memory kept separate."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a bounded full-SFT control, post-update state census, context-length memory sweep and explanation of the peak-versus-ledger residual.",
+      "stopWhen": "Your post-update census matches both analytical totals with exclusions stated, and your small full-SFT control retains resumable state and held-out outputs without exceeding your machine's budget.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The bounded course loop and LoRA state discussion extend the prerequisite memory work; the mini-project supplies the measured full-update control."
+      }
+    },
+    {
+      "id": "lora-factorization-merge",
+      "title": "LoRA factorization, rank, scale and target modules, and merge and unmerge equivalence",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "lora-parameterization",
+        "lora-merge-equivalence"
+      ],
+      "outcomes": [
+        "Derive LoRA shapes, trainable counts, scale and initialization gradients for a chosen set of linear layers.",
+        "Implement an adapter with independently checked forward and gradients, serialization and merge/unmerge behavior.",
+        "Design a rank or target-module ablation without assuming attention-only adaptation is sufficient."
+      ],
+      "why": "The Math Foundations unit on SVD, pseudoinverse and low-rank approximation supplied the rank bound. LoRA constrains an update during optimization, rather than truncating a finished weight matrix; its export path must preserve the trained function.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/qlora-prefix-tuning",
+          "note": "Separate low-rank adaptation from quantized storage and soft prompts."
+        },
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/forgetting-replay-balancing",
+          "note": "Measure how rank and target layers affect target learning and retention."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lora-paper-lmr6",
+          "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+          "url": "https://arxiv.org/abs/2106.09685v2",
+          "locator": "Figure 1 and Sections 4.1 and 4.2, including Equation 3, initialization, scaling and merge discussion"
+        },
+        {
+          "resource": "lora-without-regret-lmr6",
+          "title": "LoRA Without Regret: current target and tuning choices",
+          "url": "https://thinkingmachines.ai/blog/lora/",
+          "locator": "What matters for LoRA; Methods and results, LoRA rank and Batch size effects; Layers Where LoRA Is Applied; Setting LoRA hyperparameters, Optimal learning rate and rank",
+          "depth": "Read the SFT comparisons, not the RL experiments or later parameterization invariance derivation. The supervised curves measure log loss, not sampled task accuracy."
+        }
+      ],
+      "focus": [
+        "Use the paper's column-vector convention: \\(W_0\\in\\mathbb{R}^{d_{\\text{out}}\\times d_{\\text{in}}}\\), \\(A\\in\\mathbb{R}^{r\\times d_{\\text{in}}}\\), \\(B\\in\\mathbb{R}^{d_{\\text{out}}\\times r}\\), and \\(\\Delta W=(\\alpha/r)BA\\). The trainable count is \\(r(d_{\\text{in}}+d_{\\text{out}})\\) per adapted matrix, excluding any separately trained bias.",
+        "Random \\(A\\) and zero \\(B\\) start with no update. Initially the data-loss gradient of \\(A\\) is zero; the gradient of \\(B\\) can be nonzero. Initializing both factors to zero blocks both data-loss gradients.",
+        "Merge into \\(W_0+\\Delta W\\) and remove or disable the side path. Compare against the unmerged evaluation-mode forward with dropout disabled, the same bias and a declared dtype-dependent tolerance; floating-point reassociation need not be bitwise identical.",
+        "Record the actual matched module names, shapes and trainable tensors. Compare attention-only and attention-plus-MLP targets under a declared parameter or compute budget, tuning learning rates with equal search effort rather than copying the full-update rate."
+      ],
+      "reproduce": "For a bias-free \\(4096\\times4096\\) matrix at rank 16, derive 16,777,216 dense parameters versus 131,072 adapter parameters, a fraction of \\(1/128\\). On CPU in PyTorch 2.14.1 float64, use \\(W_0=I_2\\), \\(A=[0.1,0.2]\\), \\(B=[0.3,-0.1]^\\top\\) and scale 1. Obtain merged weight \\(\\left[\\begin{smallmatrix}1.03&0.06\\\\-0.01&0.98\\end{smallmatrix}\\right]\\). For input rows `[1.0,2.0]` and `[-1.0,0.5]`, compare separate and merged forwards, then subtract the update and recover the base within absolute and relative tolerance 1e-12. Check both factor gradients with `torch.autograd.gradcheck`.",
+      "traps": [
+        "Confusing equal parameter counts with equal expressivity. A rank-2 update to a 4 by 4 matrix has 16 factor entries but cannot represent an arbitrary rank-4 update.",
+        "Merging twice, retaining the active side path after merging, or unmerging with factors that changed since the merge. Keep the untouched base and adapter identity for recovery.",
+        "Loading an adapter onto a shape-compatible but different base checkpoint. Serialize base revision, target-module list, factor convention, rank and scale, then check logits after reload."
+      ],
+      "selfTest": [
+        {
+          "q": "Does rank 16 guarantee the learned update has rank exactly 16?",
+          "a": "No. Its rank is at most 16 and can be smaller, including zero at initialization."
+        },
+        {
+          "q": "Why do two zero factors fail to start learning from the data loss?",
+          "a": "Each factor's gradient contains the other factor. With both zero, both gradients vanish."
+        },
+        {
+          "q": "Does a passed merge test prove equal task quality to full fine-tuning?",
+          "a": "No. It proves the merged artifact preserves the adapter's function within the tested tolerance. Full-update quality requires a controlled held-out comparison."
+        },
+        {
+          "q": "Can a rank-2 factorization represent a 4 by 4 identity update?",
+          "a": "No. The identity has rank 4. Having 16 factor entries does not remove the rank constraint or factorization redundancy."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Modern LLM Notebook 16: Exercises 1 and 2, parameter count and weight merging",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/16-lora.ipynb",
+          "locator": "Exercises: Exercise 1, LoRA parameter count; Exercise 2, LoRA weight merging",
+          "note": "Use the shape-correct outer product from Exercise 2's hint: the paper convention is \\(BA\\), despite the exercise's opening \\(AB\\). Skip Section 5's equal-count expressivity claim: rank 2 cannot represent arbitrary 4 by 4 updates. The section mini-project adds state round-trip, frozen-base and merge/unmerge regression tests on your decoder."
+        }
+      ],
+      "stopWhen": "Your counts, finite-difference gradients and initial-gradient test pass, and a nonzero adapter round-trips through serialization and merge/unmerge without changing logits beyond a stated tolerance.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The paper supplies the derivation, the current SFT study motivates target and rate controls, and corrected notebook exercises plus mini-project tests check counts and export semantics."
+      }
+    },
+    {
+      "id": "qlora-prefix-tuning",
+      "title": "QLoRA quantized bases, and prompt and prefix tuning",
+      "hours": 3,
+      "target": [
+        "explain"
+      ],
+      "topics": [
+        "qlora-vocabulary",
+        "prompt-prefix-tuning"
+      ],
+      "outcomes": [
+        "Separate quantized weight storage, computation dtype, trainable adapters and optimizer-state paging in QLoRA.",
+        "Explain why dequantized merge equivalence and requantized deployment equivalence are different checks.",
+        "Distinguish learned input prompts and layerwise prefixes from LoRA weight updates."
+      ],
+      "why": "Plain LoRA preserves a dense base. QLoRA changes its storage and numerical reference; soft prompts instead change the model's conditioning, with different serving requirements.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/adaptation-cost-model-merging",
+          "note": "Include quantization metadata, serving compatibility and added context in the cost comparison."
+        }
+      ],
+      "study": [
+        {
+          "resource": "qlora-paper-lmr6",
+          "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
+          "url": "https://arxiv.org/abs/2305.14314v1",
+          "locator": "Section 2, Memory Requirement of Parameter-Efficient Finetuning; Section 3, QLoRA Finetuning, including NF4, Double Quantization, Paged Optimizers and Equations 5 and 6",
+          "depth": "Start after the plain LoRA tests pass. Stop before Section 4's large-model experiments. Required work is accounting and a numerical-reference diagram, not a bitsandbytes training run."
+        },
+        {
+          "resource": "peft-soft-prompts-lmr6",
+          "title": "Soft prompts: input embeddings versus layerwise prefixes",
+          "url": "https://huggingface.co/docs/peft/main/en/conceptual_guides/prompting",
+          "locator": "Prompt tuning and Prefix tuning (page read 2026-10-16)",
+          "depth": "Optional topic: explain these two mechanisms and their serving state. Skip P-tuning, multitask methods and all linked training walkthroughs."
+        }
+      ],
+      "focus": [
+        "NF4 is a storage codebook, not ordinary 4-bit arithmetic for the entire training loop. The paper dequantizes frozen base weights into the computation dtype and trains higher-precision LoRA parameters.",
+        "Double quantization compresses quantization constants. Paged optimizers move optimizer-state pages between host and device; they do not remove the state or guarantee a latency improvement.",
+        "The adapter was trained against the dequantized quantized base. Merging into the original unquantized base changes that reference; requantizing a merged weight introduces another approximation. Validate outputs and held-out quality for each exported artifact.",
+        "Optional: prompt tuning learns input embeddings; prefix tuning supplies learned layerwise attention prefixes, often key/value state in decoder implementations. Both freeze base weights but require conditioning state at serving time; neither generally folds into a fixed dense weight update like LoRA."
+      ],
+      "reproduce": "Draw the storage-to-compute-to-gradient path for one QLoRA layer without consulting the paper. For 1,048,576 quantized scalars, 4-bit payloads and one float32 scale per block of 64, derive 524,288 payload bytes plus 65,536 scale bytes: 576 KiB before double quantization, adapters, gradients, optimizer state, alignment and other metadata. Explain why calling this total training memory would be wrong. For the optional soft-prompt topic, annotate where each method's learned state enters a decoder and where it remains during serving.",
+      "traps": [
+        "Reporting exactly half a byte per parameter as complete QLoRA memory. Scales, unquantized modules, adapters, activations and temporary dequantization buffers also occupy memory.",
+        "Reusing a plain-LoRA merge tolerance after requantization. Quantization changes the reference function, so retain both a numerical residual and held-out evaluation.",
+        "Calling learned virtual tokens free at inference. Input prompts or prefixes consume conditioning capacity and attention work, even if task-specific checkpoint storage is small."
+      ],
+      "selfTest": [
+        {
+          "q": "Does QLoRA train the discrete NF4 base codes by ordinary gradient descent?",
+          "a": "No. The base remains frozen. Gradients pass through its dequantized computation to the trainable adapters and earlier trainable state."
+        },
+        {
+          "q": "What does double quantization quantize a second time?",
+          "a": "The first quantization's scale constants, not the adapter weights or every activation."
+        },
+        {
+          "q": "Why is merging into the original full-precision checkpoint not the same reference as the training forward?",
+          "a": "Training used the dequantized quantized base, which generally differs from the original weights. Adding the same adapter update to different base tensors need not preserve outputs."
+        },
+        {
+          "q": "Optional: is prompt tuning just choosing a better text instruction?",
+          "a": "No. It optimizes continuous embedding parameters while holding the base fixed. A hard text prompt changes discrete inputs without gradient-based parameter training."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the adaptation artifact's storage/compute dtype ledger and deployment compatibility decision, including a reason to keep plain LoRA when quantization is unnecessary.",
+      "stopWhen": "You can account for the 576 KiB example with exclusions and identify the correct base reference for a quantized adapter export; optional soft-prompt study ends at its conditioning-state diagram.",
+      "fit": {
+        "verdict": "added",
+        "note": "QLoRA covers quantized adaptation but the pool lacks a locator for prompt/prefix mechanisms; the opened PEFT conceptual guide closes that coverage gap without another training recipe."
+      }
+    },
+    {
+      "id": "forgetting-replay-balancing",
+      "title": "Catastrophic forgetting, interference, domain balancing and replay",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "data-balancing-and-replay",
+        "catastrophic-forgetting"
+      ],
+      "outcomes": [
+        "Measure target learning and source-skill regression on separate held-out slices with paired item identities.",
+        "Compare replay and target-only adaptation under a declared total-token budget while reporting target exposure.",
+        "Distinguish interference from template, evaluator and sampling changes before calling a regression forgetting."
+      ],
+      "why": "An average improvement can hide the loss of prerequisite skills. Retention slices and replay controls make the adaptation decision depend on what the model must keep, not just what it learns next.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/adaptation-cost-model-merging",
+          "note": "Carry the learning-retention frontier into the final deployment decision."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lora-forgets-less-lmr6",
+          "title": "LoRA Learns Less and Forgets Less",
+          "url": "https://arxiv.org/abs/2405.09673v2",
+          "locator": "Section 3; Sections 4.1 to 4.7 and Figures 2 to 4; Section 5, Learning-Forgetting tradeoffs paragraph on replay",
+          "depth": "Read for the evaluation design and rank, duration and module confounds. Inspect the spectral argument in 4.6 without reproducing its large training runs."
+        },
+        {
+          "resource": "tulu3-sft-lmr6",
+          "title": "Tulu 3: mixture choices and skill ablations",
+          "url": "https://arxiv.org/abs/2411.15124v5",
+          "locator": "Sections 4.1.2, The Tulu 3 SFT Mix, and 4.2, Key Data Experiments, with Table 10",
+          "depth": "Use the remove-one-source comparison as a design example, not a scale or score to reproduce."
+        }
+      ],
+      "focus": [
+        "Predeclare target, general-language, instruction-following and prerequisite-skill slices. Use held-out source examples, not replay training rows, to measure retention. Keep raw outputs and per-item before/after scores.",
+        "The Biderman results depend on task, rank, learning rate, target modules and duration. Less forgetting can accompany less learning; compare the learning-retention frontier rather than only one checkpoint per method.",
+        "Replay mixes source training data back into adaptation. Fix total input tokens for the budget comparison and log actual source and target tokens plus supervised targets. Fixed total tokens and fixed target exposure are different experiments.",
+        "Use the same small decoder, evaluator and inference budget for target-only and replay runs. Reuse the bounded SFT route from the full fine-tuning unit, repeat across three seeds, and report paired item uncertainty and between-seed spread separately. A negative or inconclusive retention result is valid evidence."
+      ],
+      "reproduce": "Closed-book, audit a fixed synthetic correctness table: base outcomes `[1,1,0,0]` and adapted outcomes `[1,0,1,0]`, with the first two items in a prerequisite slice and the last two in the target slice. Both aggregate accuracies are 0.5, but prerequisite accuracy falls by 0.5 while target accuracy rises by 0.5. Recompute by item ID, then state why four synthetic items support no real-model claim. Write the analogous paired analysis for your held-out retention records before running another adaptation.",
+      "traps": [
+        "Changing the template or parser and calling the new score forgetting. First rerun the frozen model through the changed evaluation path.",
+        "Adding replay on top of a target-only token budget and crediting replay for all gains. That also adds optimization work; disclose it or run a matched-total-token control.",
+        "Treating a favorable average as a retention guarantee. Small regressions on an important slice can be hidden by larger gains elsewhere."
+      ],
+      "selfTest": [
+        {
+          "q": "Why is no measured forgetting insufficient evidence that an adapter is better?",
+          "a": "It may have learned almost nothing. Compare target gains and retention jointly, including uncertainty, against full fine-tuning and the frozen baseline."
+        },
+        {
+          "q": "At a fixed total-token budget, what does increasing replay usually reduce?",
+          "a": "Target-domain exposure. Report actual tokens from each source so retention is not mistaken for a free improvement in both objectives."
+        },
+        {
+          "q": "Can a replay evaluation use the exact examples in the replay buffer?",
+          "a": "Not as evidence of held-out retention. That measures performance on training examples and can hide memorization. Split by source and duplicate group before sampling replay."
+        },
+        {
+          "q": "What does a negative gradient dot product between two minibatch losses establish?",
+          "a": "A local first-order conflict at that parameter state: a small descent step on one tends to increase the other. It does not by itself establish long-run forgetting or a held-out capability loss."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: held-out retention slices, a matched-total-token replay comparison, per-source exposure and a learning-retention plot with paired and seed uncertainty.",
+      "stopWhen": "Your held-out plot shows target gains and each retention slice for frozen, target-only and replay checkpoints, with token exposure and uncertainty; you can defend keeping or rejecting replay.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Biderman supplies learning-forgetting controls and replay vocabulary; Tulu 3 supplies source-ablation design, with local retention and replay evidence assigned to the mini-project."
+      }
+    },
+    {
+      "id": "logit-feature-distillation",
+      "title": "Logit distillation, temperature and KL direction, and feature distillation",
+      "hours": 5,
+      "target": [
+        "derive",
+        "implement"
+      ],
+      "topics": [
+        "logit-distillation",
+        "feature-distillation"
+      ],
+      "outcomes": [
+        "Derive masked soft-target distillation with temperature, hard-label mixing and an explicit KL direction.",
+        "Implement a stable loss whose values and gradients match an independent finite-vocabulary reference.",
+        "Define a feature-distillation alignment contract for teacher layers, token positions, widths and gradient ownership."
+      ],
+      "why": "The Math Foundations unit on entropy, cross-entropy, KL divergence and mutual information established the identities. Here the teacher signal, temperature and token alignment decide which objective the student actually learns.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/sequence-onpolicy-distillation",
+          "note": "Change where prefixes come from without confusing that choice with KL direction."
+        }
+      ],
+      "study": [
+        {
+          "resource": "hinton-distillation-lmr6",
+          "title": "Distilling the Knowledge in a Neural Network",
+          "url": "https://arxiv.org/abs/1503.02531v1",
+          "locator": "Sections 1 and 2, especially Equation 1, hard/soft objective mixing, and Section 2.1, Equations 2 to 4",
+          "depth": "Stop before Section 3's MNIST experiments. The high-temperature centered-logit argument is an approximation, not an identity at finite temperature."
+        },
+        {
+          "resource": "modern-notebook-adaptation-lmr6",
+          "title": "Modern LLM Notebook 17: logit and feature signals",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/17-distillation.ipynb",
+          "locator": "Section 2, Method 1: Logit Distillation; Section 4, Method 3: Feature Distillation; Exercises 1 and 2",
+          "depth": "Skip the API and 7B training recipe in Section 5. Section 4's GPT-4 layer diagram is illustrative, not verified access to that model's hidden states."
+        }
+      ],
+      "focus": [
+        "For teacher logits \\(v\\) and student logits \\(z\\), define \\(p_T=\\operatorname{softmax}(v/T)\\), \\(q_T=\\operatorname{softmax}(z/T)\\). Use the valid-token mean of \\((1-\\lambda)\\operatorname{CE}(y,q_1)+\\lambda T^2\\operatorname{KL}(p_T\\|q_T)\\). State the hard-label source, mask, temperature and mixture weight.",
+        "The teacher is frozen and detached. In PyTorch 2.14.1, `torch.nn.functional.kl_div` takes student log probabilities as its input and teacher probabilities as its target for teacher-to-student KL. Use `reduction='none'`, sum over vocabulary, then apply the valid-token mask and denominator.",
+        "The scaled soft-loss gradient with respect to student logits is \\(T(q_T-p_T)\\). The \\(T^2\\) multiplier compensates the high-temperature gradient shrinkage approximately; it does not make all temperatures equivalent.",
+        "Feature matching requires accessible teacher activations, declared layer pairs, aligned token positions and a learned projection when widths differ. Mask invalid positions before reducing. Matching hidden coordinates is an extra constraint, not implied by matching output probabilities; different tokenizers need an alignment method or a text-level route."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1 float64 and natural logarithms, take teacher probabilities \\(p=(0.7,0.2,0.1)\\) and student probabilities \\(q=(0.5,0.3,0.2)\\). Recover \\(\\operatorname{KL}(p\\|q)=0.0851228259572216\\) and \\(\\operatorname{KL}(q\\|p)=0.0920328502338319\\), within 1e-12. Implement temperature-scaled forward KL and check its student-logit gradient against \\(T(q_T-p_T)\\) and `torch.autograd.gradcheck`. Add a tokenwise linear projection from width 4 to width 6 and verify that a masked feature-loss position has zero direct feature-loss gradient with respect to its student hidden state.",
+      "traps": [
+        "Using a batch mean that also divides by sequence length or vocabulary size. Specify the vocabulary sum and valid-token mean explicitly.",
+        "Equating low teacher probability with factual wrongness. Soft targets encode the teacher's beliefs and errors; held-out task quality remains a separate outcome.",
+        "Matching vocabulary indices across different tokenizers. Equal vector lengths are not enough; each coordinate must refer to the same event at an aligned prefix."
+      ],
+      "selfTest": [
+        {
+          "q": "Why do soft-target cross-entropy and forward KL have the same student gradient with a fixed teacher?",
+          "a": "They differ by teacher entropy, which is independent of student parameters at the fixed prefix. Detach the teacher and keep the same temperature and reduction."
+        },
+        {
+          "q": "Is the reverse-KL student-logit gradient also student probability minus teacher probability?",
+          "a": "No. At temperature 1 and a fixed prefix it is \\(q_i[\\log(q_i/p_i)-\\operatorname{KL}(q\\|p)]\\). The familiar \\(q_i-p_i\\) belongs to forward KL with a fixed teacher."
+        },
+        {
+          "q": "What does increasing temperature do to a fixed finite-logit distribution?",
+          "a": "It makes it softer, approaching uniform as temperature grows. The scaled loss can still retain centered-logit differences in its high-temperature limit; a flatter probability vector does not prove the scaled learning signal vanishes."
+        },
+        {
+          "q": "Does masking one hidden-state position mean its input token can have no gradient?",
+          "a": "No. It removes that position's direct feature-loss term. The token may still influence other supervised positions through attention and receive an indirect gradient."
+        }
+      ],
+      "practice": [
+        {
+          "name": "Modern LLM Notebook 17: temperature and hand-KL exercises",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/17-distillation.ipynb",
+          "locator": "Exercise 1, Effect of temperature on soft labels; Exercise 2, KL divergence by hand",
+          "note": "Use the supplied three-logit and three-probability inputs. Add your own reverse-direction, gradient, masking and zero-valid-target tests; the exercise cells do not establish those properties. The section mini-project covers the projected-feature oracle and a no-distillation control."
+        }
+      ],
+      "stopWhen": "Both KL values and the gradient checks pass, temperature and token reductions are explicit, and your feature-loss test distinguishes a masked direct term from indirect attention gradients.",
+      "fit": {
+        "verdict": "kept",
+        "note": "Hinton supplies the temperature derivation; notebook 17 supplies feature boundaries and named hand exercises, extended by independent gradient and alignment checks."
+      }
+    },
+    {
+      "id": "sequence-onpolicy-distillation",
+      "title": "Sequence and synthetic-data distillation and on-policy distillation",
+      "hours": 6,
+      "target": [
+        "implement"
+      ],
+      "topics": [
+        "sequence-data-distillation",
+        "on-policy-distillation"
+      ],
+      "outcomes": [
+        "Build an offline sequence-distillation data contract with teacher provenance, filtering counts and leakage-safe splits.",
+        "Implement a bounded student-rollout and teacher-scoring loop that distinguishes prefix source from divergence direction.",
+        "Test a fixed-prefix reverse-KL gradient estimator without claiming it differentiates full trajectory visitation."
+      ],
+      "why": "Offline teacher completions are cheap to reuse but do not expose the student to its own mistakes. On-policy supervision changes the visited prefixes and the compute budget, not automatically the KL direction.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-adaptation-distillation/adaptation-cost-model-merging",
+          "note": "Include teacher generation, scoring and student rollout costs in the final comparison."
+        }
+      ],
+      "study": [
+        {
+          "resource": "rlhf-book-adaptation-lmr6",
+          "title": "RLHF Book Chapter 12: synthetic data and distillation",
+          "url": "https://rlhfbook.com/c/12-synthetic-data",
+          "locator": "Distillation with Synthetic Data; The Path to On-Policy, Teacher-Student Distillation, subsections Adapting Knowledge-Distillation for LMs and From Offline to On-Policy Distillation",
+          "depth": "Read for vocabulary, not a guarantee that generated answers are correct or that imitation-learning bounds transfer unchanged to language models. Headings checked 2026-10-16."
+        },
+        {
+          "resource": "raschka-distillation-lmr6",
+          "title": "Build a Reasoning Model (From Scratch): offline sequence distillation",
+          "url": "https://www.manning.com/books/build-a-reasoning-model-from-scratch",
+          "locator": "Chapter 8: Section 8.3, pp. 273-275; Section 8.4, pp. 276-284, especially 8.4.3, p. 282; Section 8.6, pp. 286-291; Section 8.7, pp. 291-296; Section 8.8, pp. 296-301, stopping before Section 8.9",
+          "depth": "Skip the paid teacher generation in Section 8.2. Inspect a small subset of the pregenerated data in 8.3 or use local synthetic fixtures. Adapt the data and loss logic, not the book's whole-model run; validate masks against the earlier card."
+        },
+        {
+          "resource": "gkd-lmr6",
+          "title": "On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes",
+          "url": "https://arxiv.org/abs/2306.13649v3",
+          "locator": "Section 3, Equations 2 to 5; Section 3.1 and Algorithm 1; Section 4, GKD Variants paragraph",
+          "depth": "Implement the data-source switch and detached-rollout convention. Do not reproduce the TPU experiments. If you open the Modern LLM Notebook's `31-opd.ipynb`, its opening OPD simulation labels the student-minus-teacher gradient as reverse KL; that gradient belongs to forward KL."
+        }
+      ],
+      "focus": [
+        "Offline sequence distillation is response-only next-token likelihood on teacher-generated text. It needs no teacher logits and can cross tokenizers by retokenizing text. Record teacher checkpoint or supplied provenance, prompt, template, decoding settings, generated text, filter decisions, license and split hashes. Unknown provenance stays unknown.",
+        "Split by source problem or document before generation and filtering, deduplicate across splits and retain an untouched evaluation set. Correct-answer filtering changes the distribution; log acceptance rates and inspect rejected and accepted traces. A correct final answer does not verify the reasoning trace.",
+        "GKD chooses a student-data fraction and a divergence separately. On-policy forward KL is valid. Collect fresh student prefixes without gradient through sampled IDs, then score teacher and student on those same prefixes with aligned vocabulary, temperature and EOS masks. GKD's detached visitation update is a semi-gradient, not the full derivative of its displayed expectation.",
+        "For a fixed prefix, let teacher probabilities be \\(p\\) and student probabilities be \\(q\\). A sampled reverse-KL surrogate is \\(\\operatorname{stopgrad}[\\log q(a)-\\log p(a)]\\log q(a)\\), with \\(a\\sim q\\). Its expected gradient matches the fixed-prefix reverse-KL gradient. This local identity omits future-prefix credit assignment; it is not a full MiniLLM reproduction."
+      ],
+      "reproduce": "On CPU with PyTorch 2.14.1 float64, enumerate three actions with teacher probabilities \\((0.7,0.2,0.1)\\) and student probabilities \\((0.5,0.3,0.2)\\). Weight each surrogate by detached student probability. Match its student-logit gradient to exact reverse KL within 1e-12; it is approximately \\((-0.2142525434,0.0940296774,0.1202228661)\\), not \\((-0.2,0.1,0.1)\\). Then use a tiny two-step categorical teacher and student to log fixed-data versus freshly sampled prefix IDs under the same prompts. Show that switching the prefix source does not switch your chosen divergence. Keep masks and teacher parameters fixed and compare against a no-distillation update.",
+      "traps": [
+        "Training the student to imitate its own sampled tokens without a teacher signal. On-policy collection alone supplies no corrective supervision.",
+        "Calling a negative sampled log-ratio a negative exact KL. An unbiased finite-sample estimate can be negative even when the population divergence is nonnegative; test the expectation and gradient separately.",
+        "Changing prompt distribution and calling it an exposure-bias fix. Exposure bias here concerns generated prefixes under the same prompts. Cached old student rollouts are off-policy unless explicitly treated as such."
+      ],
+      "selfTest": [
+        {
+          "q": "Can offline teacher-text distillation use a different tokenizer?",
+          "a": "Yes, retokenize the text for the student. Direct token-distribution KL cannot compare unrelated vocabulary coordinates without an additional alignment method."
+        },
+        {
+          "q": "Does a student-data fraction of one imply reverse KL?",
+          "a": "No. It specifies student-generated prefixes. GKD independently chooses forward KL, reverse KL or another divergence."
+        },
+        {
+          "q": "Why detach the log-ratio coefficient in the sampled surrogate?",
+          "a": "It is the score-function coefficient, not a second differentiable loss factor. At a fixed prefix the expected detached-coefficient gradient equals reverse KL's gradient; differentiating it too changes the estimator."
+        },
+        {
+          "q": "Why keep evaluation prompts out of generation and filtering?",
+          "a": "Teacher answers, duplicate source problems and filter choices can leak evaluation information into training or selection. Hold out source groups before constructing the distillation data."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `lmlab` offline teacher-data manifest, finite-vocabulary distillation oracle and bounded detached student-rollout loop, with a no-distillation control.",
+      "stopWhen": "The section mini-project's distillation evidence includes the finite-vocabulary gradient oracle, a tiny detached-rollout loop, an offline provenance manifest and a matched no-distillation control. A real-model gain is not required to pass these mechanism tests.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The primary book supplies the taxonomy, Raschka supplies offline data and loss locators, and GKD supplies the on-policy implementation contract. The section mini-project covers the bounded loop and provenance evidence."
+      }
+    },
+    {
+      "id": "adaptation-cost-model-merging",
+      "title": "Quality, memory, latency and update-cost comparison, and model merging",
+      "hours": 5,
+      "target": [
+        "measure"
+      ],
+      "topics": [
+        "quality-memory-latency-cost",
+        "model-merging"
+      ],
+      "outcomes": [
+        "Compare prompted, smaller-model, full-update and low-rank or distilled candidates under a fixed evaluator and inference budget.",
+        "Separate training memory, serving memory, latency, throughput and total update cost in a decision table.",
+        "Explain task vectors and test a small common-base merge without assuming capability composition."
+      ],
+      "why": "A training-memory saving is not a serving-speed result. The final choice must meet quality and retention constraints while accounting for every update and inference cost.",
+      "next": [
+        {
+          "unit": "llm-research/lmr-preference-direct-optimization/preference-data-label-formats",
+          "note": "Carry the tested SFT checkpoint, evaluator and retention slices into preference-data construction."
+        }
+      ],
+      "study": [
+        {
+          "resource": "lora-without-regret-lmr6",
+          "title": "LoRA Without Regret: matched comparisons and compute accounting",
+          "url": "https://thinkingmachines.ai/blog/lora/",
+          "locator": "What matters for LoRA; Methods and results, with its subsections LoRA rank and Batch size effects; Layers Where LoRA Is Applied; and Compute efficiency advantage of LoRA under Discussion",
+          "depth": "Read the curves as log-loss evidence under the article's settings, not sampled task scores or universal hyperparameters. The roughly two-thirds FLOP ratio is an analytical matrix-operation estimate, not measured wall time. Headings checked 2026-10-16."
+        },
+        {
+          "resource": "modern-notebook-adaptation-lmr6",
+          "title": "Modern LLM Notebook 16: model-merging vocabulary",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part2-training/16-lora.ipynb",
+          "locator": "Section 11, Model Merging; Mainstream Merging Methods, Task Arithmetic code block",
+          "depth": "Optional topic: stop after the common-base task-vector formula. Skip the mergekit installation and 7B recipe. Treat the method table as vocabulary, not evidence that a method is best for a given pair."
+        }
+      ],
+      "focus": [
+        "Hold evaluation prompts, scoring, decoding, maximum generated tokens and batch policy fixed. Report target and retention slices with uncertainty or paired per-example changes. Give each training method its own small declared learning-rate search; also report total search cost and matched-token comparisons.",
+        "Measure peak allocated and reserved training memory separately from steady serving memory, optimizer state and saved artifact bytes. Record hardware, library and checkpoint revisions, precision, context, batch and cache policy. Include warmup and synchronization in timings, but exclude them from measured repetitions. On CPU, report process memory and elapsed time rather than invented CUDA measurements.",
+        "Separate prefill, decode, time to first token, end-to-end latency and throughput. Measure merged and unmerged adapters separately. Include teacher generation/scoring, filtering, student rollouts, retries and evaluation in update cost. Use CPU toy models when the full comparison does not fit; label those results mechanism evidence, not production rankings.",
+        "A task vector is \\(\\Delta_i=\\theta_i-\\theta_0\\); task arithmetic forms \\(\\theta_{\\mathrm{merge}}=\\theta_0+\\sum_i\\alpha_i\\Delta_i\\). Require a common base revision, matching tensors and tokenizer semantics. This differs from exactly folding one LoRA branch into its base. Select coefficients on validation data and test target and retention regressions."
+      ],
+      "reproduce": "Make the section mini-project's decision table using a CPU toy run or one consumer GPU. Mark unmeasured candidates explicitly. First check a synthetic cost ledger: an extra 3,600 seconds of one-time update work and 0.02 seconds saved per request break even at 180,000 requests, assuming equal quality, hardware cost per second and all other costs. This is arithmetic, not a benchmark. For the optional merge check, use base vector \\((1,2)\\) and adapted vectors \\((2,2)\\) and \\((1,4)\\). Coefficients 0.5 and 0.25 yield merged vector \\((1.5,2.5)\\). Verify zero coefficients recover the base and one unit coefficient recovers that adapted vector; then evaluate rather than infer skill composition.",
+      "traps": [
+        "Reporting fewer trainable parameters as an equal-factor speedup. Frozen layers still run forward and usually propagate input gradients; attention, activation storage and kernel overhead remain.",
+        "Comparing methods with different generated lengths or batch sizes and calling the result a latency win. Report both controlled-budget measurements and any separate production-policy experiment.",
+        "Averaging LoRA factors instead of their effective weight updates. The product of averaged factors introduces cross terms and need not equal the average update; quantized merges also need numerical and task regression checks."
+      ],
+      "selfTest": [
+        {
+          "q": "Does an exactly merged ordinary LoRA adapter make the dense model smaller?",
+          "a": "No. It removes the extra inference branch, not the base weight tensor. Saving adapter files alone is a different storage and deployment choice."
+        },
+        {
+          "q": "Can the smallest training-memory method have the worst serving latency?",
+          "a": "Yes. Training state, inference kernels, quantization, extra branches, prefix length and generated length affect different costs. Measure the actual deployment form."
+        },
+        {
+          "q": "When does the synthetic break-even calculation stop being useful?",
+          "a": "When per-request savings are nonpositive, quality differs, updates recur, hardware costs differ or omitted teacher and deployment costs matter. Recompute with the actual workload and constraints."
+        },
+        {
+          "q": "Does task-vector addition prove the merged model has both source skills?",
+          "a": "No. Tensor compatibility makes the arithmetic defined, not the behaviors compositional. Conflicting updates can harm either skill or retention, so use held-out evaluations."
+        }
+      ],
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the `lmlab` matched quality, retention, training-memory, serving-memory, latency and update-cost ledger, plus the optional common-base merge checks.",
+      "stopWhen": "The section mini-project's comparison names a preferred intervention under explicit quality, retention, memory and latency constraints, includes prompted and no-training controls, and separates measurements from estimates. The optional merge arithmetic must pass before any behavioral merge claim.",
+      "fit": {
+        "verdict": "kept",
+        "note": "The article supplies comparison confounds and compute scope; notebook 16 supplies optional task-vector vocabulary. The section mini-project supplies the matched measurement ledger and deployment decision."
+      }
+    }
+  ]
+}

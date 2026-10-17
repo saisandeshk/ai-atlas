@@ -129,68 +129,91 @@ import unitFile126 from './llm-foundations/kv-cache-prefill-decode.json';
 import unitFile127 from './llm-foundations/kv-cache-prefill-decode.project.json';
 import unitFile128 from './llm-foundations/tokenization-corpus-data.json';
 import unitFile129 from './llm-foundations/tokenization-corpus-data.project.json';
-import unitFile130 from './math-foundations/_route.json';
-import unitFile131 from './math-foundations/calculus-autodiff.json';
-import unitFile132 from './math-foundations/calculus-autodiff.project.json';
-import unitFile133 from './math-foundations/linear-algebra-proof.json';
-import unitFile134 from './math-foundations/linear-algebra-proof.project.json';
-import unitFile135 from './math-foundations/optimization-numerics.json';
-import unitFile136 from './math-foundations/optimization-numerics.project.json';
-import unitFile137 from './math-foundations/probability-information-bayes.json';
-import unitFile138 from './math-foundations/probability-information-bayes.project.json';
-import unitFile139 from './math-foundations/statistics-experimentation-causality.json';
-import unitFile140 from './math-foundations/statistics-experimentation-causality.project.json';
-import unitFile141 from './programming/_route.json';
-import unitFile142 from './programming/concurrency-profiling-operations.json';
-import unitFile143 from './programming/concurrency-profiling-operations.project.json';
-import unitFile144 from './programming/interfaces-data-apis.json';
-import unitFile145 from './programming/interfaces-data-apis.project.json';
-import unitFile146 from './programming/native-systems-literacy.json';
-import unitFile147 from './programming/native-systems-literacy.project.json';
-import unitFile148 from './programming/python-execution-model.json';
-import unitFile149 from './programming/python-execution-model.project.json';
-import unitFile150 from './programming/testing-debugging-reproducibility.json';
-import unitFile151 from './programming/testing-debugging-reproducibility.project.json';
-import unitFile152 from './reinforcement-learning/_route.json';
-import unitFile153 from './reinforcement-learning/classical-mdps-bellman-planning.json';
-import unitFile154 from './reinforcement-learning/classical-mdps-bellman-planning.project.json';
-import unitFile155 from './reinforcement-learning/classical-sampling-td-control.json';
-import unitFile156 from './reinforcement-learning/classical-sampling-td-control.project.json';
-import unitFile157 from './reinforcement-learning/deep-exploration-empirical-method.json';
-import unitFile158 from './reinforcement-learning/deep-exploration-empirical-method.project.json';
-import unitFile159 from './reinforcement-learning/deep-function-approximation-stability.json';
-import unitFile160 from './reinforcement-learning/deep-function-approximation-stability.project.json';
-import unitFile161 from './reinforcement-learning/deep-imitation-offline-ope.json';
-import unitFile162 from './reinforcement-learning/deep-imitation-offline-ope.project.json';
-import unitFile163 from './reinforcement-learning/deep-model-based-world-models.json';
-import unitFile164 from './reinforcement-learning/deep-model-based-world-models.project.json';
-import unitFile165 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.json';
-import unitFile166 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.project.json';
-import unitFile167 from './reinforcement-learning/llm-direct-preference-optimization.json';
-import unitFile168 from './reinforcement-learning/llm-direct-preference-optimization.project.json';
-import unitFile169 from './reinforcement-learning/llm-online-policy-optimization.json';
-import unitFile170 from './reinforcement-learning/llm-online-policy-optimization.project.json';
-import unitFile171 from './reinforcement-learning/llm-policy-trajectory-contracts.json';
-import unitFile172 from './reinforcement-learning/llm-policy-trajectory-contracts.project.json';
-import unitFile173 from './reinforcement-learning/llm-preferences-rewards-verifiers.json';
-import unitFile174 from './reinforcement-learning/llm-preferences-rewards-verifiers.project.json';
-import unitFile175 from './reinforcement-learning/llm-reasoning-agents-systems-research.json';
-import unitFile176 from './reinforcement-learning/llm-reasoning-agents-systems-research.project.json';
-import unitFile177 from './systems/_route.json';
-import unitFile178 from './systems/concurrency-bounded-work.json';
-import unitFile179 from './systems/concurrency-bounded-work.project.json';
-import unitFile180 from './systems/databases-durable-storage.json';
-import unitFile181 from './systems/databases-durable-storage.project.json';
-import unitFile182 from './systems/distributed-state-streams.json';
-import unitFile183 from './systems/distributed-state-streams.project.json';
-import unitFile184 from './systems/machine-process-memory-io.json';
-import unitFile185 from './systems/machine-process-memory-io.project.json';
-import unitFile186 from './systems/networking-rpc.json';
-import unitFile187 from './systems/networking-rpc.project.json';
-import unitFile188 from './systems/observability-reliability-design.json';
-import unitFile189 from './systems/observability-reliability-design.project.json';
-import unitFile190 from './systems/security-privacy-evolution.json';
-import unitFile191 from './systems/security-privacy-evolution.project.json';
+import unitFile130 from './llm-research/_route.json';
+import unitFile131 from './llm-research/lmr-adaptation-distillation.json';
+import unitFile132 from './llm-research/lmr-adaptation-distillation.project.json';
+import unitFile133 from './llm-research/lmr-alignment-safety-release.json';
+import unitFile134 from './llm-research/lmr-alignment-safety-release.project.json';
+import unitFile135 from './llm-research/lmr-architecture-numerics.json';
+import unitFile136 from './llm-research/lmr-architecture-numerics.project.json';
+import unitFile137 from './llm-research/lmr-data-tokenizer-systems.json';
+import unitFile138 from './llm-research/lmr-data-tokenizer-systems.project.json';
+import unitFile139 from './llm-research/lmr-language-model-evaluation.json';
+import unitFile140 from './llm-research/lmr-language-model-evaluation.project.json';
+import unitFile141 from './llm-research/lmr-multimodal-models.json';
+import unitFile142 from './llm-research/lmr-multimodal-models.project.json';
+import unitFile143 from './llm-research/lmr-preference-direct-optimization.json';
+import unitFile144 from './llm-research/lmr-preference-direct-optimization.project.json';
+import unitFile145 from './llm-research/lmr-pretraining-reliability.json';
+import unitFile146 from './llm-research/lmr-pretraining-reliability.project.json';
+import unitFile147 from './llm-research/lmr-research-scale-integration.json';
+import unitFile148 from './llm-research/lmr-research-scale-integration.project.json';
+import unitFile149 from './llm-research/lmr-rl-reasoning.json';
+import unitFile150 from './llm-research/lmr-rl-reasoning.project.json';
+import unitFile151 from './llm-research/lmr-scaling-mixtures.json';
+import unitFile152 from './llm-research/lmr-scaling-mixtures.project.json';
+import unitFile153 from './math-foundations/_route.json';
+import unitFile154 from './math-foundations/calculus-autodiff.json';
+import unitFile155 from './math-foundations/calculus-autodiff.project.json';
+import unitFile156 from './math-foundations/linear-algebra-proof.json';
+import unitFile157 from './math-foundations/linear-algebra-proof.project.json';
+import unitFile158 from './math-foundations/optimization-numerics.json';
+import unitFile159 from './math-foundations/optimization-numerics.project.json';
+import unitFile160 from './math-foundations/probability-information-bayes.json';
+import unitFile161 from './math-foundations/probability-information-bayes.project.json';
+import unitFile162 from './math-foundations/statistics-experimentation-causality.json';
+import unitFile163 from './math-foundations/statistics-experimentation-causality.project.json';
+import unitFile164 from './programming/_route.json';
+import unitFile165 from './programming/concurrency-profiling-operations.json';
+import unitFile166 from './programming/concurrency-profiling-operations.project.json';
+import unitFile167 from './programming/interfaces-data-apis.json';
+import unitFile168 from './programming/interfaces-data-apis.project.json';
+import unitFile169 from './programming/native-systems-literacy.json';
+import unitFile170 from './programming/native-systems-literacy.project.json';
+import unitFile171 from './programming/python-execution-model.json';
+import unitFile172 from './programming/python-execution-model.project.json';
+import unitFile173 from './programming/testing-debugging-reproducibility.json';
+import unitFile174 from './programming/testing-debugging-reproducibility.project.json';
+import unitFile175 from './reinforcement-learning/_route.json';
+import unitFile176 from './reinforcement-learning/classical-mdps-bellman-planning.json';
+import unitFile177 from './reinforcement-learning/classical-mdps-bellman-planning.project.json';
+import unitFile178 from './reinforcement-learning/classical-sampling-td-control.json';
+import unitFile179 from './reinforcement-learning/classical-sampling-td-control.project.json';
+import unitFile180 from './reinforcement-learning/deep-exploration-empirical-method.json';
+import unitFile181 from './reinforcement-learning/deep-exploration-empirical-method.project.json';
+import unitFile182 from './reinforcement-learning/deep-function-approximation-stability.json';
+import unitFile183 from './reinforcement-learning/deep-function-approximation-stability.project.json';
+import unitFile184 from './reinforcement-learning/deep-imitation-offline-ope.json';
+import unitFile185 from './reinforcement-learning/deep-imitation-offline-ope.project.json';
+import unitFile186 from './reinforcement-learning/deep-model-based-world-models.json';
+import unitFile187 from './reinforcement-learning/deep-model-based-world-models.project.json';
+import unitFile188 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.json';
+import unitFile189 from './reinforcement-learning/deep-policy-gradient-actor-critic-ppo.project.json';
+import unitFile190 from './reinforcement-learning/llm-direct-preference-optimization.json';
+import unitFile191 from './reinforcement-learning/llm-direct-preference-optimization.project.json';
+import unitFile192 from './reinforcement-learning/llm-online-policy-optimization.json';
+import unitFile193 from './reinforcement-learning/llm-online-policy-optimization.project.json';
+import unitFile194 from './reinforcement-learning/llm-policy-trajectory-contracts.json';
+import unitFile195 from './reinforcement-learning/llm-policy-trajectory-contracts.project.json';
+import unitFile196 from './reinforcement-learning/llm-preferences-rewards-verifiers.json';
+import unitFile197 from './reinforcement-learning/llm-preferences-rewards-verifiers.project.json';
+import unitFile198 from './reinforcement-learning/llm-reasoning-agents-systems-research.json';
+import unitFile199 from './reinforcement-learning/llm-reasoning-agents-systems-research.project.json';
+import unitFile200 from './systems/_route.json';
+import unitFile201 from './systems/concurrency-bounded-work.json';
+import unitFile202 from './systems/concurrency-bounded-work.project.json';
+import unitFile203 from './systems/databases-durable-storage.json';
+import unitFile204 from './systems/databases-durable-storage.project.json';
+import unitFile205 from './systems/distributed-state-streams.json';
+import unitFile206 from './systems/distributed-state-streams.project.json';
+import unitFile207 from './systems/machine-process-memory-io.json';
+import unitFile208 from './systems/machine-process-memory-io.project.json';
+import unitFile209 from './systems/networking-rpc.json';
+import unitFile210 from './systems/networking-rpc.project.json';
+import unitFile211 from './systems/observability-reliability-design.json';
+import unitFile212 from './systems/observability-reliability-design.project.json';
+import unitFile213 from './systems/security-privacy-evolution.json';
+import unitFile214 from './systems/security-privacy-evolution.project.json';
 
 export const unitFiles: Array<{ route: string; name: string; data: unknown }> = [
   { route: 'algorithms', name: '_route', data: unitFile0 },
@@ -323,66 +346,89 @@ export const unitFiles: Array<{ route: string; name: string; data: unknown }> = 
   { route: 'llm-foundations', name: 'kv-cache-prefill-decode.project', data: unitFile127 },
   { route: 'llm-foundations', name: 'tokenization-corpus-data', data: unitFile128 },
   { route: 'llm-foundations', name: 'tokenization-corpus-data.project', data: unitFile129 },
-  { route: 'math-foundations', name: '_route', data: unitFile130 },
-  { route: 'math-foundations', name: 'calculus-autodiff', data: unitFile131 },
-  { route: 'math-foundations', name: 'calculus-autodiff.project', data: unitFile132 },
-  { route: 'math-foundations', name: 'linear-algebra-proof', data: unitFile133 },
-  { route: 'math-foundations', name: 'linear-algebra-proof.project', data: unitFile134 },
-  { route: 'math-foundations', name: 'optimization-numerics', data: unitFile135 },
-  { route: 'math-foundations', name: 'optimization-numerics.project', data: unitFile136 },
-  { route: 'math-foundations', name: 'probability-information-bayes', data: unitFile137 },
-  { route: 'math-foundations', name: 'probability-information-bayes.project', data: unitFile138 },
-  { route: 'math-foundations', name: 'statistics-experimentation-causality', data: unitFile139 },
-  { route: 'math-foundations', name: 'statistics-experimentation-causality.project', data: unitFile140 },
-  { route: 'programming', name: '_route', data: unitFile141 },
-  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile142 },
-  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile143 },
-  { route: 'programming', name: 'interfaces-data-apis', data: unitFile144 },
-  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile145 },
-  { route: 'programming', name: 'native-systems-literacy', data: unitFile146 },
-  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile147 },
-  { route: 'programming', name: 'python-execution-model', data: unitFile148 },
-  { route: 'programming', name: 'python-execution-model.project', data: unitFile149 },
-  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile150 },
-  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile151 },
-  { route: 'reinforcement-learning', name: '_route', data: unitFile152 },
-  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning', data: unitFile153 },
-  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning.project', data: unitFile154 },
-  { route: 'reinforcement-learning', name: 'classical-sampling-td-control', data: unitFile155 },
-  { route: 'reinforcement-learning', name: 'classical-sampling-td-control.project', data: unitFile156 },
-  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method', data: unitFile157 },
-  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method.project', data: unitFile158 },
-  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability', data: unitFile159 },
-  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability.project', data: unitFile160 },
-  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope', data: unitFile161 },
-  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope.project', data: unitFile162 },
-  { route: 'reinforcement-learning', name: 'deep-model-based-world-models', data: unitFile163 },
-  { route: 'reinforcement-learning', name: 'deep-model-based-world-models.project', data: unitFile164 },
-  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo', data: unitFile165 },
-  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo.project', data: unitFile166 },
-  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization', data: unitFile167 },
-  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization.project', data: unitFile168 },
-  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization', data: unitFile169 },
-  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization.project', data: unitFile170 },
-  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts', data: unitFile171 },
-  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts.project', data: unitFile172 },
-  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers', data: unitFile173 },
-  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers.project', data: unitFile174 },
-  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research', data: unitFile175 },
-  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research.project', data: unitFile176 },
-  { route: 'systems', name: '_route', data: unitFile177 },
-  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile178 },
-  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile179 },
-  { route: 'systems', name: 'databases-durable-storage', data: unitFile180 },
-  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile181 },
-  { route: 'systems', name: 'distributed-state-streams', data: unitFile182 },
-  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile183 },
-  { route: 'systems', name: 'machine-process-memory-io', data: unitFile184 },
-  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile185 },
-  { route: 'systems', name: 'networking-rpc', data: unitFile186 },
-  { route: 'systems', name: 'networking-rpc.project', data: unitFile187 },
-  { route: 'systems', name: 'observability-reliability-design', data: unitFile188 },
-  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile189 },
-  { route: 'systems', name: 'security-privacy-evolution', data: unitFile190 },
-  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile191 },
+  { route: 'llm-research', name: '_route', data: unitFile130 },
+  { route: 'llm-research', name: 'lmr-adaptation-distillation', data: unitFile131 },
+  { route: 'llm-research', name: 'lmr-adaptation-distillation.project', data: unitFile132 },
+  { route: 'llm-research', name: 'lmr-alignment-safety-release', data: unitFile133 },
+  { route: 'llm-research', name: 'lmr-alignment-safety-release.project', data: unitFile134 },
+  { route: 'llm-research', name: 'lmr-architecture-numerics', data: unitFile135 },
+  { route: 'llm-research', name: 'lmr-architecture-numerics.project', data: unitFile136 },
+  { route: 'llm-research', name: 'lmr-data-tokenizer-systems', data: unitFile137 },
+  { route: 'llm-research', name: 'lmr-data-tokenizer-systems.project', data: unitFile138 },
+  { route: 'llm-research', name: 'lmr-language-model-evaluation', data: unitFile139 },
+  { route: 'llm-research', name: 'lmr-language-model-evaluation.project', data: unitFile140 },
+  { route: 'llm-research', name: 'lmr-multimodal-models', data: unitFile141 },
+  { route: 'llm-research', name: 'lmr-multimodal-models.project', data: unitFile142 },
+  { route: 'llm-research', name: 'lmr-preference-direct-optimization', data: unitFile143 },
+  { route: 'llm-research', name: 'lmr-preference-direct-optimization.project', data: unitFile144 },
+  { route: 'llm-research', name: 'lmr-pretraining-reliability', data: unitFile145 },
+  { route: 'llm-research', name: 'lmr-pretraining-reliability.project', data: unitFile146 },
+  { route: 'llm-research', name: 'lmr-research-scale-integration', data: unitFile147 },
+  { route: 'llm-research', name: 'lmr-research-scale-integration.project', data: unitFile148 },
+  { route: 'llm-research', name: 'lmr-rl-reasoning', data: unitFile149 },
+  { route: 'llm-research', name: 'lmr-rl-reasoning.project', data: unitFile150 },
+  { route: 'llm-research', name: 'lmr-scaling-mixtures', data: unitFile151 },
+  { route: 'llm-research', name: 'lmr-scaling-mixtures.project', data: unitFile152 },
+  { route: 'math-foundations', name: '_route', data: unitFile153 },
+  { route: 'math-foundations', name: 'calculus-autodiff', data: unitFile154 },
+  { route: 'math-foundations', name: 'calculus-autodiff.project', data: unitFile155 },
+  { route: 'math-foundations', name: 'linear-algebra-proof', data: unitFile156 },
+  { route: 'math-foundations', name: 'linear-algebra-proof.project', data: unitFile157 },
+  { route: 'math-foundations', name: 'optimization-numerics', data: unitFile158 },
+  { route: 'math-foundations', name: 'optimization-numerics.project', data: unitFile159 },
+  { route: 'math-foundations', name: 'probability-information-bayes', data: unitFile160 },
+  { route: 'math-foundations', name: 'probability-information-bayes.project', data: unitFile161 },
+  { route: 'math-foundations', name: 'statistics-experimentation-causality', data: unitFile162 },
+  { route: 'math-foundations', name: 'statistics-experimentation-causality.project', data: unitFile163 },
+  { route: 'programming', name: '_route', data: unitFile164 },
+  { route: 'programming', name: 'concurrency-profiling-operations', data: unitFile165 },
+  { route: 'programming', name: 'concurrency-profiling-operations.project', data: unitFile166 },
+  { route: 'programming', name: 'interfaces-data-apis', data: unitFile167 },
+  { route: 'programming', name: 'interfaces-data-apis.project', data: unitFile168 },
+  { route: 'programming', name: 'native-systems-literacy', data: unitFile169 },
+  { route: 'programming', name: 'native-systems-literacy.project', data: unitFile170 },
+  { route: 'programming', name: 'python-execution-model', data: unitFile171 },
+  { route: 'programming', name: 'python-execution-model.project', data: unitFile172 },
+  { route: 'programming', name: 'testing-debugging-reproducibility', data: unitFile173 },
+  { route: 'programming', name: 'testing-debugging-reproducibility.project', data: unitFile174 },
+  { route: 'reinforcement-learning', name: '_route', data: unitFile175 },
+  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning', data: unitFile176 },
+  { route: 'reinforcement-learning', name: 'classical-mdps-bellman-planning.project', data: unitFile177 },
+  { route: 'reinforcement-learning', name: 'classical-sampling-td-control', data: unitFile178 },
+  { route: 'reinforcement-learning', name: 'classical-sampling-td-control.project', data: unitFile179 },
+  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method', data: unitFile180 },
+  { route: 'reinforcement-learning', name: 'deep-exploration-empirical-method.project', data: unitFile181 },
+  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability', data: unitFile182 },
+  { route: 'reinforcement-learning', name: 'deep-function-approximation-stability.project', data: unitFile183 },
+  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope', data: unitFile184 },
+  { route: 'reinforcement-learning', name: 'deep-imitation-offline-ope.project', data: unitFile185 },
+  { route: 'reinforcement-learning', name: 'deep-model-based-world-models', data: unitFile186 },
+  { route: 'reinforcement-learning', name: 'deep-model-based-world-models.project', data: unitFile187 },
+  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo', data: unitFile188 },
+  { route: 'reinforcement-learning', name: 'deep-policy-gradient-actor-critic-ppo.project', data: unitFile189 },
+  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization', data: unitFile190 },
+  { route: 'reinforcement-learning', name: 'llm-direct-preference-optimization.project', data: unitFile191 },
+  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization', data: unitFile192 },
+  { route: 'reinforcement-learning', name: 'llm-online-policy-optimization.project', data: unitFile193 },
+  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts', data: unitFile194 },
+  { route: 'reinforcement-learning', name: 'llm-policy-trajectory-contracts.project', data: unitFile195 },
+  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers', data: unitFile196 },
+  { route: 'reinforcement-learning', name: 'llm-preferences-rewards-verifiers.project', data: unitFile197 },
+  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research', data: unitFile198 },
+  { route: 'reinforcement-learning', name: 'llm-reasoning-agents-systems-research.project', data: unitFile199 },
+  { route: 'systems', name: '_route', data: unitFile200 },
+  { route: 'systems', name: 'concurrency-bounded-work', data: unitFile201 },
+  { route: 'systems', name: 'concurrency-bounded-work.project', data: unitFile202 },
+  { route: 'systems', name: 'databases-durable-storage', data: unitFile203 },
+  { route: 'systems', name: 'databases-durable-storage.project', data: unitFile204 },
+  { route: 'systems', name: 'distributed-state-streams', data: unitFile205 },
+  { route: 'systems', name: 'distributed-state-streams.project', data: unitFile206 },
+  { route: 'systems', name: 'machine-process-memory-io', data: unitFile207 },
+  { route: 'systems', name: 'machine-process-memory-io.project', data: unitFile208 },
+  { route: 'systems', name: 'networking-rpc', data: unitFile209 },
+  { route: 'systems', name: 'networking-rpc.project', data: unitFile210 },
+  { route: 'systems', name: 'observability-reliability-design', data: unitFile211 },
+  { route: 'systems', name: 'observability-reliability-design.project', data: unitFile212 },
+  { route: 'systems', name: 'security-privacy-evolution', data: unitFile213 },
+  { route: 'systems', name: 'security-privacy-evolution.project', data: unitFile214 },
 ];
