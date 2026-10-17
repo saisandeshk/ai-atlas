@@ -1,6 +1,17 @@
 {
   "section": "lmr-multimodal-models",
-  "addedResources": [],
+  "addedResources": [
+    {
+      "id": "encodec-audio-lmr9",
+      "role": "paper",
+      "priority": "reference",
+      "name": "High Fidelity Neural Audio Compression (EnCodec)",
+      "provider": "Meta AI",
+      "access": "Free",
+      "use": "Sections 3.1 to 3.4 of arXiv:2210.13438v1: temporal downsampling, residual codebooks, code prediction and codec reconstruction objectives. Read for audio-token vocabulary and rate accounting, not a codec training run.",
+      "url": "https://arxiv.org/html/2210.13438v1"
+    }
+  ],
   "units": [
     {
       "id": "vision-tokens-resolution-cost",
@@ -15,47 +26,70 @@
         "resolution-context-cost"
       ],
       "outcomes": [
-        "TODO"
+        "Derive separate token counts for the vision encoder and the language decoder after merging and delimiters.",
+        "Implement rectangular patch extraction with an explicit flattening order and grid coordinates.",
+        "Budget resolution changes across vision attention, decoder context and cached state."
       ],
-      "why": "TODO",
+      "why": "Patch extraction is already familiar from the Deep Learning unit on patch embeddings and positional information. The research problem is tracking what survives preprocessing and compression, and which component pays for each token.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/projectors-fusion-designs",
+          "note": "Choose where the counted visual tokens enter the decoder."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-multimodal-lmr9",
+          "title": "CS336 Spring 2026 Lecture 17: multimodal models",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_17",
+          "locator": "The `clip` data-processing and vision-encoder blocks, then `llava_onevision` Data processing and `qwen2_vl` Visual encoder",
+          "depth": "Read for preprocessing and token budgets, not the reported large-model speed comparisons. The Qwen2-VL count of 66 includes two delimiters, not 66 visual features."
+        },
+        {
+          "resource": "qwen2vl-lmr9",
+          "title": "Qwen2-VL, arXiv:2409.12191v1",
+          "url": "https://arxiv.org/abs/2409.12191v1",
+          "locator": "Section 2.1, Model Architecture: the Naive Dynamic Resolution paragraph (2D positions, adjacent 2 by 2 token compression and vision delimiters)"
         }
       ],
       "focus": [
-        "TODO"
+        "Count the processed image, not its original dimensions. Resizing, cropping and tiling change both evidence and token count.",
+        "For divisible dimensions and square patch width \\(p\\), the vision grid has \\(N=HW/p^2\\) patches. A 2 by 2 merger gives \\(N/4\\) visual decoder tokens when both grid dimensions are even.",
+        "Doubling both image dimensions quadruples patch count. Dense vision attention score entries grow sixteenfold; projections grow fourfold. Decoder attention instead depends on the total visual plus text length.",
+        "Attention score counts are not measured latency or peak memory. Fused attention can avoid storing the full score matrix; decoder KV state grows linearly with its sequence length."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Closed-book, count a 224 by 224 image with patch width 14: 256 vision patches, 64 visual tokens after 2 by 2 merging, and 66 positions including two delimiters. For a 448 by 448 input, get 1024, 256 and 258 respectively. With 32 text tokens and no other special tokens, the decoder lengths are 98 and 290. Implement the TensorTonic rectangular patch contract and check its channel ordering against a nested-loop oracle on CPU with PyTorch 2.14.1.",
       "traps": [
-        "TODO"
+        "Counting a pooled CLIP embedding as a sequence of patch features. A pooled vector discards the explicit grid the projector may need.",
+        "Changing a frozen encoder's input resolution without checking its positional encoding and preprocessing contract. A valid tensor shape is not proof of compatible features.",
+        "Calling a sixteenfold attention-score increase a sixteenfold runtime increase. Other operations, kernels and memory traffic still matter."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why does Qwen2-VL describe 66 tokens for a 224 by 224 image?",
+          "a": "Patch width 14 gives 256 patches. Merging each 2 by 2 group gives 64 visual tokens; the start and end delimiters add two positions."
+        },
+        {
+          "q": "Does doubling image resolution quadruple the whole decoder's attention cost?",
+          "a": "No. Visual token count quadruples under the stated grid rule, but dense decoder attention uses the square of text plus visual length, including delimiters."
+        },
+        {
+          "q": "Can a center crop improve efficiency without changing the task?",
+          "a": "Only if it preserves the evidence the task needs. Cropping away a small object or text changes what can be answered from the input."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Patchify a Batch of Images",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-vision-transformer-patchify",
+          "locator": "Implement `vision_transformer_patchify(images, patch_height, patch_width)`; public cases Four horizontal patches, Two-channel patches and Whole-image patch",
+          "note": "The public cases cover rectangular extraction, channel-first flattening and a whole-image patch. Add noncontiguous-input, dtype and reconstruction tests; reuse the result for the mini-project's resolution budget rather than repeating the earlier square-patch exercise."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Your rectangular patch outputs match the public cases and your loop oracle, and your budget distinguishes vision patches, merged decoder tokens and delimiters at both resolutions.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: Lecture 17 and Qwen2-VL locate resolution, merging and encoder costs; the free rectangular patch problem adds a stricter contract than the prerequisite unit."
       }
     },
     {
@@ -71,53 +105,89 @@
         "early-late-fusion"
       ],
       "outcomes": [
-        "TODO"
+        "Trace visual features through a linear or MLP projector into decoder-width embeddings.",
+        "Compare joint token processing, separate-encoder scoring and inserted cross-attention using explicit interaction shapes.",
+        "Test a gated fusion branch against the unfused residual path at initialization."
       ],
-      "why": "TODO",
+      "why": "Equal widths permit concatenation, but do not establish semantic alignment. Fusion placement also determines which representations can interact and what a text-only control must bypass.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/modality-tokens-multimodal-rope",
+          "note": "Make the chosen fusion path respect image ownership, positions and masks."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-multimodal-lmr9",
+          "title": "CS336 Spring 2026 Lecture 17: multimodal models",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_17",
+          "locator": "The `llava` Model block and `qwen_vl` Architecture block"
+        },
+        {
+          "resource": "llava-lmr9",
+          "title": "LLaVA projector builder at commit c121f04",
+          "url": "https://github.com/haotian-liu/LLaVA/blob/c121f0432da27facab705978f83c4ada465e46fd/llava/model/multimodal_projector/builder.py",
+          "locator": "`build_vision_projector`: `linear`, `mlpNx_gelu` and `identity` branches"
+        },
+        {
+          "resource": "flamingo-lmr9",
+          "title": "Flamingo, arXiv:2204.14198v1",
+          "url": "https://arxiv.org/abs/2204.14198v1",
+          "locator": "Sections 3.1.1 to 3.1.3, Figures 4 to 6: resampler, gated cross-attention and image-causal masking",
+          "depth": "These are the architecture sections in this edition; Sections 2.1 to 2.3 are related work. Do not implement the full model."
+        },
+        {
+          "resource": "modern-notebook-vlm-lmr9",
+          "title": "Modern LLM Notebook 29: projector and fusion",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/29-vlm.ipynb",
+          "locator": "Sections 5 and 6, then Exercise 2: Implement a Single-Layer Projector",
+          "depth": "The Section 6 demo adds LayerNorm after the gated residual, so its zero gate returns normalized input, not unchanged input. Use Flamingo Figure 5 for an identity-preserving insertion."
         }
       ],
       "focus": [
-        "TODO"
+        "For visual features of shape \\(B\\times N\\times d_v\\), a biased linear projector has \\(d_vd_l+d_l\\) parameters and returns \\(B\\times N\\times d_l\\). It changes width, not token count.",
+        "Use early fusion to mean joint processing of modality tokens; Chameleon uses it from pretraining. Separate CLIP towers combine only at scoring, a late interaction. LLaVA concatenates pretrained features before decoder processing. State the actual interaction rather than relying on labels alone.",
+        "Cross-attention uses text queries and visual keys and values: per-head score shape \\(B\\times h\\times T\\times N\\). Its cost includes text self-attention, visual encoding, projections and any resampler, not just this matrix.",
+        "For a finite branch output, \\(x+\\tanh(\\alpha)f(x,v)\\) equals \\(x\\) at a zero gate. This is an initialization contract, not evidence that the model later uses vision."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1, build biased linear and two-layer GELU projectors from width 32 to 64, with hidden width 64. Count 2112 and 6272 parameters and verify both map `(2, 6, 32)` to `(2, 6, 64)`. Implement the gated residual from Flamingo Figure 5 and test zero-gate identity on finite inputs. Contrast it with the notebook's post-residual normalization.",
       "traps": [
-        "TODO"
+        "Treating equal embedding dimensions as aligned spaces. Only an objective and external evaluation can establish useful correspondence.",
+        "Claiming a resampler removes all resolution cost. Its output length is fixed, but visual encoding and resampling still process the input grid.",
+        "Treating the notebook's schematic attention-entry counts as total FLOPs or a speed measurement. They omit projections and the vision tower."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does a tokenwise MLP projector reduce a 196-token grid to 32 tokens?",
+          "a": "No. It changes each token's features independently. Pooling, merging or a query-based resampler must explicitly change the token axis."
+        },
+        {
+          "q": "Why can Flamingo text depend on older images when direct cross-attention sees only the most recent image?",
+          "a": "Earlier text states can already contain information from those images. Causal text self-attention carries that information forward."
+        },
+        {
+          "q": "At a zero gate, must the added branch's own parameters receive nonzero gradients?",
+          "a": "No. Their gradient through the gated output is multiplied by zero. The gate can receive a gradient and open the branch on later updates."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "Modern LLM Notebook 29, Exercise 2: Implement a Single-Layer Projector",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/29-vlm.ipynb",
+          "locator": "Exercise 2 under Exercises: construct the linear map and satisfy the `(2, 196, 4096)` output assertion",
+          "note": "Run on CPU. Add the smaller linear-versus-MLP parameter test and zero-gate regression above. The section mini-project connects the projector to frozen features and a decoder; this exercise checks shapes, not grounding."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The exercise and your parameter and gate tests pass, and you can draw the interaction shapes and cost omissions for all three fusion designs.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the projector builder, corrected Flamingo architecture locator and named notebook exercise cover the interface and fusion choices; the notebook gate caveat is routed around explicitly."
       }
     },
     {
       "id": "clip-siglip-objectives",
       "title": "The symmetric CLIP contrastive loss, the SigLIP pairwise sigmoid loss and batch-size behavior",
-      "hours": 5,
+      "hours": 6,
       "target": [
         "derive",
         "implement"
@@ -127,47 +197,88 @@
         "siglip-objective"
       ],
       "outcomes": [
-        "TODO"
+        "Derive CLIP and SigLIP losses and their logit gradients with explicit reductions.",
+        "Differential-test both losses and gradients against OpenCLIP 3.3.0 on one device.",
+        "Separate batch-size effects on negatives, reduction scale and optimization budget."
       ],
-      "why": "TODO",
+      "why": "The Deep Learning unit on paired modalities already implemented symmetric CLIP. Here the new work is an independent loss oracle, gradient checks and the reduction and negative-sampling contracts needed for a controlled objective comparison.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/staged-vlm-training-objectives",
+          "note": "Keep retrieval alignment distinct from decoder answer likelihood."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "openai-clip-lmr9",
+          "title": "CLIP, ICML 2021 PMLR edition",
+          "url": "https://proceedings.mlr.press/v139/radford21a/radford21a.pdf",
+          "locator": "Section 2.2 and Figure 3: normalized embeddings, learned logit multiplier and the two cross-entropies",
+          "depth": "Use this edition's numbering, not the earlier prerequisite card's section labels. Reconstruct the gradient rather than repeating the first-pass implementation."
+        },
+        {
+          "resource": "siglip-lmr9",
+          "title": "Sigmoid Loss for Language Image Pre-Training, arXiv:2303.15343v1",
+          "url": "https://arxiv.org/abs/2303.15343v4",
+          "locator": "Sections 3.1 and 3.2 and Algorithm 1; Figure 2 and Sections 4.1 and 4.2 for batch-size experiments",
+          "depth": "Algorithm 1 in this version uses positive similarity logits with positive diagonal labels; the first arXiv version printed a negated dot product there. OpenCLIP, below, uses the same positive-similarity and bias convention. Read the batch curves under their own model, data and seen-example budgets; do not reproduce the large runs."
+        },
+        {
+          "resource": "openclip-lmr9",
+          "title": "OpenCLIP release 3.3.0 loss definitions",
+          "url": "https://github.com/mlfoundations/open_clip/blob/v3.3.0/src/open_clip/loss.py",
+          "locator": "`ClipLoss.get_logits`, `ClipLoss.forward`, `SigLipLoss.get_ground_truth` and `SigLipLoss._loss`",
+          "depth": "Use `world_size=1`. Pass normalized features and the multiplier itself; these loss classes do not normalize features or exponentiate the supplied multiplier."
         }
       ],
       "focus": [
-        "TODO"
+        "For batch size \\(B\\), normalized features and logits \\(S\\), CLIP averages row and column cross-entropy: \\(L=-\\frac{1}{2B}\\sum_i[\\log\\operatorname{softmax}(S_{i,:})_i+\\log\\operatorname{softmax}(S_{:,i})_i]\\). A shared scalar bias cancels from both softmaxes.",
+        "SigLIP uses \\(L=\\frac{1}{B}\\sum_{i,j}\\log(1+\\exp(-z_{ij}S_{ij}))\\), with diagonal labels 1 and off-diagonal labels -1. For this reduction, \\(\\partial L/\\partial S_{ij}=-z_{ij}\\sigma(-z_{ij}S_{ij})/B\\). Use a stable softplus or log-sigmoid implementation.",
+        "TensorTonic divides the SigLIP sum by \\(B^2\\); OpenCLIP divides by \\(B\\). Multiply the exercise loss and gradients by \\(B\\) before comparison, keeping logits identical.",
+        "SigLIP removes the softmax normalization across candidates, not the need for negative pairs. Batch size changes negative coverage and class imbalance; accumulating isolated microbatch losses does not create the cross-microbatch negatives of a full batch."
       ],
-      "reproduce": "TODO",
+      "reproduce": "On CPU with PyTorch 2.14.1 and `open_clip_torch==3.3.0`, use two orthogonal unit vectors as both image and text features in `float64`. CLIP with multiplier 1 gives 0.3132616875. SigLIP with multiplier 2 and bias -1 gives 0.6265233750 in OpenCLIP and 0.3132616875 as an all-pairs mean. Derive the factor of two, then compare your losses and feature, multiplier and bias gradients against OpenCLIP on seeded nonzero random features, using `torch.manual_seed(42)` and `torch.testing.assert_close` with `rtol=1e-7, atol=1e-9`.",
       "traps": [
-        "TODO"
+        "Passing a stored logarithmic scale where the API expects its exponential. The OpenCLIP loss call and TensorTonic's SigLIP problem take the multiplier itself; TensorTonic's CLIP problem takes the temperature \\(\\tau\\) and divides by it.",
+        "Using a one-pair CLIP batch as a learning test. Its loss and gradient are zero because there are no competing candidates; SigLIP still trains its positive term.",
+        "Treating every off-diagonal pair as truly negative. Duplicate images or equivalent captions can make the diagonal-only supervision contradictory."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is a learned scalar bias useful for SigLIP but ineffective for CLIP's softmax loss?",
+          "a": "SigLIP's bias moves all binary decision logits to reflect the positive-negative imbalance. In CLIP a common additive bias cancels inside each softmax."
+        },
+        {
+          "q": "What happens to the SigLIP reduction factor for a batch of eight pairs?",
+          "a": "OpenCLIP's sum divided by eight is eight times the all-64-pairs mean, for identical logits and labels. Gradients differ by the same factor."
+        },
+        {
+          "q": "Does a lower raw SigLIP loss than CLIP loss prove a better encoder?",
+          "a": "No. Their objectives and reductions differ. Compare held-out retrieval on the same candidates and account for data exposure, optimization and compute."
+        },
+        {
+          "q": "If two captions describe the same image, is diagonal-only retrieval accuracy a complete evaluation?",
+          "a": "No. A different valid caption may be counted as wrong. Keep relevance groups and specify whether any valid caption counts as a retrieval hit."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Implement Symmetric CLIP Contrastive Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-symmetric-clip-loss",
+          "locator": "`symmetric_clip_loss`: public cases Orthogonal matched pairs, Single normalized pair and One ambiguous image",
+          "note": "Reuse your prerequisite implementation. The cases check normalized logits, loss and directional accuracies including an argmax tie; they do not check gradients. Add the OpenCLIP differential tests instead of treating this as a new first-pass exercise."
+        },
+        {
+          "name": "TensorTonic: Implement the SigLIP Pairwise Loss",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-siglip-pairwise-loss",
+          "locator": "`siglip_pairwise_loss`: public cases Aligned orthogonal pairs, Single confident pair and Swapped pairs",
+          "note": "Follow its all-pairs-mean contract for the exercise, then convert the reduction for your OpenCLIP oracle. Add large-magnitude finite-logit tests and a gradient check on nonzero features; the public cases do not validate gradients."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "Both exercise contracts pass, both converted objectives and gradients agree with OpenCLIP within the stated tolerance, and you explain why microbatch accumulation does not reproduce full-batch negatives.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: the two papers establish the objectives and batch ablations; free named problems and the versioned OpenCLIP oracle supply implementation and gradient-level practice."
       }
     },
     {
@@ -182,47 +293,70 @@
         "synthetic-multimodal-data"
       ],
       "outcomes": [
-        "TODO"
+        "Explain how paired examples, interleaved documents and instruction conversations define different alignment contracts.",
+        "Trace synthetic answers back to their image, captions or boxes, generator and prompt version.",
+        "Specify source-group splits, rights and modality exposure in a versioned data manifest."
       ],
-      "why": "TODO",
+      "why": "A fluent synthetic answer can contain claims the image never supported. Data lineage must preserve the evidence available to the generator, not just the final image-answer pair.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/crossmodal-leakage-slices-baselines",
+          "note": "Audit overlap across every derivative of an image, not just exact caption strings."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "llava-lmr9",
+          "title": "Visual Instruction Tuning, arXiv:2304.08485v1",
+          "url": "https://arxiv.org/abs/2304.08485v1",
+          "locator": "Section 3, GPT-assisted Visual Instruction Data Generation, and Table 1: caption and box contexts, conversation, description and reasoning outputs",
+          "depth": "Study the construction and inspect its assumptions. Do not call the paid generator; use existing annotations and hand-written instruction templates for the small local route."
+        },
+        {
+          "resource": "flamingo-lmr9",
+          "title": "Flamingo, arXiv:2204.14198v1: data mixtures",
+          "url": "https://arxiv.org/abs/2204.14198v1",
+          "locator": "Sections 3.2.1 to 3.2.3 and Figures 6 and 7: interleaved webpage records, paired records and dataset-weighted text likelihood"
+        },
+        {
+          "resource": "coco-subset-lmr9",
+          "title": "COCO terms of use",
+          "url": "https://cocodataset.org/dataset/termsofuse.htm",
+          "locator": "Terms of Use: Annotations & Website, then Images (page read 2026-10-17)"
         }
       ],
       "focus": [
-        "TODO"
+        "A paired caption gives a designated correspondence. Interleaved webpage proximity is weaker supervision; preserve image order, surrounding text and source-document boundaries.",
+        "LLaVA's original language-only generator received captions and boxes, not image pixels. Generated reasoning is not a new independent observation of the image.",
+        "Keep source image id, content hash, parent annotation ids, split, license evidence, transformations and answer origin. For synthetic answers also retain generator checkpoint or service edition, prompt, decoding settings and review decisions; mark unavailable upstream details as unknown.",
+        "Count both examples and supervised text tokens by modality and source. Repeating a caption as several instructions increases exposure without creating independent evidence. COCO annotation terms do not relicense the images."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without notes, draw the lineage for one image with several captions, one caption-derived question and one generator-derived conversation. Mark exactly which evidence each answer used. Allocate the source image and all its derivatives to one split before creating the conversations; identify which fields would let a reviewer reconstruct or reject each derivative.",
       "traps": [
-        "TODO"
+        "Moving synthetic paraphrases into evaluation because their text differs. The parent image and answer evidence can still be training data.",
+        "Treating unpaired images and text as positive contrastive pairs. A shared batch or document does not establish semantic correspondence.",
+        "Dropping missing-image or rejected examples without counts. Filtering changes the modality distribution and must remain visible in the manifest."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Can a caption-only generator certify a small object's color when the captions never mention it?",
+          "a": "No. It can guess, but has no pixel evidence. Review that claim against the image or exclude it from grounded supervision."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Why split by image or source group before instruction generation?",
+          "a": "Captions, crops, questions and synthetic answers derived from one source share evidence. Splitting derivatives independently leaks that evidence."
+        },
+        {
+          "q": "Do equal numbers of image-text and text-only examples imply equal objective weight?",
+          "a": "No. Lengths, loss masks, sampling frequency and reduction determine the supervised weight. Visual positions may provide conditioning without being prediction targets."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: a versioned manifest for 50 to 200 COCO image ids, their caption and instruction derivatives, image-level splits, per-image rights and generator provenance without paid generation.",
+      "stopWhen": "You can trace each answer in a sample manifest to its actual evidence, explain every split decision and distinguish unknown generator details from verified provenance.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: LLaVA Section 3, Flamingo's data sections and COCO terms cover the construction and rights contracts; the mini-project supplies the manifest audit rather than a second data-generation lab."
       }
     },
     {
@@ -237,47 +371,71 @@
         "multimodal-rope"
       ],
       "outcomes": [
-        "TODO"
+        "Expand image placeholders while keeping embeddings, labels, attention masks and position metadata synchronized.",
+        "Implement temporal, height and width coordinates for mixed text and visual grids with explicit offsets.",
+        "Test causal isolation, padding, image ownership and truncation after visual-token expansion."
       ],
-      "why": "TODO",
+      "why": "The Deep Learning unit on causal and padding masks and the LLM Foundations unit on RoPE supply the mechanics. Multimodal assembly adds a second indexing system: image grids expand placeholders, while coordinate offsets need not equal the packed token count.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/staged-vlm-training-objectives",
+          "note": "Train only after the expanded-sequence contract passes intervention tests."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "qwen2vl-lmr9",
+          "title": "Qwen2-VL, arXiv:2409.12191v1: M-RoPE",
+          "url": "https://arxiv.org/abs/2409.12191v1",
+          "locator": "Section 2.1, Multimodal Rotary Position Embedding, and Figure 3; Section 3.3.2 and Table 8 for the ablation",
+          "depth": "Implement the coordinate contract, not the full Qwen2-VL model. Its ablation results belong to its own training setup, not your small decoder."
+        },
+        {
+          "resource": "llava-lmr9",
+          "title": "LLaVA input assembly at commit c121f04",
+          "url": "https://github.com/haotian-liu/LLaVA/blob/c121f0432da27facab705978f83c4ada465e46fd/llava/model/llava_arch.py",
+          "locator": "`prepare_inputs_labels_for_multimodal`: image-placeholder replacement, `IGNORE_INDEX` image labels, expanded-sequence truncation and rebuilt padding, masks and positions",
+          "depth": "Trace the one-image path. LLaVA's rebuilt one-dimensional positions are not Qwen2-VL M-RoPE; treat them as separate designs."
         }
       ],
       "focus": [
-        "TODO"
+        "Attention permission and prediction supervision are different. Visual features may condition answers while having ignored labels; user prompts may also be visible but unsupervised.",
+        "M-RoPE allocates rotary channel groups to temporal, height and width axes. Text repeats the same position on all axes; an image holds time fixed and varies grid row and column. This changes rotary coordinates, not the causal order of the packed sequence.",
+        "The exercise advances the next segment to one beyond the largest coordinate already used, not one beyond the token count. Record grid dimensions after merging, row-major ordering and the separator policy.",
+        "Expand first, then validate lengths and truncation. A cut through visual features or an assistant answer needs a declared rejection or truncation policy, not silent misalignment."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Implement the TensorTonic coordinate builder on CPU with PyTorch 2.14.1. For two text tokens, a 2 by 2 image and one separator, reproduce time `[0, 1, 2, 2, 2, 2, 4]`, height `[0, 1, 2, 2, 3, 3, 4]` and width `[0, 1, 2, 3, 2, 3, 4]`. Then assemble a visual prefix plus text and perturb a future text embedding: earlier valid outputs must stay within your stated tolerance in evaluation mode. Repeat with padding changed and with two examples batched separately and together.",
       "traps": [
-        "TODO"
+        "Using coordinate magnitude to decide causal visibility. Visual grid coordinates can repeat; causality follows sequence order and the chosen fusion policy.",
+        "Sending a placeholder sentinel into the ordinary text embedding table. Replace it before lookup if it is not a real vocabulary id.",
+        "Assuming the coordinate exercise validates rotary channel allocation, cached decoding or model masks. It returns coordinates only; those need separate integration tests."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Why is the separator coordinate 4 after a 2 by 2 image starting at offset 2, although seven tokens are emitted in total?",
+          "a": "The image uses coordinates up to 3 and advances the offset by its largest grid dimension, two. Coordinate progression is not packed sequence length."
+        },
+        {
+          "q": "Does ignoring the visual labels prevent the decoder from attending to the image?",
+          "a": "No. Ignored labels remove prediction losses at those positions. Attention masks separately determine which visual features can condition text."
+        },
+        {
+          "q": "Why must the image placeholder expand before checking the context budget?",
+          "a": "One placeholder can become hundreds of positions. A text-only length check can pass while the expanded input truncates image evidence or answer targets."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Assign Multimodal RoPE Coordinates",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-multimodal-rope-coordinates",
+          "locator": "`multimodal_rope_coordinates(segments)`; public cases Text image and separator, Wide image grid and Strided video grid",
+          "note": "The cases check coordinates for mixed segments, a rectangular image and a strided video. Add empty-segment and offset tests. The section mini-project covers expanded labels, padding, future-token isolation, serialization and cached-versus-full decoding; the exercise does not test those."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "The three public coordinate cases pass, and your expanded batch preserves valid outputs under padding and future-token interventions without confusing attention masks with loss masks.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: Qwen2-VL defines the coordinate design, LLaVA exposes expanded-sequence bookkeeping and the free coordinate problem plus mini-project cover component and integration tests."
       }
     },
     {
@@ -292,47 +450,71 @@
         "retrieval-vs-generation"
       ],
       "outcomes": [
-        "TODO"
+        "Implement a frozen-encoder, trainable-projector path into a causal decoder with answer-only likelihood.",
+        "Verify the gradient and optimizer boundaries of projector warmup and bounded decoder fine-tuning.",
+        "Evaluate retrieval and generation as distinct objectives without inferring grounding from either training loss."
       ],
-      "why": "TODO",
+      "why": "A correct forward shape is not a generative model. The important transition is from disconnected components to causal answer training whose gradients, frozen state and held-out behavior can be audited.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/missing-modalities-grounding",
+          "note": "Intervene on the image to test whether the trained decoder uses it."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "cs336-multimodal-lmr9",
+          "title": "CS336 Spring 2026 Lecture 17: multimodal models",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_17",
+          "locator": "The `clip` Ablation block and `llava` Training block"
+        },
+        {
+          "resource": "llava-lmr9",
+          "title": "Visual Instruction Tuning, arXiv:2304.08485v1: training",
+          "url": "https://arxiv.org/abs/2304.08485v1",
+          "locator": "Sections 4.1 and 4.2, Table 2 and Equation 3: architecture, assistant prediction targets and the two training stages",
+          "depth": "Use the freeze schedule and objective, not the Vicuna-scale run. Reuse your saved small `lmlab` decoder and the vision encoder from the Deep Learning unit on paired modalities; pin both checkpoint hashes and preprocessing in the run manifest."
+        },
+        {
+          "resource": "modern-notebook-vlm-lmr9",
+          "title": "Modern LLM Notebook 29: freeze schedule and minimal pipeline",
+          "url": "https://github.com/walkinglabs/modern-llm-notebook/blob/979eecf09669121167184ef925d8edbc089fc13e/notebooks-en/part4-frontiers/29-vlm.ipynb",
+          "locator": "Sections 8 to 10 and Exercise 3: Calculate Two-Stage Training Ratios",
+          "depth": "Section 10 is a shape demo: its `TransformerEncoder` call has no causal mask or positional encoding. Do not use its loss as autoregressive evidence. Insert the visual prefix into your tested causal decoder, retaining its positions and loss shift."
         }
       ],
       "focus": [
-        "TODO"
+        "Warm up only the projector with the encoder and decoder parameters frozen. The decoder still needs autograd through its operations to the projected inputs; do not wrap that forward pass in `torch.no_grad()`.",
+        "For the local route, reuse the paired encoder's frozen grid features and a roughly 10M-parameter decoder from your earlier work. Cache detached vision features with preprocessing and checkpoint hashes. PyTorch 2.14.1 is the reference; CPU and shorter sequences suffice for the same correctness tests.",
+        "In stage two, unfreeze a declared decoder subset and rebuild or update optimizer groups deliberately. Match image ids, answer-token exposure, update budget and evaluation settings against a no-warmup branch initialized from the same saved state; report any compute difference.",
+        "Retrieval ranks candidates in a shared feature space; generative training predicts answer tokens conditioned on image and prompt. Keep a frozen retrieval baseline, a text-only decoder baseline and independent answer evaluation. Neither low contrastive loss nor low answer loss proves grounding."
       ],
-      "reproduce": "TODO",
+      "reproduce": "From a blank file, write one answer-only training step through a trainable projector and a frozen causal decoder. Snapshot frozen tensors before the step: they must remain unchanged while the projector receives a finite nonzero gradient on a nondegenerate batch. With shifted labels, check that only assistant targets enter the denominator, not visual or prompt positions. Save and reload the projector plus assembly metadata; in evaluation mode require the same logits within `rtol=1e-5, atol=1e-6` on the same fixed CPU batch.",
       "traps": [
-        "TODO"
+        "Equating `eval()` with freezing. It changes behavior such as dropout, not parameter trainability; `requires_grad=False` does not itself select evaluation behavior.",
+        "Detaching projector outputs or disabling decoder autograd during warmup. The projector then cannot learn through the frozen decoder.",
+        "Selecting a training stage on the final test images. Keep a development split and preserve the final split for the frozen comparison."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can a frozen decoder still train a projector?",
+          "a": "Its operations remain differentiable with respect to the input embeddings. Frozen weights need no gradients, but gradients to projected visual inputs can still flow."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a smaller count of trainable parameters imply proportionally smaller total training memory?",
+          "a": "No. Frozen weights remain resident and decoder activations may still be needed for the projector's backward path. Optimizer state, activations and total memory must be accounted for separately."
+        },
+        {
+          "q": "A model ranks the correct caption first but cannot answer a counting question. Is that inconsistent?",
+          "a": "No. Ranking a finite candidate set and generating an accurate count are different tasks. The contrastive representation may not preserve or expose the required count."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: one small frozen-encoder plus projector-to-decoder path, projector warmup and a bounded decoder update, gradient and serialization tests, and held-out retrieval and answer evaluation against fixed baselines.",
+      "stopWhen": "Your warmup step changes only permitted state, reload preserves fixed-batch logits within tolerance, and you can state separate retrieval and generation evaluation contracts before training longer.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: LLaVA defines the staged objective, the notebook supplies bounded component demonstrations and the mini-project supplies the missing connected generative path with explicit causal and held-out checks."
       }
     },
     {
@@ -347,47 +529,72 @@
         "multimodal-hallucination"
       ],
       "outcomes": [
-        "TODO"
+        "Measure answer changes under missing-image, corrupted-image and conflicting-text interventions on the same held-out items.",
+        "Evaluate one original POPE sampling slice with audited parsing, confusion counts and answer bias.",
+        "Distinguish image sensitivity, correct grounding and unsupported claims about safety."
       ],
-      "why": "TODO",
+      "why": "A model can answer from language priors while ignoring the image, or change its answer when the image changes without becoming more accurate. Grounding needs both intervention evidence and independently checked answers.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-multimodal-models/crossmodal-leakage-slices-baselines",
+          "note": "Check whether the apparent grounding gain survives clean splits and modality slices."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "pope-lmr9",
+          "title": "Evaluating Object Hallucination in Large Vision-Language Models, EMNLP 2023",
+          "url": "https://aclanthology.org/2023.emnlp-main.20.pdf",
+          "locator": "Sections 5.1 and 5.2, Figure 3 and Table 3: object probing, random/popular/adversarial negatives and reported metrics",
+          "depth": "The Metrics paragraph on printed p. 298 misdescribes precision and recall as correct yes/no answers respectively. Use the positive-class formulas in the next item: recall is not specificity. Object presence is also narrower than general visual grounding."
+        },
+        {
+          "resource": "pope-lmr9",
+          "title": "Original POPE evaluator at commit 08d957b",
+          "url": "https://github.com/AoiDragon/POPE/blob/08d957b917e5a378a2f99d35b6293c536a66298b/evaluate.py",
+          "locator": "Answer normalization, `TP`, `TN`, `FP`, `FN`, precision, recall, F1 and yes-ratio computation",
+          "depth": "Inspect rather than run unchanged. It zips rows instead of joining ids, treats unrecognized answers as yes and does not guard zero denominators. Keep original POPE data separate from POPEv2."
+        },
+        {
+          "resource": "pope-lmr9",
+          "title": "Original POPE COCO random-sampling questions",
+          "url": "https://github.com/AoiDragon/POPE/blob/08d957b917e5a378a2f99d35b6293c536a66298b/output/coco/coco_pope_random.json",
+          "locator": "Records keyed by `question_id`, with `image`, `text` and `label`; image names identify COCO validation 2014",
+          "depth": "Reserve 10 to 20 image ids before training and keep all their questions. Use this fixed random-negative slice on CPU or your GPU, not a full benchmark sweep; keep its images and caption derivatives out of adaptation."
         }
       ],
       "focus": [
-        "TODO"
+        "Fix model, question, decoding and evaluator; change only the declared modality condition. Missing-image removal, a blank image, a shuffled image and a conflicting caption are distinct interventions, not interchangeable controls.",
+        "For a conflicting-caption test, ask an image-grounded question whose answer you checked from pixels, then add contradictory text. A changed answer measures susceptibility only under that stated instruction and evidence policy.",
+        "On parsed binary predictions, use positive-class precision \\(\\mathrm{TP}/(\\mathrm{TP}+\\mathrm{FP})\\), recall \\(\\mathrm{TP}/(\\mathrm{TP}+\\mathrm{FN})\\) and F1 \\(2\\mathrm{TP}/(2\\mathrm{TP}+\\mathrm{FP}+\\mathrm{FN})\\). Declare zero-denominator handling before scoring.",
+        "Require a single yes/no answer for your local parser, with case and surrounding whitespace normalized. Mark other outputs invalid. Report parsed-subset confusion metrics and coverage, all-item accuracy with invalids incorrect, and yes count divided by all items. Disclose this departure from the original parser and hand-check a sample."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without model inference, score four items whose labels are `['yes', 'yes', 'no', 'no']` with an always-yes predictor. Get accuracy 0.5, precision 0.5, recall 1, F1 \\(2/3\\) and yes ratio 1. Repeat with mixed predictions, then permute prediction rows while preserving `question_id`: an id-based join must preserve the scores and reject duplicate or missing ids. Check this before scoring the image interventions.",
       "traps": [
-        "TODO"
+        "Calling a performance drop after image corruption proof of correct grounding. It establishes dependence on changed input, not that the intact answer was right.",
+        "Treating high F1 as freedom from hallucination. Always-yes already gets substantial F1 on a balanced presence test; report accuracy and yes ratio too.",
+        "Scoring missing-image runs after discarding failed generations. Failures belong in all-item accuracy and coverage, not outside the denominator."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can an always-no predictor have zero false-positive hallucinations but still fail this unit?",
+          "a": "It misses every present object and may ignore the image completely. Negative errors, positive recall and image-sensitive correct answers must be considered together."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "What does a model unchanged under every image intervention tell you?",
+          "a": "Its answers show no measured image dependence on those items. Check assembly and modality wiring, then language shortcuts; do not claim the image pathway is universally unused."
+        },
+        {
+          "q": "Does passing a POPE slice establish spatial reasoning or multimodal safety?",
+          "a": "No. It tests prompted object presence for its images, sampling strategy and parser. Spatial relations, instruction conflicts and harmful image content require separate evaluations."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: the held-out original POPE random-negative slice, id-joined raw answers, parser calibration, missing-image and corrupted-image runs, and hand-checked conflicting-caption cases on the same tiny generative path.",
+      "stopWhen": "Your synthetic scorer and join tests pass, and your intervention report preserves invalids and separates correct grounding, image dependence and language-prior errors.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: POPE supplies a bounded external grounding test and inspectable scorer; the mini-project supplies missingness and conflict interventions that the source does not implement."
       }
     },
     {
@@ -403,47 +610,71 @@
         "text-only-and-corrupt-pair-baselines"
       ],
       "outcomes": [
-        "TODO"
+        "Audit image, caption, question and synthetic-answer overlap without treating a clean local split as proof of clean pretraining.",
+        "Compare intact, text-only and corrupted-pair conditions on fixed held-out modality slices.",
+        "Report paired quality deltas with image-group uncertainty and measured modality-conditioned cost."
       ],
-      "why": "TODO",
+      "why": "The Deep Learning unit on linear probes, transfer evaluation and pair leakage covered source splits. Research-depth evidence must also survive cross-modal derivatives, altered candidate sets and the possibility that a visual gain is just extra computation or answer leakage.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-alignment-safety-release/behavior-specification-threat-model",
+          "note": "Carry the measured modality failure boundaries into the safety specification."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "openai-clip-lmr9",
+          "title": "CLIP, ICML 2021 PMLR edition: overlap and limitations",
+          "url": "https://proceedings.mlr.press/v139/radford21a/radford21a.pdf",
+          "locator": "Sections 4 and 6: Data Overlap Analysis and Limitations"
+        },
+        {
+          "resource": "flamingo-lmr9",
+          "title": "Flamingo, arXiv:2204.14198v1: deduplication scope",
+          "url": "https://arxiv.org/abs/2204.14198v1",
+          "locator": "Appendix A.3, Dataset deduplication against evaluation tasks",
+          "depth": "Read the exceptions as well as the method: not every dataset or modality was deduplicated. Do not attempt to reproduce the internal search service."
+        },
+        {
+          "resource": "qwen2vl-lmr9",
+          "title": "Qwen2-VL, arXiv:2409.12191v1: resolution ablation",
+          "url": "https://arxiv.org/abs/2409.12191v1",
+          "locator": "Section 3.3.1, Dynamic Resolution, Table 7 and Figure 4",
+          "depth": "Use its task-dependent resolution behavior to motivate slices, not as a predicted gain for your encoder. Your frozen encoder must support the chosen input sizes."
         }
       ],
       "focus": [
-        "TODO"
+        "Audit raw and decoded-image hashes, source ids and caption/question/answer lineage. Review near-duplicate candidates across crops and re-encodings; a high feature similarity is a candidate, not proof of duplication. Record pretraining overlap as unknown when the encoder's training data cannot be audited.",
+        "Predeclare object presence, text-in-image, spatial relation, counting and resolution slices with checked answers. Add benign cases and harmless text-in-image instruction conflicts; score image-grounded utility separately from whether embedded instructions overrode the user's task.",
+        "Evaluate identical item ids and prompts with intact images, an absent visual prefix, shuffled image assignments and corrupted images. Use a derangement with no retained original pair and inspect accidental semantic matches. Separate inference interventions from separately trained shuffled-pair controls.",
+        "Hold candidate pools fixed for retrieval and decoding budgets fixed for generation. Report answer quality, valid-answer coverage, visual/text token counts, elapsed time and available peak-memory measurements by slice. A text-only baseline does less work; disclose that gap or add a length-matched blank-feature control instead of claiming exact compute matching."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Seed a manifest audit with an evaluation image that is a byte-identical training image under a new id, a re-encoded copy, and a new question derived from a training caption. Exact hashing must catch the first; parent lineage must catch the question; decoded-image comparison or reviewed near-duplicate search must catch the re-encoding. Quarantine the whole leaking source group and recompute the split report before examining model scores. Preserve the planted failures as regression fixtures.",
       "traps": [
-        "TODO"
+        "Treating changed filenames or caption paraphrases as held-out evidence. Shared pixels or answer provenance can cross the split without any repeated text.",
+        "Expecting a shuffled-pair score to equal chance. Repeated objects, language priors and semantically similar images can retain useful information.",
+        "Bootstrapping questions as independent when several refer to one image. Resample image groups for paired uncertainty, and keep training-seed variation separate."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
-        }
-      ],
-      "practice": [
+          "q": "Why can a higher resolution help OCR but not improve a counting or reasoning score?",
+          "a": "It may preserve readable detail without fixing the model's reasoning or task representation. It also changes visual token count and computation, so measure each slice rather than asserting a universal gain."
+        },
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "q": "Does a text-only score close to the intact score prove an assembly bug?",
+          "a": "No. The data may be answerable from text or the trained model may use language shortcuts. Test controlled image-dependent items and inspect wiring before choosing an explanation."
+        },
+        {
+          "q": "Why is a random shuffle weaker than a checked derangement for an image intervention?",
+          "a": "A random permutation may leave some original pairs intact. A derangement removes identity matches, although semantic matches still need inspection."
         }
       ],
-      "stopWhen": "TODO",
+      "practice": [],
+      "practiceNote": "The section mini-project covers this: planted cross-modal leak detection, image-group held-out slices, text-only and checked shuffled-pair baselines, resolution and length controls, paired uncertainty and per-modality cost evidence in `lmlab`.",
+      "stopWhen": "The planted leaks are detected, and your comparison table keeps item identities, budgets, invalids and image-group uncertainty visible while preserving at least one negative result.",
       "fit": {
         "verdict": "kept",
-        "note": "TODO"
+        "note": "Kept: CLIP and Flamingo locate overlap analysis and its limits, Qwen2-VL supplies task-dependent resolution evidence, and the mini-project adds the controlled slices and leak campaign absent from the papers."
       }
     },
     {
@@ -458,47 +689,83 @@
         "native-multimodal-generation"
       ],
       "outcomes": [
-        "TODO"
+        "Explain video frame or tube tokens and audio codec tokens with explicit temporal alignment and rate budgets.",
+        "Distinguish codec reconstruction, next-code prediction and conditional text generation objectives.",
+        "Explain what an autoregressive mixed-modal model needs to generate images rather than only describe them."
       ],
-      "why": "TODO",
+      "why": "This optional unit is a vocabulary bridge, not a second implementation project. It makes clear which parts of the image-text contract generalize to time and which require a decoder for the output modality.",
       "next": [
         {
-          "unit": "TODO",
-          "note": "TODO"
+          "unit": "llm-research/lmr-research-scale-integration/mechanism-ablations-confounds",
+          "note": "Keep representation changes separate from compute and objective changes in any later extension."
         }
       ],
       "study": [
         {
-          "resource": "TODO",
-          "title": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "resource": "qwen2vl-lmr9",
+          "title": "Qwen2-VL, arXiv:2409.12191v1: video inputs",
+          "url": "https://arxiv.org/abs/2409.12191v1",
+          "locator": "Section 2.1, Model Architecture: the M-RoPE paragraph and Figure 3 (temporal coordinates) and the Unified Image and Video Understanding paragraph (3D convolutions with a depth of two)"
+        },
+        {
+          "resource": "encodec-audio-lmr9",
+          "title": "EnCodec, arXiv:2210.13438v1",
+          "url": "https://arxiv.org/html/2210.13438v1",
+          "locator": "Sections 3.1 to 3.4 and Figure 1: encoder stride, residual vector quantization, code language model and training objectives",
+          "depth": "Stop before the experiments. No audio download, codec training or listening panel is required."
+        },
+        {
+          "resource": "chameleon-lmr9",
+          "title": "Chameleon, arXiv:2405.09818v1",
+          "url": "https://arxiv.org/abs/2405.09818v1",
+          "locator": "Section 2 and Sections 2.1 to 2.3: autoregressive mixed-modal sequences, image tokenizer, pretraining data and stability",
+          "depth": "Read the representation and objective, not the full training recipe. Image generation does not require diffusion: this model predicts discrete image codes and decodes them."
+        },
+        {
+          "resource": "cs336-multimodal-lmr9",
+          "title": "CS336 Spring 2026 Lecture 17: multimodal models",
+          "url": "https://cs336.stanford.edu/lectures/?trace=lecture_17",
+          "locator": "The `chameleon` block: discrete image tokens, training mixture and stability summary"
         }
       ],
       "focus": [
-        "TODO"
+        "Video needs time as well as frame-local position. Frame sampling, timestamps, temporal stride and dropped frames change the evidence; an average of frame embeddings can erase event order.",
+        "Audio sample rate, latent frame rate and code-id rate are different. In the stated EnCodec encoder, strides 2, 4, 5 and 8 give total stride 320, hence 75 latent frames per second at 24 kHz. Each residual codebook adds another id per frame.",
+        "The codec reconstructs waveforms with time-domain, spectral, adversarial and commitment losses. A separate language model predicts code distributions; codec reconstruction alone does not teach text-conditioned audio generation.",
+        "Chameleon predicts categorical tokens in mixed text-image order. Its tokenizer maps a 512 by 512 image to 1024 codes from 8192 entries. Token count, codebook cardinality and output-decoding cost are separate quantities; the tokenizer's lost detail limits downstream reconstruction."
       ],
-      "reproduce": "TODO",
+      "reproduce": "Without code or notes, budget a two-second, 24 kHz clip with encoder stride 320 and four 1024-entry codebooks: 150 latent frames, 600 code ids and 6000 fixed-width bits, or 3 kbps before framing and entropy coding. Contrast this with two image frames encoded by Chameleon's stated tokenizer: 2048 image codes, excluding separators. Explain why neither count alone specifies autoregressive latency: codebooks may be predicted in parallel rather than flattened into sequential steps.",
       "traps": [
-        "TODO"
+        "Calling a spectrogram frame or a continuous visual embedding a discrete vocabulary entry. Continuous features need a different prediction or output-decoding contract.",
+        "Interpreting codec codebook size as sequence length. More codebooks or a longer recording add code ids without changing the number of entries per codebook.",
+        "Comparing image and audio token likelihoods as if they shared a unit. Tokenization, codebook structure and loss weighting differ."
       ],
       "selfTest": [
         {
-          "q": "TODO",
-          "a": "TODO"
+          "q": "Does adding four residual codebooks make the latent frame rate four times higher?",
+          "a": "No. The frame rate is unchanged; four code ids describe each frame. A flattened serialization would have four times as many ids as latent frames."
+        },
+        {
+          "q": "What is missing from a CLIP encoder plus a text decoder if the task is to output an image?",
+          "a": "An image-output representation, a model objective for predicting it and a decoder that turns it into pixels. Describing an image in words does not supply those."
+        },
+        {
+          "q": "Why are equal numbers of video frames not necessarily equal temporal evidence?",
+          "a": "Sampling rate and timestamps determine coverage and order. Sparse or irregular frames can miss short events even when the frame count matches."
         }
       ],
       "practice": [
         {
-          "name": "TODO",
-          "url": "https://TODO",
-          "locator": "TODO"
+          "name": "TensorTonic: Assign Multimodal RoPE Coordinates, Strided video grid case",
+          "url": "https://www.tensortonic.com/problems/cs336-l17-multimodal-rope-coordinates",
+          "locator": "The public Strided video grid case and its two-frame example with `frame_stride=2`",
+          "note": "Reuse your coordinate builder. Explain the temporal coordinates and the next-segment offset when frame stride changes while the number of frames stays fixed. This is a coordinate exercise, not video understanding or audio generation; no second model training run is required."
         }
       ],
-      "stopWhen": "TODO",
+      "stopWhen": "You reproduce the rate budget and strided-video coordinates, and can state the representation, prediction target and output decoder for text-conditioned image or audio generation without proposing a large training run.",
       "fit": {
-        "verdict": "kept",
-        "note": "TODO"
+        "verdict": "added",
+        "note": "Coverage failed for audio tokenization: the pool covers video and image generation but not audio codebooks or rate accounting. One search pass located EnCodec Sections 3.1 to 3.4, opened and verified as a narrow reference companion."
       }
     }
   ]
